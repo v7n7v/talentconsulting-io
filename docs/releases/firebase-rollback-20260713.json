@@ -1,0 +1,18 @@
+{
+  "capturedAt": "2026-07-14T01:04:38.608Z",
+  "project": "talent-consulting-acf16",
+  "hosting": {
+    "release": "sites/talent-consulting-acf16/releases/1783251669621000",
+    "version": "sites/talent-consulting-acf16/versions/6fbf3998fa4c2403",
+    "releaseTime": "2026-07-05T11:41:09.621Z",
+    "runTarget": {
+      "serviceId": "ssrtalentconsultingacf1",
+      "region": "us-east1",
+      "pinTag": null
+    }
+  },
+  "backendRevisionCapture": {
+    "status": "permission_denied",
+    "rollbackStrategy": "Restore the captured Firebase Hosting version, which retains the prior SSR rewrite target."
+  }
+}

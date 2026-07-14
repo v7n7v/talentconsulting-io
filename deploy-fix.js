@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
 const firebaseJsonPath = './firebase.json';
@@ -33,7 +34,12 @@ function buildStaticFallbackConfig(original) {
 }
 
 function runFirebase(args) {
-  const result = spawnSync('npx', ['firebase', ...args], { encoding: 'utf8' });
+  const result = process.platform === 'win32'
+    ? spawnSync(process.execPath, [
+        path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js'),
+        '--yes', 'firebase-tools', ...args,
+      ], { encoding: 'utf8' })
+    : spawnSync('npx', ['--yes', 'firebase-tools', ...args], { encoding: 'utf8' });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result;
