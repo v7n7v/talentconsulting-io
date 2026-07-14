@@ -6,8 +6,8 @@ import { completeOnboarding, type UserProfile } from '@/lib/database-suite';
 import { normalizeResume, type CanonicalResume } from '@/lib/resume-normalizer';
 import { runPostOnboardingPipeline } from '@/lib/onboarding-pipeline';
 import { useStore } from '@/lib/store';
-import { auth } from '@/lib/firebase';
 import { showToast } from '@/components/Toast';
+import { ResumeUploadError, uploadAndParseResume, validateResumeFile } from '@/lib/resume-upload';
 
 // ── Career field options ──
 const CAREER_FIELDS = [
@@ -68,40 +68,16 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
 
   // ── Resume upload handler ──
   const handleFileUpload = useCallback(async (file: File) => {
-    const name = file.name.toLowerCase();
-    const validExts = ['.pdf', '.docx', '.doc', '.txt', '.md'];
-    if (!validExts.some(ext => name.endsWith(ext))) {
-      showToast('Please upload a PDF, Word, or TXT file', 'error');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      showToast('File too large. Max 10MB.', 'error');
+    try {
+      validateResumeFile(file);
+    } catch (error: any) {
+      showToast(error.message || 'Please upload a PDF, Word, or TXT file', 'error');
       return;
     }
 
     setParsing(true);
     try {
-      const buffer = await file.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-
-      // Get auth token if available
-      const token = await auth.currentUser?.getIdToken?.();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch('/api/gauntlet/parse-resume', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ fileData: base64, fileName: file.name }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        showToast(data.error || 'Failed to parse resume', 'error');
-        return;
-      }
+      const data = await uploadAndParseResume(file);
 
       setResumeText(data.text);
       setResumeFileName(file.name);
@@ -122,8 +98,12 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
         setDirection(1);
         setStep(s => Math.min(s + 1, 3));
       }, 1200);
-    } catch (err) {
-      showToast('Failed to process resume', 'error');
+    } catch (err: any) {
+      if (err instanceof ResumeUploadError && err.code === 'SCANNED_PDF') {
+        showToast('This looks like a scanned PDF. Please upload a text-based PDF or Word file.', 'error');
+      } else {
+        showToast(err.message || 'Failed to process resume', 'error');
+      }
     } finally {
       setParsing(false);
     }
@@ -319,7 +299,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".pdf,.docx,.doc,.txt,.md"
+                      accept=".pdf,.docx,.doc,.txt"
                       className="hidden"
                       onChange={e => {
                         const file = e.target.files?.[0];

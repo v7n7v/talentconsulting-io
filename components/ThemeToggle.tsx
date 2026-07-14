@@ -1,13 +1,8 @@
 'use client';
 
-/**
- * ThemeToggle — Animated sun/moon toggle switch
- * 
- * Night: twinkling stars on dark sky. Day: warm sun with radiating glow.
- * The "knob" slides left (dark/moon) or right (light/sun) with a spring animation.
- */
 import { motion } from 'framer-motion';
 import { useTheme } from '@/components/ThemeProvider';
+import { useEffect, useState } from 'react';
 
 interface ThemeToggleProps {
   size?: 'sm' | 'md';
@@ -16,175 +11,151 @@ interface ThemeToggleProps {
 
 export default function ThemeToggle({ size = 'sm', className = '' }: ThemeToggleProps) {
   const { theme, toggleTheme } = useTheme();
-  const isLight = theme === 'light';
+  const [mounted, setMounted] = useState(false);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isLight = mounted ? theme === 'light' : false;
   const dims = size === 'md'
-    ? { w: 56, h: 28, knob: 22, pad: 3, iconSize: 14 }
-    : { w: 44, h: 22, knob: 16, pad: 3, iconSize: 10 };
+    ? { w: 64, h: 34, knob: 28, pad: 3, iconSize: 19 }
+    : { w: 54, h: 30, knob: 24, pad: 3, iconSize: 17 };
+
+  const label = isLight ? 'Switch to dark mode' : 'Switch to light mode';
+  const knobOffset = dims.w - dims.knob - dims.pad * 2;
 
   return (
-    <motion.button
+    <button
+      type="button"
       onClick={toggleTheme}
-      className={`relative rounded-full cursor-pointer flex-shrink-0 ${className}`}
+      aria-label={label}
+      aria-pressed={isLight}
+      title={label}
+      className={`relative inline-flex flex-shrink-0 cursor-pointer items-center overflow-hidden rounded-full outline-none transition-shadow duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] ${className}`}
       style={{
         width: dims.w,
         height: dims.h,
+        minHeight: dims.h,
         padding: dims.pad,
+        border: '1px solid var(--border-subtle)',
+        background: isLight
+          ? 'linear-gradient(135deg, #bae6fd 0%, #60a5fa 54%, #2563eb 100%)'
+          : 'linear-gradient(135deg, #020617 0%, #0f172a 54%, #1e293b 100%)',
+        boxShadow: isLight
+          ? 'inset 0 1px 0 rgba(255,255,255,0.45), 0 6px 18px rgba(37,99,235,0.16)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 18px rgba(2,6,23,0.22)',
       }}
-      whileTap={{ scale: 0.92 }}
-      title={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-      aria-label={isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
     >
-      {/* Track background */}
-      <motion.div
-        className="absolute inset-0 rounded-full overflow-hidden"
-        animate={{
-          background: isLight
-            ? 'linear-gradient(135deg, #87CEEB 0%, #60A5FA 50%, #3B82F6 100%)'
-            : 'linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #334155 100%)',
-        }}
-        transition={{ duration: 0.5, ease: 'easeInOut' }}
-      >
-        {/* Stars (visible in dark mode) — twinkling */}
-        <motion.div
-          className="absolute inset-0"
-          animate={{ opacity: isLight ? 0 : 1 }}
-          transition={{ duration: 0.3 }}
-        >
-          {[
-            { x: '18%', y: '22%', s: 2.5 },
-            { x: '32%', y: '65%', s: 2 },
-            { x: '50%', y: '18%', s: 1.5 },
-            { x: '12%', y: '72%', s: 2 },
-            { x: '68%', y: '40%', s: 1.5 },
-            { x: '42%', y: '48%', s: 1 },
-            { x: '75%', y: '22%', s: 1.5 },
-            { x: '25%', y: '42%', s: 1 },
-          ].map((star, i) => (
-            <motion.div
-              key={i}
-              className="absolute rounded-full bg-white"
-              style={{
-                left: star.x,
-                top: star.y,
-                width: star.s,
-                height: star.s,
-              }}
-              animate={{
-                opacity: isLight ? 0 : [0.3, 1, 0.3],
-                scale: isLight ? 0.5 : [0.8, 1.3, 0.8],
-              }}
-              transition={{
-                duration: 1.5 + i * 0.2,
-                delay: i * 0.15,
-                repeat: Infinity,
-                repeatType: 'reverse',
-              }}
-            />
-          ))}
-        </motion.div>
+      <span className="sr-only">{label}</span>
 
-        {/* Sun glow rays (visible in light mode) */}
-        <motion.div
-          className="absolute inset-0"
-          animate={{ opacity: isLight ? 0.7 : 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          {/* Warm ambient glow behind the sun */}
+      <motion.div
+        className="absolute inset-0"
+        initial={false}
+        animate={{ opacity: isLight ? 0 : 1 }}
+        transition={{ duration: 0.22 }}
+        aria-hidden="true"
+      >
+        {mounted && [
+          { x: '18%', y: '28%', s: 2 },
+          { x: '32%', y: '66%', s: 1.5 },
+          { x: '54%', y: '22%', s: 1.5 },
+          { x: '72%', y: '58%', s: 2 },
+        ].map((star, i) => (
           <motion.div
-            className="absolute rounded-full"
+            key={i}
+            className="absolute rounded-full bg-white/90"
             style={{
-              width: 20,
-              height: 20,
-              background: 'radial-gradient(circle, rgba(253,184,19,0.4) 0%, transparent 70%)',
-              right: '-2%',
-              top: '-5%',
+              left: star.x,
+              top: star.y,
+              width: star.s,
+              height: star.s,
             }}
-            animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
-            transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-          />
-          {/* Small floating cloud */}
-          <motion.div
-            className="absolute rounded-full"
-            style={{
-              width: 12,
-              height: 5,
-              background: 'rgba(255,255,255,0.5)',
-              borderRadius: 10,
-              bottom: '30%',
-              left: '12%',
+            animate={{
+              opacity: [0.35, 0.95, 0.35],
+              scale: [0.85, 1.25, 0.85],
             }}
-            animate={{ x: [0, 4, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            transition={{
+              duration: 1.8 + i * 0.15,
+              delay: i * 0.12,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
           />
-        </motion.div>
+        ))}
       </motion.div>
 
-      {/* Knob (sun/moon) */}
       <motion.div
-        className="relative rounded-full flex items-center justify-center"
+        className="absolute inset-0"
+        initial={false}
+        animate={{ opacity: isLight ? 1 : 0 }}
+        transition={{ duration: 0.22 }}
+        aria-hidden="true"
+      >
+        <motion.div
+          className="absolute rounded-full bg-white/75"
+          style={{
+            width: size === 'md' ? 17 : 14,
+            height: size === 'md' ? 7 : 6,
+            left: '16%',
+            top: '26%',
+          }}
+          animate={{ x: [0, 4, 0] }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          aria-hidden="true"
+        />
+        <motion.div
+          className="absolute rounded-full bg-white/55"
+          style={{
+            width: size === 'md' ? 11 : 9,
+            height: size === 'md' ? 5 : 4,
+            right: '18%',
+            bottom: '24%',
+          }}
+          animate={{ x: [0, -3, 0] }}
+          transition={{ duration: 4.6, repeat: Infinity, ease: 'easeInOut' }}
+          aria-hidden="true"
+        />
+      </motion.div>
+
+      <motion.div
+        className="relative z-10 flex items-center justify-center rounded-full shadow-md"
         style={{
           width: dims.knob,
           height: dims.knob,
-        }}
-        animate={{
-          x: isLight ? dims.w - dims.knob - dims.pad * 2 : 0,
           background: isLight
-            ? 'linear-gradient(135deg, #FDB813 0%, #F59E0B 100%)'
-            : 'linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%)',
+            ? 'linear-gradient(135deg, #fde68a 0%, #f59e0b 100%)'
+            : 'linear-gradient(135deg, #f8fafc 0%, #cbd5e1 100%)',
           boxShadow: isLight
-            ? '0 0 10px 3px rgba(253,184,19,0.5), inset 0 -1px 2px rgba(0,0,0,0.1)'
-            : '0 0 8px 2px rgba(200,210,230,0.35), inset 0 -1px 2px rgba(0,0,0,0.15)',
+            ? 'inset 0 -1px 2px rgba(120,53,15,0.25), 0 2px 8px rgba(120,53,15,0.18)'
+            : 'inset 0 -1px 2px rgba(15,23,42,0.22), 0 2px 8px rgba(2,6,23,0.18)',
+        }}
+        initial={false}
+        animate={{
+          x: isLight ? knobOffset : 0,
         }}
         transition={{
-          x: { type: 'spring', stiffness: 400, damping: 30 },
-          background: { duration: 0.4 },
-          boxShadow: { duration: 0.4 },
+          type: 'spring',
+          stiffness: 400,
+          damping: 30,
         }}
+        aria-hidden="true"
       >
-        {/* Sun rays (light mode) */}
-        <motion.div
-          className="absolute inset-0 flex items-center justify-center"
-          animate={{ opacity: isLight ? 1 : 0, rotate: isLight ? 0 : -90 }}
-          transition={{ duration: 0.3 }}
+        <motion.span
+          key={isLight ? 'light_mode' : 'dark_mode'}
+          className="material-symbols-rounded leading-none"
+          style={{
+            fontSize: dims.iconSize,
+            color: isLight ? '#78350f' : '#0f172a',
+            fontVariationSettings: "'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24",
+          }}
+          initial={{ opacity: 0, scale: 0.68, rotate: isLight ? -35 : 35 }}
+          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
         >
-          <svg width={dims.iconSize} height={dims.iconSize} viewBox="0 0 16 16" fill="none">
-            {/* Center */}
-            <circle cx="8" cy="8" r="3" fill="#92400E" opacity="0.3" />
-            {/* Rays */}
-            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
-              <motion.line
-                key={angle}
-                x1="8"
-                y1="2"
-                x2="8"
-                y2="0.5"
-                stroke="#92400E"
-                strokeWidth="1"
-                strokeLinecap="round"
-                opacity="0.4"
-                transform={`rotate(${angle} 8 8)`}
-                animate={{ opacity: [0.3, 0.6, 0.3] }}
-                transition={{ duration: 2, delay: angle / 360, repeat: Infinity }}
-              />
-            ))}
-          </svg>
-        </motion.div>
-
-        {/* Moon craters (dark mode) */}
-        <motion.div
-          className="absolute inset-0 flex items-center justify-center"
-          animate={{ opacity: isLight ? 0 : 1, rotate: isLight ? 90 : 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <svg width={dims.iconSize} height={dims.iconSize} viewBox="0 0 16 16" fill="none">
-            <circle cx="6" cy="5" r="1.5" fill="#94A3B8" opacity="0.4" />
-            <circle cx="9" cy="9" r="1" fill="#94A3B8" opacity="0.3" />
-            <circle cx="5" cy="10" r="0.8" fill="#94A3B8" opacity="0.25" />
-          </svg>
-        </motion.div>
+          {isLight ? 'light_mode' : 'dark_mode'}
+        </motion.span>
       </motion.div>
-    </motion.button>
+    </button>
   );
 }
-

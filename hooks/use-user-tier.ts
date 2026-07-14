@@ -13,6 +13,7 @@ import { useStore } from '@/lib/store';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import type { UsageData } from '@/lib/usage-tracker';
+import { isDemoModeEnabled } from '@/lib/demo-mode';
 
 export type PlanTier = 'free' | 'pro' | 'studio' | 'god';
 
@@ -44,6 +45,16 @@ export function useUserTier(): TierState {
   const initialFetchDone = useRef(false);
 
   const fetchUsage = useCallback(async () => {
+    if (isDemoModeEnabled()) {
+      setTier('studio');
+      setUsage(DEFAULT_USAGE);
+      setCaps(null);
+      setError(null);
+      setLoading(false);
+      initialFetchDone.current = true;
+      return;
+    }
+
     if (!user) {
       setLoading(false);
       return;
@@ -74,6 +85,7 @@ export function useUserTier(): TierState {
   // Real-time Firestore listener on subscription doc
   // When admin changes a user's plan, this fires instantly
   useEffect(() => {
+    if (isDemoModeEnabled()) return;
     if (!user?.uid) return;
 
     const email = user.email?.toLowerCase() || '';

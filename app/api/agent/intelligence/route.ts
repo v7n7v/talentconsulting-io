@@ -2,7 +2,9 @@ import { NextRequest } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { generateRecommendations, generateProfileSummary } from '@/lib/career-recommendations';
 import { getOrComputeTwin, invalidateTwin, exportTwinJSON } from '@/lib/career-twin';
+import { buildSonaBrief } from '@/lib/sona-context';
 import { monitor } from '@/lib/monitor';
+import { DEMO_USER_ID, getDemoIntelligenceResponse, isDemoModeEnabled } from '@/lib/demo-mode';
 
 // In-memory cache for recommendations (twin handles profile caching in Firestore)
 const recsCache = new Map<string, { recommendations: any; summary: string; cachedAt: number }>();
@@ -16,6 +18,30 @@ export async function GET(req: NextRequest) {
   const exportMode = new URL(req.url).searchParams.get('export') === 'true';
 
   try {
+    if (isDemoModeEnabled() && uid === DEMO_USER_ID) {
+      const demo = getDemoIntelligenceResponse();
+      if (exportMode) {
+        return new Response(JSON.stringify({
+          profile: demo.profile,
+          background: demo.twin.background,
+          memory: demo.twin.memory,
+          behavioralCoverage: demo.twin.behavioralBank,
+          meta: {
+            completeness: demo.twin.completeness.score,
+            exportable: demo.twin.exportable,
+            demo: true,
+          },
+        }, null, 2), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Disposition': 'attachment; filename="career-profile-demo.json"',
+          },
+        });
+      }
+
+      return new Response(JSON.stringify(demo), { headers: { 'Content-Type': 'application/json' } });
+    }
+
     // Get or compute the persistent twin
     const twin = await getOrComputeTwin(uid);
 
@@ -53,10 +79,12 @@ export async function GET(req: NextRequest) {
       profile: twin,
       recommendations,
       summary,
+      sonaBrief: buildSonaBrief(twin),
       twin: {
         completeness: twin.completeness,
         behavioralBank: twin.behavioralBank,
         background: twin.background,
+        memory: twin.memory,
         exportable: twin.exportable,
       },
       cached: !twin.stale,
@@ -76,6 +104,12 @@ export async function POST(req: NextRequest) {
   if (guard.error) return guard.error;
 
   const uid = guard.user.uid;
+  if (isDemoModeEnabled() && uid === DEMO_USER_ID) {
+    return new Response(JSON.stringify({ success: true, message: 'Demo Career Twin refreshed' }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
   await invalidateTwin(uid);
   recsCache.delete(uid);
 
@@ -83,4 +117,3 @@ export async function POST(req: NextRequest) {
     headers: { 'Content-Type': 'application/json' },
   });
 }
-

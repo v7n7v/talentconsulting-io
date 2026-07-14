@@ -6,6 +6,8 @@
  * readability in both modes without any forceDark hacks.
  */
 
+import { getPlanIdentity } from './plan-identity';
+
 export interface TierTheme {
   /** Primary accent — avatar gradient start, badge bg, progress bar */
   accent: string;
@@ -24,38 +26,14 @@ export interface TierTheme {
 }
 
 export function getTierTheme(tier: string): TierTheme {
-  switch (tier) {
-    case 'studio':
-    case 'god':
-    case 'max':
-      return {
-        accent: '#f59e0b',
-        accentAlt: '#fbbf24',
-        accentText: '#92400e',
-        accentTextDark: '#fcd34d',
-        label: 'MAX',
-        intensity: 2,
-        shimmer: true,
-      };
-    case 'pro':
-      return {
-        accent: '#8b5cf6',
-        accentAlt: '#a78bfa',
-        accentText: '#6d28d9',
-        accentTextDark: '#c4b5fd',
-        label: 'PRO',
-        intensity: 1.5,
-        shimmer: true,
-      };
-    default:
-      return {
-        accent: '#0ea5e9',
-        accentAlt: '#38bdf8',
-        accentText: '#0369a1',
-        accentTextDark: '#7dd3fc',
-        label: 'FREE',
-        intensity: 1,
-        shimmer: false,
-      };
-  }
+  const plan = getPlanIdentity(tier);
+  return {
+    accent: plan.accent,
+    accentAlt: plan.accentAlt,
+    accentText: plan.accentText,
+    accentTextDark: plan.accentTextDark,
+    label: plan.label,
+    intensity: plan.id === 'studio' ? 2 : plan.id === 'pro' ? 1.5 : 1,
+    shimmer: plan.shimmer,
+  };
 }

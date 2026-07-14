@@ -25,7 +25,7 @@ function getGroqClient() {
 
 export async function POST(request: NextRequest) {
   try {
-    const guard = await guardApiRoute(request, { rateLimit: 10, rateLimitWindow: 60_000, allowAnonymous: true });
+    const guard = await guardApiRoute(request, { rateLimit: 10, rateLimitWindow: 60_000, allowAnonymous: false });
     if (guard.error) return guard.error;
 
     const validated = await validateBody(request, AICompletionSchema);
@@ -42,10 +42,13 @@ export async function POST(request: NextRequest) {
       if (!usageCheck.allowed) {
         return NextResponse.json(
           {
-            error: `Free tier limit reached (${usageCheck.cap} uses). Upgrade to Pro for unlimited access.`,
+            error: 'You used your free AI runs. Your work is saved.',
             upgrade: true,
+            limitReached: true,
+            feature: usageFeature,
             used: usageCheck.used,
             cap: usageCheck.cap,
+            upgradeUrl: '/suite/upgrade',
           },
           { status: 403 }
         );

@@ -4,6 +4,18 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
+import { useAuthGate } from '@/hooks/useAuthGate';
+import JobDiscoveryRecoveryPanel from '@/components/jobs/JobDiscoveryRecoveryPanel';
+import {
+  classifyJobDiscoveryFailure,
+  classifyJobDiscoveryResponse,
+  jobAccountRequiredRecovery,
+  jobSuggestionsPartialRecovery,
+  getJobResultIdentity,
+  mergePreservedJobResults,
+  readJobDiscoveryRecovery,
+  type JobDiscoveryRecovery,
+} from '@/lib/job-discovery-recovery';
 
 interface SuggestedJob {
   id: string;
@@ -17,6 +29,17 @@ interface SuggestedJob {
   postedDate: string;
   acceptanceChance: number;
   acceptanceReason: string;
+  sourceMeta?: {
+    sourceName?: string;
+    sourceConfidence?: 'high' | 'medium' | 'low';
+  };
+  riskNotes?: string[];
+  nextAction?: string;
+  preparationEligible?: boolean;
+  identityKey?: string;
+  dedupeKey?: string;
+  sourceJobId?: string;
+  outboundLinkVerified?: boolean;
 }
 
 function getScoreColor(score: number): string {
@@ -35,66 +58,196 @@ function formatSalary(min: number | null, max: number | null): string {
   return '';
 }
 
-const WIDGET_CACHE_KEY = 'talent-job-widget-cache';
-const WIDGET_TTL = 60 * 60 * 1000; // 1 hour client-side TTL
+const LEGACY_DISMISS_KEY = 'talent-job-alert-prompt-dismissed';
+
+function alertDismissKey(uid: string) {
+  return `talent-job-alert-prompt-dismissed:${uid}`;
+}
+
+function jobCountKey(uid: string) {
+  return `talent-job-curated-count:${uid}`;
+}
 
 export default function JobFeedWidget() {
   const router = useRouter();
+  const { setAuthModal, renderAuthModal } = useAuthGate();
   const user = useStore((s) => s.user);
+  const userId = String((user as any)?.uid || '');
+  const accessToken = String((user as any)?.accessToken || (user as any)?.stsTokenManager?.accessToken || '');
   const [jobs, setJobs] = useState<SuggestedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
-  const [error, setError] = useState(false);
-  const fetchedRef = useRef(false);
+  const [recovery, setRecovery] = useState<JobDiscoveryRecovery | null>(null);
+  const suggestionsRequestIdRef = useRef(0);
+  const alertRequestIdRef = useRef(0);
+  const activeAlertUserIdRef = useRef(userId);
+  const activeAlertAccessTokenRef = useRef(accessToken);
+  activeAlertUserIdRef.current = userId;
+  activeAlertAccessTokenRef.current = accessToken;
+
+  // Email alert subscription state
+  const [alertsEnabled, setAlertsEnabled] = useState<boolean | null>(null);
+  const [promptDismissed, setPromptDismissed] = useState(false);
+  const [enablingAlerts, setEnablingAlerts] = useState(false);
+  const [alertError, setAlertError] = useState<string | null>(null);
 
   const fetchSuggestions = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
-    const token = (user as any).accessToken || (user as any).stsTokenManager?.accessToken;
-    if (!token) { setLoading(false); return; }
+    if (!userId) { setLoading(false); return; }
+    if (!accessToken) {
+      setRecovery(jobAccountRequiredRecovery('suggestions'));
+      setLoading(false);
+      return;
+    }
 
-    // Client-side TTL: skip fetch if cached data is fresh
-    try {
-      const cached = localStorage.getItem(WIDGET_CACHE_KEY);
-      if (cached) {
-        const { data, ts } = JSON.parse(cached);
-        if (Date.now() - ts < WIDGET_TTL && data.length > 0) {
-          setJobs(data);
-          setLoading(false);
-          return;
-        }
-      }
-    } catch {}
-
+    const requestId = suggestionsRequestIdRef.current + 1;
+    suggestionsRequestIdRef.current = requestId;
+    setLoading(true);
     try {
       const res = await fetch('/api/jobs/suggestions', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
       const data = await res.json();
-      if (data.success && data.jobs?.length > 0) {
-        setJobs(data.jobs);
-        // Cache for TTL
-        localStorage.setItem(WIDGET_CACHE_KEY, JSON.stringify({ data: data.jobs, ts: Date.now() }));
-        // Dispatch count for sidebar badge
-        localStorage.setItem('talent-job-curated-count', data.jobs.length.toString());
-        window.dispatchEvent(new Event('job-count-updated'));
-      } else if (data.needsSetup) {
+      if (requestId !== suggestionsRequestIdRef.current) return;
+      if (data.needsSetup) {
         setNeedsSetup(true);
+        setJobs([]);
+        localStorage.setItem(jobCountKey(userId), '0');
+        window.dispatchEvent(new Event('job-count-updated'));
+        setRecovery(readJobDiscoveryRecovery(data.recovery));
+      } else if (res.ok && data.success && Array.isArray(data.jobs)) {
+        const nextJobs = data.jobs as SuggestedJob[];
+        setNeedsSetup(false);
+        setJobs(previousJobs => {
+          const visibleJobs = data.partial ? mergePreservedJobResults(previousJobs, nextJobs) : nextJobs;
+          localStorage.setItem(jobCountKey(userId), visibleJobs.length.toString());
+          window.dispatchEvent(new Event('job-count-updated'));
+          return visibleJobs;
+        });
+        setRecovery(data.partial
+          ? readJobDiscoveryRecovery(data.recovery) || jobSuggestionsPartialRecovery()
+          : null);
+      } else {
+        setRecovery(classifyJobDiscoveryResponse(data, 'suggestions', res.status));
       }
-    } catch {
-      setError(true);
+    } catch (error) {
+      if (requestId !== suggestionsRequestIdRef.current) return;
+      setRecovery(classifyJobDiscoveryFailure(error, 'suggestions'));
     } finally {
-      setLoading(false);
+      if (requestId === suggestionsRequestIdRef.current) setLoading(false);
     }
-  }, [user]);
+  }, [accessToken, userId]);
+
+  const handleRecoveryAction = useCallback(() => {
+    if (!recovery) return;
+    if (recovery.action === 'open_preferences') {
+      router.push('/suite/job-search');
+      return;
+    }
+    if (recovery.action === 'create_account' || recovery.action === 'sign_in') {
+      setAuthModal(recovery.action === 'create_account' ? 'signup' : 'login');
+      return;
+    }
+    if (recovery.action === 'upgrade') {
+      router.push('/suite/upgrade');
+      return;
+    }
+    fetchSuggestions();
+  }, [fetchSuggestions, recovery, router, setAuthModal]);
 
   useEffect(() => {
-    if (!fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchSuggestions();
+    suggestionsRequestIdRef.current += 1;
+    setJobs([]);
+    setNeedsSetup(false);
+    setRecovery(null);
+    if (!userId) {
+      setLoading(false);
+      return;
     }
-  }, [fetchSuggestions]);
+    fetchSuggestions();
+    return () => {
+      suggestionsRequestIdRef.current += 1;
+    };
+  }, [fetchSuggestions, userId]);
+
+  // Check email notification status
+  useEffect(() => {
+    const requestId = alertRequestIdRef.current + 1;
+    alertRequestIdRef.current = requestId;
+    setAlertsEnabled(null);
+    setPromptDismissed(false);
+    setEnablingAlerts(false);
+    setAlertError(null);
+    localStorage.removeItem(LEGACY_DISMISS_KEY);
+    if (!userId || !accessToken) return;
+    const dismissed = localStorage.getItem(alertDismissKey(userId));
+    if (dismissed) { setPromptDismissed(true); return; }
+
+    fetch('/api/jobs/preferences', { headers: { Authorization: `Bearer ${accessToken}` } })
+      .then(r => r.json())
+      .then(data => {
+        if (requestId !== alertRequestIdRef.current
+          || activeAlertUserIdRef.current !== userId
+          || activeAlertAccessTokenRef.current !== accessToken) return;
+        if (data.preferences) {
+          setAlertsEnabled(data.preferences.jobAlertsEnabled === true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alertRequestIdRef.current += 1;
+    };
+  }, [accessToken, userId]);
+
+  const handleEnableAlerts = async () => {
+    const requestId = alertRequestIdRef.current + 1;
+    alertRequestIdRef.current = requestId;
+    const requestUserId = userId;
+    setEnablingAlerts(true);
+    setAlertError(null);
+    try {
+      if (!requestUserId || !accessToken) throw new Error('Account required');
+      const res = await fetch('/api/jobs/preferences', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jobAlertsEnabled: true,
+          jobAlertsFrequency: 'weekly',
+          emailNotifications: true,
+          jobAlertsConsentAcknowledged: true,
+          jobAlertsConsentSource: 'job_feed_widget',
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (requestId !== alertRequestIdRef.current
+        || activeAlertUserIdRef.current !== requestUserId
+        || activeAlertAccessTokenRef.current !== accessToken) return;
+      if (!res.ok) throw new Error(data.error || 'Could not enable Sona Picks');
+      setAlertsEnabled(true);
+    } catch {
+      if (requestId !== alertRequestIdRef.current
+        || activeAlertUserIdRef.current !== requestUserId
+        || activeAlertAccessTokenRef.current !== accessToken) return;
+      setAlertsEnabled(false);
+      setAlertError('Sona Picks could not be enabled. Nothing changed. Try again when you are ready.');
+    }
+    if (requestId === alertRequestIdRef.current
+      && activeAlertUserIdRef.current === requestUserId
+      && activeAlertAccessTokenRef.current === accessToken) setEnablingAlerts(false);
+  };
+
+  const handleDismissPrompt = () => {
+    setPromptDismissed(true);
+    if (userId) localStorage.setItem(alertDismissKey(userId), Date.now().toString());
+  };
 
   const handleMorph = (job: SuggestedJob) => {
+    if (job.preparationEligible !== true) {
+      router.push('/suite/job-search');
+      return;
+    }
     sessionStorage.setItem('talent-resume-draft', JSON.stringify({
       jobDescription: job.description,
       jobTitle: job.title,
@@ -104,8 +257,8 @@ export default function JobFeedWidget() {
     router.push('/suite/resume');
   };
 
-  // Don't render anything for unauthenticated or errored states
-  if (!user || error) return null;
+  // The authenticated dashboard owns recovery. Signed-out users use the landing flow.
+  if (!user) return null;
 
   // Setup CTA
   if (!loading && needsSetup) {
@@ -131,7 +284,7 @@ export default function JobFeedWidget() {
             <div className="flex-1 min-w-0">
               <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-0.5">Set up your Opportunity Radar</h3>
               <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                Tell us your target roles and preferred locations to get AI-curated job matches with acceptance scores delivered to your dashboard.
+                Tell us your target roles and preferred locations to get explainable job matches with one consistent fit score.
               </p>
             </div>
             <span className="material-symbols-rounded text-[var(--text-muted)] group-hover:text-cyan-500 transition-colors shrink-0">arrow_forward</span>
@@ -163,18 +316,36 @@ export default function JobFeedWidget() {
     );
   }
 
-  // No jobs found
+  if (recovery && jobs.length === 0) {
+    return (
+      <>
+        <div className="mb-6">
+          <JobDiscoveryRecoveryPanel recovery={recovery} onAction={handleRecoveryAction} compact />
+        </div>
+        {renderAuthModal()}
+      </>
+    );
+  }
+
+  // A valid empty search is not an error and does not need dashboard chrome.
   if (jobs.length === 0) return null;
 
   const topJobs = jobs.slice(0, 3);
+  const showAlertPrompt = alertsEnabled === false && !promptDismissed;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.15 }}
-      className="mb-6"
-    >
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="mb-6"
+      >
+      {recovery && (
+        <div className="mb-3">
+          <JobDiscoveryRecoveryPanel recovery={recovery} onAction={handleRecoveryAction} compact />
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
@@ -197,12 +368,63 @@ export default function JobFeedWidget() {
         </button>
       </div>
 
+      {/* Inline subscribe prompt */}
+      <AnimatePresence>
+        {showAlertPrompt && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-3"
+          >
+            <div
+              className="rounded-xl border"
+              style={{
+                background: 'rgba(16,185,129,0.04)',
+                borderColor: 'rgba(16,185,129,0.15)',
+              }}
+            >
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="material-symbols-rounded shrink-0 text-lg text-emerald-500">mail</span>
+                  <p className="truncate text-[12px] text-[var(--text-secondary)]">
+                    Get weekly picks in your inbox with Sona Picks
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                  <button
+                    onClick={handleEnableAlerts}
+                    disabled={enablingAlerts}
+                    className="min-h-11 rounded-lg px-3 py-2 text-[11px] font-semibold text-white transition-all disabled:opacity-60"
+                    style={{ background: '#10b981' }}
+                  >
+                    {enablingAlerts ? '...' : 'Enable Sona Picks'}
+                  </button>
+                  <button
+                    onClick={handleDismissPrompt}
+                    aria-label="Dismiss Sona Picks prompt"
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+                  >
+                    <span className="material-symbols-rounded text-[16px]">close</span>
+                  </button>
+                </div>
+              </div>
+              {alertError && (
+                <p className="border-t border-rose-400/20 px-4 py-2 text-xs leading-5 text-rose-700 dark:text-rose-300" role="status" aria-live="polite">
+                  {alertError}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Job Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <AnimatePresence>
           {topJobs.map((job, i) => (
             <motion.div
-              key={job.id}
+              key={getJobResultIdentity(job)}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
@@ -247,43 +469,55 @@ export default function JobFeedWidget() {
                 {job.location}
               </p>
 
-              {/* AI reason */}
-              <p className="text-[10px] text-[var(--text-tertiary)] italic line-clamp-1 mb-3">
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-[var(--text-secondary)]">
+                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1">
+                  {(job.sourceMeta?.sourceConfidence || 'low').replace(/^./, value => value.toUpperCase())} source confidence
+                </span>
+              </div>
+
+              {/* Recommendation evidence */}
+              <p className="mb-2 line-clamp-2 text-[10px] leading-4 text-[var(--text-tertiary)]">
                 {job.acceptanceReason}
               </p>
+              {job.riskNotes?.[0] && (
+                <p className="mb-3 line-clamp-2 text-[10px] leading-4 text-amber-700 dark:text-amber-300">
+                  {job.riskNotes[0]}
+                </p>
+              )}
 
               {/* Actions */}
               <div className="flex gap-2 pt-2.5 border-t border-[var(--border-subtle)]">
                 <button
                   onClick={(e) => { e.stopPropagation(); handleMorph(job); }}
-                  className="flex-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 transition-all"
+                  className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-semibold transition-all"
                   style={{
                     background: 'rgba(6,182,212,0.08)',
                     border: '1px solid rgba(6,182,212,0.18)',
                     color: '#06b6d4',
                   }}
                 >
-                  <span className="material-symbols-rounded text-[12px]">auto_fix_high</span>
-                  Morph
+                  <span className="material-symbols-rounded text-[12px]">{job.preparationEligible === true ? 'auto_fix_high' : 'fact_check'}</span>
+                  <span className="truncate">{job.preparationEligible === true ? 'Morph' : job.nextAction || 'Review evidence'}</span>
                 </button>
-                <a
-                  href={job.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold flex items-center justify-center gap-1 text-white"
-                  style={{
-                    background: 'linear-gradient(135deg, #06b6d4, #10b981)',
-                  }}
-                >
-                  <span className="material-symbols-rounded text-[12px]">open_in_new</span>
-                  Apply
-                </a>
+                {job.outboundLinkVerified === true && job.url && (
+                  <a
+                    href={job.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[var(--text-primary)] px-2 py-2 text-[10px] font-semibold text-[var(--bg-deep)]"
+                  >
+                    <span className="material-symbols-rounded text-[12px]">open_in_new</span>
+                    <span className="truncate">Open posting</span>
+                  </a>
+                )}
               </div>
             </motion.div>
           ))}
         </AnimatePresence>
       </div>
-    </motion.div>
+      </motion.div>
+      {renderAuthModal()}
+    </>
   );
 }

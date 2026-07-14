@@ -23,12 +23,12 @@ const modules: Module[] = [
     color: '#ffffff',
   },
   {
-    id: 'flashcards',
-    name: 'Study Cards',
-    icon: '🎴',
-    path: '/suite/flashcards',
-    description: 'Flash Cards',
-    color: '#ff0055',
+    id: 'interview-studio',
+    name: 'Interview Studio',
+    icon: 'interpreter_mode',
+    path: '/suite/interview-sim',
+    description: 'Practice + Debrief',
+    color: '#06b6d4',
   },
   {
     id: 'oracle',

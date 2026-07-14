@@ -22,14 +22,14 @@ export default function BlogArticleLayout({ slug }: { slug: string }) {
   const article = ARTICLES[slug];
 
   return (
-    <div className={`min-h-screen ${isLight ? 'bg-gray-50' : 'bg-[#0a0a0b]'}`}>
+    <div className={`min-h-dvh ${isLight ? 'bg-gray-50' : 'bg-[#0a0a0b]'}`}>
       {/* Nav */}
       <nav className={`sticky top-0 z-50 backdrop-blur-xl border-b ${isLight ? 'bg-white/80 border-gray-200' : 'bg-[#0a0a0b]/80 border-white/[0.04]'}`}>
         <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
           <Link href="/blog" className={`text-xs flex items-center gap-1 ${isLight ? 'text-gray-500 hover:text-gray-900' : 'text-white/30 hover:text-white/60'} transition-colors`}>
             ← Back to Blog
           </Link>
-          <Link href="/suite/resume" className="text-xs font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-1.5 rounded-lg">
+          <Link href="/tools/resume-builder" className="text-xs font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-1.5 rounded-lg">
             Try Free →
           </Link>
         </div>
@@ -76,9 +76,40 @@ export default function BlogArticleLayout({ slug }: { slug: string }) {
           <p className={`text-sm mb-4 ${isLight ? 'text-gray-500' : 'text-white/30'}`}>
             Apply the tips from this article using our AI-powered resume builder. Free to start.
           </p>
-          <Link href="/suite/resume" className="inline-block px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-black text-xs font-semibold rounded-lg">
+          <Link href="/tools/resume-builder" className="inline-block px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-black text-xs font-semibold rounded-lg">
             Start Building Free →
           </Link>
+        </div>
+
+        <div className={`mt-6 rounded-2xl border p-5 ${isLight ? 'bg-white border-gray-200' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+          <h3 className={`text-base font-bold mb-4 ${isLight ? 'text-gray-900' : 'text-white/70'}`}>Related tools and guides</h3>
+          <div className="grid gap-3 md:grid-cols-2">
+            {[
+              { href: '/tools/resume-builder', title: 'AI Resume Builder', desc: 'Turn the advice into an ATS-ready resume.' },
+              { href: '/tools/ats-analyzer', title: 'ATS Analyzer', desc: 'Check keyword fit before you apply.' },
+              { href: '/tools/interview-prep', title: 'Interview Prep', desc: 'Practice role-specific answers.' },
+              { href: '/resume-keywords/software-engineering', title: 'Resume Keywords', desc: 'Browse keyword guides by industry.' },
+            ].map((link) => (
+              <Link key={link.href} href={link.href} className={`rounded-xl border p-4 transition ${isLight ? 'border-gray-200 hover:bg-gray-50' : 'border-white/[0.06] hover:bg-white/[0.04]'}`}>
+                <span className={`block text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white/70'}`}>{link.title}</span>
+                <span className={`mt-1 block text-xs leading-relaxed ${isLight ? 'text-gray-500' : 'text-white/30'}`}>{link.desc}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className={`mt-6 rounded-2xl border p-5 ${isLight ? 'bg-white border-gray-200' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+          <h3 className={`text-base font-bold mb-2 ${isLight ? 'text-gray-900' : 'text-white/70'}`}>Source context</h3>
+          <p className={`text-sm leading-6 ${isLight ? 'text-gray-500' : 'text-white/30'}`}>
+            Use this guidance with current labor market and hiring context from the{' '}
+            <a href="https://www.bls.gov/ooh/" rel="noopener noreferrer" target="_blank" className="text-emerald-500 hover:underline">
+              Bureau of Labor Statistics Occupational Outlook Handbook
+            </a>{' '}
+            and{' '}
+            <a href="https://www.roberthalf.com/us/en/insights/research" rel="noopener noreferrer" target="_blank" className="text-emerald-500 hover:underline">
+              Robert Half research
+            </a>.
+          </p>
         </div>
       </article>
     </div>

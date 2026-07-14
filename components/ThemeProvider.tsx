@@ -23,7 +23,11 @@ const STORAGE_KEY = 'talent-studio-theme';
 
 function getSystemTheme(): ResolvedTheme {
   if (typeof window === 'undefined') return 'dark';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'dark';
+  }
 }
 
 function resolveTheme(mode: ThemeMode): ResolvedTheme {
@@ -45,7 +49,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize from localStorage
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
+    let stored: ThemeMode | null = null;
+    try {
+      stored = window.localStorage.getItem(STORAGE_KEY) as ThemeMode | null;
+    } catch {
+      stored = null;
+    }
     const initial = stored && ['light', 'dark', 'system'].includes(stored) ? stored : 'system';
     setModeState(initial);
     const resolved = resolveTheme(initial);
@@ -58,7 +67,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (mode !== 'system') return;
 
-    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    let mql: MediaQueryList;
+    try {
+      mql = window.matchMedia('(prefers-color-scheme: dark)');
+    } catch {
+      return;
+    }
     const handler = (e: MediaQueryListEvent) => {
       const resolved = e.matches ? 'dark' : 'light';
       setTheme(resolved);
@@ -71,7 +85,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setMode = useCallback((newMode: ThemeMode) => {
     setModeState(newMode);
-    localStorage.setItem(STORAGE_KEY, newMode);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, newMode);
+    } catch {
+      // Theme changes still apply for this session if storage is unavailable.
+    }
     const resolved = resolveTheme(newMode);
     setTheme(resolved);
     applyTheme(resolved);

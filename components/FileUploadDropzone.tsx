@@ -1,24 +1,48 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { showToast } from '@/components/Toast';
-import { authFetch } from '@/lib/auth-fetch';
+import SonaThinkingTile from '@/components/SonaThinkingTile';
+import { RESUME_UPLOAD_LIMITS, ResumeUploadError, uploadAndParseResume, validateResumeFile } from '@/lib/resume-upload';
 
 const BENEFITS = [
-  { icon: 'auto_awesome', text: 'AI morphs resume to match any job', color: '#f59e0b' },
-  { icon: 'trending_up', text: 'Boosts ATS score in seconds', color: '#10b981' },
-  { icon: 'psychology', text: 'Dual-AI rewrites every bullet point', color: '#06b6d4' },
-  { icon: 'download', text: 'Download as Word or PDF instantly', color: '#a855f7' },
+  { icon: 'auto_awesome', text: 'Optimizes your resume for the role', color: '#f59e0b' },
+  { icon: 'trending_up', text: 'Surfaces ATS and keyword fit', color: '#10b981' },
+  { icon: 'psychology', text: 'Keeps your voice while improving clarity', color: '#06b6d4' },
+  { icon: 'download', text: 'Exports clean PDF and Word files', color: '#a855f7' },
 ];
 
-function BenefitTicker() {
+const INTAKE_STEPS = [
+  { icon: 'document_scanner', label: 'Extract', detail: 'PDF, Word, or TXT' },
+  { icon: 'account_tree', label: 'Structure', detail: 'Roles, skills, proof' },
+  { icon: 'my_location', label: 'Target', detail: 'Match to the JD' },
+];
+
+const FILE_RULES = [
+  { icon: 'description', label: 'Text-based files', detail: 'PDF, DOCX, DOC, TXT' },
+  { icon: 'cloud_upload', label: 'Large resumes', detail: `Signed-in uploads up to ${RESUME_UPLOAD_LIMITS.authenticatedBytes / 1024 / 1024}MB` },
+  { icon: 'visibility_off', label: 'Scanned PDFs', detail: 'OCR fallback coming soon' },
+];
+
+function BenefitTicker({ reduceMotion = false }: { reduceMotion?: boolean }) {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
+    if (reduceMotion) return;
     const t = setInterval(() => setIdx(i => (i + 1) % BENEFITS.length), 2500);
     return () => clearInterval(t);
-  }, []);
+  }, [reduceMotion]);
   const b = BENEFITS[idx];
+  if (reduceMotion) {
+    return (
+      <div className="h-7 flex items-center justify-center overflow-hidden">
+        <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: b.color }}>
+          <span className="material-symbols-rounded text-[14px]">{b.icon}</span>
+          {b.text}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="h-7 flex items-center justify-center overflow-hidden">
       <AnimatePresence mode="wait">
@@ -41,11 +65,14 @@ function BenefitTicker() {
 
 
 interface FileUploadDropzoneProps {
-  onUploadSuccess: (text: string, fileName: string) => void;
+  onUploadSuccess: (text: string, fileName: string, meta?: { sourceType?: 'direct' | 'storage' | 'paste'; storagePath?: string; characterCount?: number; detectedType?: string; storagePathDeleted?: boolean }) => void;
   isUploading: boolean;
   setIsUploading: (state: boolean) => void;
   variant?: 'large' | 'compact';
   processingStage?: 'uploading' | 'extracting' | 'parsing' | null;
+  showPasteFallback?: boolean;
+  onPasteText?: (text: string) => void;
+  uploadContext?: 'studio' | 'onboarding' | 'compact';
   // Props for compact variant (textarea)
   value?: string;
   onChange?: (val: string) => void;
@@ -65,63 +92,44 @@ export default function FileUploadDropzone({
   placeholder = 'Paste your text or drop a file...',
   rows = 4,
   className = '',
+  showPasteFallback = false,
+  onPasteText,
+  uploadContext = 'studio',
 }: FileUploadDropzoneProps) {
   const [dragActive, setDragActive] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteValue, setPasteValue] = useState('');
+  const reduceMotion = useReducedMotion();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (file: File) => {
     if (!file) return;
 
-    // 1. Check file size (5MB limit)
-    const MAX_SIZE_MB = 5;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      showToast(`File is too large! Maximum is ${MAX_SIZE_MB}MB.`, 'cancel');
-      return;
-    }
-
-    // 2. Check extensions
-    const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-    const validExtensions = ['.docx', '.doc', '.txt'];
-    if (!validExtensions.includes(ext)) {
-      showToast('Please upload a Word or TXT file', 'cancel');
+    try {
+      validateResumeFile(file);
+    } catch (error: any) {
+      showToast(error.message || 'Please upload a PDF, Word, or TXT file', 'cancel');
       return;
     }
 
     setIsUploading(true);
     try {
-      const fileData = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.split(',')[1]; // remove data:mime/type;base64,
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-
-      const payload = {
-        fileName: file.name,
-        fileData
-      };
-
-      const res = await authFetch('/api/gauntlet/parse-resume', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload) 
-      });
-      
-      const { text, fileName } = await res.json();
+      const { text, fileName, sourceType, storagePath, characterCount, detectedType, storagePathDeleted } = await uploadAndParseResume(file);
 
       if (!text || text.trim().length < 20) {
         throw new Error('Could not extract meaningful text from this file. Try pasting your text instead.');
       }
 
-      onUploadSuccess(text, fileName);
+      onUploadSuccess(text, fileName, { sourceType, storagePath, characterCount, detectedType, storagePathDeleted });
       // Don't setIsUploading(false) here — parent keeps loading state
       // through AI parsing. Parent will reset when fully done.
     } catch (error: any) {
       console.error('Upload error:', error);
+      if (error instanceof ResumeUploadError && error.code === 'SCANNED_PDF') {
+        showToast('This looks like a scanned PDF. OCR is coming soon — please upload a text-based PDF or Word file.', 'cancel');
+        setIsUploading(false);
+        return;
+      }
       showToast(error.message || 'Failed to process file', 'cancel');
       setIsUploading(false);
     }
@@ -146,9 +154,20 @@ export default function FileUploadDropzone({
     }
   };
 
+  const submitPasteText = () => {
+    const clean = pasteValue.trim();
+    if (clean.length < 40) {
+      showToast('Paste a little more resume text so we have enough to structure it.', 'info');
+      return;
+    }
+    onPasteText?.(clean);
+    setPasteOpen(false);
+    setPasteValue('');
+  };
+
   if (variant === 'compact') {
     return (
-      <div 
+      <div
         className={`relative ${className}`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
@@ -164,12 +183,12 @@ export default function FileUploadDropzone({
             dragActive ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)]'
           }`}
         />
-        <input 
-          ref={fileInputRef} 
-          type="file" 
-          accept=".txt,.docx,.doc" 
-          onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); }} 
-          className="hidden" 
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.txt,.docx,.doc"
+          onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); }}
+          className="hidden"
         />
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -212,25 +231,32 @@ export default function FileUploadDropzone({
   // Large Variant (Like Liquid Resume)
   return (
     <div className={className}>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])} 
-        className="hidden" 
-        accept=".docx,.doc,.txt" 
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+        className="hidden"
+        accept=".pdf,.docx,.doc,.txt"
       />
       <div
-        onClick={() => fileInputRef.current?.click()}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        className={`py-14 px-8 md:py-16 md:px-16 text-center cursor-pointer transition-all relative overflow-hidden rounded-2xl ${
-          dragActive 
-            ? 'bg-cyan-500/[0.06]' 
+        aria-describedby="resume-upload-help"
+        className={`p-4 md:p-5 transition-all relative overflow-hidden rounded-2xl ${
+          dragActive
+            ? 'bg-cyan-500/[0.06] ring-2 ring-cyan-500/25'
             : 'hover:bg-[var(--bg-hover)]'
         }`}
       >
+        <div aria-live="polite" className="sr-only">
+          {isUploading
+            ? `Resume upload in progress: ${processingStage || 'uploading'}`
+            : dragActive
+              ? 'Release to upload and analyze this resume.'
+              : 'Resume upload ready. Use Browse files or drag and drop a resume.'}
+        </div>
         {/* Subtle glow effect when dragging */}
         <AnimatePresence>
           {dragActive && (
@@ -248,36 +274,17 @@ export default function FileUploadDropzone({
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="relative z-10 w-full max-w-sm mx-auto"
+            className="relative z-10 w-full max-w-md mx-auto"
           >
-            {/* AI Sparkle Icon from Google */}
-            <span className="material-symbols-rounded block text-[48px] mx-auto mb-4 text-[var(--accent)] animate-pulse">
-              auto_awesome
-            </span>
-            <p className="text-xl text-[var(--text-primary)] font-medium mb-1">
-              {processingStage === 'parsing' ? 'Parsing with AI...' : processingStage === 'extracting' ? 'Extracting Text...' : 'Uploading File...'}
-            </p>
-            <p className="text-sm text-[var(--text-secondary)] mb-5">
-              {processingStage === 'parsing' ? 'Structuring your resume data' : processingStage === 'extracting' ? 'Reading document contents' : 'Preparing your file'}
-            </p>
-            {/* Stage indicators */}
-            <div className="flex items-center justify-center gap-1.5 mb-4">
-              {['uploading', 'extracting', 'parsing'].map((stage, i) => {
-                const stages = ['uploading', 'extracting', 'parsing'];
-                const currentIdx = stages.indexOf(processingStage || 'uploading');
-                const isDone = i < currentIdx;
-                const isActive = i === currentIdx;
-                return (
-                  <div key={stage} className="flex items-center gap-1.5">
-                    <div className={`w-2 h-2 rounded-full transition-all duration-500 ${
-                      isDone ? 'bg-[var(--accent)] scale-100' : isActive ? 'bg-[var(--accent)] animate-pulse scale-125' : 'bg-[var(--border-subtle)] scale-100'
-                    }`} />
-                    {i < 2 && <div className={`w-6 h-px transition-colors duration-500 ${isDone ? 'bg-[var(--accent-hover)]' : 'bg-[var(--border-subtle)]'}`} />}
-                  </div>
-                );
-              })}
-            </div>
-            {/* Progress bar */}
+            <SonaThinkingTile
+              variant="resume"
+              icon={processingStage === 'parsing' ? 'account_tree' : processingStage === 'extracting' ? 'document_scanner' : 'cloud_upload'}
+              title={processingStage === 'parsing' ? 'Sona is structuring your resume' : processingStage === 'extracting' ? 'Sona is reading your document' : 'Sona is preparing your file'}
+              description={processingStage === 'parsing' ? 'Turning raw text into roles, skills, proof, and ATS-ready structure.' : processingStage === 'extracting' ? 'Extracting clean text while protecting filenames and upload limits.' : 'Checking the file and sending it through the safest available path.'}
+              activeStage={processingStage || 'uploading'}
+              stages={['Uploading', 'Extracting', 'Structuring']}
+              compact={uploadContext === 'compact'}
+            />
             <div className="w-full h-1.5 rounded-full bg-[var(--bg-hover)] overflow-hidden">
               <motion.div
                 className="h-full rounded-full"
@@ -295,115 +302,212 @@ export default function FileUploadDropzone({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="relative z-10 flex flex-col items-center"
+            className="relative z-10"
           >
-            {/* ── Animated icon with rising particles ── */}
-            <div className="relative w-28 h-28 mx-auto mb-5 flex items-center justify-center">
+            <div className="grid gap-5 items-stretch xl:grid-cols-[minmax(0,1.16fr)_minmax(360px,0.84fr)]">
+              <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 md:p-6 flex flex-col items-center justify-center text-center min-h-[360px] xl:min-h-[440px]">
+                {/* ── Animated icon with rising particles ── */}
+                <div className="relative w-28 h-28 mx-auto mb-5 flex items-center justify-center">
 
-              {/* Breathing ring */}
-              <motion.div
-                className="absolute inset-0 rounded-full"
-                style={{ border: '1.5px solid rgba(6,182,212,0.25)' }}
-                animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.15, 0.5] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              />
+                  {/* Breathing ring */}
+                  <motion.div
+                    className="absolute inset-0 rounded-full"
+                    style={{ border: '1.5px solid rgba(6,182,212,0.25)' }}
+                    animate={reduceMotion ? { scale: 1, opacity: 0.45 } : { scale: [1, 1.15, 1], opacity: [0.5, 0.15, 0.5] }}
+                    transition={reduceMotion ? undefined : { duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                  />
 
-              {/* Rising sparkle particles — staggered, drift up and fade */}
-              {[
-                { left: '15%', delay: 0, size: 3 },
-                { left: '75%', delay: 1.2, size: 2 },
-                { left: '45%', delay: 2.4, size: 4 },
-                { left: '85%', delay: 0.8, size: 2.5 },
-                { left: '25%', delay: 2, size: 3 },
-              ].map((p, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute rounded-full"
-                  style={{
-                    width: p.size,
-                    height: p.size,
-                    left: p.left,
-                    bottom: '30%',
-                    background: 'rgba(6,182,212,0.6)',
-                    boxShadow: '0 0 4px rgba(6,182,212,0.4)',
-                  }}
-                  animate={{
-                    y: [0, -40, -60],
-                    opacity: [0, 0.8, 0],
-                  }}
-                  transition={{
-                    duration: 2.5,
-                    repeat: Infinity,
-                    delay: p.delay,
-                    ease: 'easeOut',
-                  }}
-                />
-              ))}
+                  {/* Rising sparkle particles — staggered, drift up and fade */}
+                  {!reduceMotion && [
+                    { left: '15%', delay: 0, size: 3 },
+                    { left: '75%', delay: 1.2, size: 2 },
+                    { left: '45%', delay: 2.4, size: 4 },
+                    { left: '85%', delay: 0.8, size: 2.5 },
+                    { left: '25%', delay: 2, size: 3 },
+                  ].map((p, i) => (
+                    <motion.div
+                      key={i}
+                      className="absolute rounded-full"
+                      style={{
+                        width: p.size,
+                        height: p.size,
+                        left: p.left,
+                        bottom: '30%',
+                        background: 'rgba(6,182,212,0.6)',
+                        boxShadow: '0 0 4px rgba(6,182,212,0.4)',
+                      }}
+                      animate={{
+                        y: [0, -40, -60],
+                        opacity: [0, 0.8, 0],
+                      }}
+                      transition={{
+                        duration: 2.5,
+                        repeat: Infinity,
+                        delay: p.delay,
+                        ease: 'easeOut',
+                      }}
+                    />
+                  ))}
 
-              {/* Center icon with scan line */}
-              <motion.div
-                className="relative z-10 w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(6,182,212,0.12) 0%, rgba(59,130,246,0.08) 100%)',
-                  border: '1px solid rgba(6,182,212,0.25)',
-                  boxShadow: '0 0 20px rgba(6,182,212,0.1)',
-                }}
-                animate={{ y: [0, -3, 0] }}
-                transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <span className="material-symbols-rounded text-[28px]" style={{ color: '#06b6d4' }}>description</span>
-
-                {/* Scan line — sweeps down periodically */}
-                <motion.div
-                  className="absolute left-0 right-0 h-[2px] pointer-events-none"
-                  style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(6,182,212,0.5) 50%, transparent 100%)' }}
-                  animate={{ top: ['-10%', '110%'] }}
-                  transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 2.5, ease: 'easeInOut' }}
-                />
-              </motion.div>
-            </div>
-
-            {/* ── Copy ── */}
-            {dragActive ? (
-              <motion.p
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="text-[17px] font-bold text-cyan-500"
-              >
-                Release to analyze
-              </motion.p>
-            ) : (
-              <>
-                <p className="text-[17px] font-semibold text-[var(--text-primary)] mb-1">
-                  Drop your resume here
-                </p>
-                <p className="text-[13px] text-[var(--text-secondary)] mb-5">
-                  or <span className="text-cyan-500 font-medium">click to browse</span> · Word, TXT · Max 5MB
-                </p>
-
-                {/* Gentle bouncing CTA */}
-                <motion.div
-                  animate={{ y: [0, 4, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                  className="mb-4"
-                >
-                  <div
-                    className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(6,182,212,0.1) 0%, rgba(59,130,246,0.06) 100%)',
-                      border: '1px solid rgba(6,182,212,0.2)',
-                      color: '#06b6d4',
-                    }}
+                  {/* Center icon with scan line */}
+                  <motion.div
+                    className="icon-shell-neutral relative z-10 w-16 h-16 rounded-2xl border flex items-center justify-center overflow-hidden"
+                    animate={reduceMotion ? undefined : { y: [0, -3, 0] }}
+                    transition={reduceMotion ? undefined : { duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
                   >
-                    <span className="material-symbols-rounded text-[14px]">upload</span>
-                    Start here
-                  </div>
-                </motion.div>
+                    <span className="material-symbols-rounded text-[28px]">description</span>
 
-                {/* Benefit ticker */}
-                <BenefitTicker />
-              </>
-            )}
+                    {/* Scan line — sweeps down periodically */}
+                    {!reduceMotion && (
+                      <motion.div
+                        className="absolute left-0 right-0 h-[2px] pointer-events-none"
+                        style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(6,182,212,0.5) 50%, transparent 100%)' }}
+                        animate={{ top: ['-10%', '110%'] }}
+                        transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 2.5, ease: 'easeInOut' }}
+                      />
+                    )}
+                  </motion.div>
+                </div>
+
+                {/* ── Copy ── */}
+                {dragActive ? (
+                  <motion.p
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-[17px] font-bold text-cyan-500"
+                  >
+                    Release to analyze
+                  </motion.p>
+                ) : (
+                  <>
+                    <p className="text-[19px] font-semibold text-[var(--text-primary)] mb-1">
+                      Drop your resume here
+                    </p>
+                    <p id="resume-upload-help" className="text-[13px] text-[var(--text-secondary)] mb-5">
+                      Drag a file here or use Browse files · PDF, Word, TXT · Max {RESUME_UPLOAD_LIMITS.authenticatedBytes / 1024 / 1024}MB
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={isUploading}
+                      className="mb-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold border border-cyan-500/20 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/45 disabled:opacity-60"
+                    >
+                      <span className="material-symbols-rounded text-[14px]">upload_file</span>
+                      Browse files
+                    </button>
+
+                    {/* Gentle motion cue */}
+                    <motion.div
+                      animate={reduceMotion ? undefined : { y: [0, 4, 0] }}
+                      transition={reduceMotion ? undefined : { duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                      className="mb-3"
+                    >
+                      <div
+                        className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(6,182,212,0.1) 0%, rgba(59,130,246,0.06) 100%)',
+                          border: '1px solid rgba(6,182,212,0.2)',
+                          color: '#06b6d4',
+                        }}
+                      >
+                        <span className="material-symbols-rounded text-[14px]">upload</span>
+                        {uploadContext === 'onboarding' ? 'Start setup' : 'Start here'}
+                      </div>
+                    </motion.div>
+
+                    {/* Benefit ticker */}
+                    <BenefitTicker reduceMotion={!!reduceMotion} />
+                  </>
+                )}
+              </div>
+
+              <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 md:p-6">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Intake workspace</p>
+                <h3 className="text-[18px] font-semibold text-[var(--text-primary)] mt-1">We turn one file into a working resume system.</h3>
+                <p className="text-[12px] text-[var(--text-secondary)] mt-2 leading-relaxed">
+                  Upload once, then reuse the parsed version across matching, templates, cover letters, applications, and interview prep.
+                </p>
+
+                <div className="mt-5 grid grid-cols-3 gap-2">
+                  {INTAKE_STEPS.map(step => (
+                    <div key={step.label} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                      <span className="material-symbols-rounded icon-neutral text-[17px]">{step.icon}</span>
+                      <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-2">{step.label}</p>
+                      <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">{step.detail}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 space-y-2">
+                  {FILE_RULES.map(rule => (
+                    <div key={rule.label} className="flex items-start gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                      <div className="w-8 h-8 rounded-[9px] bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-rounded text-[16px] text-[var(--text-secondary)]">{rule.icon}</span>
+                      </div>
+                      <div>
+                        <p className="text-[12px] font-semibold text-[var(--text-primary)]">{rule.label}</p>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{rule.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {showPasteFallback && onPasteText && (
+                  <div className="mt-5 rounded-[14px] border border-cyan-500/15 bg-cyan-500/[0.04] p-3">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPasteOpen(open => !open);
+                      }}
+                      className="w-full flex items-center justify-between gap-3 text-left"
+                    >
+                      <span>
+                        <span className="block text-[12px] font-semibold text-[var(--text-primary)]">Paste resume text instead</span>
+                        <span className="block text-[11px] text-[var(--text-muted)] mt-0.5">Best for scanned PDFs, locked files, or broken extraction.</span>
+                      </span>
+                      <span className="material-symbols-rounded icon-neutral text-[18px]">{pasteOpen ? 'expand_less' : 'expand_more'}</span>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {pasteOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: reduceMotion ? 0 : 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pt-3 space-y-3">
+                            <textarea
+                              value={pasteValue}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => setPasteValue(e.target.value)}
+                              rows={5}
+                              placeholder="Paste the resume text here. We will route it through the same parsing flow."
+                              className="w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-cyan-500/35 resize-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                submitPasteText();
+                              }}
+                              className="w-full rounded-[11px] bg-[var(--text-primary)] text-[var(--bg-deep)] py-2.5 text-[12px] font-semibold hover:opacity-90 transition-all"
+                            >
+                              Use pasted text
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </div>

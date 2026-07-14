@@ -39,8 +39,8 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
         }}
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(6,214,160,0.1)' }}>
-            <span className="material-symbols-rounded text-[18px]" style={{ color: '#06d6a0' }}>science</span>
+          <div className="icon-shell-neutral w-8 h-8 rounded-lg border flex items-center justify-center">
+            <span className="material-symbols-rounded text-[18px]">science</span>
           </div>
           <div>
             <h3 className="text-sm font-bold text-[var(--text-primary)]">ATS Proof Engine</h3>
@@ -60,7 +60,7 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
               border: '1px solid rgba(6,214,160,0.2)',
             }}
           >
-            <span className="material-symbols-rounded text-[14px] text-emerald-400">trending_up</span>
+            <span className="material-symbols-rounded icon-status-success text-[14px]">trending_up</span>
             <span className="text-xs font-bold text-emerald-400">+{proof.delta} pts</span>
           </motion.div>
         )}
@@ -158,7 +158,7 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
         {proof.gapsClosed.length > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-1.5">
-              <span className="material-symbols-rounded text-[14px] text-emerald-400">check_circle</span>
+              <span className="material-symbols-rounded icon-status-success text-[14px]">check_circle</span>
               Skills Gap Closed ({proof.gapsClosed.length})
             </h4>
             <div className="flex flex-wrap gap-1.5">

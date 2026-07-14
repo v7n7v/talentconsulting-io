@@ -6,10 +6,12 @@
  * Detailed diagnostics are behind admin auth in /api/admin/users.
  */
 import { NextResponse } from 'next/server';
+import { stagingDeploymentIdentityFingerprint } from '@/lib/staging-deployment-identity';
 
 export async function GET() {
   return NextResponse.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
+    stagingDeploymentIdentity: stagingDeploymentIdentityFingerprint(process.env),
   });
 }

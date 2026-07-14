@@ -1,0 +1,71 @@
+name: Biweekly SEO/GEO Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 13 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  seo-audit:
+    runs-on: ubuntu-latest
+    env:
+      SEO_AUDIT_ANCHOR_MONDAY: '2026-06-29'
+    steps:
+      - name: Check biweekly cadence
+        id: cadence
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=manual dispatch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          anchor_seconds="$(date -u -d "$SEO_AUDIT_ANCHOR_MONDAY" +%s)"
+          today="$(date -u +%Y-%m-%d)"
+          today_seconds="$(date -u -d "$today" +%s)"
+          days_since_anchor=$(( (today_seconds - anchor_seconds) / 86400 ))
+
+          if [ "$days_since_anchor" -ge 0 ] && [ $(( days_since_anchor % 14 )) -eq 0 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=biweekly audit window" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=off-week skip" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip off-week
+        if: steps.cadence.outputs.run != 'true'
+        run: echo "Skipping SEO/GEO audit: ${{ steps.cadence.outputs.reason }}"
+
+      - name: Checkout
+        if: steps.cadence.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        if: steps.cadence.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.cadence.outputs.run == 'true'
+        run: npm ci
+
+      - name: Run SEO/GEO audit
+        if: steps.cadence.outputs.run == 'true'
+        run: npm run seo:audit:ci -- --out-dir seo-audit-artifacts
+
+      - name: Upload audit artifacts
+        if: always() && steps.cadence.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: seo-geo-audit
+          path: |
+            seo-audit-artifacts/seo-audit-summary.md
+            seo-audit-artifacts/seo-audit-results.json
+          if-no-files-found: error

@@ -1,77 +1,131 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { authHelpers } from '@/lib/firebase';
-import { useStore } from '@/lib/store';
-import HeroSection from '@/components/HeroSection';
+import { Suspense, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import AuthModal from '@/components/modals/AuthModal';
+import UnifiedDashboard from '@/components/dashboard/UnifiedDashboard';
+import WorkspaceFrame from '@/components/workspace/WorkspaceFrame';
+import { useStore } from '@/lib/store';
+import type { DashboardToolId } from '@/lib/dashboard-types';
 
-import Toast from '@/components/Toast';
+const validDashboardTools: DashboardToolId[] = [
+  'resume-check',
+  'job-match',
+  'ats-analyzer',
+  'writing-trust',
+  'quick-polish',
+];
 
-export default function Home() {
-  const router = useRouter();
-  const { user, setUser } = useStore();
-  const [loading, setLoading] = useState(true);
+const homeGuideLinks = [
+  {
+    href: '/tools/resume-builder',
+    label: 'AI resume builder',
+    detail: 'Create ATS-readable resume drafts from real experience.',
+  },
+  {
+    href: '/tools/ats-analyzer',
+    label: 'ATS analyzer',
+    detail: 'Check parser risk, keywords, and missing proof before applying.',
+  },
+  {
+    href: '/tools/interview-prep',
+    label: 'Interview practice',
+    detail: 'Turn resume proof into clear stories and practice prompts.',
+  },
+  {
+    href: '/templates',
+    label: 'Resume templates',
+    detail: 'Start with clean formats built for applicant tracking systems.',
+  },
+];
+
+function isDashboardTool(value: string | null): value is DashboardToolId {
+  return !!value && validDashboardTools.includes(value as DashboardToolId);
+}
+
+function HomePublicSnapshot() {
+  return (
+    <section className="min-h-dvh bg-[var(--bg-deep)] px-5 py-10 text-[var(--text-primary)] sm:px-8">
+      <div className="mx-auto flex min-h-[calc(100dvh-5rem)] w-full max-w-6xl flex-col justify-center gap-8">
+        <div className="max-w-3xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-300">
+            TalentConsulting.io career workspace
+          </p>
+          <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-[-0.015em] text-[var(--text-primary)] sm:text-5xl">
+            AI career intelligence for resumes, job search, interviews, and applications.
+          </h1>
+          <p className="mt-5 text-base leading-8 text-[var(--text-secondary)] sm:text-lg">
+            TalentConsulting.io gives job seekers a practical command center for the work between finding a role and submitting a strong application. Use free previews to check a resume, compare a job description, scan ATS risk, polish career writing, and prepare interview stories before you create an account.
+          </p>
+          <p className="mt-4 text-base leading-8 text-[var(--text-secondary)] sm:text-lg">
+            The workspace is built around review-first automation. Sona can prepare drafts, organize next steps, and surface missing proof, but the user stays in control before anything leaves the product. That makes the platform useful for serious job seekers, career changers, students, and teams that need a safer way to scale career readiness.
+          </p>
+          <p className="mt-4 text-base leading-8 text-[var(--text-secondary)] sm:text-lg">
+            Start with a target role, a resume, or a job description. TalentConsulting.io will help you find the strongest evidence, improve weak language, track applications, plan follow-ups, and practice the stories that hiring teams are likely to ask about.
+          </p>
+          <p className="mt-4 text-base leading-8 text-[var(--text-secondary)] sm:text-lg">
+            When you sign in, the same tools become a saved workspace for resume versions, application notes, interview debriefs, follow-up tasks, and Sona recommendations. The public pages below show the core workflow before account data is involved, so you can test the product path, compare options, and understand what each tool does before saving private work.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Popular TalentConsulting.io tools">
+          {homeGuideLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-500/30"
+            >
+              <span className="block text-sm font-semibold text-[var(--text-primary)]">{link.label}</span>
+              <span className="mt-2 block text-xs leading-5 text-[var(--text-muted)]">{link.detail}</span>
+            </Link>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <Link href="/for-teams" className="rounded-full border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+            For teams
+          </Link>
+          <Link href="/help" className="rounded-full border border-[var(--border-subtle)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+            Help center
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HomeDashboard() {
+  const searchParams = useSearchParams();
+  const user = useStore((state) => state.user);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [postAuthRedirect, setPostAuthRedirect] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Safety timeout — never stay blank for more than 3s
-    const fallback = setTimeout(() => setLoading(false), 3000);
-
-    const unsubscribe = authHelpers.onAuthStateChanged((firebaseUser) => {
-      clearTimeout(fallback);
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        router.replace('/suite');
-        // Don't keep loading=true — if redirect is slow, show landing page
-        setTimeout(() => setLoading(false), 500);
-      } else {
-        setUser(null);
-        setLoading(false);
-      }
-    });
-    return () => {
-      clearTimeout(fallback);
-      unsubscribe();
-    };
-  }, [setUser, router]);
+  const activeTool = useMemo<DashboardToolId>(() => {
+    const tool = searchParams.get('tool');
+    return isDashboardTool(tool) ? tool : 'job-match';
+  }, [searchParams]);
 
   const handleShowLogin = () => {
     setAuthMode('login');
+    setPostAuthRedirect(null);
     setShowAuthModal(true);
   };
 
-  const handleShowSignup = () => {
+  const handleShowSignup = (redirect?: string | null) => {
     setAuthMode('signup');
+    setPostAuthRedirect(redirect || null);
     setShowAuthModal(true);
   };
 
-  const handleGetStarted = () => {
-    if (user) {
-      router.push('/suite');
-    } else {
-      handleShowSignup();
-    }
+  const closeAuthModal = () => {
+    setShowAuthModal(false);
+    setPostAuthRedirect(null);
   };
 
-  // While checking auth, show loader with visible spinner
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-deep)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="scanning-loader" style={{ width: 28, height: 28, borderWidth: 3 }} />
-          <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Unauthenticated users see the full landing page
   return (
-    <main className="min-h-screen">
-      {/* JSON-LD Structured Data for SEO */}
+    <WorkspaceFrame showOnboardingPrompt={false} loadingFallback={<HomePublicSnapshot />}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -82,11 +136,19 @@ export default function Home() {
             applicationCategory: 'BusinessApplication',
             operatingSystem: 'Web',
             url: 'https://talentconsulting.io',
-            description: 'Free AI text humanizer and detector — bypass AI detection in one click. Build ATS-optimized resumes, practice with AI interviewers, get smart job recommendations, and access 22+ career intelligence tools.',
+            description: 'AI career workspace for resumes, ATS checks, cover letters, AI writing polish, job tracking, interview preparation, and Sona career workflows.',
+            featureList: [
+              'Free career dashboard previews',
+              'Resume ATS analyzer',
+              'AI Humanizer for career writing',
+              'AI Detector for writing trust signals',
+              'Cover letter and LinkedIn workflows',
+              'Job tracking and interview preparation',
+              'Sona AI career agent',
+            ],
             offers: {
               '@type': 'AggregateOffer',
               lowPrice: '0',
-              highPrice: '9.99',
               priceCurrency: 'USD',
               offerCount: '3',
             },
@@ -99,26 +161,35 @@ export default function Home() {
         }}
       />
 
-      <HeroSection
-        onGetStarted={handleGetStarted}
+      <UnifiedDashboard
+        mode={user ? 'authenticated' : 'guest'}
+        user={user}
+        activeTool={activeTool}
         onShowLogin={handleShowLogin}
         onShowSignup={handleShowSignup}
-        isAuthenticated={!!user}
+        showPublicNav={false}
       />
 
       {showAuthModal && (
         <AuthModal
           mode={authMode}
-          onClose={() => {
-            setShowAuthModal(false);
-            const currentUser = useStore.getState().user;
-            if (currentUser) router.push('/suite');
-          }}
+          onClose={closeAuthModal}
           onSwitchMode={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+          postAuthRedirect={postAuthRedirect}
         />
       )}
+    </WorkspaceFrame>
+  );
+}
 
-      <Toast />
-    </main>
+function DashboardFallback() {
+  return <HomePublicSnapshot />;
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<DashboardFallback />}>
+      <HomeDashboard />
+    </Suspense>
   );
 }

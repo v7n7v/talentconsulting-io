@@ -141,7 +141,7 @@ export function LoadingSpinner({ size = 'md', className = '' }: { size?: 'sm' | 
 // Branded loading screen
 export function BrandedLoader({ message = 'Loading...' }: { message?: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <div className="text-center">
         <motion.div
           animate={{ 

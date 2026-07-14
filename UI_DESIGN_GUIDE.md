@@ -1,379 +1,140 @@
-# 🎨 Hirely.ai - 2026 UI Design System
-
-## Overview
-
-Hirely.ai now features a premium "Liquid Glass" aesthetic inspired by 2026 Silicon Valley design trends. This guide explains the visual language and components.
-
----
-
-## 🌟 Core Design Principles
-
-### 1. **Dynamic Ambient Mesh**
-- Deep obsidian background (#030303)
-- Three pulsating gradient orbs (Cyber Cyan, Neon Violet, Electric Blue)
-- Subtle mesh grid overlay for depth
-- Creates an immersive, futuristic atmosphere
-
-### 2. **Glassmorphism 2.0**
-- `backdrop-filter: blur(20px)` for all cards
-- Translucent borders (rgba(255,255,255,0.1))
-- Top-left highlight effect simulating light
-- Hover states with enhanced glow
-
-### 3. **Premium Typography**
-- Inter font family for modern, clean look
-- Letter-spacing: -0.02em for headlines (tight, impactful)
-- Text gradients for emphasis
-- Hierarchical sizing with clamp() for responsiveness
-
----
-
-## 🎨 Color Palette
-
-```css
---cyber-cyan: #00f5ff      /* Primary accent */
---neon-violet: #bf00ff     /* Secondary accent */
---electric-blue: #3b82f6   /* Tertiary accent */
---obsidian: #030303        /* Background base */
-```
-
-### Usage Guidelines:
-- **Cyber Cyan**: Primary CTAs, highlights, success states
-- **Neon Violet**: Secondary elements, warnings, special badges
-- **Electric Blue**: Neutral accents, links
-- **White opacity**: Text layers (100% → 10%)
-
----
-
-## 🧩 Component Library
-
-### Glass Cards
-```tsx
-<div className="glass-card p-8">
-  {/* Content */}
-</div>
-```
-- Automatic blur backdrop
-- 1px translucent border
-- Top highlight effect
-- Smooth hover transition
-
-### Glass Buttons
-```tsx
-<button className="glass-button">
-  Action
-</button>
-```
-- Translucent background
-- Border glow on hover
-- Shine animation effect
-- Disabled state support
-
-### Drop Zones
-```tsx
-<div className="drop-zone">
-  {/* Upload area */}
-</div>
-```
-- Dashed border
-- Hover scale effect
-- Glow on dragover
-- Smooth transitions
-
-### Neural Feed
-```tsx
-<div className="neural-feed">
-  {/* Transcript text */}
-</div>
-```
-- Monospace font
-- Custom scrollbar (cyan)
-- Dark background
-- Typewriter effect ready
-
----
-
-## 🎭 Animation System
-
-### Built-in Animations
-
-**Float Animation** (20s loop)
-```tsx
-<div className="animate-float">
-```
-- Organic movement
-- Used for ambient orbs
-- Creates depth
-
-**Pulse Glow** (2s loop)
-```tsx
-<div className="pulse-glow">
-```
-- Breathing effect
-- Used for live indicators
-- Draws attention
-
-**Fade In** (0.6s)
-```tsx
-<div className="fade-in">
-```
-- Entry animation
-- Smooth appearance
-- Y-axis translation
-
-**Slide In** (0.5s)
-```tsx
-<div className="slide-in">
-```
-- Horizontal entry
-- From left to right
-- Content reveal
-
-**Scanning Loader**
-```tsx
-<div className="scanning-loader"></div>
-```
-- Spinning border
-- Indicates AI processing
-- Cyan accent color
-
----
-
-## 🏷️ Badge System
-
-### Types
-
-**Success Badge**
-```tsx
-<div className="badge badge-success">
-  ✓ Extracted
-</div>
-```
-
-**Warning Badge**
-```tsx
-<div className="badge badge-warning">
-  ⚠️ Missing Experience
-</div>
-```
-
-**Info Badge**
-```tsx
-<div className="badge badge-info">
-  🔴 Live
-</div>
-```
-
-### Characteristics:
-- Inline-flex display
-- Rounded corners (8px)
-- Icon + text combination
-- Color-coded borders
-
----
-
-## 📐 Layout Patterns
-
-### Split-Screen Hero
-```tsx
-<div className="grid lg:grid-cols-2 gap-12">
-  <div>{/* Left: Content */}</div>
-  <div>{/* Right: Visual */}</div>
-</div>
-```
-
-### Card Grid
-```tsx
-<div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-  {/* Cards */}
-</div>
-```
-
-### Stacked Sections
-```tsx
-<div className="space-y-8">
-  {/* Vertical spacing */}
-</div>
-```
-
----
-
-## 🎯 Interactive States
-
-### Hover Effects
-- Scale transform (1.02×)
-- Border glow increase
-- Color intensity boost
-- 0.3s ease transition
-
-### Focus States
-- Cyan outline (2px)
-- Offset for visibility
-- Keyboard navigation friendly
-
-### Disabled States
-- 50% opacity
-- Cursor not-allowed
-- No hover effects
-
----
-
-## 📱 Responsive Design
-
-### Breakpoints
-- Mobile: < 768px
-- Tablet: 768px - 1024px
-- Desktop: > 1024px
-
-### Mobile Adaptations
-- Reduced ambient orb blur (80px)
-- Smaller headline font
-- Stacked layouts
-- Touch-optimized sizing
-
----
-
-## 🔤 Typography Scale
-
-```css
-/* Headlines */
-.premium-headline: clamp(2.5rem, 5vw, 4.5rem)
-.text-gradient: Animated gradient text
-
-/* Body */
-.sub-headline: clamp(1rem, 2vw, 1.25rem)
-font-base: 14px - 16px
-
-/* Small */
-.text-xs: 12px
-.text-sm: 14px
-```
-
----
-
-## 🌈 Gradient Patterns
-
-### Text Gradient
-```css
-background: linear-gradient(135deg, 
-  var(--cyber-cyan) 0%, 
-  var(--neon-violet) 50%, 
-  var(--electric-blue) 100%
-);
-```
-
-### Button Shine
-```css
-background: linear-gradient(90deg, 
-  transparent, 
-  rgba(0, 245, 255, 0.3), 
-  transparent
-);
-```
-
----
-
-## ⚡ Performance Optimizations
-
-### Reduced Motion
-```css
-@media (prefers-reduced-motion: reduce) {
-  /* All animations disabled */
-}
-```
-
-### GPU Acceleration
-- Transform over position
-- Opacity over visibility
-- Will-change for heavy animations
-
-### Lazy Loading
-- Images below fold
-- Chart components
-- Heavy PDF processing
-
----
-
-## 🎨 Component Examples
-
-### Feature Card
-```tsx
-<div className="glass-card p-6 hover:bg-cyber-cyan/5">
-  <div className="w-12 h-12 rounded-xl bg-cyber-cyan/20">
-    <span className="text-2xl">🎯</span>
-  </div>
-  <h3 className="text-xl font-semibold mt-4">Feature Name</h3>
-  <p className="text-slate-400 mt-2">Description</p>
-</div>
-```
-
-### Stat Display
-```tsx
-<div>
-  <div className="text-3xl font-bold text-gradient">95%</div>
-  <div className="text-sm text-slate-500">Accuracy Rate</div>
-</div>
-```
-
-### Live Indicator
-```tsx
-<div className="flex items-center gap-2">
-  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-  <span className="text-green-400">Live</span>
-</div>
-```
-
----
-
-## 🚀 Implementation Checklist
-
-- [x] Ambient mesh background
-- [x] Glass card system
-- [x] Typography hierarchy
-- [x] Color palette integration
-- [x] Animation library
-- [x] Badge system
-- [x] Interactive states
-- [x] Responsive layouts
-- [x] Accessibility features
-
----
-
-## 📚 Design References
-
-**Inspiration Sources:**
-- Apple Vision Pro UI
-- Linear.app aesthetics
-- Vercel dashboard design
-- Stripe payment UX
-- 2026 design trends
-
-**Key Principles:**
-- Less is more
-- Content-first
-- Performance-minded
-- Accessibility-focused
-- Data visualization
-
----
-
-## 🎓 Best Practices
-
-1. **Always use glass-card for containers**
-2. **Maintain consistent spacing (multiples of 4)**
-3. **Use semantic HTML elements**
-4. **Prefer flex/grid over absolute positioning**
-5. **Test with keyboard navigation**
-6. **Validate color contrast ratios**
-7. **Optimize images and assets**
-8. **Use CSS custom properties**
-
----
-
-**Design System Version:** 2.0
-**Last Updated:** January 2026
-**Status:** Production Ready
-
----
-
-*Built with precision. Designed for the future.* ✨
+# Talent Studio UI Design Guide
+
+This guide translates the installed frontend skills into practical rules for Talent Studio. `DESIGN.md` remains the source of truth for tokens and system rules; this file explains how to apply them while building pages.
+
+## 1. Operating Standard
+
+Every suite tool should feel like a premium product console: calm, useful, fast to scan, and hard to break. The user should never feel trapped in a narrow card, confused by disconnected whitespace, or surprised by a broken result state.
+
+Use these skills as mandatory lenses:
+
+- `frontend-ui-engineering`: build production-quality components, state, accessibility, responsive layout, and performance.
+- `impeccable`: critique hierarchy, layout, typography, color, motion, copy, edge cases, and visual polish.
+- `playwright`: run local browser flows and capture/inspect the actual rendered UI after changes.
+- `figma-implement-design`: use when implementing from Figma.
+- `figma-generate-design`: use when creating/updating Figma screens from the app.
+- `screenshot`: use for desktop/system captures when browser capture is not enough.
+
+## 2. Product Design Philosophy
+
+Talent Studio suite pages are product UI, not landing pages.
+
+- Prioritize repeated work: scanning, editing, comparing, deciding, saving, exporting, applying.
+- Keep the first screen useful. Avoid marketing hero sections inside the suite.
+- Use restrained surfaces, subtle borders, low shadows, and clear state colors.
+- Use cyan/emerald for meaningful active, ready, success, and intelligence states.
+- Use amber/red only for risk, blockers, warnings, or destructive actions.
+- Avoid generic AI aesthetics: purple-heavy palettes, noisy gradients, glowing blobs, identical card grids, huge hero type inside tools, and decorative glass.
+- Keep delightful motion purposeful: progress, state transition, focus, completion, or Sona thinking.
+
+## 3. Page Pattern
+
+Use this structure for most tools:
+
+1. Header: icon, title, concise subtitle, actions, `PageHelp` far right.
+2. Context strip or evidence dock: selected resume, target role, company, source, save status, or workflow context.
+3. Main workbench: the primary task surface.
+4. Intelligence or action panel: secondary details, recommendations, packet/output actions.
+5. Review/result state: score, summary, next action, export/save/track.
+
+Rules:
+
+- Keep global setup controls out of cramped side cards.
+- Use modals/sheets for large pickers, especially saved resumes and long lists.
+- Keep advanced details collapsed by default unless the user is clearly in power-user mode.
+- Do not create four equal vertical columns unless each column has a distinct job and balanced visual weight.
+- If a workflow can run in the background, show progress in-place and preserve user context.
+
+## 4. Typography And Wrapping
+
+Text wrapping is a release blocker.
+
+- Body line length should usually stay under 65-75 characters.
+- Use balanced headings and pretty body wrapping.
+- Use `min-w-0` for every grid/flex child that contains text.
+- Use `wrap-natural` for generated prose, role names, company names, recommendation text, and normal labels.
+- Use `wrap-anywhere` only for unbroken tokens: URLs, filenames, emails, IDs, and compact chips.
+- Use `whitespace-nowrap` only for short badges, dates, tiny labels, and numeric stats with fixed space.
+- Score numbers must use `tabular-nums whitespace-nowrap`.
+- Do not allow numeric values to stack vertically.
+- Do not use negative letter spacing.
+- Do not use hero-scale type in cards, side panels, drawers, tables, compact dashboards, or result summaries.
+- If a card can be narrower than 420px, test that width with realistic long text.
+
+## 5. Cards, Panels, And Controls
+
+Cards should communicate structure, not decorate everything.
+
+- Use cards for repeated items, modals/sheets, grouped controls, selected records, and tool surfaces.
+- Avoid cards inside cards. If nesting is necessary, the inner item must be interactive or repeated.
+- Controls should be familiar: icon buttons for obvious tools, segmented controls for modes, toggles for binary settings, sliders/steppers for numbers, menus for option sets, tabs for views.
+- Avoid native system dropdowns when the design language needs a custom premium control.
+- Chips must wrap or truncate intentionally and never widen the page.
+- Gauges, rings, and indicators must reserve fixed layout space.
+- Empty states should show the next action and readiness, not a blank marketing message.
+
+## 6. Motion And Sona Thinking
+
+Motion should make work feel alive without becoming noisy.
+
+- Prefer transform and opacity. Do not animate layout properties.
+- Respect `prefers-reduced-motion`.
+- Use the shared Sona thinking pattern for long-running AI work.
+- Show the active stage clearly: scan, diagnose, humanize, verify, export, parse, compare, prepare, save.
+- Progress indicators should remain inside their card boundaries and not overlap text or numbers.
+- Animations should be subtle but visible enough that users know work is happening.
+
+## 7. Accessibility
+
+Use WCAG 2.2 AA as the baseline.
+
+- Every interactive element must be keyboard reachable.
+- Drag/drop actions must have a visible non-drag alternative.
+- Focus states must be visible in light and dark mode.
+- Status must not rely on color alone; pair color with text and icon.
+- Use `aria-live` for long-running progress and save states.
+- Inputs need labels or accessible names.
+- Buttons must have clear action copy, especially when destructive or irreversible.
+
+## 8. Responsive Behavior
+
+Desktop and mobile can differ, but both must feel intentional.
+
+- Desktop workbenches may use two or three zones only when each zone has enough width.
+- Tablet should collapse to two zones or stacked sections.
+- Mobile should stack: header, context strip, primary action, result cards, secondary details.
+- Avoid fixed-width panels that create hidden right-side slivers.
+- Modal/sheet widths must be viewport-aware.
+- Do not ship horizontal overflow.
+- Test at desktop, tablet/narrow, and mobile widths for major layout changes.
+
+## 9. Browser QA Gate
+
+For every meaningful UI change:
+
+1. Open the local route in the browser.
+2. Test the actual workflow, not just the initial page.
+3. Verify empty/loading/result/error states where relevant.
+4. Use realistic long content.
+5. Inspect light and dark mode when colors or surfaces changed.
+6. Capture or inspect the final rendered state.
+7. Check console errors.
+8. Run `npm run type-check`.
+9. Run `npm run build` for substantial UI or workflow changes.
+
+Known third-party script or unauthenticated API noise may be documented, but app runtime errors, layout overflow, broken wrapping, overlapped indicators, and clipped controls must be fixed before completion.
+
+For launch checks, use `docs/ui-ux-launch-checklist.md` with this browser gate. Use `docs/launch-readiness-runbook.md` when the work also touches metadata, brand assets, setup guidance, or release notes.
+
+## 10. Anti-Patterns To Reject
+
+- One long vertical column when two balanced zones would reduce cognitive load.
+- Tiny narrow menus for complex pickers.
+- Result cards where indicators overlap values.
+- Mid-word wrapping in normal prose.
+- Empty whitespace that disconnects related controls.
+- Generic “AI dashboard” cards with the same icon-heading-copy pattern repeated.
+- Gradients/orbs used as decoration inside product tools.
+- Native dropdowns that visibly clash with the suite design language.
+- Help icons anywhere except the top-right header/action area.
+- Design changes declared complete without a browser run.

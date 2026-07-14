@@ -32,12 +32,25 @@ export async function POST(req: NextRequest) {
 
     const normalized = normalizeText(sanitizeForAI(validated.data.text));
     const result = await deepDetect(normalized);
+    const summary =
+      result.verdict === 'likely_human'
+        ? 'Deep scan found lower predictability across sampled sentences.'
+        : result.verdict === 'likely_ai'
+          ? 'Deep scan found predictable sentence endings. Review the sampled sections before relying on the score.'
+          : 'Deep scan found mixed predictability. Treat this as a signal for revision, not a final judgment.';
 
     await incrementUsage(guard.user.uid, 'writingTools');
 
     return NextResponse.json({
       success: true,
       ...result,
+      confidence: result.humanConfidence,
+      summary,
+      recommendations: [
+        'Vary sentence length and openings where the writing feels uniform.',
+        'Replace broad claims with specific examples, numbers, or lived context.',
+        'Keep strong paragraphs intact and revise only the sections with repeatable signals.',
+      ],
     });
 
   } catch (error: unknown) {

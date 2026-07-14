@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface DocSection {
     id: string;
@@ -120,6 +121,29 @@ const docs: DocSection[] = [
     }
 ];
 
+const quickStartLinks = [
+    {
+        href: '/tools/resume-builder',
+        title: 'Build a resume',
+        body: 'Use the public resume builder when you need a clean first draft or a safer structure before moving into the full suite.',
+    },
+    {
+        href: '/tools/ats-analyzer',
+        title: 'Check ATS fit',
+        body: 'Paste a job description and resume text to see parser risk, keyword gaps, and wording that needs stronger evidence.',
+    },
+    {
+        href: '/tools/interview-prep',
+        title: 'Prepare for interviews',
+        body: 'Practice common prompts, shape STAR stories, and turn resume bullets into answers you can actually use.',
+    },
+    {
+        href: '/templates',
+        title: 'Choose a template',
+        body: 'Start from ATS-friendly layouts before tailoring each version to the role, company, and hiring screen.',
+    },
+];
+
 export default function HelpPage() {
     const router = useRouter();
     const [selectedDoc, setSelectedDoc] = useState<DocSection | null>(null);
@@ -132,11 +156,11 @@ export default function HelpPage() {
     );
 
     return (
-        <div className="min-h-screen bg-black text-white relative overflow-hidden">
+        <div className="help-dark-page min-h-dvh bg-black text-white relative overflow-hidden">
             {/* Background Ambience - subtle */}
             <div className="fixed inset-0 pointer-events-none">
                 <div className="absolute top-0 left-0 w-[800px] h-[800px] bg-[#0070F3]/5 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2" />
-                <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-[#22C55E]/5 rounded-full blur-[100px] translate-x-1/3 translate-y-1/3" />
+                <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-[#0070F3]/5 rounded-full blur-[100px] translate-x-1/3 translate-y-1/3" />
             </div>
 
             <div className="relative z-10 max-w-7xl mx-auto px-6 py-12">
@@ -147,8 +171,8 @@ export default function HelpPage() {
                         animate={{ opacity: 1, y: 0 }}
                         className="inline-block"
                     >
-                        <div className="w-20 h-20 mx-auto mb-6 rounded-2xl glass-card flex items-center justify-center">
-                            <span className="material-symbols-rounded text-4xl text-cyan-400">menu_book</span>
+                        <div className="icon-shell-neutral w-20 h-20 mx-auto mb-6 rounded-2xl border flex items-center justify-center">
+                            <span className="material-symbols-rounded text-4xl">menu_book</span>
                         </div>
                     </motion.div>
 
@@ -167,7 +191,7 @@ export default function HelpPage() {
                         transition={{ delay: 0.2 }}
                         className="text-silver max-w-2xl mx-auto text-lg"
                     >
-                        Explore our comprehensive guides to master the Talent Consulting Platform.
+                        Explore practical guides for resumes, ATS checks, interview practice, application tracking, billing, and Sona workflows.
                     </motion.p>
 
                     {/* Search Bar */}
@@ -195,6 +219,45 @@ export default function HelpPage() {
                         </div>
                     </motion.div>
                 </div>
+
+                <section className="mb-12 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-left">
+                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+                        <div>
+                            <h2 className="text-2xl font-bold text-white">Start with the workflow you need today</h2>
+                            <div className="mt-4 space-y-4 text-sm leading-7 text-silver">
+                                <p>
+                                    The help center is organized around the core job-search loop: prepare a reliable resume, compare it with a role, improve the application packet, track follow-ups, and rehearse the interview. Each guide focuses on a practical outcome instead of a feature tour.
+                                </p>
+                                <p>
+                                    If you are new to TalentConsulting.io, start with the free public tools below. They let you test the resume builder, ATS analyzer, interview practice, and templates before moving into the signed-in suite for saved history, Sona memory, and application tracking.
+                                </p>
+                                <p>
+                                    Sona can prepare drafts and recommendations, but external actions stay under your review. Use these guides when you want to understand what the product saves, what it only previews, and where you need to approve work before sending it anywhere.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-3">
+                            {quickStartLinks.map((item) => (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className="rounded-xl border border-white/10 bg-black/20 p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
+                                >
+                                    <span className="block text-sm font-bold text-white">{item.title}</span>
+                                    <span className="mt-1 block text-xs leading-5 text-silver">{item.body}</span>
+                                </Link>
+                            ))}
+                            <Link
+                                href="/for-teams"
+                                className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-4 transition hover:border-cyan-400/40"
+                            >
+                                <span className="block text-sm font-bold text-cyan-200">Help for teams</span>
+                                <span className="mt-1 block text-xs leading-5 text-cyan-50/70">Review enterprise and education workflows for career centers, HR teams, and workforce programs.</span>
+                            </Link>
+                        </div>
+                    </div>
+                </section>
 
                 {/* Categories Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
@@ -321,7 +384,7 @@ export default function HelpPage() {
 
                                                 {section.tips && section.tips.length > 0 && (
                                                     <div className="mt-4 p-4 rounded-xl glass-card flex gap-4">
-                                                        <span className="material-symbols-rounded text-xl text-amber-400">lightbulb</span>
+                                                        <span className="material-symbols-rounded icon-neutral text-xl">lightbulb</span>
                                                         <div className="text-sm text-silver">
                                                             {section.tips.map((tip, tipIdx) => (
                                                                 <p key={tipIdx}>{tip}</p>

@@ -31,10 +31,13 @@ export async function POST(req: NextRequest) {
             const label = mode === 'flashcards' ? 'flashcard decks' : 'Gauntlet sessions';
             return NextResponse.json(
                 {
-                    error: `Free tier limit reached (${usageCheck.cap} ${label}). Upgrade to Pro for unlimited access.`,
+                    error: `You used your free ${label}. Your work is saved.`,
                     upgrade: true,
+                    limitReached: true,
+                    feature: usageFeature,
                     used: usageCheck.used,
                     cap: usageCheck.cap,
+                    upgradeUrl: '/suite/upgrade',
                 },
                 { status: 403 }
             );

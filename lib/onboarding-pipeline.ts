@@ -25,7 +25,11 @@ export async function runPostOnboardingPipeline(profile: UserProfile) {
         'Original Resume',
         resumeData,
         extractSkillGraph(resumeData),
-        'technical'
+        'technical',
+        {
+          savedFrom: 'onboarding_upload',
+          resumeProvenance: { verified: true, origin: 'onboarding_upload' },
+        }
       )
     );
   }

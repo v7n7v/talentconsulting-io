@@ -15,6 +15,16 @@ export async function POST(req: NextRequest) {
     if (!validated.success) return validated.error;
     const { text } = validated.data;
 
+    const groqApiKey = process.env.GROQ_API_KEY;
+    if (!groqApiKey || groqApiKey === 'gsk_your_api_key_here' || groqApiKey.includes('your')) {
+      return NextResponse.json({
+        error: 'RESUME_PARSER_UNAVAILABLE',
+        code: 'SERVICE_NOT_CONFIGURED',
+        message: 'Resume structuring is temporarily unavailable. No resume data was saved or changed.',
+        retryable: false,
+      }, { status: 503 });
+    }
+
     const safeText = sanitizeForAI(text, 100_000);
 
     const systemPrompt = `You are a strict resume parser and validator. First, verify if the provided text structurally resembles a resume or CV.
@@ -35,7 +45,8 @@ Return JSON matching this exact structure:
   "skills": [{"category": "Category Name", "items": ["Skill1", "Skill2"]}],
   "certifications": ["Certification 1"]
 }
-If isResume is true, extract as much detail as possible. For achievements, focus on quantifiable results.`;
+If isResume is true, extract as much detail as possible. For achievements, focus on quantifiable results.
+Never write placeholder words such as "undefined", "unknown", "unidentified", "N/A", or "not provided". If a school, date, company, or field is missing, return an empty string for that field.`;
 
     const parsed = await groqJSONCompletion(systemPrompt, `Parse and validate this document:\n\n${safeText}`, {
       temperature: 0.1,
@@ -51,7 +62,12 @@ If isResume is true, extract as much detail as possible. For achievements, focus
     console.error('[api/resume/parse] Error:', error);
     monitor.critical('Tool: resume/parse', String(error));
     return NextResponse.json(
-      { error: 'Failed to parse resume' },
+      {
+        error: 'RESUME_PARSE_FAILED',
+        code: 'RESUME_PARSE_FAILED',
+        message: 'Sona could not structure this resume right now. No resume data was saved or changed.',
+        retryable: true,
+      },
       { status: 500 }
     );
   }

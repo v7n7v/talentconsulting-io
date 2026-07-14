@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { detectAI } from '@/lib/ai-detection';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { buildGalleryPrompt } from '@/lib/writing-prompts';
-import { callGeminiAPIForJSON } from '@/lib/gemini';
+import { groqJSONCompletion } from '@/lib/ai/groq-client';
 import { monitor } from '@/lib/monitor';
 
 /**
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     const wc = countWords(text);
     if (wc > config.wordLimit) {
       return NextResponse.json({
-        error: `Text exceeds ${config.wordLimit}-word limit for free ${tool}. You used ${wc} words. Sign up for unlimited access.`,
+        error: `Text exceeds the ${config.wordLimit}-word free preview for ${tool}. You used ${wc} words.`,
         limitType: 'words',
         limit: config.wordLimit,
         used: wc,
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     if (!allowed) {
       return NextResponse.json({
-        error: `Daily limit reached for free ${tool}. Sign up for unlimited access.`,
+        error: `Daily free limit reached for ${tool}. Create a free account to keep working.`,
         limitType: 'rate',
         limit: config.rateLimit,
       }, { status: 429 });
@@ -122,16 +122,16 @@ function handleDetect(text: string) {
   };
 }
 
-/** Grammar Checker — Gemini API */
+/** Grammar Checker — limited server-side AI call */
 async function handleGrammar(text: string) {
   const prompt = buildGalleryPrompt('grammar-checker', text);
-  const data = await callGeminiAPIForJSON<{
+  const data = await groqJSONCompletion<{
     corrections: { original: string; corrected: string; rule: string; explanation: string }[];
     overallScore: number;
     summary: string;
-  }>(prompt.system, prompt.user);
+  }>(prompt.system, prompt.user, { temperature: 0.25, maxTokens: 1600 });
 
-  if (!data) throw new Error('Gemini grammar response failed');
+  if (!data) throw new Error('Grammar response failed');
 
   return {
     corrections: (data.corrections || []).slice(0, 10),
@@ -140,14 +140,14 @@ async function handleGrammar(text: string) {
   };
 }
 
-/** Paraphraser — Gemini API */
+/** Paraphraser — limited server-side AI call */
 async function handleParaphrase(text: string) {
   const prompt = buildGalleryPrompt('paraphraser', text);
-  const data = await callGeminiAPIForJSON<{
+  const data = await groqJSONCompletion<{
     variations: { style: string; text: string }[];
-  }>(prompt.system, prompt.user);
+  }>(prompt.system, prompt.user, { temperature: 0.35, maxTokens: 1600 });
 
-  if (!data) throw new Error('Gemini paraphrase response failed');
+  if (!data) throw new Error('Paraphrase response failed');
 
   return {
     variations: (data.variations || []).slice(0, 3),

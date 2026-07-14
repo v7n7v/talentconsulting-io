@@ -13,8 +13,8 @@ export type BlogPost = {
 export const BLOG_POSTS: BlogPost[] = [
   {
     slug: 'auto-apply-bots-are-ruining-your-job-search',
-    title: 'Auto-Apply Bots Are Ruining Your Job Search — Here\'s the Data',
-    description: 'The AI job application arms race is making hiring worse for everyone. We analyzed the data, talked to recruiters, and found a better path forward.',
+    title: 'Auto-apply bots and your job search',
+    description: 'Why high-volume auto-apply tools can hurt job seekers, overload recruiters, and make thoughtful applications more valuable.',
     category: 'AI & Career',
     readTime: '10 min',
     date: 'April 18, 2026',
@@ -43,8 +43,8 @@ export const BLOG_POSTS: BlogPost[] = [
   },
   {
     slug: 'resume-keywords-by-industry-2026',
-    title: 'ATS Resume Keywords by Industry — 2026 Complete Guide',
-    description: 'The definitive list of high-impact resume keywords for tech, healthcare, finance, marketing, and engineering. Copy-paste ready for your next application.',
+    title: 'ATS resume keywords by industry',
+    description: 'Use natural resume keywords for tech, healthcare, finance, marketing, and engineering without stuffing your skills section.',
     category: 'Resume',
     readTime: '12 min',
     date: 'April 15, 2026',
@@ -63,8 +63,8 @@ export const BLOG_POSTS: BlogPost[] = [
   },
   {
     slug: 'cover-letter-that-gets-interviews',
-    title: 'How to Write a Cover Letter That Actually Gets Interviews',
-    description: 'Skip the generic templates. Learn the 3-paragraph formula that hiring managers love, with real examples and AI-assisted customization tips.',
+    title: 'Cover letters that get interviews',
+    description: 'Write a focused cover letter with a clear opening, proof, and role-specific close instead of a generic template.',
     category: 'Cover Letter',
     readTime: '5 min',
     date: 'April 15, 2026',
@@ -73,8 +73,8 @@ export const BLOG_POSTS: BlogPost[] = [
   },
   {
     slug: 'ghost-jobs-how-to-spot-fake-listings',
-    title: 'Ghost Jobs Are Wasting Your Time — Here\'s How to Spot Them',
-    description: 'Up to 40% of online job postings aren\'t real hiring attempts. Learn the 6 signals that reveal fake listings, and how AI can detect them before you waste hours applying.',
+    title: 'Ghost jobs and fake listings',
+    description: 'Learn the warning signs of stale, speculative, and low-intent job posts before you spend time tailoring an application.',
     category: 'AI & Career',
     readTime: '9 min',
     date: 'April 19, 2026',

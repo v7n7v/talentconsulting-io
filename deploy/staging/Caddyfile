@@ -1,0 +1,12 @@
+{$STAGING_HOSTNAME} {
+  encode zstd gzip
+
+  header {
+    X-Robots-Tag "noindex, nofollow, noarchive"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+  }
+
+  reverse_proxy app:8080
+}

@@ -1,6 +1,6 @@
 /**
  * AI Detector Uniqueness Check API
- * Sends text to Gemini for originality / plagiarism-pattern analysis.
+ * Sends text to low-cost OpenRouter models for originality / plagiarism-pattern analysis.
  * Lighter weight than humanize — still metered under writingTools usage.
  */
 
@@ -8,10 +8,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { UniquenessSchema } from '@/lib/schemas';
-import { geminiJSONCompletion } from '@/lib/ai/gemini-client';
 import { buildUniquenessPrompt } from '@/lib/writing-prompts';
 import { incrementUsage } from '@/lib/usage-tracker';
 import { monitor } from '@/lib/monitor';
+import { normalizeText, sanitizeForAI } from '@/lib/sanitize';
+import { writingJSONCompletion } from '@/lib/ai/writing-model-router';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const validated = await validateBody(req, UniquenessSchema);
     if (!validated.success) return validated.error;
-    const { text } = validated.data;
+    const text = normalizeText(sanitizeForAI(validated.data.text));
 
     if (text.trim().split(/\s+/).length < 20) {
       return NextResponse.json(
@@ -34,12 +35,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const tier = guard.user.tier || 'free';
-
     const systemPrompt = buildUniquenessPrompt();
     const userPrompt = `Analyze the uniqueness and originality of this text:\n\n${text}`;
 
-    const result = await geminiJSONCompletion<{
+    const { result } = await writingJSONCompletion<{
       uniquenessScore: number;
       verdict: 'highly_unique' | 'mostly_unique' | 'some_overlap' | 'needs_revision';
       analysis: Array<{
@@ -49,9 +48,13 @@ export async function POST(req: NextRequest) {
         suggestion: string | null;
       }>;
       summary: string;
-    }>(systemPrompt, userPrompt, {
+    }>({
+      task: 'verify',
+      systemPrompt,
+      userPrompt,
       temperature: 0.2,
       maxTokens: 2048,
+      title: 'TalentConsulting.io Writing Uniqueness',
     });
 
     await incrementUsage(guard.user.uid, 'writingTools');

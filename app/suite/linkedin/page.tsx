@@ -2,11 +2,14 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useStore } from '@/lib/store';
 import { showToast } from '@/components/Toast';
-import PageHelp from '@/components/PageHelp';
-import { type ResumeVersion } from '@/lib/database-suite';
+import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import { authFetch } from '@/lib/auth-fetch';
+import ApplicationKitContextBar from '@/components/ApplicationKitContextBar';
 import ResumeLibraryPicker from '@/components/ResumeLibraryPicker';
+import SonaThinkingTile from '@/components/SonaThinkingTile';
+import { useApplicationKitContext } from '@/hooks/useApplicationKitContext';
+import { getMissingKeywordsFromAts, resumeVersionToApplicationKitContext } from '@/lib/application-kit';
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -63,7 +66,7 @@ function ScoreRing({ score, size = 56 }: { score: number; size?: number }) {
 }
 
 export default function LinkedInOptimizerPage() {
-  const { user } = useStore();
+  const { context: kitContext, updateContext } = useApplicationKitContext();
   const [headline, setHeadline] = useState('');
   const [about, setAbout] = useState('');
   const [targetRole, setTargetRole] = useState('');
@@ -73,18 +76,18 @@ export default function LinkedInOptimizerPage() {
   const [resumeContext, setResumeContext] = useState<any>(null);
   const [hasResumeContext, setHasResumeContext] = useState(false);
 
-  // Saved Resumes integration
-  const [selectedResumeId, setSelectedResumeId] = useState<string | null>(null);
-  const [selectedResumeName, setSelectedResumeName] = useState('');
-
-  const handleSelectResume = (rv: ResumeVersion) => {
-    setResumeContext(rv.content);
-    setHasResumeContext(true);
-    setSelectedResumeId(rv.id);
-    setSelectedResumeName(rv.version_name);
-    const c = rv.content as any;
-    if (c.title && !targetRole) setTargetRole(c.title);
-  };
+  useEffect(() => {
+    if (kitContext.resumeSnapshot) {
+      setResumeContext(kitContext.resumeSnapshot);
+      setHasResumeContext(true);
+    }
+    if ((kitContext.targetRole || kitContext.jobTitle) && !targetRole) {
+      setTargetRole(kitContext.targetRole || kitContext.jobTitle || '');
+    }
+    if (kitContext.linkedinResult?.status === 'success' && kitContext.linkedinResult.data && !result) {
+      setResult(kitContext.linkedinResult.data as OptimizeResult);
+    }
+  }, [kitContext.updatedAt]);
 
   // Auto-populate from Resume Studio draft (sessionStorage)
   useEffect(() => {
@@ -96,12 +99,21 @@ export default function LinkedInOptimizerPage() {
       if (parsed.morphedResume) {
         setResumeContext(parsed.morphedResume);
         setHasResumeContext(true);
+        updateContext({
+          resumeSnapshot: parsed.morphedResume,
+          resumeSource: 'resume_studio',
+          targetRole: parsed.morphedResume.title || parsed.jobTitle || '',
+          jobTitle: parsed.jobTitle || parsed.morphedResume.title || '',
+          jobDescription: parsed.jobDescription || '',
+        });
 
         // Auto-fill target role from resume title
         if (parsed.morphedResume.title && !targetRole) {
           setTargetRole(parsed.morphedResume.title);
         }
       }
+
+      showToast('Resume data loaded from your morph. Ready to optimize.', 'check_circle');
     } catch (e) {
       // Silently fail
     }
@@ -109,16 +121,24 @@ export default function LinkedInOptimizerPage() {
   }, []);
 
   const handleOptimize = async () => {
+    const keywordGaps = getMissingKeywordsFromAts(kitContext.atsResult?.data);
+    updateContext({
+      targetRole,
+      linkedinResult: { status: 'loading', updatedAt: new Date().toISOString() },
+    });
     setLoading(true);
     try {
-      const token = (user as any)?.accessToken || (user as any)?.stsTokenManager?.accessToken;
-      const res = await fetch('/api/agent/linkedin-optimize', {
+      const res = await authFetch('/api/agent/linkedin-optimize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           headline,
           about,
-          targetRole,
+          targetRole: [
+            targetRole || kitContext.targetRole || kitContext.jobTitle || '',
+            keywordGaps.length ? `Recruiter keywords to cover: ${keywordGaps.join(', ')}` : '',
+            kitContext.jobDescription ? `Target JD: ${kitContext.jobDescription.slice(0, 4000)}` : '',
+          ].filter(Boolean).join('\n\n'),
           // Send morphed resume directly if available
           ...(resumeContext ? { resumeData: resumeContext } : {}),
         }),
@@ -126,42 +146,59 @@ export default function LinkedInOptimizerPage() {
       const data = await res.json();
       if (data.success) {
         setResult(data);
+        updateContext({ linkedinResult: { status: 'success', data, updatedAt: new Date().toISOString() } });
         showToast('Profile analyzed!', 'person');
       } else {
+        updateContext({ linkedinResult: { status: 'error', error: data.error || 'Failed', updatedAt: new Date().toISOString() } });
         showToast(data.error || 'Failed', 'cancel');
       }
-    } catch {
+    } catch (error: any) {
+      updateContext({ linkedinResult: { status: 'error', error: error.message || 'Something went wrong', updatedAt: new Date().toISOString() } });
       showToast('Something went wrong', 'cancel');
     }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen p-4 md:p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <span className="material-symbols-rounded text-white text-2xl">badge</span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">LinkedIn Optimizer</h1>
-              <p className="text-sm text-[var(--text-tertiary)]">Get found by recruiters — optimize your headline & about</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <ResumeLibraryPicker
-              onSelect={handleSelectResume}
-              selectedId={selectedResumeId}
-              selectedName={selectedResumeName}
-            />
-            <PageHelp toolId="linkedin" />
-          </div>
-        </div>
-      </motion.div>
+    <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto px-4 py-3 md:p-6">
+      <SuiteToolHeader
+        tool="linkedin"
+        title="LinkedIn Optimizer"
+        subtitle="Get found by recruiters: optimize your headline and about section."
+        icon="badge"
+        pageHelpId="linkedin"
+        className="mb-4 md:mb-6"
+        actions={
+          <ResumeLibraryPicker
+            onSelect={(rv) => {
+              const patch = resumeVersionToApplicationKitContext(rv);
+              updateContext(patch);
+              setResumeContext(rv.content);
+              setHasResumeContext(true);
+              const resumeTitle = (rv.content as any)?.title;
+              if (resumeTitle && !targetRole) setTargetRole(resumeTitle);
+            }}
+            selectedId={kitContext.resumeVersionId}
+            selectedName={kitContext.resumeVersionName}
+            compact
+          />
+        }
+      />
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <ApplicationKitContextBar
+        context={kitContext}
+        activeTool="linkedin"
+        onChange={(patch) => {
+          updateContext(patch);
+          if (patch.targetRole !== undefined || patch.jobTitle !== undefined) setTargetRole(patch.targetRole || patch.jobTitle || '');
+          if (patch.resumeSnapshot) {
+            setResumeContext(patch.resumeSnapshot);
+            setHasResumeContext(true);
+          }
+        }}
+      />
+
+      <div className="grid lg:grid-cols-2 gap-6 mt-6">
         {/* Input */}
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
           <div className="rounded-2xl p-5 space-y-4" style={{
@@ -204,7 +241,10 @@ export default function LinkedInOptimizerPage() {
               <label className="text-[11px] font-semibold text-[var(--text-tertiary)] block mb-1">Target Role</label>
               <input
                 value={targetRole}
-                onChange={e => setTargetRole(e.target.value)}
+                onChange={e => {
+                  setTargetRole(e.target.value);
+                  updateContext({ targetRole: e.target.value, jobTitle: e.target.value });
+                }}
                 placeholder="What role do you want recruiters to find you for?"
                 className="w-full px-3 py-2.5 rounded-xl text-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-blue-500/50"
               />
@@ -214,8 +254,8 @@ export default function LinkedInOptimizerPage() {
               <p className="text-[11px] text-[var(--text-secondary)] flex items-start gap-1.5">
                 <span className="material-symbols-rounded text-[14px] text-blue-400 mt-0.5 shrink-0">lightbulb</span>
                 {hasResumeContext
-                  ? 'Your morphed resume is loaded. Leave fields blank to auto-generate — we\'ll use your latest resume data.'
-                  : 'Leave fields blank to auto-generate from your resume in Vault. We\'ll pull your latest version.'}
+                  ? 'Your resume is loaded. Leave fields blank to auto-generate from your application kit and ATS keyword gaps.'
+                  : 'Leave fields blank to auto-generate from your saved resume context.'}
               </p>
             </div>
 
@@ -238,6 +278,29 @@ export default function LinkedInOptimizerPage() {
               )}
               {loading ? 'Analyzing...' : 'Optimize Profile'}
             </motion.button>
+
+            {loading && (
+              <SonaThinkingTile
+                variant="jobs"
+                icon="badge"
+                title="Sona is shaping your recruiter signal"
+                description="Tuning headline, about section, keywords, and profile checklist."
+                activeStage="optimizing"
+                stages={['Headline', 'About', 'Keywords', 'Checklist']}
+                compact
+              />
+            )}
+
+            {kitContext.linkedinResult?.status === 'error' && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-500" role="alert">
+                {kitContext.linkedinResult.error || 'LinkedIn optimization failed. Try again with a resume or target role loaded.'}
+              </div>
+            )}
+            {kitContext.linkedinResult?.status === 'success' && result && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2 text-xs text-emerald-500">
+                LinkedIn positioning is ready and available to the rest of this application kit.
+              </div>
+            )}
           </div>
         </motion.div>
 

@@ -7,6 +7,7 @@
  *   const res = await authFetch('/api/resume/morph', { method: 'POST', body: JSON.stringify(data) });
  */
 import { auth } from '@/lib/firebase';
+import { DEMO_AUTH_TOKEN, isDemoModeEnabled } from '@/lib/demo-mode';
 
 /**
  * Wrapper around fetch() that automatically injects the Firebase ID token
@@ -27,6 +28,9 @@ export async function authFetch(
     } catch (e) {
       console.warn('Failed to get auth token:', e);
     }
+  } else if (isDemoModeEnabled()) {
+    headers.set('Authorization', `Bearer ${DEMO_AUTH_TOKEN}`);
+    headers.set('x-demo-auth-bypass', 'true');
   }
 
   // Default to JSON content type for POST requests

@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'AI Text Detector & Humanizer — Detect & Rewrite AI Content',
-  description: 'Scan text for AI writing patterns with 100+ heuristic checks. Humanize flagged sections with our AI Engine while preserving your voice. Supports resumes, academic papers, and marketing copy.',
+  title: 'Writing Trust Studio — Originality, Voice & Humanization',
+  description: 'Scan writing trust signals, diagnose paragraph risk, humanize with controlled voice-preserving presets, verify originality, and export polished documents.',
   alternates: { canonical: '/suite/writing-tools' },
 };
 

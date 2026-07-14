@@ -22,8 +22,11 @@ const PERSONA_VOICE_MAP: Record<string, string> = {
     'default': 'alloy',
 };
 
+const SUPPORTED_VOICES = new Set(['alloy', 'nova', 'echo', 'fable', 'onyx', 'shimmer']);
+
 function resolveVoice(voiceHint?: string): string {
     if (!voiceHint) return PERSONA_VOICE_MAP['default'];
+    if (SUPPORTED_VOICES.has(voiceHint)) return voiceHint;
     return PERSONA_VOICE_MAP[voiceHint] || PERSONA_VOICE_MAP['default'];
 }
 
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest) {
                 'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'https://talentconsulting.io',
-                'X-Title': 'TalentConsulting Interview Simulator',
+                'X-Title': 'TalentConsulting.io Interview Simulator',
             },
             body: JSON.stringify({
                 model: TTS_MODEL,

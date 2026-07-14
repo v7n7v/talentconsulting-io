@@ -1,9 +1,239 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Per-user data isolation: only the owner can read/write
-    match /users/{userId}/{document=**} {
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isUserMutableCollection(collectionId) {
+      return collectionId in [
+        'agent',
+        'agent_stories',
+        'applicationQueue',
+        'cover_letters',
+        'debriefs',
+        'feedback',
+        'fit_analyses',
+        'interview_sessions',
+        'jd_templates',
+        'jobAlertEvents',
+        'morale',
+        'network_contacts',
+        'outcomes',
+        'personas',
+        'preferences',
+        'profile',
+        'referral',
+        'skill_verifications',
+        'study_progress',
+        'vault',
+        'writing_sessions'
+      ];
+    }
+
+    function hasServerMorphProof(data) {
+      return data.keys().hasAny([
+        'morph_succeeded',
+        'morph_guardrail_report',
+        'morph_effective_percentage',
+        'morph_source_resume_id',
+        'morph_source_resume_hash',
+        'cover_letter_succeeded',
+        'cover_letter_guardrail_report',
+        'cover_letter_source_resume_id',
+        'cover_letter_source_resume_hash'
+      ]);
+    }
+
+    // Per-user root documents: user can maintain their own profile shell.
+    match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Billing and usage are server-authoritative. Users may read usage/subscription
+    // via APIs, but must not be able to forge plan status or reset quotas client-side.
+    match /users/{userId}/subscription/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/usage/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    // User settings are owner-readable/writable except security-sensitive records
+    // that must be updated through server routes.
+    match /users/{userId}/settings/{settingId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && settingId != 'resumeMorphSafety';
+    }
+
+    match /users/{userId}/settings/{settingId}/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && settingId != 'resumeMorphSafety';
+    }
+
+    // Application packet proof is server-authoritative. Owners may maintain
+    // ordinary tracker fields, but cannot forge or alter guarded packet state.
+    match /users/{userId}/applications/{document=**} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && !request.resource.data.keys().hasAny([
+          'morph_succeeded',
+          'morph_guardrail_report',
+          'morph_effective_percentage',
+          'morph_source_resume_id',
+          'morph_source_resume_hash',
+          'cover_letter_succeeded',
+          'cover_letter_guardrail_report',
+          'cover_letter_source_resume_id',
+          'cover_letter_source_resume_hash',
+          'packet_generation_state',
+          'packet_generation_owner',
+          'packet_generation_lease_expires_at'
+        ])
+        && (!request.resource.data.keys().hasAny(['packet_status'])
+          || request.resource.data.packet_status == 'tracker_draft');
+      allow update: if isOwner(userId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'morph_succeeded',
+          'morph_guardrail_report',
+          'morph_effective_percentage',
+          'morph_source_resume_id',
+          'morph_source_resume_hash',
+          'cover_letter_succeeded',
+          'cover_letter_guardrail_report',
+          'cover_letter_source_resume_id',
+          'cover_letter_source_resume_hash',
+          'packet_generation_state',
+          'packet_generation_owner',
+          'packet_generation_lease_expires_at'
+        ])
+        && (!hasServerMorphProof(resource.data)
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'packet_status',
+            'resume_version_id',
+            'cover_letter',
+            'talent_density_score',
+            'ats_score',
+            'keyword_gaps',
+            'packet_identity_hash',
+            'job_id',
+            'job_title',
+            'company_name',
+            'job_description',
+            'application_link',
+            'source_meta'
+          ]));
+      allow delete: if isOwner(userId);
+    }
+
+    // User-authored resume versions remain editable. Once a server guardrail
+    // report is attached, the guarded artifact becomes immutable to clients.
+    match /users/{userId}/resume_versions/{document=**} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && !request.resource.data.keys().hasAny([
+          'guardrail_report',
+          'morph_guardrail_report',
+          'guardrail_validator_version',
+          'source_resume_hash',
+          'source_resume_id',
+          'source_resume_type',
+          'source_resume_snapshot',
+          'morph_effective_percentage'
+        ]);
+      allow update: if isOwner(userId)
+        && !resource.data.keys().hasAny([
+          'guardrail_report',
+          'morph_guardrail_report',
+          'guardrail_validator_version',
+          'source_resume_hash',
+          'source_resume_id',
+          'source_resume_type',
+          'source_resume_snapshot',
+          'morph_effective_percentage'
+        ])
+        && !request.resource.data.keys().hasAny([
+          'guardrail_report',
+          'morph_guardrail_report',
+          'guardrail_validator_version',
+          'source_resume_hash',
+          'source_resume_id',
+          'source_resume_type',
+          'source_resume_snapshot',
+          'morph_effective_percentage'
+        ]);
+      allow delete: if isOwner(userId)
+        && !resource.data.keys().hasAny([
+          'guardrail_report',
+          'morph_guardrail_report',
+          'guardrail_validator_version',
+          'source_resume_hash',
+          'source_resume_id',
+          'source_resume_type',
+          'source_resume_snapshot',
+          'morph_effective_percentage'
+        ]);
+    }
+
+    // Sona queue evidence is written by server workflows. Owners can record
+    // review decisions and feedback without rewriting prepared packet artifacts.
+    match /users/{userId}/agent_queue/{queueId} {
+      allow read: if isOwner(userId);
+      allow create: if false;
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'packetStatus',
+          'reviewed_at',
+          'last_action_at',
+          'feedbackTags',
+          'application_id',
+          'assisted_at'
+        ])
+        && request.resource.data.status in ['pending', 'approved', 'dismissed', 'expired']
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['packetStatus'])
+          || request.resource.data.packetStatus in [
+            'needs_review',
+            'needs_attention',
+            'approved',
+            'dismissed',
+            'expired',
+            'assist_apply'
+          ])
+        && (!resource.data.keys().hasAny(['generation_status'])
+          || request.resource.data.status != 'approved'
+          || resource.data.generation_status == 'prepared')
+        && (request.resource.data.packetStatus != 'approved'
+          || request.resource.data.status == 'approved')
+        && (request.resource.data.status != 'approved'
+          || request.resource.data.packetStatus in ['approved', 'assist_apply'])
+        && (request.resource.data.status != 'dismissed'
+          || request.resource.data.packetStatus == 'dismissed')
+        && (request.resource.data.status != 'expired'
+          || request.resource.data.packetStatus == 'expired')
+        && (request.resource.data.packetStatus != 'assist_apply'
+          || (request.resource.data.status == 'approved'
+            && resource.data.generation_status == 'prepared'
+            && request.resource.data.application_id is string))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['application_id'])
+          || ((request.resource.data.packetStatus == 'assist_apply'
+              && request.resource.data.application_id is string
+              && exists(/databases/$(database)/documents/users/$(userId)/applications/$(request.resource.data.application_id))
+              && get(/databases/$(database)/documents/users/$(userId)/applications/$(request.resource.data.application_id)).data.source == 'agent_queue'
+              && get(/databases/$(database)/documents/users/$(userId)/applications/$(request.resource.data.application_id)).data.source_meta.queue_id == queueId)
+            || (request.resource.data.packetStatus == 'approved'
+              && request.resource.data.status == 'approved'
+              && resource.data.application_id is string
+              && !request.resource.data.keys().hasAny(['application_id'])
+              && !exists(/databases/$(database)/documents/users/$(userId)/applications/$(resource.data.application_id)))));
+      allow delete: if isOwner(userId);
+    }
+
+    // Per-user product data isolation: only owner can read/write known mutable areas.
+    match /users/{userId}/{collectionId}/{document=**} {
+      allow read, write: if isOwner(userId) && isUserMutableCollection(collectionId);
     }
 
     // Study vault: server-side writes via Admin SDK, user reads own docs
@@ -12,9 +242,9 @@ service cloud.firestore {
       allow create, update, delete: if false; // Admin SDK only (server-side)
     }
 
-    // Team interest form: public create, admin-only read
+    // Team interest form: server-side writes via Admin SDK only
     match /team_interest/{docId} {
-      allow create: if true;
+      allow create: if false;
       allow read, update, delete: if false; // Admin SDK only
     }
 

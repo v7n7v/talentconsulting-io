@@ -9,6 +9,10 @@ node_modules
 *.js.map
 .env
 .env.local
+.env.*.local
+.env.production
+.env.cloudrun.yaml
+.envrc
 .env.example
 .DS_Store
 .npmrc

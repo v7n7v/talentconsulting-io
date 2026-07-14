@@ -1,0 +1,117 @@
+name: talent-staging
+
+services:
+  ever-jobs:
+    build:
+      context: https://github.com/ever-jobs/ever-jobs.git#a9f0bb58f8da2cad56fce3d0190b3fa3182de7de
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      ENABLE_API_KEY_AUTH: "true"
+      API_KEYS: ${EVER_JOBS_API_KEY}
+      API_KEY_HEADER_NAME: x-api-key
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_REQUESTS: 120
+      RATE_LIMIT_TIMEFRAME: 60
+      ENABLE_CACHE: "true"
+      CACHE_EXPIRY: 900
+      CACHE_MAX_ITEMS: 250
+      # Upstream currently crashes when GraphQL is disabled because Apollo is
+      # still initialized without a query root. It remains private and API-key protected.
+      ENABLE_GRAPHQL: "true"
+      ENABLE_METRICS: "true"
+      ENABLE_SWAGGER: "false"
+      ENABLE_SCALAR: "false"
+      CORS_ORIGINS: https://${STAGING_HOSTNAME}
+      DEFAULT_SITE_NAMES: remoteok,remotive,jobicy,himalayas,weworkremotely
+      DEFAULT_RESULTS_WANTED: 20
+      DEFAULT_COUNTRY: USA
+      LOG_LEVEL: warn
+    expose:
+      - "3001"
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H 'x-api-key: ${EVER_JOBS_API_KEY}' http://127.0.0.1:3001/health | grep -q '\"status\":\"healthy\"'"]
+      interval: 20s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2G
+
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY}
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+        NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID}
+        NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: ${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID:-}
+        NEXT_PUBLIC_DEMO_MODE: "false"
+        NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: "false"
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      STAGING_HOSTNAME: ${STAGING_HOSTNAME:?STAGING_HOSTNAME is required for staging safety}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+      HOSTNAME: 0.0.0.0
+      PORT: 8080
+    depends_on:
+      ever-jobs:
+        condition: service_healthy
+    expose:
+      - "8080"
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health | grep -q '\"status\":\"ok\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 3G
+
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      STAGING_HOSTNAME: ${STAGING_HOSTNAME:?STAGING_HOSTNAME is required for staging safety}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
+import { TalentConsultingWordmark } from '@/components/BrandLogo';
 
 export default function ForTeamsPage() {
     const [formData, setFormData] = useState({
@@ -46,7 +47,7 @@ export default function ForTeamsPage() {
     ] as const;
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-white">
+        <div className="min-h-dvh bg-[#0a0a0a] text-white">
             {/* Hero */}
             <div className="relative overflow-hidden">
                 <div className="absolute inset-0">
@@ -68,15 +69,16 @@ export default function ForTeamsPage() {
                     </Link>
 
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                        <TalentConsultingWordmark className="mb-8 w-[min(420px,86vw)]" />
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-6">
                             <span className="text-xs font-medium text-cyan-400">Enterprise & Education</span>
                         </div>
                         <h1 className="text-4xl md:text-6xl font-bold mb-4 leading-tight">
                             <span className="bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-400 bg-clip-text text-transparent">
-                                TalentConsulting
+                                TalentConsulting.io
                             </span>
-                            <br />
-                            <span className="text-white/90">for Teams</span>
+                            {' '}
+                            <span className="block text-white/90">for Teams</span>
                         </h1>
                         <p className="text-lg text-white/50 max-w-2xl mb-8">
                             AI-powered career readiness at scale. Equip your students, candidates, or employees with 
@@ -99,19 +101,19 @@ export default function ForTeamsPage() {
                             icon: 'school',
                             title: 'Career Centers',
                             desc: 'Give every student access to AI-powered resume optimization and interview prep. Scale your career services without scaling your staff.',
-                            stats: '10x more students served',
+                            stats: 'Serve more students',
                         },
                         {
                             icon: 'domain',
                             title: 'Enterprise L&D',
                             desc: 'Internal mobility programs, skills gap analysis, and career development — powered by the same AI that helps candidates land roles.',
-                            stats: 'Reduce turnover by 30%',
+                            stats: 'Improve internal mobility',
                         },
                         {
                             icon: 'groups',
                             title: 'Staffing Agencies',
                             desc: 'Prep your candidates before client interviews. Higher placement rates, better candidate experience, stronger relationships.',
-                            stats: '2x placement rate',
+                            stats: 'Stronger placement readiness',
                         },
                     ].map((item, i) => (
                         <motion.div
@@ -143,7 +145,7 @@ export default function ForTeamsPage() {
                         {[
                             { icon: 'description', title: 'AI Resume Morphing', desc: 'Dual-AI pipeline adapts resumes to any job description' },
                             { icon: 'swords', title: 'The Gauntlet', desc: '6 AI interviewer personas simulate real interviews with grading' },
-                            { icon: 'route', title: 'Skill Bridge', desc: '7-day AI study plans bridge the gap between resume and reality' },
+                            { icon: 'route', title: 'Skill Bridge', desc: 'Focused AI study plans bridge the gap between resume and role expectations' },
                             { icon: 'monitoring', title: 'Admin Dashboard', desc: 'Track team progress, usage analytics, and outcomes' },
                             { icon: 'lock', title: 'SSO & Compliance', desc: 'SAML/OIDC, data residency, and SOC 2 compliance (roadmap)' },
                             { icon: 'payments', title: 'Volume Pricing', desc: 'Per-seat pricing that makes enterprise tools affordable for education' },
@@ -158,6 +160,39 @@ export default function ForTeamsPage() {
                         ))}
                     </div>
                 </motion.div>
+
+                <motion.section
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.55 }}
+                    className="mb-16 rounded-2xl border border-white/10 bg-white/[0.03] p-6"
+                >
+                    <div className="grid gap-5 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                        <div>
+                            <h2 className="text-2xl font-bold text-white">Pilot the same tools your people will use</h2>
+                            <p className="mt-3 text-sm leading-7 text-white/45">
+                                TalentConsulting.io for teams builds on the public career tools and the signed-in suite. Career centers, workforce programs, staffing teams, and HR teams can review the product path before planning rollout, training, or custom onboarding.
+                            </p>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            {[
+                                { href: '/tools/resume-builder', label: 'Resume builder', body: 'Review the resume creation path before team rollout.' },
+                                { href: '/tools/ats-analyzer', label: 'ATS analyzer', body: 'Check how role matching and parser guidance feel.' },
+                                { href: '/tools/interview-prep', label: 'Interview practice', body: 'Preview story coaching and practice prompts.' },
+                                { href: '/help', label: 'Help center', body: 'Use the guides for training and support planning.' },
+                            ].map((item) => (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className="rounded-xl border border-white/10 bg-black/20 p-4 transition hover:border-cyan-500/35 hover:bg-white/[0.04]"
+                                >
+                                    <span className="block text-sm font-bold text-white">{item.label}</span>
+                                    <span className="mt-1 block text-xs leading-5 text-white/40">{item.body}</span>
+                                </Link>
+                            ))}
+                        </div>
+                    </div>
+                </motion.section>
 
                 {/* Contact Form */}
                 <motion.div
@@ -186,7 +221,7 @@ export default function ForTeamsPage() {
                                     </motion.div>
                                     <h3 className="text-2xl font-bold text-white mb-2">We&apos;ll be in touch!</h3>
                                     <p className="text-white/40 mb-6">
-                                        Our team will reach out within 24 hours to discuss how TalentConsulting can work for {formData.organization}.
+                                        Our team will reach out soon to discuss how TalentConsulting.io can work for {formData.organization}.
                                     </p>
                                     <Link
                                         href="/"

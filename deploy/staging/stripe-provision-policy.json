@@ -1,0 +1,8 @@
+{
+  "version": "stripe-staging-policy-v1",
+  "status": "awaiting_approved_test_account",
+  "stagingHostname": "talent-staging.187-77-8-98.nip.io",
+  "firebaseProjectId": "talent-consulting-stg",
+  "stripeTestAccountId": null,
+  "stripePublishableKeySha256": null
+}

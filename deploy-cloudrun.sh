@@ -10,7 +10,7 @@
 #   3. .env.local file with all environment variables
 # ═══════════════════════════════════════════════════
 
-set -e
+set -euo pipefail
 
 PROJECT_ID="talent-consulting-acf16"
 REGION="us-east1"
@@ -18,20 +18,27 @@ SERVICE_NAME="talent-studio"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 
 echo "══════════════════════════════════════"
+
+node scripts/production-deploy-preflight.js cloudrun
+
+set -a
+. ./.env.production
+set +a
 echo "  Talent Studio → Cloud Run Deploy"
 echo "══════════════════════════════════════"
 
-# Step 1: Set the project
-echo "→ Setting GCP project to ${PROJECT_ID}..."
-gcloud config set project ${PROJECT_ID}
-
-# Step 2: Build the Docker image via Cloud Build
+# Step 1: Build the Docker image via Cloud Build
 echo "→ Building Docker image via Cloud Build..."
-gcloud builds submit --tag ${IMAGE_NAME} --timeout=1200
+gcloud builds submit \
+  --project="${PROJECT_ID}" \
+  --config cloudbuild.yaml \
+  --substitutions="_IMAGE_NAME=${IMAGE_NAME},_NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY},_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN},_NEXT_PUBLIC_FIREBASE_PROJECT_ID=${NEXT_PUBLIC_FIREBASE_PROJECT_ID},_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET},_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID},_NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID},_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID:-},_NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}" \
+  .
 
-# Step 3: Deploy to Cloud Run
+# Step 2: Deploy to Cloud Run
 echo "→ Deploying to Cloud Run (${REGION})..."
 gcloud run deploy ${SERVICE_NAME} \
+  --project="${PROJECT_ID}" \
   --image ${IMAGE_NAME} \
   --region ${REGION} \
   --platform managed \

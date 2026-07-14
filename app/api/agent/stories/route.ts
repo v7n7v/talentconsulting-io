@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
-import { getAdminDb } from '@/lib/firebase-admin';
 import { invalidateTwin } from '@/lib/career-twin';
 import { monitor } from '@/lib/monitor';
+import {
+  createStoryBankStory,
+  deleteStoryBankStory,
+  listStoryBankStories,
+  updateStoryBankStory,
+} from '@/lib/story-bank';
 
 /**
  * GET /api/agent/stories
@@ -13,23 +18,29 @@ export async function GET(req: NextRequest) {
   if (guard.error) return guard.error;
 
   const uid = guard.user.uid;
-  const db = getAdminDb();
 
   try {
-    const storiesRef = db.collection('users').doc(uid).collection('agent_stories');
-    const snap = await storiesRef.orderBy('createdAt', 'desc').limit(50).get();
-
-    const stories = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const url = new URL(req.url);
+    const result = await listStoryBankStories(uid, {
+      search: url.searchParams.get('search') || undefined,
+      category: url.searchParams.get('category') || undefined,
+      source: url.searchParams.get('source') || undefined,
+      applicationId: url.searchParams.get('applicationId') || undefined,
+      resumeVersionId: url.searchParams.get('resumeVersionId') || undefined,
+      contactId: url.searchParams.get('contactId') || undefined,
+      page: Number(url.searchParams.get('page') || 1),
+      limit: Number(url.searchParams.get('limit') || 100),
+    });
 
     return new Response(JSON.stringify({
-      stories,
-      count: stories.length,
+      stories: result.stories,
+      count: result.count,
+      page: result.page,
+      limit: result.limit,
+      hasMore: result.hasMore,
+      migratedCount: result.migratedCount,
     }), { headers: { 'Content-Type': 'application/json' } });
   } catch (e: any) {
-    console.error('Stories API error:', e);
     monitor.critical('Tool: agent/stories', String(e));
     return new Response(JSON.stringify({ error: e.message, stories: [], count: 0 }), {
       status: 500,
@@ -47,11 +58,10 @@ export async function POST(req: NextRequest) {
   if (guard.error) return guard.error;
 
   const uid = guard.user.uid;
-  const db = getAdminDb();
 
   try {
     const body = await req.json();
-    const { title, situation, task, action, result, reflection, tags } = body;
+    const { title, situation } = body;
 
     if (!title?.trim() || !situation?.trim()) {
       return new Response(JSON.stringify({ error: 'title and situation are required' }), {
@@ -59,28 +69,57 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const docRef = await db.collection('users').doc(uid).collection('agent_stories').add({
-      title: title.trim(),
-      situation: situation.trim(),
-      task: (task || '').trim(),
-      action: (action || '').trim(),
-      result: (result || '').trim(),
-      reflection: (reflection || '').trim(),
-      tags: (tags || []).map((t: string) => t.trim()).filter(Boolean),
-      source: 'manual',
-      createdAt: new Date().toISOString(),
+    const story = await createStoryBankStory(uid, {
+      ...body,
+      source: body.source || 'manual',
+      sourceTool: body.sourceTool || 'story_bank',
     });
 
     invalidateTwin(uid).catch(() => {});
 
-    return new Response(JSON.stringify({ id: docRef.id, success: true }), {
+    return new Response(JSON.stringify({ id: story.id, story, success: true }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (e: any) {
-    console.error('Stories POST error:', e);
     monitor.critical('Tool: agent/stories', String(e));
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
+/**
+ * PATCH /api/agent/stories
+ * Update an existing Story Bank story and recompute proof metadata
+ */
+export async function PATCH(req: NextRequest) {
+  const guard = await guardApiRoute(req, { rateLimit: 20, rateLimitWindow: 60_000 });
+  if (guard.error) return guard.error;
+
+  const uid = guard.user.uid;
+
+  try {
+    const body = await req.json();
+    const { storyId, id, ...updates } = body;
+    const targetId = storyId || id;
+    if (!targetId) {
+      return new Response(JSON.stringify({ error: 'storyId required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const story = await updateStoryBankStory(uid, targetId, updates);
+    invalidateTwin(uid).catch(() => {});
+
+    return new Response(JSON.stringify({ success: true, story }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (e: any) {
+    monitor.critical('Tool: agent/stories/update', String(e));
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: e.message === 'Story not found' ? 404 : 500,
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 }
@@ -94,7 +133,6 @@ export async function DELETE(req: NextRequest) {
   if (guard.error) return guard.error;
 
   const uid = guard.user.uid;
-  const db = getAdminDb();
 
   try {
     const { storyId } = await req.json();
@@ -105,13 +143,13 @@ export async function DELETE(req: NextRequest) {
       });
     }
 
-    await db.collection('users').doc(uid).collection('agent_stories').doc(storyId).delete();
+    await deleteStoryBankStory(uid, storyId);
+    invalidateTwin(uid).catch(() => {});
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (e: any) {
-    console.error('Stories delete error:', e);
     monitor.critical('Tool: agent/stories', String(e));
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,

@@ -1,6 +1,6 @@
 /**
  * AI Detector Humanize API
- * Takes flagged text + domain + tone → Returns humanized version via Gemini 3 Flash.
+ * Takes flagged text + domain + tone → Returns humanized version via quality-routed writing models.
  * Enforces word caps per tier (Pro: 4K/mo, Studio: 50K/mo).
  * Post-processes to strip AI punctuation artifacts (em-dashes, semicolons, etc).
  */
@@ -9,12 +9,22 @@ import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { validateBody } from '@/lib/validate';
 import { HumanizeSchema } from '@/lib/schemas';
-import { geminiJSONCompletion } from '@/lib/ai/gemini-client';
 import { buildHumanizePrompt } from '@/lib/writing-prompts';
 import { countWords, checkWritingWordsAllowed, recordWritingWords, incrementUsage } from '@/lib/usage-tracker';
 import { detectAI } from '@/lib/ai-detection';
 import { normalizeText, sanitizeForAI } from '@/lib/sanitize';
 import { monitor } from '@/lib/monitor';
+import { buildTrustReport } from '@/lib/writing-pipeline';
+import { writingJSONCompletion } from '@/lib/ai/writing-model-router';
+import {
+  buildFallbackPatches,
+  evaluateHumanizationQuality,
+  extractProtectedTerms,
+  mergeParagraphPatches,
+  splitParagraphs,
+  type HumanizePatch,
+  type QualityDecision,
+} from '@/lib/writing-quality';
 
 /** Strip AI-telltale punctuation from humanized text */
 function cleanAIPunctuation(text: string): string {
@@ -69,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     const validated = await validateBody(req, HumanizeSchema);
     if (!validated.success) return validated.error;
-    const { text: rawText, domain, tone, lengthMode, paragraphIndices } = validated.data;
+    const { text: rawText, domain, tone, lengthMode, mode, intensity, qualityMode, protectedTerms: manualProtectedTerms, rewriteScope, paragraphIndices } = validated.data;
 
     // Sanitize + normalize input — prompt injection defense + homoglyph stripping
     const text = normalizeText(sanitizeForAI(rawText));
@@ -99,87 +109,121 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const originalDetection = detectAI(text);
+    const protectedTerms = extractProtectedTerms(text, manualProtectedTerms || []);
+    const paragraphs = splitParagraphs(text);
+    const requestedParagraphs = paragraphIndices?.filter(i => i >= 0 && i < paragraphs.length) || [];
+    const targetParagraphs = rewriteScope === 'full' ? [] : requestedParagraphs;
+
     // Build targeted rewrite prompt with tone
     const systemPrompt = buildHumanizePrompt(domain, tone, lengthMode);
 
     let userPrompt: string;
-    if (paragraphIndices && paragraphIndices.length > 0) {
-      const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-      const flaggedParagraphs = paragraphIndices
-        .filter(i => i < paragraphs.length)
-        .map(i => `[Paragraph ${i + 1}]: ${paragraphs[i]}`)
+    const modeInstruction = mode
+      ? `Rewrite mode: ${mode.replace(/_/g, ' ')}. Preserve meaning and authorship cues; improve trust signals without making guarantees about detector outcomes.`
+      : 'Rewrite mode: standard humanization. Preserve meaning and authorship cues.';
+
+    const protectedTermInstruction = protectedTerms.length
+      ? `Protected terms that must remain exactly present where relevant: ${protectedTerms.slice(0, 80).join('; ')}`
+      : 'No explicit protected terms were supplied, but preserve all facts, names, numbers, dates, URLs, citations, tools, and company names.';
+
+    if (targetParagraphs.length > 0) {
+      const flaggedParagraphs = targetParagraphs
+        .map(i => `[Paragraph ${i}]: ${paragraphs[i]}`)
         .join('\n\n');
 
-      userPrompt = `The following text needs humanization. Focus on the flagged paragraphs but maintain coherence with the rest.
+      userPrompt = `Create a paragraph-level rewrite plan, then rewrite ONLY the flagged paragraphs. Do not rewrite clean paragraphs.
 
-FULL TEXT:
-${text}
+${modeInstruction}
+Intensity: ${intensity}. Light means minimal edits, balanced means natural clarity/rhythm improvements, deep means stronger restructuring while preserving facts.
+${protectedTermInstruction}
 
 FLAGGED PARAGRAPHS (rewrite these specifically):
 ${flaggedParagraphs}
 
-Rewrite the full text with the flagged paragraphs humanized. Tone: ${tone}. Length mode: ${lengthMode} (original word count: ${wordCount}).`;
+FULL CONTEXT:
+${text}
+
+Respond with JSON:
+{
+  "patches": [
+    { "paragraphIndex": number, "rewritten": "replacement paragraph", "reason": "why this paragraph changed", "riskReduced": number }
+  ],
+  "changes": [{ "original": "exact snippet", "rewritten": "replacement", "reason": "why" }],
+  "stats": { "sentenceLengthStdDev": number, "bannedWordsRemoved": number, "burstinessRange": number }
+}
+
+Use zero-based paragraphIndex values from the flagged paragraph labels. Tone: ${tone}. Length mode: ${lengthMode}.`;
     } else {
-      userPrompt = `Humanize this entire text with a ${tone} tone. Length mode: ${lengthMode} (original word count: ${wordCount}).\n\n${text}`;
+      userPrompt = `${modeInstruction}
+Intensity: ${intensity}. Light means minimal edits, balanced means natural clarity/rhythm improvements, deep means stronger restructuring while preserving facts.
+${protectedTermInstruction}
+
+Create a short rewrite plan internally, then humanize the full text with a ${tone} tone. Length mode: ${lengthMode} (original word count: ${wordCount}).
+
+Respond with JSON:
+{
+  "rewritten": "full rewritten text preserving paragraph breaks",
+  "changes": [{ "original": "exact snippet", "rewritten": "replacement", "reason": "why" }],
+  "stats": { "sentenceLengthStdDev": number, "bannedWordsRemoved": number, "burstinessRange": number }
+}
+
+TEXT:
+${text}`;
     }
 
 
-    type HumanizeResult = {
-      rewritten: string;
+    type HumanizeModelResult = {
+      rewritten?: string;
+      patches?: HumanizePatch[];
       changes: Array<{ original: string; rewritten: string; reason: string }>;
       stats: { sentenceLengthStdDev: number; bannedWordsRemoved: number; burstinessRange: number };
     };
 
     const maxTokens = Math.min(16384, Math.max(8192, wordCount * 8));
-    const temp = tone === 'creative' ? 0.85 : tone === 'casual' ? 0.8 : 0.7;
+    const temp = intensity === 'deep' ? 0.82 : tone === 'creative' ? 0.85 : tone === 'casual' ? 0.78 : intensity === 'light' ? 0.55 : 0.7;
+    let latestQualityDecision: QualityDecision | null = null;
 
-    // Pass 1: Initial humanization
-    let result = await geminiJSONCompletion<HumanizeResult>(systemPrompt, userPrompt, {
-      temperature: temp, maxTokens,
+    const materialize = (candidate: HumanizeModelResult) => {
+      const patches = targetParagraphs.length > 0
+        ? (candidate.patches?.length ? candidate.patches : buildFallbackPatches(text, candidate.rewritten || '', targetParagraphs))
+        : buildFallbackPatches(text, candidate.rewritten || '', []);
+      const merged = targetParagraphs.length > 0
+        ? mergeParagraphPatches(text, patches)
+        : (candidate.rewritten || text);
+      const cleaned = cleanAIPunctuation(merged);
+      return { cleaned, patches };
+    };
+
+    const completion = await writingJSONCompletion<HumanizeModelResult>({
+      task: 'humanize',
+      systemPrompt,
+      userPrompt,
+      temperature: temp,
+      maxTokens,
+      userTier: tier,
+      qualityMode,
+      title: 'TalentConsulting.io Suite Humanizer',
+      qualityPolicy: candidate => {
+        const { cleaned } = materialize(candidate);
+        const finalDetection = detectAI(cleaned);
+        const decision = evaluateHumanizationQuality({
+          originalText: text,
+          rewrittenText: cleaned,
+          protectedTerms,
+          lengthMode,
+          originalDetection,
+          finalDetection,
+        });
+        latestQualityDecision = decision;
+        return decision;
+      },
     });
-
-    let cleanedText = cleanAIPunctuation(result.rewritten || '');
-    let recheckResult = detectAI(cleanedText);
-    let retryCount = 0;
-
-    // Iterative refinement: retry low-scoring paragraphs (max 2 retries)
-    while (recheckResult.humanScore <= 60 && retryCount < 2) {
-      retryCount++;
-      const lowParagraphs = recheckResult.paragraphScores
-        .filter(p => p.score < 60)
-        .slice(0, 5); // limit to 5 worst paragraphs
-
-      if (lowParagraphs.length === 0) break;
-
-      const diagnostics = lowParagraphs.map(p => {
-        const issues = p.flags.length > 0 ? p.flags.join('; ') : 'Low overall score';
-        return `[Paragraph ${p.index + 1}] Score: ${p.score}/100. Issues: ${issues}\nText: "${p.text.slice(0, 200)}"`;
-      }).join('\n\n');
-
-      const retryPrompt = `The previous humanization attempt still scores as AI-generated (score: ${recheckResult.humanScore}/100).
-
-These paragraphs specifically need more work:
-
-${diagnostics}
-
-Rewrite the FULL text again. Focus especially on the flagged paragraphs. Key fixes needed:
-- Increase sentence length variance (mix 4-word fragments with 25+ word sentences)
-- Remove any remaining AI-tell words
-- Add natural contractions and first-person markers
-- Vary paragraph lengths more
-
-Tone: ${tone}
-
-Full text to re-humanize:
-${cleanedText}`;
-
-      result = await geminiJSONCompletion<HumanizeResult>(systemPrompt, retryPrompt, {
-        temperature: Math.min(0.95, temp + 0.1 * retryCount), maxTokens,
-      });
-
-      cleanedText = cleanAIPunctuation(result.rewritten || '');
-      recheckResult = detectAI(cleanedText);
-    }
+    const result = completion.result;
+    const { cleaned: cleanedText, patches } = materialize(result);
+    const recheckResult = detectAI(cleanedText);
+    const qualityDecision = latestQualityDecision || completion.qualityDecision;
+    const retryCount = 0;
 
     // Record usage after successful humanization (only count final output)
     const outputWords = countWords(cleanedText);
@@ -195,6 +239,23 @@ ${cleanedText}`;
         flaggedCount: recheckResult.paragraphScores.filter(p => p.score < 60).length,
       },
       retries: retryCount,
+      retryCount,
+      engine: completion.engine,
+      model: completion.model,
+      fallbackCount: completion.fallbackCount,
+      modelFallbacks: completion.fallbackCount,
+      latencyMs: completion.latencyMs,
+      qualityDecision: qualityDecision.decision,
+      qualityGates: qualityDecision.gates,
+      protectedTerms,
+      patches,
+      warnings: qualityDecision.warnings,
+      mode: mode || null,
+      intensity,
+      qualityMode,
+      rewriteScope,
+      targetedParagraphs: targetParagraphs,
+      trustReportAfter: buildTrustReport(cleanedText, recheckResult),
       wordUsage: {
         inputWords: wordCount,
         outputWords,

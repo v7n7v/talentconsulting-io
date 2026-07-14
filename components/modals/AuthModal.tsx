@@ -1,38 +1,102 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { authHelpers } from '@/lib/firebase';
 import { useStore } from '@/lib/store';
 import { showToast } from '@/components/Toast';
+import { TalentConsultingMark } from '@/components/BrandLogo';
 import { analytics } from '@/lib/analytics';
-import type { MultiFactorResolver } from 'firebase/auth';
+import { clearPendingAuthRedirect, setPendingAuthRedirect } from '@/lib/auth-redirect';
+import { readStoredAttribution } from '@/lib/attribution';
+import type { MultiFactorResolver, User } from 'firebase/auth';
 
 interface AuthModalProps {
   mode: 'login' | 'signup';
   onClose: () => void;
   onSwitchMode: () => void;
+  postAuthRedirect?: string | null;
 }
 
 /* ── Shared modal shell (defined outside component to preserve identity across renders) ── */
-function ModalShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function ModalShell({ children, onClose, titleId, returnFocusSelector }: {
+  children: React.ReactNode;
+  onClose: () => void;
+  titleId: string;
+  returnFocusSelector?: string;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusableSelector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+    const dialog = dialogRef.current;
+    const firstFocusable = dialog?.querySelector<HTMLElement>(focusableSelector);
+    window.setTimeout(() => firstFocusable?.focus(), 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter(element => element.offsetParent !== null);
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      const fallbackFocus = returnFocusSelector
+        ? document.querySelector<HTMLElement>(returnFocusSelector)
+        : null;
+      const returnTarget = previousFocus && previousFocus !== document.body ? previousFocus : fallbackFocus;
+      returnTarget?.focus({ preventScroll: true });
+    };
+  }, [onClose, returnFocusSelector]);
+
   return (
     <AnimatePresence>
       <motion.div
+        key="auth-modal-backdrop"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
         onClick={onClose}
       />
-      <div className="fixed inset-0 z-[101] flex items-center justify-center p-4">
+      <div key="auth-modal-dialog" className="pointer-events-none fixed inset-0 z-[101] flex items-end justify-center p-0 sm:items-center sm:p-4">
         <motion.div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          tabIndex={-1}
           initial={{ opacity: 0, scale: 0.96, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 12 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
           onClick={e => e.stopPropagation()}
-          className="w-full max-w-md rounded-2xl overflow-hidden shadow-xl"
+          className="pointer-events-auto max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-2xl shadow-xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl"
           style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-subtle)',
@@ -45,7 +109,47 @@ function ModalShell({ children, onClose }: { children: React.ReactNode; onClose:
   );
 }
 
-export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProps) {
+function trackSocialAttributionSignup() {
+  const attribution = readStoredAttribution();
+  if (attribution?.utmSource) analytics.socialSignup(attribution.utmSource);
+}
+
+function getGoogleAuthErrorMessage(error: any) {
+  switch (error?.code) {
+    case 'auth/unauthorized-domain':
+      return 'Google sign-in is not configured for this domain yet.';
+    case 'auth/operation-not-allowed':
+      return 'Google sign-in is not enabled for this project yet.';
+    case 'auth/account-exists-with-different-credential':
+      return 'This email is already linked to another sign-in method. Sign in with email first, then connect Google in settings.';
+    case 'auth/web-storage-unsupported':
+      return 'Your browser is blocking the secure storage Google sign-in needs. Try again in this tab or use email sign-in.';
+    case 'auth/popup-blocked':
+      return 'Your browser blocked Google sign-in. Try again, or use email sign-in.';
+    default:
+      return 'Google sign-in could not finish. Please try again.';
+  }
+}
+
+function sendWelcomeEmail(user: User, email: string | null | undefined, name: string | null | undefined) {
+  void user.getIdToken()
+    .then((token) => fetch('/api/email/welcome', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ email, name }),
+    }))
+    .catch(() => {});
+}
+
+function navigateAfterAuth(path: string | null | undefined) {
+  if (typeof window === 'undefined') return;
+  if (!path || !path.startsWith('/') || path.startsWith('//')) return;
+  window.location.assign(path);
+}
+
+const googleAuthEnabled = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED !== 'false';
+
+export default function AuthModal({ mode, onClose, onSwitchMode, postAuthRedirect }: AuthModalProps) {
   const { setUser } = useStore();
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(false);
@@ -58,6 +162,35 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
     password: '',
     confirmPassword: '',
   });
+  const isSonaUploadIntent = postAuthRedirect?.startsWith('/suite/agent') || false;
+  const hasPendingResume = postAuthRedirect?.includes('pendingResume=1') || false;
+  const authCompletedRef = useRef(false);
+  const authPresentationTrackedRef = useRef(false);
+  const modalTitle = mode === 'login'
+    ? hasPendingResume ? 'Resume ready. Sign in to continue' : isSonaUploadIntent ? 'Sign in to upload your resume' : 'Welcome back'
+    : hasPendingResume ? 'Resume ready. Create your account' : isSonaUploadIntent ? 'Create account to upload your resume' : 'Create Account';
+  const modalSubtitle = mode === 'login'
+    ? hasPendingResume ? 'Sona will save this resume, then open your target brief.' : isSonaUploadIntent ? 'Sona will use your saved resume context to scout job picks.' : 'Sign in to your account'
+    : hasPendingResume ? 'Sona will save this resume, then open your target brief.' : isSonaUploadIntent ? 'Sona saves your resume context before scouting review-ready job picks.' : 'Get started with TalentConsulting.io';
+  const returnFocusSelector = hasPendingResume ? '[data-sona-resume-upload-trigger="true"]' : undefined;
+
+  useEffect(() => {
+    if (!hasPendingResume || authPresentationTrackedRef.current) return;
+    authPresentationTrackedRef.current = true;
+    analytics.sonaResumeAuthPresented(mode);
+  }, [hasPendingResume, mode]);
+
+  const handleDismiss = useCallback(() => {
+    if (hasPendingResume && !authCompletedRef.current) {
+      analytics.sonaResumeAuthAbandoned(mode);
+    }
+    onClose();
+  }, [hasPendingResume, mode, onClose]);
+
+  const completeAndClose = useCallback(() => {
+    authCompletedRef.current = true;
+    onClose();
+  }, [onClose]);
 
   // MFA Challenge State (TOTP — Google Authenticator)
   const [showMFAChallenge, setShowMFAChallenge] = useState(false);
@@ -98,8 +231,11 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
         if (data?.user) {
           setUser(data.user);
           analytics.signUp('email');
+          trackSocialAttributionSignup();
           showToast('Account created! Welcome!', 'check_circle');
-          onClose();
+          sendWelcomeEmail(data.user, formData.email, formData.name);
+          completeAndClose();
+          navigateAfterAuth(postAuthRedirect);
         }
       } else {
         if (!formData.email || !formData.password) {
@@ -133,7 +269,8 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
           setUser(data.user);
           analytics.login('email');
           showToast('Login successful!', 'check_circle');
-          onClose();
+          completeAndClose();
+          navigateAfterAuth(postAuthRedirect);
         }
       }
     } catch (err: any) {
@@ -169,7 +306,8 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
         setUser(data.user);
         analytics.login('mfa');
         showToast('Login successful!', 'check_circle');
-        onClose();
+        completeAndClose();
+        navigateAfterAuth(postAuthRedirect);
       }
     } catch (err: any) {
       console.error('MFA verify error:', err);
@@ -184,17 +322,15 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
     setError('');
 
     try {
-      const { data, error } = await authHelpers.signInWithGoogle();
+      setPendingAuthRedirect(postAuthRedirect);
+      const { error, redirectStarted } = await authHelpers.signInWithGoogle();
+      if (redirectStarted) return;
       if (error) throw error;
-      if (data?.user) {
-        setUser(data.user);
-        analytics.signUp('google');
-        showToast('Signed in with Google!', 'check_circle');
-        onClose();
-      }
+      clearPendingAuthRedirect();
     } catch (err: any) {
       console.error('OAuth error:', err);
-      setError(err.message || 'Failed to sign in with Google');
+      clearPendingAuthRedirect();
+      setError(getGoogleAuthErrorMessage(err));
     } finally {
       setOauthLoading(false);
     }
@@ -223,7 +359,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
     }
   };
 
-  const inputClass = "w-full rounded-xl px-4 py-3 text-sm outline-none transition-all";
+  const inputClass = "w-full rounded-xl px-4 py-3 text-base outline-none transition-all sm:text-sm";
   const inputStyle = {
     background: 'var(--bg-input, var(--bg-hover))',
     border: '1px solid var(--border-subtle)',
@@ -233,16 +369,13 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
   // ── MFA VERIFICATION ──
   if (showMFAChallenge) {
     return (
-      <ModalShell onClose={onClose}>
+      <ModalShell onClose={handleDismiss} titleId="auth-mfa-title" returnFocusSelector={returnFocusSelector}>
         <div className="p-6">
           <div className="text-center mb-6">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4"
-              style={{ background: 'rgba(245,158,11,0.1)' }}
-            >
-              <span className="material-symbols-rounded text-2xl" style={{ color: 'var(--warning)' }}>lock</span>
+            <div className="icon-shell-neutral w-12 h-12 rounded-xl border flex items-center justify-center mx-auto mb-4">
+              <span className="material-symbols-rounded text-2xl">lock</span>
             </div>
-            <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+            <h2 id="auth-mfa-title" className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
               Two-Factor Verification
             </h2>
             <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
@@ -259,6 +392,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
               style={inputStyle}
               placeholder="000000"
               maxLength={6}
+              autoComplete="one-time-code"
               disabled={loading}
               autoFocus
             />
@@ -294,15 +428,12 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
   // ── PASSWORD RESET SENT ──
   if (resetEmailSent) {
     return (
-      <ModalShell onClose={onClose}>
+      <ModalShell onClose={handleDismiss} titleId="auth-reset-sent-title" returnFocusSelector={returnFocusSelector}>
         <div className="p-6 text-center">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4"
-            style={{ background: 'var(--accent-dim)' }}
-          >
-            <span className="material-symbols-rounded text-2xl" style={{ color: 'var(--accent)' }}>mail</span>
+          <div className="icon-shell-neutral w-12 h-12 rounded-xl border flex items-center justify-center mx-auto mb-4">
+            <span className="material-symbols-rounded text-2xl">mail</span>
           </div>
-          <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>Check Your Email!</h2>
+          <h2 id="auth-reset-sent-title" className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>Check Your Email!</h2>
           <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
             We've sent a password reset link to <strong style={{ color: 'var(--accent)' }}>{formData.email}</strong>
           </p>
@@ -321,17 +452,14 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
   // ── FORGOT PASSWORD ──
   if (showForgotPassword) {
     return (
-      <ModalShell onClose={onClose}>
+      <ModalShell onClose={handleDismiss} titleId="auth-forgot-title" returnFocusSelector={returnFocusSelector}>
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'var(--accent-dim)' }}
-            >
-              <span className="material-symbols-rounded text-lg" style={{ color: 'var(--accent)' }}>key</span>
+            <div className="icon-shell-neutral w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-rounded text-lg">key</span>
             </div>
             <div>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Reset Password</h2>
+              <h2 id="auth-forgot-title" className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Reset Password</h2>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Enter your email and we'll send you a reset link.</p>
             </div>
           </div>
@@ -346,6 +474,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
                 className={inputClass}
                 style={inputStyle}
                 placeholder="your@email.com"
+                autoComplete="email"
                 disabled={loading}
               />
             </div>
@@ -380,29 +509,24 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
 
   // ── MAIN LOGIN/SIGNUP ──
   return (
-    <ModalShell onClose={onClose}>
+    <ModalShell onClose={handleDismiss} titleId="auth-main-title" returnFocusSelector={returnFocusSelector}>
       <div className="p-6">
         {/* Header */}
         <div className="flex items-center gap-3 mb-5">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'var(--accent-dim)' }}
-          >
-            <span className="material-symbols-rounded text-lg" style={{ color: 'var(--accent)' }}>
-              {mode === 'login' ? 'lock_open' : 'auto_awesome'}
-            </span>
-          </div>
+          <TalentConsultingMark className="h-10 w-10 rounded-xl border border-[var(--border-subtle)]" />
           <div className="flex-1">
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {mode === 'login' ? 'Welcome back' : 'Create Account'}
+            <h2 id="auth-main-title" className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {modalTitle}
             </h2>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {mode === 'login' ? 'Sign in to your account' : 'Get started with TalentConsulting.io'}
+              {modalSubtitle}
             </p>
           </div>
           <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
+            type="button"
+            onClick={handleDismiss}
+            aria-label="Close sign-in dialog"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl transition-colors"
             style={{ color: 'var(--text-muted)' }}
             onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -411,39 +535,42 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
           </button>
         </div>
 
-        {/* OAuth */}
-        <button
-          onClick={handleGoogleAuth}
-          disabled={oauthLoading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 mb-4"
-          style={{
-            background: 'var(--bg-input, var(--bg-hover))',
-            border: '1px solid var(--border-subtle)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          {oauthLoading ? (
-            <div className="w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--border-subtle)', borderTopColor: 'var(--text-primary)' }} />
-          ) : (
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-            </svg>
-          )}
-          Continue with Google
-        </button>
+        {googleAuthEnabled && (
+          <>
+            {/* OAuth */}
+            <button
+              onClick={handleGoogleAuth}
+              disabled={oauthLoading}
+              className="mb-4 flex w-full items-center justify-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
+              style={{
+                background: 'var(--bg-input, var(--bg-hover))',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              {oauthLoading ? (
+                <div className="h-5 w-5 animate-spin rounded-full border-2" style={{ borderColor: 'var(--border-subtle)', borderTopColor: 'var(--text-primary)' }} />
+              ) : (
+                <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+              )}
+              Continue with Google
+            </button>
 
-        {/* Divider */}
-        <div className="relative mb-4">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full" style={{ borderTop: '1px solid var(--border-subtle)' }} />
-          </div>
-          <div className="relative flex justify-center text-xs">
-            <span className="px-3" style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>or continue with email</span>
-          </div>
-        </div>
+            <div className="relative mb-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full" style={{ borderTop: '1px solid var(--border-subtle)' }} />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="px-3" style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>or continue with email</span>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -457,6 +584,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
                 className={inputClass}
                 style={inputStyle}
                 placeholder="John Doe"
+                autoComplete="name"
                 disabled={loading}
               />
             </div>
@@ -471,6 +599,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
               className={inputClass}
               style={inputStyle}
               placeholder="your@email.com"
+              autoComplete="email"
               disabled={loading}
             />
           </div>
@@ -484,6 +613,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
               className={inputClass}
               style={inputStyle}
               placeholder={mode === 'signup' ? 'Min 10 characters' : 'Enter password'}
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               disabled={loading}
             />
           </div>
@@ -498,6 +628,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
                 className={inputClass}
                 style={inputStyle}
                 placeholder="Re-enter your password"
+                autoComplete="new-password"
                 disabled={loading}
               />
             </div>
@@ -530,7 +661,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode }: AuthModalProp
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleDismiss}
               disabled={loading}
               className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}

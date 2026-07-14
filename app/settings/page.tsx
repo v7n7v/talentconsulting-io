@@ -321,31 +321,33 @@ export default function SettingsPage() {
     const handleEmailChange = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!newEmail) {
+        const trimmedEmail = newEmail.trim();
+
+        if (!trimmedEmail) {
             addToast('error', 'Please enter a new email address');
             return;
         }
 
         // Email validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(newEmail)) {
+        if (!emailRegex.test(trimmedEmail)) {
             addToast('error', 'Please enter a valid email address');
             return;
         }
 
-        if (newEmail === user?.email) {
-            addToast('info', 'This is already your current email');
+        if (trimmedEmail.toLowerCase() === user?.email?.toLowerCase()) {
+            addToast('info', 'That is already your account email');
             return;
         }
 
         setIsUpdatingEmail(true);
         try {
-            const { data, error } = await authHelpers.updateEmail(newEmail);
+            const { error } = await authHelpers.updateEmail(trimmedEmail);
 
             if (error) {
-                addToast('error', error.message || 'Failed to update email');
+                addToast('error', error.message || 'Failed to send verification email');
             } else {
-                addToast('success', `Verification link sent to ${newEmail}! Please check your inbox and click the link to confirm.`);
+                addToast('success', `Verification email sent to ${trimmedEmail}. Open the link to finish the change.`);
                 setNewEmail('');
             }
         } catch (err: any) {
@@ -423,7 +425,7 @@ export default function SettingsPage() {
     const passwordStrength = getPasswordStrength(newPassword);
 
     return (
-        <div className="min-h-screen p-6 lg:p-8">
+        <div className="min-h-dvh p-6 lg:p-8">
             {/* Toast Notifications */}
             <div className="fixed top-4 right-4 z-50 space-y-2">
                 <AnimatePresence>
@@ -574,7 +576,7 @@ export default function SettingsPage() {
                                                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
                                             />
                                             <p className="mt-2 text-xs text-slate-500">
-                                                A verification link will be sent to your new email address. You must click the link to complete the change.
+                                                We will send a verification link. Your current email stays active until you confirm the new one.
                                             </p>
                                         </div>
                                         <motion.button
@@ -590,10 +592,10 @@ export default function SettingsPage() {
                                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                                     </svg>
-                                                    Updating...
+                                                    Sending link...
                                                 </span>
                                             ) : (
-                                                'Update Email'
+                                                'Send verification link'
                                             )}
                                         </motion.button>
                                     </motion.form>
@@ -752,4 +754,3 @@ export default function SettingsPage() {
         </div>
     );
 }
-

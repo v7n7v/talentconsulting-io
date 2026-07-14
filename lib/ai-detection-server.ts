@@ -1,10 +1,10 @@
 /**
  * Server-Side AI Detection — LLM-Assisted Predictability Analysis
- * "Binoculars-lite": Uses Gemini Flash to test if text is statistically predictable.
- * If Gemini can accurately complete masked sentences from the text, the text was likely AI-generated.
+ * "Binoculars-lite": Uses a low-cost OpenRouter model to test if text is statistically predictable.
+ * If the model can accurately complete masked sentences from the text, the text was likely AI-generated.
  */
 
-import { geminiJSONCompletion } from './ai/gemini-client';
+import { writingJSONCompletion } from './ai/writing-model-router';
 import { normalizeText } from './sanitize';
 import { splitSentences } from './ai-detection';
 
@@ -24,7 +24,7 @@ interface SentenceSample {
 
 /**
  * Deep AI detection via masked sentence completion.
- * Takes 5 random sentences, masks the last 3 words, and asks Gemini to complete them.
+ * Takes 5 random sentences, masks the last 3 words, and asks a model to complete them.
  * High prediction overlap = text was written by a model (it's what a model would say).
  */
 export async function deepDetect(text: string): Promise<DeepDetectionResult> {
@@ -56,15 +56,20 @@ export async function deepDetect(text: string): Promise<DeepDetectionResult> {
     return { original: s, masked: visible + ' ___', hidden };
   });
 
-  // Ask Gemini to complete all at once
+  // Ask a low-cost model to complete all at once
   const systemPrompt = `You are a sentence completion engine. For each incomplete sentence, predict the most natural ending (1-4 words). Respond with JSON: { "completions": ["completion1", "completion2", ...] }`;
 
   const userPrompt = `Complete each sentence naturally:\n${maskedSentences.map((m, i) => `${i + 1}. ${m.masked}`).join('\n')}`;
 
   try {
-    const result = await geminiJSONCompletion<{ completions: string[] }>(
-      systemPrompt, userPrompt, { temperature: 0.1, maxTokens: 512 }
-    );
+    const { result } = await writingJSONCompletion<{ completions: string[] }>({
+      task: 'deep_detect',
+      systemPrompt,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 512,
+      title: 'TalentConsulting.io Deep Writing Detection',
+    });
 
     const completions = result.completions || [];
 
@@ -103,7 +108,7 @@ export async function deepDetect(text: string): Promise<DeepDetectionResult> {
     return { predictabilityScore, humanConfidence, sentenceSamples: samples, verdict };
 
   } catch (error) {
-    console.error('[deepDetect] Gemini error:', error);
+    console.error('[deepDetect] OpenRouter error:', error);
     return {
       predictabilityScore: 50,
       humanConfidence: 50,

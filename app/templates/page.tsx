@@ -1,9 +1,19 @@
 import type { Metadata } from 'next';
+import JsonLd from '@/components/seo/JsonLd';
+import { breadcrumbJsonLd, buildMetadata, faqJsonLd } from '@/lib/seo';
 import TemplatesGallery from './TemplatesGallery';
 
-export const metadata: Metadata = {
-  title: 'Free ATS Resume Templates 2026 — Modern, Professional & ATS-Optimized',
-  description: 'Browse free, ATS-friendly resume templates designed to pass applicant tracking systems. Professional, modern, creative, and executive styles. Build your resume in minutes with AI-powered tools.',
+const FAQS = [
+  { q: 'Are these resume templates free?', a: 'Yes. You can build, preview, and customize a resume with these templates for free.' },
+  { q: 'Are the templates ATS-compatible?', a: 'Yes. The templates are designed to parse cleanly through common applicant tracking systems.' },
+  { q: 'Can I customize the templates?', a: 'Yes. You can customize sections, content, and formatting in the resume builder.' },
+  { q: 'What file formats can I download?', a: 'You can export resume documents in formats designed for both human review and ATS submission.' },
+];
+
+export const metadata: Metadata = buildMetadata({
+  title: 'Free ATS resume templates',
+  description: 'Browse free ATS-friendly resume templates for professional, modern, creative, executive, technical, academic, and entry-level resumes.',
+  path: '/templates',
   keywords: [
     'free resume templates',
     'ATS resume templates',
@@ -16,16 +26,21 @@ export const metadata: Metadata = {
     'best resume format',
     'resume template for job application',
   ],
-  openGraph: {
-    title: 'Free ATS Resume Templates — Talent Studio',
-    description: 'Professional, ATS-optimized resume templates. Build your perfect resume with AI.',
-    url: 'https://talentconsulting.io/templates',
-  },
-  alternates: {
-    canonical: '/templates',
-  },
-};
+});
 
 export default function TemplatesPage() {
-  return <TemplatesGallery />;
+  return (
+    <>
+      <JsonLd
+        data={[
+          breadcrumbJsonLd([
+            { name: 'Home', path: '/' },
+            { name: 'Templates', path: '/templates' },
+          ]),
+          faqJsonLd(FAQS),
+        ]}
+      />
+      <TemplatesGallery />
+    </>
+  );
 }

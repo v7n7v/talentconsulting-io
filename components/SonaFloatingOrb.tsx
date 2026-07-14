@@ -1,14 +1,27 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { useUserTier } from '@/hooks/use-user-tier';
 import { authFetch } from '@/lib/auth-fetch';
+import SonaThinkingTile from '@/components/SonaThinkingTile';
+import { SonaMark, type SonaMarkState } from '@/components/sona';
+import SonaCapabilityDrawer from '@/components/sona/SonaCapabilityDrawer';
+import { useApplicationKitContext } from '@/hooks/useApplicationKitContext';
+import { getSonaCapabilitiesForPath, getSonaCapability, type SonaCapability } from '@/lib/sona/capabilities';
+import { buildSonaCapabilityPrompt, createSonaExecutionContext, type SonaOpenDetail } from '@/lib/sona/execution-context';
 
-type Message = { role: 'user' | 'assistant'; content: string };
+type SonaActionPlan = {
+  intent: string;
+  capabilityId: string;
+  plannedSteps: string[];
+  approvalRequired: boolean;
+  artifactTargets: string[];
+};
+type Message = { role: 'user' | 'assistant'; content: string; actionPlan?: SonaActionPlan };
 type Insight = {
   id: string; type: string; title: string; body: string;
   icon: string; priority: 'high' | 'medium' | 'low';
@@ -18,14 +31,39 @@ type ConversationMeta = { id: string; title: string; personality: string; lastMe
 type PanelTab = 'chat' | 'history' | 'insights';
 type PromoData = { active: boolean; headline: string; code: string; ctaText: string };
 
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionStorageGet(key: string): string | null {
+  try {
+    return typeof window === 'undefined' ? null : window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionStorageSet(key: string, value: string): void {
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // Best-effort preference only.
+  }
+}
+
 const PAGE_HINTS: Record<string, string> = {
   '/suite/job-search': 'I found a job I\'m interested in — can you score it?',
   '/suite/resume': 'Can you review my resume?',
-  '/suite/applications': 'Any applications I should follow up on?',
+  '/suite/applications': 'Any applications, offers, or follow-ups I should handle?',
   '/suite/market-oracle': 'What does the market look like for my target roles?',
   '/suite/skill-bridge': 'What skills should I focus on learning?',
   '/suite/flashcards': 'Help me prepare for an upcoming interview',
-  '/suite/negotiate': 'I got an offer — help me negotiate',
+  '/suite/interview-sim': 'Help me prepare for an upcoming interview',
+  '/suite/negotiate': 'Open Applications and help me review my offer',
   '/suite/linkedin': 'Can you optimize my LinkedIn profile?',
   '/suite/cover-letter': 'Write a cover letter for my next application',
   '/suite/network': 'Who should I follow up with this week?',
@@ -43,11 +81,13 @@ export default function SonaFloatingOrb() {
   const isLight = theme === 'light';
   const { user } = useStore();
   const { tier } = useUserTier();
+  const { context: kitContext } = useApplicationKitContext();
 
   const [shimmerCount, setShimmerCount] = useState(0);
   const [showTooltip, setShowTooltip] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PanelTab>('chat');
+  const [activeContextLabel, setActiveContextLabel] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -69,6 +109,15 @@ export default function SonaFloatingOrb() {
 
   const isMaxTier = tier === 'studio' || tier === 'god';
   const isAgentPage = pathname === '/suite/agent';
+  const isSuiteWorkspace = pathname?.startsWith('/suite') ?? false;
+  const isHomeDashboard = pathname === '/';
+  const shouldSuppressPromo = isSuiteWorkspace || isHomeDashboard;
+  const pageCapabilities = useMemo(() => getSonaCapabilitiesForPath(pathname), [pathname]);
+  const pageExecutionContext = useMemo(() => createSonaExecutionContext({
+    pathname,
+    applicationKit: kitContext,
+    sourceTool: pageCapabilities[0]?.toolName,
+  }), [pathname, kitContext, pageCapabilities]);
 
   // Promo bubble state
   const [promo, setPromo] = useState<PromoData | null>(null);
@@ -91,6 +140,28 @@ export default function SonaFloatingOrb() {
   useEffect(() => {
     if (chatOpen) setTimeout(() => inputRef.current?.focus(), 200);
   }, [chatOpen]);
+
+  useEffect(() => {
+    const handleSonaOpen = (event: Event) => {
+      const detail = (event as CustomEvent<SonaOpenDetail>).detail;
+      const capability = getSonaCapability(detail?.capabilityId);
+      const detailContext = createSonaExecutionContext({
+        pathname,
+        applicationKit: kitContext,
+        sourceTool: capability?.toolName || detail?.contextLabel || pageExecutionContext.sourceTool,
+        context: detail?.context,
+      });
+      const prompt = detail?.prompt || (capability ? buildSonaCapabilityPrompt(capability, detailContext) : '');
+      setActiveTab('chat');
+      setChatOpen(true);
+      setShowTooltip(false);
+      setActiveContextLabel(detail?.contextLabel || capability?.toolName || detailContext.pageLabel || null);
+      if (prompt) setInput(prompt);
+      setTimeout(() => inputRef.current?.focus(), 120);
+    };
+    window.addEventListener('sona:open', handleSonaOpen);
+    return () => window.removeEventListener('sona:open', handleSonaOpen);
+  }, [kitContext, pageExecutionContext.sourceTool, pathname]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -121,7 +192,8 @@ export default function SonaFloatingOrb() {
 
   // Fetch promo on mount
   useEffect(() => {
-    if (sessionStorage.getItem('tc_promo_sona_dismissed')) {
+    if (shouldSuppressPromo) return;
+    if (safeSessionStorageGet('tc_promo_sona_dismissed')) {
       setPromoDismissed(true);
       return;
     }
@@ -134,19 +206,20 @@ export default function SonaFloatingOrb() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [shouldSuppressPromo]);
 
   // Re-show promo every 30s after close (unless permanently dismissed)
   useEffect(() => {
+    if (shouldSuppressPromo) return;
     if (!promo?.active || promoDismissed || promoVisible || chatOpen) return;
     const timer = setTimeout(() => setPromoVisible(true), 30000);
     return () => clearTimeout(timer);
-  }, [promo, promoDismissed, promoVisible, chatOpen]);
+  }, [shouldSuppressPromo, promo, promoDismissed, promoVisible, chatOpen]);
 
   // Hide promo when chat opens
   useEffect(() => {
-    if (chatOpen) setPromoVisible(false);
-  }, [chatOpen]);
+    if (chatOpen || shouldSuppressPromo) setPromoVisible(false);
+  }, [chatOpen, shouldSuppressPromo]);
 
   const fetchInsights = async () => {
     try {
@@ -227,22 +300,37 @@ export default function SonaFloatingOrb() {
     setLoading(true);
 
     try {
-      const personality = localStorage.getItem('sona-personality') || 'coach';
+      const personality = safeLocalStorageGet('sona-personality') || 'coach';
       const res = await authFetch('/api/agent/chat', {
         method: 'POST',
-        body: JSON.stringify({ messages: updated, personality, conversationId }),
+        body: JSON.stringify({
+          messages: updated,
+          personality,
+          conversationId,
+          resumeVersionId: kitContext.resumeVersionId || undefined,
+        }),
       });
       const data = await res.json();
       if (data.gated) { setMessages(prev => [...prev, { role: 'assistant', content: `🔒 ${data.error}` }]); setLoading(false); return; }
       if (!res.ok) throw new Error(data.error || 'Failed');
       if (data.conversationId) setConversationId(data.conversationId);
-      setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.message, actionPlan: data.actionPlan }]);
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Try the full view.' }]);
     } finally {
       setLoading(false);
     }
-  }, [input, messages, loading, user, conversationId, router]);
+  }, [input, messages, loading, user, conversationId, router, kitContext.resumeVersionId]);
+
+  const handleRunCapability = useCallback((capability: SonaCapability) => {
+    const context = createSonaExecutionContext({
+      pathname,
+      applicationKit: kitContext,
+      sourceTool: capability.toolName,
+    });
+    setActiveContextLabel(capability.toolName);
+    sendMessage(buildSonaCapabilityPrompt(capability, context));
+  }, [kitContext, pathname, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -253,8 +341,9 @@ export default function SonaFloatingOrb() {
   };
 
   const contextHint = PAGE_HINTS[pathname] || undefined;
-  const tierLabel = isMaxTier ? 'Unlimited' : tier === 'pro' ? '1/week' : '2 demos';
+  const tierLabel = isMaxTier ? 'Proactive' : tier === 'pro' ? 'Manual scout' : '1 free scout';
   const accentColor = '#f43f5e';
+  const sonaState: SonaMarkState = loading ? 'thinking' : chatOpen ? (input.trim() ? 'listening' : 'responding') : 'idle';
 
   const formatTimeAgo = (dateStr: string) => {
     const diffMin = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
@@ -270,7 +359,7 @@ export default function SonaFloatingOrb() {
   if (isAgentPage) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40" ref={panelRef}>
+    <div className="fixed bottom-6 right-6 z-40 block" ref={panelRef}>
 
       {/* ═══ PANEL ═══ */}
       <AnimatePresence>
@@ -280,7 +369,7 @@ export default function SonaFloatingOrb() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.92 }}
             transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="fixed inset-x-2 bottom-16 sm:absolute sm:inset-x-auto sm:bottom-16 sm:right-0 w-auto sm:w-[340px] md:w-[380px] rounded-2xl overflow-hidden flex flex-col"
+            className="fixed inset-x-2 bottom-[calc(var(--mobile-appbar-height,0px)+5.5rem)] sm:absolute sm:inset-x-auto sm:bottom-16 sm:right-0 w-auto overflow-hidden rounded-2xl sm:w-[340px] md:w-[380px] 2xl:right-[320px] flex flex-col"
             style={{
               height: 'min(480px, 70vh)',
               background: isLight ? '#fff' : '#111114',
@@ -300,12 +389,10 @@ export default function SonaFloatingOrb() {
             >
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${accentColor}15` }}>
-                    <span className="material-symbols-rounded text-[16px]" style={{ color: accentColor }}>auto_awesome</span>
-                  </div>
+                  <SonaMark size="xs" state={loading ? 'thinking' : 'idle'} />
                   <div>
                     <p className="text-sm font-semibold text-[var(--text-primary)] leading-none">Sona</p>
-                    <p className="text-[10px] text-[var(--text-muted)]">{tierLabel}</p>
+                    <p className="text-[10px] text-[var(--text-muted)]">{activeContextLabel ? `Working in ${activeContextLabel}` : tierLabel}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -373,7 +460,7 @@ export default function SonaFloatingOrb() {
                 <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
                   {messages.length === 0 && !loading && (
                     <div className="text-center py-6">
-                      <span className="material-symbols-rounded text-[28px] mb-2 block" style={{ color: accentColor }}>auto_awesome</span>
+                      <SonaMark size="md" state="idle" className="mx-auto mb-3" />
                       <p className="text-xs text-[var(--text-secondary)] mb-4">Quick chat with Sona</p>
 
                       {contextHint && (
@@ -386,6 +473,13 @@ export default function SonaFloatingOrb() {
                           {contextHint}
                         </button>
                       )}
+
+                      <SonaCapabilityDrawer
+                        capabilities={pageCapabilities}
+                        context={pageExecutionContext}
+                        onRun={handleRunCapability}
+                        compact
+                      />
 
                       <button onClick={() => sendMessage('What jobs match my resume?')} className="w-full text-left px-3 py-2 rounded-xl text-xs text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
                         <span className="material-symbols-rounded text-[14px] mr-1.5 align-middle opacity-50">radar</span>What jobs match my resume?
@@ -402,6 +496,16 @@ export default function SonaFloatingOrb() {
                         className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${msg.role === 'user' ? 'text-white' : 'text-[var(--text-primary)]'}`}
                         style={msg.role === 'user' ? { background: accentColor } : { background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)' }}
                       >
+                        {msg.role === 'assistant' && msg.actionPlan && (
+                          <div
+                            className="mb-2 rounded-xl border px-2.5 py-2 text-[10px] leading-snug"
+                            style={{ borderColor: `${accentColor}22`, background: `${accentColor}08`, color: 'var(--text-secondary)' }}
+                          >
+                            <div className="font-semibold" style={{ color: accentColor }}>Plan: {msg.actionPlan.capabilityId}</div>
+                            <div className="mt-1">{msg.actionPlan.plannedSteps.join(' -> ')}</div>
+                            {msg.actionPlan.approvalRequired && <div className="mt-1">Review required before external action.</div>}
+                          </div>
+                        )}
                         <div className="whitespace-pre-wrap">{msg.content}</div>
                       </div>
                     </div>
@@ -409,56 +513,16 @@ export default function SonaFloatingOrb() {
 
                   {loading && (
                     <div className="flex justify-start">
-                      <div
-                        className="rounded-2xl px-3 py-2.5 sona-thinking-container"
-                        style={{ minWidth: '140px' }}
-                      >
-                        {/* Shimmer sweep */}
-                        <div
-                          className="sona-shimmer-sweep"
-                          style={{
-                            background: `linear-gradient(90deg, transparent, ${accentColor}08, ${accentColor}15, ${accentColor}08, transparent)`,
-                            animation: 'sona-shimmer 2s ease-in-out infinite',
-                          }}
-                        />
-                        <div className="flex items-center gap-2 relative z-10">
-                          <div className="flex items-center gap-[3px]">
-                            {[0, 1, 2, 3].map(i => (
-                              <motion.div
-                                key={i}
-                                animate={{
-                                  scale: [0.4, 1, 0.4],
-                                  opacity: [0.25, 1, 0.25],
-                                }}
-                                transition={{
-                                  duration: 1.4,
-                                  repeat: Infinity,
-                                  delay: i * 0.18,
-                                  ease: 'easeInOut',
-                                }}
-                                className="w-[5px] h-[5px] rounded-full"
-                                style={{ background: accentColor }}
-                              />
-                            ))}
-                          </div>
-                          <motion.span
-                            animate={{ opacity: [0.3, 0.7, 0.3] }}
-                            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                            className="text-[10px] text-[var(--text-muted)]"
-                          >
-                            Thinking
-                          </motion.span>
-                        </div>
-                        {/* Bottom accent line */}
-                        <div className="sona-accent-line" style={{ height: '1.5px' }}>
-                          <motion.div
-                            animate={{ x: ['-100%', '100%'] }}
-                            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                            className="h-full w-1/2"
-                            style={{ background: `linear-gradient(90deg, transparent, ${accentColor}, transparent)` }}
-                          />
-                        </div>
-                      </div>
+                      <SonaThinkingTile
+                        variant="agent"
+                        accentColor={accentColor}
+                        title="Thinking"
+                        description="Sona is checking your context."
+                        activeStage="thinking"
+                        icon="neurology"
+                        compact
+                        className="min-w-[170px]"
+                      />
                     </div>
                   )}
                 </div>
@@ -466,7 +530,7 @@ export default function SonaFloatingOrb() {
                 {/* Input */}
                 <div className="shrink-0 px-3 py-2.5" style={{ borderTop: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}` }}>
                   <div
-                    className="flex items-center gap-2 rounded-xl px-3 py-2"
+                    className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-1.5"
                     style={{ background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}` }}
                   >
                     <input
@@ -476,15 +540,16 @@ export default function SonaFloatingOrb() {
                       onKeyDown={handleKeyDown}
                       placeholder="Ask Sona..."
                       disabled={loading}
-                      className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                      className="min-h-11 flex-1 border-none bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] sm:text-sm"
                     />
                     <button
                       onClick={() => sendMessage()}
                       disabled={!input.trim() || loading}
-                      className="w-6 h-6 rounded-lg flex items-center justify-center transition-all disabled:opacity-20"
+                      className="flex h-11 w-11 items-center justify-center rounded-lg transition-all disabled:opacity-20"
+                      aria-label="Send message to Sona"
                       style={{ background: input.trim() ? accentColor : 'transparent', color: input.trim() ? '#fff' : 'var(--text-muted)' }}
                     >
-                      <span className="material-symbols-rounded text-[14px]">arrow_upward</span>
+                      <span className="material-symbols-rounded text-[18px]">arrow_upward</span>
                     </button>
                   </div>
                 </div>
@@ -517,9 +582,9 @@ export default function SonaFloatingOrb() {
                   </div>
                 )}
 
-                {conversations.map(conv => (
+                {conversations.map((conv, index) => (
                   <button
-                    key={conv.id}
+                    key={conv.id || `conversation-${index}`}
                     onClick={() => loadConversation(conv.id)}
                     className={`w-full text-left px-3 py-2.5 rounded-xl transition-colors ${
                       conv.id === conversationId
@@ -566,9 +631,9 @@ export default function SonaFloatingOrb() {
                   </div>
                 )}
 
-                {insights.map(insight => (
+                {insights.map((insight, index) => (
                   <motion.div
-                    key={insight.id}
+                    key={insight.id || `insight-${index}`}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={`rounded-xl p-3 transition-colors cursor-pointer ${insight.read ? 'opacity-60' : ''}`}
@@ -619,13 +684,13 @@ export default function SonaFloatingOrb() {
 
       {/* ═══ PROMO BUBBLE ═══ */}
       <AnimatePresence>
-        {promoVisible && !chatOpen && promo?.active && (
+        {promoVisible && !chatOpen && !shouldSuppressPromo && promo?.active && (
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.9 }}
             transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="absolute bottom-16 right-0 w-[280px] rounded-2xl overflow-hidden"
+            className="absolute bottom-16 right-0 hidden w-[280px] rounded-2xl overflow-hidden lg:block 2xl:hidden"
             style={{
               background: isLight ? '#fff' : '#111114',
               border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
@@ -684,7 +749,7 @@ export default function SonaFloatingOrb() {
                 onClick={() => {
                   setPromoVisible(false);
                   setPromoDismissed(true);
-                  sessionStorage.setItem('tc_promo_sona_dismissed', 'true');
+                  safeSessionStorageSet('tc_promo_sona_dismissed', 'true');
                 }}
                 className="w-full text-center text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors mt-2 py-1"
               >
@@ -715,14 +780,17 @@ export default function SonaFloatingOrb() {
       {/* ═══ ORB BUTTON ═══ */}
       <motion.button
         onClick={toggleChat}
+        aria-label={chatOpen ? 'Minimize Sona assistant' : 'Open Sona assistant'}
         onMouseEnter={() => !chatOpen && setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        whileHover={{ scale: 1.08 }}
+        animate={{ y: chatOpen ? 0 : [0, -4, 0], rotate: chatOpen ? 0 : [0, 1.5, -1, 0] }}
+        transition={{ duration: 4.2, repeat: chatOpen ? 0 : Infinity, ease: 'easeInOut' }}
+        whileHover={{ scale: 1.1, y: -5 }}
         whileTap={{ scale: 0.95 }}
-        className="relative w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-shadow hover:shadow-xl"
+        className="relative hidden h-14 w-14 items-center justify-center rounded-[20px] transition-shadow hover:shadow-xl lg:flex 2xl:hidden"
         style={{
-          background: chatOpen ? (isLight ? '#1a1a1a' : '#2a2a30') : 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)',
-          boxShadow: chatOpen ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(244,63,94,0.35)',
+          background: 'transparent',
+          boxShadow: chatOpen ? '0 14px 34px rgba(15,23,42,0.2)' : '0 18px 42px rgba(56,189,248,0.28), 0 10px 28px rgba(124,58,237,0.16)',
         }}
       >
         {!chatOpen && (
@@ -731,21 +799,20 @@ export default function SonaFloatingOrb() {
             initial={{ scale: 1, opacity: 0.6 }}
             animate={{ scale: 1.8, opacity: 0 }}
             transition={{ duration: 1.2, ease: 'easeOut' }}
-            className="absolute inset-0 rounded-full"
-            style={{ border: '2px solid rgba(244,63,94,0.4)' }}
+            className="absolute inset-1 rounded-[18px]"
+            style={{ border: '2px solid rgba(56,189,248,0.52)' }}
           />
         )}
 
         <AnimatePresence mode="wait">
           <motion.span
-            key={chatOpen ? 'close' : 'sparkle'}
+            key={sonaState}
             initial={{ scale: 0.5, rotate: -90, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             exit={{ scale: 0.5, rotate: 90, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="material-symbols-rounded text-white text-[22px]"
           >
-            {chatOpen ? 'close' : 'auto_awesome'}
+            <SonaMark size="md" state={sonaState} />
           </motion.span>
         </AnimatePresence>
 

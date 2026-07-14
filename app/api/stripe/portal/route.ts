@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { guardApiRoute } from '@/lib/api-auth';
 import { monitor } from '@/lib/monitor';
+import { getAllowedStripeReturnOrigin } from '@/lib/stripe-return-url';
+import { selectStripeCustomerForUser } from '@/lib/stripe-account-selection';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,22 +21,25 @@ export async function POST(req: NextRequest) {
     }
     const stripe = new Stripe(key, { apiVersion: '2026-02-25.clover' });
 
-    const { email } = guard.user;
+    const { email, uid } = guard.user;
 
-    // Find Stripe customer
-    const customers = await stripe.customers.list({ email: email!, limit: 1 });
-    if (customers.data.length === 0) {
+    const customers = await stripe.customers.list({ email: email!, limit: 10 });
+    const selectedCustomer = selectStripeCustomerForUser(
+      customers.data.map(customer => ({ id: customer.id, firebaseUid: customer.metadata?.firebaseUid || null })),
+      uid,
+    );
+    if (!selectedCustomer) {
       return NextResponse.json(
-        { error: 'No subscription found. Please upgrade first.' },
+        { error: 'No active billing account found. Choose a plan to start.' },
         { status: 404 }
       );
     }
 
-    const origin = req.headers.get('origin') || 'http://localhost:3000';
+    const origin = getAllowedStripeReturnOrigin(req.headers.get('origin'));
 
     const session = await stripe.billingPortal.sessions.create({
-      customer: customers.data[0].id,
-      return_url: `${origin}/suite`,
+      customer: selectedCustomer.customerId,
+      return_url: `${origin}/suite/settings?tab=subscription&billing=returned`,
     });
 
     return NextResponse.json({ url: session.url });
@@ -42,7 +47,7 @@ export async function POST(req: NextRequest) {
     console.error('Portal session error:', error);
     monitor.critical('Tool: stripe/portal', String(error));
     return NextResponse.json(
-      { error: 'Failed to create portal session' },
+      { error: 'Billing is unavailable right now. Please try again.' },
       { status: 500 }
     );
   }

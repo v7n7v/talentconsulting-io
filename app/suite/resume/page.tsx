@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { saveResumeVersion, getResumeVersions, createJobApplication, deleteResumeVersion, type ResumeVersion } from '@/lib/database-suite';
+import { memo, useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { saveResumeVersion, getResumeVersions, createJobApplication, deleteResumeVersion, updateResumeVersion, type ResumeVersion } from '@/lib/database-suite';
 import { useStore } from '@/lib/store';
 import { showToast } from '@/components/Toast';
-import PageHelp from '@/components/PageHelp';
+import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { downloadResumePDF } from '@/lib/pdf-templates';
-import { normalizeResume, serializeResumeToText } from '@/lib/resume-normalizer';
+import { cleanResumeText, isResumeTextMissing, normalizeResume, serializeResumeToText } from '@/lib/resume-normalizer';
+import { canPersistPreparedResume, prepareResumeForExport } from '@/lib/resume-export-truth';
 import { ResumeTemplate as ResumeTemplateComponent } from '@/components/resume-templates';
+import { getHeaderPreset } from '@/components/resume-templates/header-system';
 import { useUserTier } from '@/hooks/use-user-tier';
 import { useTheme } from '@/components/ThemeProvider';
 // docx is imported dynamically in downloadWord() to avoid naming conflicts with @react-pdf/renderer
@@ -22,8 +24,20 @@ import FileUploadDropzone from '@/components/FileUploadDropzone';
 import SkillGapWarningModal from '@/components/modals/SkillGapWarningModal';
 import UpgradeModal from '@/components/UpgradeModal';
 import AuthModal from '@/components/modals/AuthModal';
-import ProofCard from '@/components/ProofCard';
+import SonaThinkingTile from '@/components/SonaThinkingTile';
 import type { ProofResult } from '@/lib/tfidf-proof';
+import { mergeApplicationKitContext, resumeSnapshotToText } from '@/lib/application-kit';
+import {
+  ProofEngineReport,
+  type ProofCheckTone,
+  type ProofEngineReportData,
+  type ProofRequirementStatus,
+} from '@/components/suite/ProofEngineReport';
+import {
+  RESUME_MORPH_DEFAULT_MAX,
+  RESUME_MORPH_FULL_UNLOCK,
+  type ResumeMorphConsentStatus,
+} from '@/lib/resume-morph-safety';
 
 // Set up PDF.js worker
 if (typeof window !== 'undefined') {
@@ -46,6 +60,29 @@ interface ResumeData {
   certifications?: string[];
 }
 
+interface RecommendationDeckItem {
+  id: string;
+  text: string;
+  why: string;
+  direction: string;
+}
+
+interface ResumeMorphGuardrailReportView {
+  requestedMorphPercentage?: number;
+  effectiveMorphPercentage?: number;
+  maxAllowedMorphPercentage?: number;
+  consentUsed?: boolean;
+  protectedFields?: string[];
+  blockedChanges?: {
+    path: string;
+    original: string;
+    attempted: string;
+    action: 'restored' | 'removed';
+  }[];
+  blockedChangeCount?: number;
+  blockedChangesTruncated?: boolean;
+}
+
 // ============ CONSTANTS ============
 const EMPTY_RESUME: ResumeData = {
   name: '',
@@ -61,13 +98,15 @@ const EMPTY_RESUME: ResumeData = {
 };
 
 const TEMPLATES = [
-  // ── FREE TEMPLATES (5) ──
+  // ── FREE TEMPLATES ──
   { id: 'executive', name: 'Executive', description: 'Professional format for senior roles', preview: 'bar_chart', tier: 'free' as const, colors: { primary: '#1a365d', accent: '#2b6cb0', text: '#1a202c' } },
   { id: 'modern', name: 'Modern', description: 'Rich header band with teal accents', preview: 'auto_awesome', tier: 'free' as const, colors: { primary: '#0d9488', accent: '#14b8a6', text: '#1e293b' } },
   { id: 'minimal', name: 'Minimal', description: 'Clean and elegant, maximum readability', preview: 'my_location', tier: 'free' as const, colors: { primary: '#374151', accent: '#6b7280', text: '#111827' } },
   { id: 'compact', name: 'Compact', description: 'Dense one-page, fits more content', preview: 'content_paste', tier: 'free' as const, colors: { primary: '#15803d', accent: '#16a34a', text: '#14532d' } },
   { id: 'technical', name: 'Technical', description: 'Code-style layout for engineering roles', preview: 'computer', tier: 'free' as const, colors: { primary: '#0369a1', accent: '#0284c7', text: '#0f172a' } },
-  // ── PRO TEMPLATES (13) ──
+  { id: 'boardroom', name: 'Boardroom', description: 'Executive memo style with quantified impact signals', preview: 'corporate_fare', tier: 'free' as const, colors: { primary: '#102a43', accent: '#0f766e', text: '#1f2937' } },
+  { id: 'product-brief', name: 'Product Brief', description: 'Product and program leadership with outcome-first sections', preview: 'view_quilt', tier: 'free' as const, colors: { primary: '#1d4ed8', accent: '#0891b2', text: '#111827' } },
+  // ── PRO TEMPLATES ──
   { id: 'creative', name: 'Creative', description: 'Initials badge with colored chips', preview: 'palette', tier: 'pro' as const, colors: { primary: '#7c3aed', accent: '#8b5cf6', text: '#1f2937' } },
   { id: 'harvard', name: 'Harvard', description: 'Traditional education-first format', preview: 'school', tier: 'pro' as const, colors: { primary: '#991b1b', accent: '#b91c1c', text: '#1c1917' } },
   { id: 'cascade', name: 'Cascade', description: 'Timeline dots with visual flow', preview: 'straighten', tier: 'pro' as const, colors: { primary: '#1e3a5f', accent: '#3b82f6', text: '#1e293b' } },
@@ -81,7 +120,144 @@ const TEMPLATES = [
   { id: 'startup', name: 'Startup', description: 'Bold and energetic for fast movers', preview: 'bolt', tier: 'pro' as const, colors: { primary: '#f97316', accent: '#fb923c', text: '#1c1917' } },
   { id: 'federal', name: 'Federal', description: 'Government format with clearance section', preview: 'account_balance', tier: 'pro' as const, colors: { primary: '#1e3a5f', accent: '#1d4ed8', text: '#111827' } },
   { id: 'academic', name: 'Academic', description: 'Research-focused with publications section', preview: 'school', tier: 'pro' as const, colors: { primary: '#7c2d12', accent: '#c2410c', text: '#1c1917' } },
+  { id: 'operator', name: 'Operator', description: 'Operational command sheet for builders and process leaders', preview: 'precision_manufacturing', tier: 'pro' as const, colors: { primary: '#334155', accent: '#059669', text: '#111827' } },
+  { id: 'data-signal', name: 'Data Signal', description: 'Analytical format for AI, data, and technical strategy roles', preview: 'query_stats', tier: 'pro' as const, colors: { primary: '#0f172a', accent: '#2563eb', text: '#111827' } },
+  { id: 'finance-ledger', name: 'Finance Ledger', description: 'Precise finance and consulting layout with measured impact', preview: 'account_balance_wallet', tier: 'pro' as const, colors: { primary: '#064e3b', accent: '#0f766e', text: '#172554' } },
+  { id: 'storyline', name: 'Storyline', description: 'Editorial yet restrained for strategy, brand, and people roles', preview: 'auto_stories', tier: 'pro' as const, colors: { primary: '#581c87', accent: '#be185d', text: '#1f2937' } },
+  { id: 'venture', name: 'Venture', description: 'Startup leadership template with traction and scope emphasis', preview: 'rocket_launch', tier: 'pro' as const, colors: { primary: '#7c2d12', accent: '#ea580c', text: '#1c1917' } },
 ];
+
+type ResumeTemplateOption = typeof TEMPLATES[number];
+type TemplateColors = { primary: string; accent: string; text: string };
+
+interface TemplatePalette {
+  id: string;
+  label: string;
+  colors: TemplateColors;
+  isDefault?: boolean;
+}
+
+const TEMPLATE_PALETTE_GROUPS: Record<string, TemplatePalette[]> = {
+  executive: [
+    { id: 'oxford-blue', label: 'Oxford Blue', colors: { primary: '#1e3a5f', accent: '#2b6cb0', text: '#111827' } },
+    { id: 'boardroom-teal', label: 'Boardroom Teal', colors: { primary: '#102a43', accent: '#0f766e', text: '#1f2937' } },
+    { id: 'charcoal-slate', label: 'Charcoal Slate', colors: { primary: '#1f2937', accent: '#64748b', text: '#111827' } },
+    { id: 'evergreen', label: 'Evergreen', colors: { primary: '#064e3b', accent: '#0f766e', text: '#111827' } },
+    { id: 'capital-navy', label: 'Capital Navy', colors: { primary: '#172554', accent: '#2563eb', text: '#111827' } },
+    { id: 'bronze-ledger', label: 'Bronze Ledger', colors: { primary: '#78350f', accent: '#b45309', text: '#1c1917' } },
+    { id: 'executive-ink', label: 'Executive Ink', colors: { primary: '#111827', accent: '#475569', text: '#111827' } },
+  ],
+  modern: [
+    { id: 'teal-signal', label: 'Teal Signal', colors: { primary: '#0f766e', accent: '#14b8a6', text: '#1e293b' } },
+    { id: 'cobalt-cyan', label: 'Cobalt Cyan', colors: { primary: '#1d4ed8', accent: '#0891b2', text: '#111827' } },
+    { id: 'copper-ink', label: 'Copper Ink', colors: { primary: '#7c2d12', accent: '#ea580c', text: '#1c1917' } },
+    { id: 'sage-modern', label: 'Sage Modern', colors: { primary: '#36594f', accent: '#5f7f72', text: '#1f2937' } },
+    { id: 'plum-pulse', label: 'Plum Pulse', colors: { primary: '#581c87', accent: '#be185d', text: '#1f2937' } },
+    { id: 'graphite-blue', label: 'Graphite Blue', colors: { primary: '#334155', accent: '#2563eb', text: '#111827' } },
+    { id: 'emerald-line', label: 'Emerald Line', colors: { primary: '#064e3b', accent: '#10b981', text: '#111827' } },
+  ],
+  minimal: [
+    { id: 'clean-ink', label: 'Clean Ink', colors: { primary: '#111827', accent: '#6b7280', text: '#111827' } },
+    { id: 'soft-slate', label: 'Soft Slate', colors: { primary: '#475569', accent: '#94a3b8', text: '#334155' } },
+    { id: 'warm-stone', label: 'Warm Stone', colors: { primary: '#44403c', accent: '#78716c', text: '#292524' } },
+    { id: 'quiet-teal', label: 'Quiet Teal', colors: { primary: '#134e4a', accent: '#0f766e', text: '#111827' } },
+    { id: 'editorial-navy', label: 'Editorial Navy', colors: { primary: '#1e3a5f', accent: '#64748b', text: '#111827' } },
+    { id: 'paper-olive', label: 'Paper Olive', colors: { primary: '#3f4f3f', accent: '#6b7f5f', text: '#1f2937' } },
+    { id: 'silver-rule', label: 'Silver Rule', colors: { primary: '#374151', accent: '#9ca3af', text: '#111827' } },
+  ],
+  technical: [
+    { id: 'signal-blue', label: 'Signal Blue', colors: { primary: '#0f172a', accent: '#2563eb', text: '#111827' } },
+    { id: 'terminal-green', label: 'Terminal Green', colors: { primary: '#1f2937', accent: '#059669', text: '#111827' } },
+    { id: 'systems-teal', label: 'Systems Teal', colors: { primary: '#134e4a', accent: '#0f766e', text: '#111827' } },
+    { id: 'data-indigo', label: 'Data Indigo', colors: { primary: '#312e81', accent: '#4f46e5', text: '#111827' } },
+    { id: 'cloud-cyan', label: 'Cloud Cyan', colors: { primary: '#164e63', accent: '#0891b2', text: '#111827' } },
+    { id: 'security-navy', label: 'Security Navy', colors: { primary: '#172554', accent: '#1d4ed8', text: '#0f172a' } },
+    { id: 'operator-slate', label: 'Operator Slate', colors: { primary: '#334155', accent: '#0ea5e9', text: '#111827' } },
+  ],
+  creative: [
+    { id: 'plum-editorial', label: 'Plum Editorial', colors: { primary: '#581c87', accent: '#be185d', text: '#1f2937' } },
+    { id: 'violet-studio', label: 'Violet Studio', colors: { primary: '#6d28d9', accent: '#8b5cf6', text: '#1f2937' } },
+    { id: 'ocean-studio', label: 'Ocean Studio', colors: { primary: '#0f766e', accent: '#0891b2', text: '#111827' } },
+    { id: 'ember-creative', label: 'Ember Creative', colors: { primary: '#7c2d12', accent: '#ea580c', text: '#1c1917' } },
+    { id: 'rose-ink', label: 'Rose Ink', colors: { primary: '#831843', accent: '#be185d', text: '#1f2937' } },
+    { id: 'blueprint', label: 'Blueprint', colors: { primary: '#1e40af', accent: '#3b82f6', text: '#1e293b' } },
+    { id: 'forest-story', label: 'Forest Story', colors: { primary: '#14532d', accent: '#16a34a', text: '#1f2937' } },
+  ],
+  traditional: [
+    { id: 'burgundy-review', label: 'Burgundy Review', colors: { primary: '#7f1d1d', accent: '#b91c1c', text: '#1c1917' } },
+    { id: 'cambridge-blue', label: 'Cambridge Blue', colors: { primary: '#1e3a5f', accent: '#475569', text: '#111827' } },
+    { id: 'library-ink', label: 'Library Ink', colors: { primary: '#111827', accent: '#6b7280', text: '#111827' } },
+    { id: 'federal-navy', label: 'Federal Navy', colors: { primary: '#1e3a5f', accent: '#1d4ed8', text: '#111827' } },
+    { id: 'academic-copper', label: 'Academic Copper', colors: { primary: '#7c2d12', accent: '#c2410c', text: '#1c1917' } },
+    { id: 'honors-green', label: 'Honors Green', colors: { primary: '#14532d', accent: '#15803d', text: '#111827' } },
+    { id: 'archive-slate', label: 'Archive Slate', colors: { primary: '#334155', accent: '#64748b', text: '#111827' } },
+  ],
+};
+
+function getTemplatePaletteGroup(templateId: string) {
+  if (['executive', 'boardroom', 'deloitte', 'finance-ledger'].includes(templateId)) return 'executive';
+  if (['modern', 'product-brief', 'infographic', 'startup', 'venture'].includes(templateId)) return 'modern';
+  if (['minimal', 'compact', 'elegant', 'nordic'].includes(templateId)) return 'minimal';
+  if (['technical', 'operator', 'data-signal', 'faang', 'ats-optimized', 'double-column'].includes(templateId)) return 'technical';
+  if (['harvard', 'academic', 'federal'].includes(templateId)) return 'traditional';
+  return 'creative';
+}
+
+function getDefaultPaletteId(_templateId: string) {
+  return 'classic';
+}
+
+function getTemplatePalettes(template: ResumeTemplateOption): TemplatePalette[] {
+  const group = getTemplatePaletteGroup(template.id);
+  return [
+    { id: getDefaultPaletteId(template.id), label: 'Classic', colors: template.colors, isDefault: true },
+    ...TEMPLATE_PALETTE_GROUPS[group],
+  ].slice(0, 8);
+}
+
+function getTemplatePalette(template: ResumeTemplateOption, paletteId?: string) {
+  const palettes = getTemplatePalettes(template);
+  return palettes.find(palette => palette.id === paletteId) || palettes[0];
+}
+
+function getTemplateWithPalette(template: ResumeTemplateOption, paletteId?: string) {
+  const palette = getTemplatePalette(template, paletteId);
+  return { ...template, colors: palette.colors };
+}
+
+function PaletteDots({
+  colors,
+  selected = false,
+  locked = false,
+  size = 'sm',
+}: {
+  colors: TemplateColors;
+  selected?: boolean;
+  locked?: boolean;
+  size?: 'xs' | 'sm' | 'md';
+}) {
+  const dotClass = size === 'md' ? 'h-4 w-4' : size === 'sm' ? 'h-3.5 w-3.5' : 'h-3 w-3';
+  return (
+    <span className={`relative inline-flex items-center gap-1 rounded-full border px-1.5 py-1 transition-all ${
+      selected
+        ? 'border-amber-400/80 bg-amber-400/10 shadow-[0_0_0_3px_rgba(251,191,36,0.18)]'
+        : 'border-[var(--border-subtle)] bg-[var(--bg-card)]'
+    }`}>
+      {[colors.primary, colors.accent, colors.text].map((color, index) => (
+        <span
+          key={`${color}-${index}`}
+          className={`${dotClass} rounded-full border border-[var(--border-subtle)] shadow-sm`}
+          style={{ backgroundColor: color }}
+        />
+      ))}
+      {locked && !selected && (
+        <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)]">
+          <span className="material-symbols-rounded text-[9px] text-[var(--text-muted)]">lock</span>
+        </span>
+      )}
+    </span>
+  );
+}
 
 const SKILL_CATEGORIES = [
   'Technical', 'Programming Languages', 'Frameworks', 'Tools & Platforms',
@@ -92,6 +268,316 @@ const SKILL_CATEGORIES = [
 function hasResumeData(resume: ResumeData | null): resume is ResumeData {
   if (!resume) return false;
   return !!(resume.name || resume.summary || resume.experience?.length || resume.education?.length);
+}
+
+function skillLabels(resume: ResumeData | null) {
+  if (!resume?.skills?.length) return [];
+  return normalizeResume(resume).skills.flatMap(group => group.items).filter(Boolean);
+}
+
+const STUDIO_FLOW = [
+  { icon: 'upload_file', label: 'Import', detail: 'PDF, Word, or TXT' },
+  { icon: 'my_location', label: 'Target', detail: 'Paste a role and company brief' },
+  { icon: 'auto_awesome', label: 'Improve', detail: 'Rewrite, score, and verify fit' },
+  { icon: 'file_download', label: 'Export', detail: 'Save, track, or download' },
+];
+
+const CONNECTED_ACTIONS = [
+  { icon: 'work_history', label: 'Applications', detail: 'Attach this version to a tracked opportunity' },
+  { icon: 'edit_note', label: 'Cover Letter', detail: 'Carry resume context into a tailored letter' },
+  { icon: 'badge', label: 'LinkedIn', detail: 'Turn resume proof into a profile refresh' },
+  { icon: 'record_voice_over', label: 'Interview Prep', detail: 'Practice from the exact role narrative' },
+];
+
+const STUDIO_ASSURANCES = [
+  { label: 'Formats', value: 'PDF · DOCX · TXT' },
+  { label: 'Workflow', value: 'Draft saved locally' },
+  { label: 'Output', value: 'PDF and Word export' },
+];
+
+const STARTING_POINTS = [
+  { id: 'upload', label: 'Upload Resume', icon: 'upload_file', detail: 'Best when you have a PDF, Word, or TXT file ready.' },
+  { id: 'recent', label: 'Use Recent Version', icon: 'history', detail: 'Start from a saved library resume.' },
+  { id: 'scratch', label: 'Build From Scratch', icon: 'draw', detail: 'Create a clean resume with guided sections.' },
+] as const;
+
+const TEMPLATE_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'ats', label: 'ATS-safe' },
+  { id: 'executive', label: 'Executive' },
+  { id: 'technical', label: 'Technical' },
+  { id: 'creative', label: 'Creative' },
+  { id: 'compact', label: 'Compact' },
+] as const;
+
+const OPTIMIZATION_MODES = [
+  { id: 'conservative', label: 'Conservative', value: 55, detail: 'Preserve voice, tune keywords' },
+  { id: 'balanced', label: 'Balanced', value: 72, detail: 'Best fit for most applications' },
+  { id: 'strong', label: 'Strong', value: RESUME_MORPH_DEFAULT_MAX, detail: 'Sharper rewrite, still controlled' },
+];
+
+const JD_KEYWORD_LIBRARY = [
+  'React', 'Next.js', 'TypeScript', 'JavaScript', 'Python', 'SQL', 'Excel', 'Tableau', 'Power BI',
+  'AWS', 'Azure', 'GCP', 'Node.js', 'Java', 'Kubernetes', 'Docker', 'Salesforce', 'HubSpot',
+  'Agile', 'Scrum', 'Roadmap', 'Analytics', 'Strategy', 'Leadership', 'Operations', 'Finance',
+  'Stakeholder', 'Compliance', 'Security', 'Machine Learning', 'AI', 'API', 'CRM', 'SaaS',
+];
+
+function getResumeSnapshot(resume: ResumeData | null) {
+  if (!resume) return { name: 'Resume', title: 'Target role pending', positions: 0, skills: 0, signal: 'Ready' };
+  const skills = skillLabels(resume).length;
+  return {
+    name: resume.name || 'Resume',
+    title: resume.title || 'Target role pending',
+    positions: resume.experience?.length || 0,
+    skills,
+    signal: resume.summary && resume.experience?.length ? 'Strong base' : 'Needs context',
+  };
+}
+
+function getMissingEducationInstitutions(resume: ResumeData | null) {
+  if (!resume?.education?.length) return [];
+  return normalizeResume(resume).education
+    .map((edu, index) => ({ ...edu, index }))
+    .filter(edu => Boolean(edu.degree || edu.year || edu.details) && isResumeTextMissing(edu.institution));
+}
+
+function getJobDescriptionSignals(jd: string) {
+  const clean = jd.trim();
+  const words = clean ? clean.split(/\s+/).filter(Boolean) : [];
+  const lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+  const lower = clean.toLowerCase();
+  const matchedKeywords = JD_KEYWORD_LIBRARY.filter(k => lower.includes(k.toLowerCase())).slice(0, 8);
+  const seniority = /principal|staff|director|head of|vp|vice president/i.test(clean)
+    ? 'Senior+'
+    : /senior|lead|manager/i.test(clean)
+      ? 'Mid-senior'
+      : /intern|junior|associate|entry/i.test(clean)
+        ? 'Early'
+        : 'Open';
+  const roleLine = lines.find(line => /title|role|position|job/i.test(line)) || lines[0] || '';
+  const companyLine = lines.find(line => /company|about us|who we are/i.test(line)) || '';
+  const role = roleLine
+    .replace(/^(job\s*)?(title|role|position)\s*[:\-]\s*/i, '')
+    .slice(0, 72) || 'Paste a job description';
+  const company = (companyLine.match(/(?:company|about us|who we are)\s*[:\-]\s*(.+)$/i)?.[1] || '').slice(0, 48);
+  return {
+    wordCount: words.length,
+    role,
+    company: company || 'Not detected',
+    seniority,
+    keywords: matchedKeywords,
+    readiness: words.length > 120 ? 'Ready to optimize' : words.length > 0 ? 'Add more detail if available' : 'Waiting for JD',
+  };
+}
+
+function getRecommendedTemplateIds(signalText: string) {
+  const lower = signalText.toLowerCase();
+  const ids = new Set<string>();
+  if (/executive|senior|director|chief|head of|vp|vice president|principal|board|strategy/.test(lower)) {
+    ids.add('boardroom');
+    ids.add('executive');
+  }
+  if (/product|program|roadmap|launch|pm\b|scrum|agile/.test(lower)) {
+    ids.add('product-brief');
+  }
+  if (/software|engineer|developer|data|analytics|ai|machine learning|mlops|cloud|platform|security|python|react|typescript/.test(lower)) {
+    ids.add('data-signal');
+    ids.add('technical');
+  }
+  if (/finance|financial|consulting|consultant|investment|audit|accounting|revenue|margin|forecast/.test(lower)) {
+    ids.add('finance-ledger');
+    ids.add('deloitte');
+  }
+  if (/startup|founder|venture|growth|0 to 1|seed|series a|scaleup|saas/.test(lower)) {
+    ids.add('venture');
+    ids.add('startup');
+  }
+  if (!ids.size) {
+    ids.add('executive');
+    ids.add('modern');
+  }
+  return ids;
+}
+
+function templateMatchesFilter(template: typeof TEMPLATES[number], filter: typeof TEMPLATE_FILTERS[number]['id']) {
+  if (filter === 'all') return true;
+  const groups: Record<typeof TEMPLATE_FILTERS[number]['id'], string[]> = {
+    all: [],
+    ats: ['executive', 'minimal', 'compact', 'technical', 'boardroom', 'product-brief', 'harvard', 'ats-optimized', 'operator', 'data-signal', 'finance-ledger'],
+    executive: ['executive', 'boardroom', 'elegant', 'deloitte', 'finance-ledger', 'storyline'],
+    technical: ['technical', 'ats-optimized', 'faang', 'data-signal', 'operator'],
+    creative: ['modern', 'creative', 'cascade', 'infographic', 'storyline', 'venture', 'startup'],
+    compact: ['compact', 'minimal', 'ats-optimized', 'operator'],
+  };
+  return groups[filter].includes(template.id);
+}
+
+function proofStatusFromMatch(match: ProofResult['topJDTerms'][number]['matchedIn']): ProofRequirementStatus {
+  if (match === 'both') return 'matched';
+  if (match === 'morphed_only' || match === 'original_only') return 'partial';
+  return 'missing';
+}
+
+function proofEvidenceFromMatch(match: ProofResult['topJDTerms'][number]['matchedIn']) {
+  if (match === 'both') return 'Found in the source resume and preserved in the optimized resume.';
+  if (match === 'morphed_only') return 'Added by the morph because it appears in the job description. Review before using it.';
+  if (match === 'original_only') return 'Found in the source resume, but it is weak or missing in the optimized version.';
+  return 'Not found in the source resume or the optimized resume.';
+}
+
+function resumeHasContact(resume: ResumeData | null) {
+  return Boolean(resume?.email || resume?.phone || resume?.linkedin || resume?.website);
+}
+
+function buildResumeMorphProofReport(input: {
+  proof: ProofResult | null;
+  guardrailReport: ResumeMorphGuardrailReportView | null;
+  originalResume: ResumeData | null;
+  optimizedResume: ResumeData | null;
+  jobDescription: string;
+  matchScore: number | null;
+  morphPercentage: number;
+  selectedTemplateName: string;
+  educationInstitutionGaps: number;
+}): ProofEngineReportData | null {
+  const { proof, guardrailReport, originalResume, optimizedResume, jobDescription, matchScore, morphPercentage, selectedTemplateName, educationInstitutionGaps } = input;
+  const hasMorphEvidence = Boolean(proof || guardrailReport || matchScore);
+  if (!hasMorphEvidence || !optimizedResume) return null;
+
+  const jdSignals = getJobDescriptionSignals(jobDescription);
+  const protectedCount = guardrailReport?.protectedFields?.length || 0;
+  const blockedChanges = guardrailReport?.blockedChanges || [];
+  const blockedChangeCount = guardrailReport?.blockedChangeCount ?? blockedChanges.length;
+  const effectiveStrength = guardrailReport?.effectiveMorphPercentage ?? morphPercentage;
+  const score = proof?.optimizedScore ?? matchScore ?? 0;
+  const sourceTerms = proof?.topJDTerms || [];
+  const sortedTerms = [...sourceTerms].sort((a, b) => {
+    const order = { neither: 0, original_only: 1, morphed_only: 2, both: 3 };
+    return order[a.matchedIn] - order[b.matchedIn];
+  });
+
+  const requirements = sortedTerms.slice(0, 12).map(term => ({
+    label: term.term,
+    status: proofStatusFromMatch(term.matchedIn),
+    evidence: proofEvidenceFromMatch(term.matchedIn),
+    source: `JD weight ${term.weight}`,
+  }));
+
+  if (requirements.length === 0) {
+    requirements.push(
+      {
+        label: jdSignals.role,
+        status: jobDescription.trim() ? 'partial' : 'missing',
+        evidence: jobDescription.trim()
+          ? 'The role target is available, but keyword proof has not produced enough terms yet.'
+          : 'Paste a job description before using this as an application-ready resume.',
+        source: 'Role target',
+      },
+      {
+        label: selectedTemplateName,
+        status: 'matched',
+        evidence: 'The selected template can be exported after final review.',
+        source: 'Template',
+      }
+    );
+  }
+
+  const preservedFacts = [
+    {
+      label: 'Identity and contact locked',
+      detail: resumeHasContact(originalResume)
+        ? 'Contact fields come from the source resume and should not be rewritten by the morph.'
+        : 'No contact field was detected. Add contact details before export.',
+      tone: resumeHasContact(originalResume) ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+    },
+    {
+      label: 'Education and credentials locked',
+      detail: educationInstitutionGaps === 0
+        ? 'Education, certifications, licenses, and schools stay tied to the uploaded resume.'
+        : `${educationInstitutionGaps} education entry needs a school name before export, save, or tracking.`,
+      tone: educationInstitutionGaps === 0 ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+    },
+    {
+      label: 'Work history locked',
+      detail: 'Employers, job titles, dates, and role count are restored from the source resume after morphing.',
+      tone: 'success' as ProofCheckTone,
+    },
+    {
+      label: 'Protected fields checked',
+      detail: protectedCount > 0
+        ? `${protectedCount} protected field groups were checked after the rewrite.`
+        : 'Protected field checks ran with the available guardrail report.',
+      tone: blockedChangeCount > 0 ? 'warning' as ProofCheckTone : 'success' as ProofCheckTone,
+    },
+    {
+      label: 'Deterministic proof available',
+      detail: proof
+        ? `TF-IDF proof moved from ${proof.baselineScore}/100 to ${proof.optimizedScore}/100.`
+        : 'No TF-IDF proof payload was returned, so review the generated resume manually before export.',
+      tone: proof ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+    },
+  ];
+
+  const rejectedClaims = blockedChanges.slice(0, 5).map(change => ({
+    claim: change.path,
+    reason: `The morph tried to ${change.action === 'removed' ? 'add or remove' : 'change'} a protected fact.`,
+    decision: `Restored source value: ${change.original}`,
+  }));
+
+  const changes = proof?.gapsClosed?.length
+    ? proof.gapsClosed.slice(0, 4).map(gap => ({
+      before: `"${gap.term}" was not present in the source resume signal.`,
+      after: `"${gap.term}" appears in the optimized resume because it matched the job description.`,
+      rationale: 'Keep it only if the user can connect it to real work, tools, projects, or training.',
+    }))
+    : [
+      {
+        before: proof ? `Source resume match was ${proof.baselineScore}/100.` : 'Source resume was used as the locked baseline.',
+        after: `Optimized resume match is ${score}/100 at ${effectiveStrength}% morph strength.`,
+        rationale: 'The rewrite can improve match language, but protected resume facts still control what can be claimed.',
+      },
+    ];
+
+  const formattingChecks = [
+    {
+      label: 'No-invention guard',
+      detail: blockedChangeCount > 0
+        ? `${blockedChangeCount} protected edit${blockedChangeCount === 1 ? '' : 's'} were blocked or restored.`
+        : 'No protected fact changes were reported by the guardrail layer.',
+      tone: blockedChangeCount > 0 ? 'warning' as ProofCheckTone : 'success' as ProofCheckTone,
+    },
+    {
+      label: 'Morph strength',
+      detail: `${effectiveStrength}% rewrite strength was used. Maximum strength still keeps protected facts locked.`,
+      tone: effectiveStrength >= RESUME_MORPH_FULL_UNLOCK ? 'warning' as ProofCheckTone : 'neutral' as ProofCheckTone,
+    },
+    {
+      label: 'Template review',
+      detail: `${selectedTemplateName} is selected. Confirm headings and spacing before export.`,
+      tone: 'neutral' as ProofCheckTone,
+    },
+    {
+      label: 'Export readiness',
+      detail: educationInstitutionGaps === 0
+        ? 'Final save, tracking, PDF, and Word export can proceed after user review.'
+        : 'Export is blocked until missing school information is added.',
+      tone: educationInstitutionGaps === 0 ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+    },
+  ];
+
+  return {
+    title: 'Proof report for this resume morph',
+    description: 'This report turns the rewrite into evidence: what matched the job, what changed, which facts stayed locked, and what Talent Studio refused to invent.',
+    score,
+    scoreLabel: 'Morph fit',
+    sourceLabel: jdSignals.role || 'Job description target',
+    requirements,
+    preservedFacts,
+    rejectedClaims,
+    changes,
+    formattingChecks,
+  };
 }
 
 // ============ LIVE DEMO ANIMATION ============
@@ -480,10 +966,13 @@ function WorkflowAnimation() {
 export default function LiquidResumePage() {
   const { user } = useStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { theme } = useTheme();
   const isLight = theme === 'light';
+  const prefersReducedMotion = useReducedMotion();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resumeRef = useRef<HTMLDivElement>(null);
+  const mobileCheckFocusHandledRef = useRef(false);
 
   // ===== STATE =====
   const [mode, setMode] = useState<'choose' | 'morph' | 'create'>('choose');
@@ -495,15 +984,22 @@ export default function LiquidResumePage() {
   const [originalResume, setOriginalResume] = useState<ResumeData | null>(null);
   const [morphedResume, setMorphedResume] = useState<ResumeData | null>(null);
   const [buildResume, setBuildResume] = useState<ResumeData>({ ...EMPTY_RESUME });
+  const [sourceResumeMeta, setSourceResumeMeta] = useState<{ fileName?: string; sourceType?: 'direct' | 'storage' | 'paste' | 'library'; storagePath?: string; characterCount?: number; detectedType?: string; storagePathDeleted?: boolean }>({});
 
   // Morph settings
   const [jobDescription, setJobDescription] = useState('');
+  const [postingUrl, setPostingUrl] = useState('');
   const [morphPercentage, setMorphPercentage] = useState(75);
   const [targetPageCount, setTargetPageCount] = useState<number | 'auto'>('auto');
   const [matchScore, setMatchScore] = useState<number | null>(null);
   const [proofData, setProofData] = useState<ProofResult | null>(null);
-  const [acceptedRisk, setAcceptedRisk] = useState(false);
-  const [flashWarning, setFlashWarning] = useState(false);
+  const [morphConsent, setMorphConsent] = useState<ResumeMorphConsentStatus>({
+    unlocked100: false,
+    acceptedAt: null,
+    consentVersion: '',
+  });
+  const [morphConsentLoading, setMorphConsentLoading] = useState(false);
+  const [guardrailReport, setGuardrailReport] = useState<ResumeMorphGuardrailReportView | null>(null);
 
   // Day-Zero Blueprint
   const [blueprintContent, setBlueprintContent] = useState<string | null>(null);
@@ -515,7 +1011,13 @@ export default function LiquidResumePage() {
 
   // UI state
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0]);
+  const [selectedPaletteId, setSelectedPaletteId] = useState(getDefaultPaletteId(TEMPLATES[0].id));
+  const [templatePaletteSelections, setTemplatePaletteSelections] = useState<Record<string, string>>({});
+  const [showPaletteMenu, setShowPaletteMenu] = useState(false);
   const [versions, setVersions] = useState<ResumeVersion[]>([]);
+  const [activeStart, setActiveStart] = useState<typeof STARTING_POINTS[number]['id']>('upload');
+  const [showSourceConfirmation, setShowSourceConfirmation] = useState(false);
+  const [templateFilter, setTemplateFilter] = useState<typeof TEMPLATE_FILTERS[number]['id']>('all');
   const [dragActive, setDragActive] = useState(false);
   const [buildStep, setBuildStep] = useState(0);
   const [aiSuggesting, setAiSuggesting] = useState(false);
@@ -526,6 +1028,7 @@ export default function LiquidResumePage() {
   const [enhancePipelineStage, setEnhancePipelineStage] = useState(0); // 0=idle, 1=AI writing, 2=AI checking, 3=refining
   const [autoFixing, setAutoFixing] = useState(false);
   const [preFixScore, setPreFixScore] = useState<number | null>(null);
+  const [handledRecommendations, setHandledRecommendations] = useState<Record<string, 'applied' | 'kept' | 'passed' | 'ignored'>>({});
 
   // Modals
   const [showApplicationModal, setShowApplicationModal] = useState(false);
@@ -535,12 +1038,58 @@ export default function LiquidResumePage() {
   const [saveCompanyName, setSaveCompanyName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveInlineStatus, setSaveInlineStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [applicationData, setApplicationData] = useState({ companyName: '', jobTitle: '', notes: '' });
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Skill gap detection
   const [showSkillGapModal, setShowSkillGapModal] = useState(false);
   const [detectedNewSkills, setDetectedNewSkills] = useState<{ skill: string; category: 'technical' | 'soft' | 'domain' }[]>([]);
+  const canUseTemplatePalettes = tier === 'studio' || tier === 'god';
+  const activePaletteId = canUseTemplatePalettes ? selectedPaletteId : getDefaultPaletteId(selectedTemplate.id);
+  const selectedPalette = getTemplatePalette(selectedTemplate, activePaletteId);
+  const selectedTemplateWithPalette = getTemplateWithPalette(selectedTemplate, activePaletteId);
+  const selectedTemplateColors = selectedTemplateWithPalette.colors;
+
+  const openMaxPaletteUpgrade = () => {
+    setShowPaletteMenu(false);
+    showToast('Extra resume palettes are included with Talent Max.', 'workspace_premium');
+    router.push('/suite/upgrade?plan=studio');
+  };
+
+  const selectTemplate = (template: ResumeTemplateOption) => {
+    const isLocked = template.tier === 'pro' && !isPro;
+    if (isLocked) {
+      showToast('Upgrade to Pro to unlock this template', 'info');
+      return;
+    }
+    const savedPaletteId = templatePaletteSelections[template.id];
+    const nextPaletteId = canUseTemplatePalettes
+      ? getTemplatePalette(template, savedPaletteId || getDefaultPaletteId(template.id)).id
+      : getDefaultPaletteId(template.id);
+    setSelectedTemplate(template);
+    setSelectedPaletteId(nextPaletteId);
+    setTemplatePaletteSelections(prev => ({ ...prev, [template.id]: nextPaletteId }));
+    setShowPaletteMenu(false);
+  };
+
+  const selectTemplatePalette = (template: ResumeTemplateOption, palette: TemplatePalette) => {
+    const isLocked = template.tier === 'pro' && !isPro;
+    if (isLocked) {
+      showToast('Upgrade to Pro to unlock this template', 'info');
+      setShowPaletteMenu(false);
+      return;
+    }
+    if (!palette.isDefault && !canUseTemplatePalettes) {
+      openMaxPaletteUpgrade();
+      return;
+    }
+    setSelectedTemplate(template);
+    setSelectedPaletteId(palette.id);
+    setTemplatePaletteSelections(prev => ({ ...prev, [template.id]: palette.id }));
+    setShowPaletteMenu(false);
+  };
+
   const [lastMatchScore, setLastMatchScore] = useState<number | undefined>(undefined);
 
   // No-navigate sent state for Cover Letter / LinkedIn
@@ -559,18 +1108,29 @@ export default function LiquidResumePage() {
     } catch {}
   }, []);
 
+  useEffect(() => {
+    if (searchParams.get('mobileAction') !== 'check' || mobileCheckFocusHandledRef.current) return;
+    mobileCheckFocusHandledRef.current = true;
+    setMode('choose');
+    setStep('upload');
+    setActiveStart('upload');
+    requestAnimationFrame(() => {
+      document.getElementById('resume-import-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [searchParams]);
+
   // ===== DERIVED STATE =====
   // This is the KEY fix - always compute which resume to display
   const getDisplayResume = (): ResumeData | null => {
     if (mode === 'morph') {
       // For morph mode: prefer morphed, fallback to original
-      if (hasResumeData(morphedResume)) return morphedResume;
-      if (hasResumeData(originalResume)) return originalResume;
+      if (hasResumeData(morphedResume)) return normalizeResume(morphedResume) as ResumeData;
+      if (hasResumeData(originalResume)) return normalizeResume(originalResume) as ResumeData;
       return null;
     }
     if (mode === 'create') {
       // For create mode: use build resume
-      if (hasResumeData(buildResume)) return buildResume;
+      if (hasResumeData(buildResume)) return normalizeResume(buildResume) as ResumeData;
       return null;
     }
     return null;
@@ -586,19 +1146,74 @@ export default function LiquidResumePage() {
       const saved = sessionStorage.getItem(SESSION_KEY);
       if (!saved) return;
       const draft = JSON.parse(saved);
-      if (draft.originalResume) setOriginalResume(draft.originalResume);
-      if (draft.morphedResume) setMorphedResume(draft.morphedResume);
+      if (draft.originalResume) setOriginalResume(normalizeResume(draft.originalResume) as ResumeData);
+      if (draft.morphedResume) setMorphedResume(normalizeResume(draft.morphedResume) as ResumeData);
+      if (draft.sourceResumeMeta) setSourceResumeMeta(draft.sourceResumeMeta);
+      if (draft.showSourceConfirmation) setShowSourceConfirmation(draft.showSourceConfirmation);
       if (draft.jobDescription) setJobDescription(draft.jobDescription);
+      if (draft.postingUrl) setPostingUrl(draft.postingUrl);
       if (draft.morphPercentage) setMorphPercentage(draft.morphPercentage);
       if (draft.matchScore) setMatchScore(draft.matchScore);
       if (draft.selectedTemplateId) {
         const tmpl = TEMPLATES.find(t => t.id === draft.selectedTemplateId);
-        if (tmpl) setSelectedTemplate(tmpl);
+        if (tmpl) {
+          setSelectedTemplate(tmpl);
+          const restoredPaletteId = getTemplatePalette(tmpl, draft.selectedPaletteId).id;
+          setSelectedPaletteId(restoredPaletteId);
+          setTemplatePaletteSelections(prev => ({
+            ...prev,
+            ...(draft.templatePaletteSelections || {}),
+            [tmpl.id]: restoredPaletteId,
+          }));
+        }
       }
       if (draft.mode && draft.mode !== 'choose') setMode(draft.mode);
       if (draft.step) setStep(draft.step);
-      if (draft.buildResume) setBuildResume(draft.buildResume);
+      if (draft.buildResume) setBuildResume(normalizeResume(draft.buildResume) as ResumeData);
     } catch { /* ignore corrupt storage */ }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const fromSonaPicks = params.get('source') === 'sona_picks' || params.get('utm_source') === 'sona_picks';
+      if (!fromSonaPicks) return;
+      const jobTitle = params.get('jobTitle') || '';
+      const company = params.get('company') || '';
+      const jobUrl = params.get('jobUrl') || '';
+      if (!jobTitle && !company && !jobUrl) return;
+
+      const contextText = [
+        jobTitle ? `Job title: ${jobTitle}` : '',
+        company ? `Company: ${company}` : '',
+        jobUrl ? `Posting URL: ${jobUrl}` : '',
+        '',
+        'Paste the full job description here when you are ready to morph your resume.',
+      ].filter(Boolean).join('\n');
+
+      setMode('morph');
+      setStep('jd');
+      setApplicationData(prev => ({
+        ...prev,
+        jobTitle: jobTitle || prev.jobTitle,
+        companyName: company || prev.companyName,
+      }));
+      if (company) setSaveCompanyName(company);
+      if (jobUrl) setPostingUrl(jobUrl);
+      setJobDescription(prev => prev || contextText);
+      mergeApplicationKitContext({
+        jobTitle,
+        targetRole: jobTitle,
+        company,
+        jobDescription: contextText,
+        applicationUrl: jobUrl || undefined,
+      });
+      analytics.digestClickPrepare('sona_picks');
+      showToast('Sona Picks job loaded into Resume Studio', 'radar');
+      window.history.replaceState({}, '', window.location.pathname);
+    } catch {
+      // Ignore malformed email link params.
+    }
   }, []);
 
   // Auto-save draft when key state changes
@@ -610,9 +1225,14 @@ export default function LiquidResumePage() {
         originalResume,
         morphedResume,
         jobDescription,
+        postingUrl,
         morphPercentage,
         matchScore,
         selectedTemplateId: selectedTemplate.id,
+        selectedPaletteId: activePaletteId,
+        templatePaletteSelections,
+        sourceResumeMeta,
+        showSourceConfirmation,
         mode,
         step,
         buildResume: mode === 'create' ? buildResume : undefined,
@@ -620,23 +1240,84 @@ export default function LiquidResumePage() {
       };
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(draft));
     } catch { /* quota exceeded — ignore */ }
-  }, [originalResume, morphedResume, jobDescription, morphPercentage, matchScore, selectedTemplate, mode, step, buildResume]);
+  }, [originalResume, morphedResume, jobDescription, postingUrl, morphPercentage, matchScore, selectedTemplate, activePaletteId, templatePaletteSelections, sourceResumeMeta, showSourceConfirmation, mode, step, buildResume]);
 
   // Clear draft when workflow completes (save/download)
   const clearDraft = () => {
     try { sessionStorage.removeItem(SESSION_KEY); } catch {}
   };
 
+  const buildResumeVersionMetadata = (extra: Record<string, any> = {}) => {
+    const resume = getDisplayResume();
+    const isDirectUserSource = !hasResumeData(morphedResume) && (
+      mode === 'create'
+      || (Boolean(sourceResumeMeta.fileName) && sourceResumeMeta.sourceType !== 'library')
+    );
+    return {
+      sourceFileName: sourceResumeMeta.fileName || null,
+      sourceType: sourceResumeMeta.sourceType || (mode === 'create' ? 'manual' : null),
+      storagePath: sourceResumeMeta.storagePath || null,
+      parsedCharacterCount: sourceResumeMeta.characterCount || null,
+      detectedType: sourceResumeMeta.detectedType || null,
+      targetRole: applicationData.jobTitle || resume?.title || originalResume?.title || null,
+      targetCompany: applicationData.companyName || saveCompanyName || null,
+      matchScore,
+      template: selectedTemplate.id,
+      paletteId: activePaletteId,
+      paletteLabel: selectedPalette.label,
+      paletteColors: selectedPalette.colors,
+      optimizationStrength: morphPercentage,
+      targetPageCount,
+      jobDescription: jobDescription ? jobDescription.slice(0, 30_000) : null,
+      ...(isDirectUserSource ? {
+        resumeProvenance: {
+          verified: true,
+          origin: mode === 'create' ? 'user_authored' : 'user_upload',
+        },
+      } : {}),
+      ...extra,
+    };
+  };
+
   // ===== EFFECTS =====
   useEffect(() => { if (user) loadVersions(); }, [user]);
 
   useEffect(() => {
-    if (morphPercentage >= 80) {
-      setFlashWarning(true);
-      const timer = setTimeout(() => setFlashWarning(false), 3000);
-      return () => clearTimeout(timer);
+    if (!user?.uid) {
+      setMorphConsent({ unlocked100: false, acceptedAt: null, consentVersion: '' });
+      return;
     }
-  }, [morphPercentage]);
+
+    const loadMorphConsent = async () => {
+      setMorphConsentLoading(true);
+      try {
+        const res = await authFetch('/api/resume/morph-consent');
+        if (res.ok) {
+          const data = await res.json();
+          setMorphConsent({
+            unlocked100: data.unlocked100 === true,
+            acceptedAt: data.acceptedAt || null,
+            consentVersion: data.consentVersion || '',
+            disabledAt: data.disabledAt || null,
+          });
+        }
+      } catch {
+        // Missing consent safely keeps the 80% cap.
+      } finally {
+        setMorphConsentLoading(false);
+      }
+    };
+
+    loadMorphConsent();
+  }, [user?.uid]);
+
+  const maxMorphPercentage = morphConsent.unlocked100 ? RESUME_MORPH_FULL_UNLOCK : RESUME_MORPH_DEFAULT_MAX;
+
+  useEffect(() => {
+    if (morphPercentage > maxMorphPercentage) {
+      setMorphPercentage(maxMorphPercentage);
+    }
+  }, [maxMorphPercentage, morphPercentage]);
 
   // ===== DATA LOADING =====
   const loadVersions = async () => {
@@ -678,10 +1359,10 @@ export default function LiquidResumePage() {
       throw new Error(err.error || 'Failed to parse resume');
     }
     const data = await res.json();
-    return data.resume;
+    return normalizeResume(data.resume) as ResumeData;
   };
 
-  const morphResumeToJD = async (resume: ResumeData, jd: string, percentage: number, pageCount: number | 'auto'): Promise<{ morphed: ResumeData; score: number; proof?: ProofResult }> => {
+  const morphResumeToJD = async (resume: ResumeData, jd: string, percentage: number, pageCount: number | 'auto'): Promise<{ morphed: ResumeData; score: number; proof?: ProofResult; guardrailReport?: any; effectiveMorphPercentage?: number }> => {
     const res = await authFetch('/api/resume/morph', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -691,10 +1372,21 @@ export default function LiquidResumePage() {
       const err = await res.json().catch(() => ({ error: 'Morph failed' }));
       if (err.requiresAuth) { setShowDownloadAuth('signup'); throw new Error('Sign in to continue'); }
       if (err.limitReached) { setShowDownloadAuth('signup'); throw new Error(err.error || 'Free tier limit reached'); }
+      if (err.requiresMorphConsent) {
+        const error = new Error(err.error || 'Unlock 100% Morph in Settings > AI Safety before using maximum strength.');
+        (error as any).requiresMorphConsent = true;
+        throw error;
+      }
       throw new Error(err.error || 'Failed to morph resume');
     }
     const data = await res.json();
-    return { morphed: data.morphedResume, score: data.matchScore, proof: data.proof };
+    return {
+      morphed: data.morphedResume,
+      score: data.matchScore,
+      proof: data.proof,
+      guardrailReport: data.guardrailReport,
+      effectiveMorphPercentage: data.effectiveMorphPercentage,
+    };
   };
 
   const extractCompanyFromJD = async (jd: string): Promise<string> => {
@@ -722,8 +1414,14 @@ export default function LiquidResumePage() {
       showToast('Parsing resume with AI...', 'psychology');
       const parsed = await parseResumeWithAI(text);
       setOriginalResume(parsed);
+      mergeApplicationKitContext({
+        resumeSnapshot: parsed,
+        resumeText: resumeSnapshotToText(parsed),
+        resumeSource: sourceResumeMeta.sourceType === 'library' ? 'library' : 'resume_studio',
+      });
       showToast('Resume parsed successfully!', 'check_circle');
-      setStep('jd');
+      setShowSourceConfirmation(true);
+      setStep('upload');
     } catch (error: any) {
       console.error('AI parsing error:', error);
       if (error.message?.includes('INVALID_DOCUMENT') || error.message?.includes('look like a resume')) {
@@ -735,6 +1433,18 @@ export default function LiquidResumePage() {
       setIsLoading(false);
       setProcessingStage(null);
     }
+  };
+
+  const handlePastedResumeText = (text: string) => {
+    const meta = {
+      fileName: 'Pasted resume text',
+      sourceType: 'paste' as const,
+      characterCount: text.trim().length,
+      detectedType: 'txt',
+    };
+    setSourceResumeMeta(meta);
+    setMode('morph');
+    handleFileExtracted(text);
   };
 
   // ── Day-Zero Blueprint ──
@@ -786,21 +1496,64 @@ export default function LiquidResumePage() {
     if (!originalResume || !jobDescription.trim()) return;
     setIsLoading(true);
     try {
-      showToast(`AI is morphing your resume at ${morphPercentage}% intensity...`, 'psychology');
-      const { morphed, score, proof } = await morphResumeToJD(originalResume, jobDescription, morphPercentage, targetPageCount);
+      showToast(`Optimizing resume at ${morphPercentage}% strength...`, 'psychology');
+      const { morphed, score, proof, guardrailReport: nextGuardrailReport, effectiveMorphPercentage } = await morphResumeToJD(originalResume, jobDescription, morphPercentage, targetPageCount);
 
       // CRITICAL: Always ensure we have valid data before proceeding
       const validResume = hasResumeData(morphed) ? morphed : originalResume;
 
-      setMorphedResume(normalizeResume(validResume, originalResume) as any);
+      const preparedMorph = prepareResumeForExport({
+        mode: 'morph',
+        candidateResume: validResume,
+        originalResume,
+        requestedMorphPercentage: effectiveMorphPercentage || morphPercentage,
+        hasFullConsent: morphConsent.unlocked100,
+      });
+      if (!preparedMorph.resume) throw new Error('The source resume could not be verified');
+      const normalizedMorphed = preparedMorph.resume as ResumeData;
+      setMorphedResume(normalizedMorphed);
+      mergeApplicationKitContext({
+        resumeSnapshot: normalizedMorphed,
+        resumeText: resumeSnapshotToText(normalizedMorphed),
+        resumeSource: 'resume_studio',
+        jobDescription,
+        targetRole: normalizedMorphed.title || originalResume.title || '',
+        jobTitle: normalizedMorphed.title || originalResume.title || '',
+      });
       setMatchScore(score);
       setProofData(proof || null);
+      setGuardrailReport(nextGuardrailReport || null);
       // Clear stale enhance results from previous resume version
       setResumeCheckResult(null);
       setPreFixScore(null);
       setStep(isPro ? 'enhance' : 'template');
-      showToast(`Resume morphed! ${score}% match`, 'check_circle');
+      showToast(`Resume optimized: ${score}% match · ${effectiveMorphPercentage || morphPercentage}% strength`, 'check_circle');
       analytics.toolUse('resume_morph');
+
+      if (user && canPersistPreparedResume(preparedMorph)) {
+        try {
+          const stamp = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+          const autoSaveName = `${normalizedMorphed.title || normalizedMorphed.name || 'Optimized Resume'} — ${stamp}`;
+          const autoSave = await saveResumeVersion(
+            autoSaveName,
+            normalizedMorphed as any,
+            { matchScore: score, template: selectedTemplate.id, paletteId: activePaletteId, paletteColors: selectedPalette.colors, morphPercentage: effectiveMorphPercentage || morphPercentage, guardrailReport: nextGuardrailReport || null },
+            'technical',
+            buildResumeVersionMetadata({
+              autoSaved: true,
+              savedFrom: 'resume_studio_optimize',
+              targetRole: applicationData.jobTitle || normalizedMorphed.title || originalResume.title || null,
+              targetCompany: applicationData.companyName || saveCompanyName || null,
+              matchScore: score,
+              optimizationStrength: effectiveMorphPercentage || morphPercentage,
+              guardrailReport: nextGuardrailReport || null,
+            })
+          );
+          if (autoSave.success) loadVersions();
+        } catch (saveErr) {
+          console.warn('Auto-save optimized resume failed:', saveErr);
+        }
+      }
 
       // ── Skill Gap Detection ──
       try {
@@ -843,20 +1596,88 @@ export default function LiquidResumePage() {
         }
       } catch { /* non-critical */ }
     } catch (error) {
-      console.error('Morph error:', error);
-      showToast('Failed to morph resume', 'cancel');
+      console.error('Optimization error:', error);
+      if ((error as any)?.requiresMorphConsent) {
+        showToast('Unlock 100% Morph in Settings > AI Safety first.', 'lock');
+        router.push('/suite/settings?tab=ai-safety');
+      } else {
+        showToast('Failed to optimize resume', 'cancel');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
+  const getPreparedOutboundResume = (actionLabel: string) => {
+    const candidateResume = getDisplayResume();
+    if (!candidateResume) return null;
+    const prepared = prepareResumeForExport({
+      mode,
+      candidateResume,
+      originalResume,
+      requestedMorphPercentage: morphPercentage,
+      hasFullConsent: morphConsent.unlocked100,
+    });
+    if (prepared.blockedReason === 'missing_source' || !prepared.resume) {
+      showToast(`Sona cannot verify the source resume before ${actionLabel}. Re-upload it or choose a verified version.`, 'shield');
+      setStep('upload');
+      setActiveStart('upload');
+      return null;
+    }
+    return prepared;
+  };
+
   const handleSave = () => {
-    const resume = getDisplayResume();
-    if (!resume) return;
+    const prepared = getPreparedOutboundResume('saving or tracking');
+    if (!prepared?.resume) return;
+    const resume = prepared.resume as ResumeData;
+    if (!requireEducationInstitutionBefore('saving or tracking', resume)) return;
     setSaveVersionName(resume.title || 'My Resume');
     setSaveCompanyName(applicationData.companyName || '');
     setSaveSuccess(false);
     setShowSaveModal(true);
+  };
+
+  const saveVersionOnly = async () => {
+    setSaveInlineStatus(null);
+    if (!user) {
+      setSaveInlineStatus({ type: 'error', message: 'Sign in to save this resume to your library.' });
+      setShowDownloadAuth('signup');
+      return;
+    }
+    const prepared = getPreparedOutboundResume('saving');
+    if (!prepared?.resume) {
+      setSaveInlineStatus({ type: 'error', message: 'No resume data is available to save yet.' });
+      showToast('No resume data to save', 'cancel');
+      return;
+    }
+    const resume = prepared.resume as ResumeData;
+    if (!requireEducationInstitutionBefore('saving', resume)) {
+      setSaveInlineStatus({ type: 'error', message: 'Add the missing school name before saving this resume.' });
+      return;
+    }
+    const stamp = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const versionName = `${resume.title || resume.name || 'Resume'} — ${stamp}`;
+    setIsSaving(true);
+    try {
+      const result = await saveResumeVersion(
+        versionName,
+        resume as any,
+        { matchScore, template: selectedTemplate.id, paletteId: activePaletteId, paletteColors: selectedPalette.colors, morphPercentage },
+        'technical',
+        buildResumeVersionMetadata({ savedFrom: 'resume_studio', targetRole: resume.title || null })
+      );
+      if (!result.success) throw new Error(result.error || 'Save failed');
+      clearDraft();
+      loadVersions();
+      setSaveInlineStatus({ type: 'success', message: 'Saved to Resume Library. This version is now available across your tools.' });
+      showToast('Resume version saved', 'check_circle');
+    } catch (error: any) {
+      setSaveInlineStatus({ type: 'error', message: error.message || 'Save failed. Please try again.' });
+      showToast(error.message || 'Save failed', 'cancel');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const confirmSave = async () => {
@@ -865,15 +1686,17 @@ export default function LiquidResumePage() {
       return;
     }
     // Use a local variable for version name since setState is async
-    const versionName = saveVersionName.trim() || getDisplayResume()?.title || 'My Resume';
+    const prepared = getPreparedOutboundResume('Save & Track');
+    if (!prepared?.resume) {
+      showToast('No verified resume data is available to save', 'cancel');
+      return;
+    }
+    const resume = prepared.resume as ResumeData;
+    const versionName = saveVersionName.trim() || resume.title || 'My Resume';
     if (!saveVersionName.trim()) {
       setSaveVersionName(versionName);
     }
-    const resume = getDisplayResume();
-    if (!resume) {
-      showToast('No resume data to save — generate or upload a resume first', 'cancel');
-      return;
-    }
+    if (!requireEducationInstitutionBefore('Save & Track', resume)) return;
     setIsSaving(true);
     try {
       // 1. Save the resume version
@@ -881,8 +1704,13 @@ export default function LiquidResumePage() {
       const result = await saveResumeVersion(
         `${versionName} — ${saveCompanyName}`,
         resume as any,
-        { matchScore, template: selectedTemplate.id, morphPercentage },
-        'technical'
+        { matchScore, template: selectedTemplate.id, paletteId: activePaletteId, paletteColors: selectedPalette.colors, morphPercentage },
+        'technical',
+        buildResumeVersionMetadata({
+          savedFrom: 'resume_studio_track_modal',
+          targetCompany: saveCompanyName,
+          targetRole: resume.title || versionName,
+        })
       );
       if (!result.success) {
         console.error('[Save & Track] Save failed:', result.error);
@@ -900,13 +1728,27 @@ export default function LiquidResumePage() {
         resumeVersionId: result.data?.id,
         morphedResumeName: versionName,
         talentDensityScore: matchScore || undefined,
+        applicationLink: postingUrl || undefined,
       });
-      
+
       if (!appResult.success) {
         console.warn('[Save & Track] Application creation failed:', appResult.error);
         // Resume was saved, just the application entry failed — still proceed
         showToast(`Resume saved for ${saveCompanyName}! (Application tracking may need retry)`, 'check_circle');
       } else {
+        if (result.data?.id && appResult.data?.id) {
+          updateResumeVersion(result.data.id, {
+            metadata: {
+              ...(result.data.metadata || {}),
+              ...buildResumeVersionMetadata({
+                savedFrom: 'resume_studio_track_modal',
+                linkedApplicationId: appResult.data.id,
+                targetCompany: saveCompanyName,
+                targetRole: resume.title || versionName,
+              }),
+            },
+          }).catch(err => console.warn('[Save & Track] Failed to link application metadata:', err));
+        }
         console.log('[Save & Track] Application created successfully');
         showToast(`Saved & tracked for ${saveCompanyName}!`, 'check_circle');
       }
@@ -936,17 +1778,62 @@ export default function LiquidResumePage() {
       showToast('Please enter a company name', 'cancel');
       return;
     }
+    if (!user) {
+      setShowDownloadAuth('signup');
+      return;
+    }
     setIsLoading(true);
     try {
-      const resume = getDisplayResume();
+      const prepared = getPreparedOutboundResume('application tracking');
+      if (!prepared?.resume) {
+        showToast('No resume data to track', 'cancel');
+        return;
+      }
+      const resume = prepared.resume as ResumeData;
+      if (!requireEducationInstitutionBefore('application tracking', resume)) return;
+      const roleName = applicationData.jobTitle || resume.title || 'Position';
+      const versionName = `${roleName} — ${applicationData.companyName.trim()}`;
+      const savedResume = await saveResumeVersion(
+        versionName,
+        resume as any,
+        { matchScore, template: selectedTemplate.id, paletteId: activePaletteId, paletteColors: selectedPalette.colors, morphPercentage },
+        'technical',
+        buildResumeVersionMetadata({
+          savedFrom: 'resume_studio_application_modal',
+          targetCompany: applicationData.companyName.trim(),
+          targetRole: roleName,
+        })
+      );
+      if (!savedResume.success) {
+        showToast(savedResume.error || 'Resume could not be saved for tracking', 'cancel');
+        return;
+      }
       const result = await createJobApplication({
-        companyName: applicationData.companyName,
-        jobTitle: applicationData.jobTitle || resume?.title || 'Position',
+        companyName: applicationData.companyName.trim(),
+        jobTitle: roleName,
         jobDescription: jobDescription || undefined,
-        morphedResumeName: saveVersionName || resume?.name || 'Resume',
+        resumeVersionId: savedResume.data?.id,
+        morphedResumeName: versionName,
+        talentDensityScore: matchScore || undefined,
+        applicationLink: postingUrl || undefined,
       });
       if (result.success) {
-        showToast('Application tracked! View in Applications tab.', 'check_circle');
+        if (savedResume.data?.id && result.data?.id) {
+          updateResumeVersion(savedResume.data.id, {
+            metadata: {
+              ...(savedResume.data.metadata || {}),
+              ...buildResumeVersionMetadata({
+                savedFrom: 'resume_studio_application_modal',
+                linkedApplicationId: result.data.id,
+                targetCompany: applicationData.companyName.trim(),
+                targetRole: roleName,
+              }),
+            },
+          }).catch(err => console.warn('[Application] Failed to link application metadata:', err));
+        }
+        clearDraft();
+        loadVersions();
+        showToast('Resume saved and application tracked', 'check_circle');
         setShowApplicationModal(false);
         setApplicationData({ companyName: '', jobTitle: '', notes: '' });
       } else {
@@ -976,10 +1863,60 @@ export default function LiquidResumePage() {
   };
 
   const loadVersionToMorph = (version: ResumeVersion) => {
-    setOriginalResume(version.content as unknown as ResumeData);
+    setOriginalResume(normalizeResume(version.content) as ResumeData);
+    const versionTemplateId = version.metadata?.template || version.skill_graph?.template;
+    const versionTemplate = TEMPLATES.find(template => template.id === versionTemplateId);
+    if (versionTemplate) {
+      const restoredPaletteId = canUseTemplatePalettes
+        ? getTemplatePalette(versionTemplate, version.metadata?.paletteId || version.skill_graph?.paletteId).id
+        : getDefaultPaletteId(versionTemplate.id);
+      setSelectedTemplate(versionTemplate);
+      setSelectedPaletteId(restoredPaletteId);
+      setTemplatePaletteSelections(prev => ({ ...prev, [versionTemplate.id]: restoredPaletteId }));
+    }
+    setSourceResumeMeta({
+      fileName: version.version_name || 'Saved resume version',
+      sourceType: 'library',
+      detectedType: 'library',
+    });
+    setShowSourceConfirmation(false);
     setMode('morph');
     setStep('jd');
     showToast('Resume loaded!', 'check_circle');
+  };
+
+  const updateEducationInstitution = (educationIndex: number, institution: string) => {
+    const applyUpdate = (resume: ResumeData | null): ResumeData | null => {
+      if (!resume) return resume;
+      const normalized = normalizeResume(resume) as ResumeData;
+      const education = [...(normalized.education || [])];
+      if (!education[educationIndex]) return normalized;
+      education[educationIndex] = {
+        ...education[educationIndex],
+        institution,
+      };
+      return { ...normalized, education };
+    };
+
+    if (mode === 'create') {
+      setBuildResume(prev => applyUpdate(prev) || prev);
+      return;
+    }
+
+    // A school entered here is an explicit user-confirmed source correction.
+    // Keep the source and candidate aligned so truth-lock validation preserves it.
+    setOriginalResume(prev => applyUpdate(prev));
+    if (hasResumeData(morphedResume)) {
+      setMorphedResume(prev => applyUpdate(prev));
+    }
+  };
+
+  const requireEducationInstitutionBefore = (actionLabel: string, resume = getDisplayResume()) => {
+    const missingSchools = getMissingEducationInstitutions(resume);
+    if (missingSchools.length === 0) return true;
+    showToast(`Sona needs the school name before ${actionLabel}. Add it in the education check.`, 'school');
+    setStep(mode === 'create' ? 'preview' : isPro ? 'enhance' : 'template');
+    return false;
   };
 
   // ===== AUTH GATE FOR DOWNLOADS =====
@@ -992,14 +1929,18 @@ export default function LiquidResumePage() {
       setShowDownloadAuth('signup');
       return;
     }
-    const resume = getDisplayResume();
-    if (!resume) {
+    const prepared = getPreparedOutboundResume('PDF export');
+    if (!prepared?.resume) {
       showToast('No resume data available', 'cancel');
       return;
     }
+    if (!requireEducationInstitutionBefore('PDF export', prepared.resume as ResumeData)) return;
     setIsLoading(true);
     try {
-      await downloadResumePDF(resume, selectedTemplate.colors, undefined, selectedTemplate.id);
+      await downloadResumePDF(prepared.resume, selectedTemplateColors, undefined, selectedTemplate.id);
+      if (prepared.guardrailReport?.blockedChangeCount) {
+        showToast(`Truth locks restored ${prepared.guardrailReport.blockedChangeCount} protected change${prepared.guardrailReport.blockedChangeCount === 1 ? '' : 's'} before export.`, 'verified_user');
+      }
       showToast('PDF downloaded!', 'check_circle');
       analytics.resumeDownload('pdf');
       clearDraft();
@@ -1016,13 +1957,15 @@ export default function LiquidResumePage() {
       setShowDownloadAuth('signup');
       return;
     }
-    const resume = getDisplayResume();
-    if (!resume) return;
+    const prepared = getPreparedOutboundResume('Word export');
+    if (!prepared?.resume) return;
+    const resume = prepared.resume as ResumeData;
+    if (!requireEducationInstitutionBefore('Word export', resume)) return;
     setIsLoading(true);
     try {
     // Dynamic import to avoid naming conflicts with @react-pdf/renderer
     const { Document: DocxDocument, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, Table, TableRow, TableCell, WidthType, ShadingType, TableBorders } = await import('docx');
-    const tc = selectedTemplate.colors;
+    const tc = selectedTemplateColors;
     const p = tc.primary.replace('#', '');
     const a = tc.accent.replace('#', '');
     const t = tc.text.replace('#', '');
@@ -1077,14 +2020,21 @@ export default function LiquidResumePage() {
       return rows;
     };
 
-    const eduBlock = (edu: any, opts?: { font?: string }) => new Paragraph({
-      spacing: { after: 50 },
-      children: [
-        new TextRun({ text: edu.degree, bold: true, size: 21, color: t, font: opts?.font || 'Calibri' }),
-        new TextRun({ text: `  —  ${edu.institution}`, size: 20, color: '555555', font: opts?.font || 'Calibri' }),
-        new TextRun({ text: `  (${edu.year})`, size: 18, color: '777777', font: opts?.font || 'Calibri' }),
-      ],
-    });
+    const eduBlock = (edu: any, opts?: { font?: string }) => {
+      const f = opts?.font || 'Calibri';
+      const degree = cleanResumeText(edu.degree);
+      const institution = cleanResumeText(edu.institution);
+      const year = cleanResumeText(edu.year);
+      const children = [
+        ...(degree ? [new TextRun({ text: degree, bold: true, size: 21, color: t, font: f })] : []),
+        ...(institution ? [new TextRun({ text: `${degree ? '  —  ' : ''}${institution}`, size: 20, color: '555555', font: f })] : []),
+        ...(year ? [new TextRun({ text: `  (${year})`, size: 18, color: '777777', font: f })] : []),
+      ];
+      return new Paragraph({
+        spacing: { after: 50 },
+        children: children.length ? children : [new TextRun({ text: '', size: 20, font: f })],
+      });
+    };
 
     const skillBlock = (cat: any, opts?: { font?: string }) => new Paragraph({
       spacing: { after: 40 },
@@ -1099,15 +2049,79 @@ export default function LiquidResumePage() {
       ...resume.certifications.map(c => new Paragraph({ spacing: { after: 25 }, indent: { left: 360 }, children: [new TextRun({ text: `•  ${c}`, size: 19, color: '333333' })] })),
     ] : [];
 
+    const getDocxHeaderScale = (templateId: string) => {
+      const preset = getHeaderPreset(templateId);
+      const name = cleanResumeText(resume.name) || 'Resume';
+      const title = cleanResumeText(resume.title);
+      const longestNameToken = name.split(/\s+/).reduce((max, token) => Math.max(max, token.length), 0);
+      const pressure = name.length + title.length * 0.35 + Math.max(0, longestNameToken - 12) * 1.4;
+      if (preset.density === 'hero') {
+        if (pressure > 42) return { name: 40, title: 21 };
+        if (pressure > 32) return { name: 44, title: 22 };
+        return { name: 50, title: 24 };
+      }
+      if (preset.density === 'compact') {
+        if (pressure > 38) return { name: 32, title: 18 };
+        return { name: 36, title: 19 };
+      }
+      if (pressure > 40) return { name: 36, title: 19 };
+      if (pressure > 30) return { name: 40, title: 20 };
+      return { name: 44, title: 22 };
+    };
+
+    const safeDocxHeader = (templateId: string, opts?: { font?: string; nameColor?: string; titleColor?: string; contactColor?: string }) => {
+      const preset = getHeaderPreset(templateId);
+      const scale = getDocxHeaderScale(templateId);
+      const font = opts?.font || (['harvard', 'academic', 'elegant'].includes(templateId) ? 'Georgia' : templateId === 'technical' ? 'Courier New' : 'Calibri');
+      const centered = ['minimal', 'harvard', 'academic', 'elegant', 'nordic', 'ats-optimized', 'federal'].includes(templateId);
+      const uppercase = templateId === 'elegant';
+      const name = cleanResumeText(resume.name) || 'Resume';
+      const title = cleanResumeText(resume.title);
+      const contactText = contact.join(`  ${preset.contactSeparator || '•'}  `);
+      const alignment = centered ? AlignmentType.CENTER : undefined;
+      const nameText = uppercase ? name.toUpperCase() : name;
+      const titleText = uppercase ? title.toUpperCase() : title;
+      const headerRows: any[] = [];
+
+      if (preset.eyebrow) {
+        headerRows.push(new Paragraph({
+          alignment,
+          spacing: { after: 28 },
+          children: [new TextRun({ text: preset.eyebrow.toUpperCase(), size: 15, color: opts?.contactColor || '777777', font, allCaps: true })],
+        }));
+      }
+
+      headerRows.push(new Paragraph({
+        alignment,
+        spacing: { after: title ? 44 : 70 },
+        children: [new TextRun({ text: templateId === 'creative' ? `[${name.split(/\s+/).map((n: string) => n[0]).join('').slice(0, 2)}]  ${nameText}` : nameText, bold: templateId !== 'elegant', size: scale.name, color: opts?.nameColor || p, font })],
+      }));
+
+      if (titleText) {
+        headerRows.push(new Paragraph({
+          alignment,
+          spacing: { after: 70 },
+          children: [new TextRun({ text: titleText, size: scale.title, color: opts?.titleColor || a, font })],
+        }));
+      }
+
+      headerRows.push(new Paragraph({
+        alignment,
+        spacing: { after: 180 },
+        border: { bottom: { style: BorderStyle.SINGLE, size: templateId === 'executive' ? 5 : 2, color: opts?.nameColor || p } },
+        children: [new TextRun({ text: contactText, size: 17, color: opts?.contactColor || '666666', font })],
+      }));
+
+      return headerRows;
+    };
+
       let children: any[] = [];
       const tmpl = selectedTemplate.id;
 
       if (tmpl === 'minimal') {
         // ── MINIMAL: centered, light, dash bullets ──
         children = [
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 30 }, children: [new TextRun({ text: resume.name, size: 52, color: t, font: 'Calibri' })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: [new TextRun({ text: resume.title, size: 22, color: '999999', font: 'Calibri' })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: 'E0E0E0' } }, children: [new TextRun({ text: contact.join('  •  '), size: 18, color: '999999' })] }),
+          ...safeDocxHeader('minimal', { nameColor: t, titleColor: '777777', contactColor: '999999' }),
           ...(resume.summary ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: resume.summary, size: 20, color: '555555' })] })] : []),
           ...(resume.experience?.length ? [
             new Paragraph({ spacing: { before: 160, after: 80 }, children: [new TextRun({ text: 'EXPERIENCE', size: 18, color: '999999', allCaps: true, font: 'Calibri' })] }),
@@ -1124,11 +2138,8 @@ export default function LiquidResumePage() {
         ];
       } else if (tmpl === 'creative') {
         // ── CREATIVE: initials prefix, emoji heading icons, triangle bullets ──
-        const initials = resume.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || '';
         children = [
-          new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: `[${initials}]  `, bold: true, size: 28, color: 'FFFFFF', highlight: 'blue' as any }), new TextRun({ text: resume.name, bold: true, size: 52, color: p })] }),
-          new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: resume.title, size: 28, color: '666666' })] }),
-          new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: contact.map((c, i) => (i === 0 ? 'E: ' : i === 1 ? 'P: ' : 'L: ') + c).join('    '), size: 18, color: '555555' })] }),
+          ...safeDocxHeader('creative', { titleColor: '666666', contactColor: '555555' }),
           ...(resume.summary ? [new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: resume.summary, size: 20, color: '555555' })] })] : []),
           ...(resume.experience?.length ? [
             new Paragraph({ spacing: { before: 200, after: 100 }, children: [new TextRun({ text: 'EXPERIENCE', bold: true, size: 24, color: p })] }),
@@ -1146,8 +2157,7 @@ export default function LiquidResumePage() {
       } else if (tmpl === 'harvard') {
         // ── HARVARD: centered name, education FIRST, company-first experience ──
         children = [
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 50 }, children: [new TextRun({ text: resume.name, bold: true, size: 48, color: p, font: 'Georgia' })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: p } }, children: [new TextRun({ text: contact.join('  |  '), size: 18, color: '555555', font: 'Georgia' })] }),
+          ...safeDocxHeader('harvard', { font: 'Georgia', contactColor: '555555' }),
           ...(resume.education?.length ? [
             sectionHead('EDUCATION', { font: 'Georgia', borderColor: `${p}66` }),
             ...resume.education.flatMap(edu => [
@@ -1171,9 +2181,7 @@ export default function LiquidResumePage() {
       } else if (tmpl === 'elegant') {
         // ── ELEGANT: centered name, wide tracking, italic quoted summary, em-dash bullets ──
         children = [
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 30 }, children: [new TextRun({ text: resume.name.toUpperCase(), size: 52, color: p, font: 'Georgia' })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 60 }, children: [new TextRun({ text: `—  ${resume.title.toUpperCase()}  —`, size: 20, color: a, font: 'Georgia' })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: contact.join('    '), size: 16, color: '888888', font: 'Georgia' })] }),
+          ...safeDocxHeader('elegant', { font: 'Georgia', contactColor: '888888' }),
           ...(resume.summary ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 250 }, children: [new TextRun({ text: `\u201C${resume.summary}\u201D`, italics: true, size: 20, color: '666666', font: 'Georgia' })] })] : []),
           ...(resume.experience?.length ? [
             new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 100 }, children: [new TextRun({ text: '—  EXPERIENCE  —', size: 20, color: p, font: 'Georgia', allCaps: true })] }),
@@ -1191,8 +2199,7 @@ export default function LiquidResumePage() {
       } else if (tmpl === 'compact') {
         // ── COMPACT: dense small fonts, skills before experience, tight spacing ──
         children = [
-          new Paragraph({ spacing: { after: 20 }, tabStops: [{ type: 'right' as any, position: 9000 }], children: [new TextRun({ text: resume.name, bold: true, size: 40, color: p }), new TextRun({ text: `\t${resume.email || ''}`, size: 16, color: '666666' })] }),
-          new Paragraph({ spacing: { after: 100 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: p } }, tabStops: [{ type: 'right' as any, position: 9000 }], children: [new TextRun({ text: resume.title, size: 20, color: '666666' }), new TextRun({ text: `\t${[resume.phone, resume.location].filter(Boolean).join(' | ')}`, size: 16, color: '666666' })] }),
+          ...safeDocxHeader('compact', { titleColor: '666666', contactColor: '666666' }),
           ...(resume.summary ? [new Paragraph({ spacing: { after: 120 }, children: [new TextRun({ text: resume.summary, size: 18, color: '555555' })] })] : []),
           ...(resume.skills?.length ? [
             new Paragraph({ spacing: { before: 100, after: 50 }, children: [new TextRun({ text: 'CORE COMPETENCIES', bold: true, size: 18, color: p, allCaps: true })] }),
@@ -1213,10 +2220,7 @@ export default function LiquidResumePage() {
       } else if (tmpl === 'nordic') {
         // ── NORDIC: duration/company left column via tabs, airy spacing ──
         children = [
-          new Paragraph({ spacing: { after: 30 }, children: [new TextRun({ text: resume.name, size: 48, color: t, font: 'Calibri' })] }),
-          new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: resume.title, size: 24, color: a })] }),
-          new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: contact.join('    '), size: 18, color: a })] }),
-          new Paragraph({ spacing: { after: 250 }, border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: `${a}50` } }, text: '' }),
+          ...safeDocxHeader('nordic', { nameColor: t, titleColor: a, contactColor: a }),
           ...(resume.summary ? [new Paragraph({ spacing: { after: 250 }, children: [new TextRun({ text: resume.summary, size: 20, color: `${t}cc` })] })] : []),
           ...(resume.experience?.length ? [
             new Paragraph({ spacing: { before: 200, after: 120 }, children: [new TextRun({ text: 'EXPERIENCE', size: 18, color: a, allCaps: true })] }),
@@ -1240,9 +2244,7 @@ export default function LiquidResumePage() {
         // ── TECHNICAL: Courier monospace, // prefixed headings, → bullets, skills first ──
         const f = 'Courier New';
         children = [
-          new Paragraph({ spacing: { after: 20 }, children: [new TextRun({ text: resume.name, bold: true, size: 40, color: p, font: f })] }),
-          new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: resume.title, size: 24, color: a, font: f })] }),
-          new Paragraph({ spacing: { after: 200 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: p } }, children: [new TextRun({ text: contact.join('  |  '), size: 16, color: '666666', font: f })] }),
+          ...safeDocxHeader('technical', { font: f, contactColor: '666666' }),
           ...(resume.summary ? [
             new Paragraph({ spacing: { before: 200, after: 60 }, children: [new TextRun({ text: '// SUMMARY', bold: true, size: 22, color: p, font: f, allCaps: true })] }),
             new Paragraph({ spacing: { after: 160 }, border: { left: { style: BorderStyle.SINGLE, size: 8, color: a } }, indent: { left: 200 }, children: [new TextRun({ text: resume.summary, size: 19, color: '555555', font: f })] }),
@@ -1262,12 +2264,15 @@ export default function LiquidResumePage() {
         ];
       } else if (tmpl === 'modern' || tmpl === 'cascade' || tmpl === 'double-column') {
         // ── MODERN / CASCADE / DOUBLE-COLUMN: sidebar table layout ──
+        const sidebarScale = getDocxHeaderScale(tmpl);
+        const sidebarPreset = getHeaderPreset(tmpl);
         const sidebarContent: any[] = [
-          new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: resume.name, bold: true, size: 36, color: 'FFFFFF' })] }),
-          new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: resume.title, size: 20, color: 'DDDDDD' })] }),
+          ...(sidebarPreset.eyebrow ? [new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: sidebarPreset.eyebrow.toUpperCase(), bold: true, size: 14, color: 'AAAAAA', allCaps: true })] })] : []),
+          new Paragraph({ spacing: { after: 50 }, children: [new TextRun({ text: cleanResumeText(resume.name) || 'Resume', bold: true, size: Math.min(sidebarScale.name, 34), color: 'FFFFFF' })] }),
+          ...(cleanResumeText(resume.title) ? [new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: cleanResumeText(resume.title), size: Math.min(sidebarScale.title, 19), color: 'DDDDDD' })] })] : []),
           // Contact
           new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: 'CONTACT', bold: true, size: 16, color: 'AAAAAA', allCaps: true })] }),
-          ...contact.map(c => new Paragraph({ spacing: { after: 20 }, children: [new TextRun({ text: c, size: 18, color: 'CCCCCC' })] })),
+          ...contact.map(c => new Paragraph({ spacing: { after: 20 }, children: [new TextRun({ text: cleanResumeText(c), size: 16, color: 'CCCCCC' })] })),
         ];
         // Sidebar skills
         if (resume.skills?.length) {
@@ -1317,9 +2322,7 @@ export default function LiquidResumePage() {
       } else {
         // ── EXECUTIVE (default) — classic professional layout ──
         children = [
-          new Paragraph({ spacing: { after: 40 }, children: [new TextRun({ text: resume.name, bold: true, size: 56, color: p, font: 'Calibri' })] }),
-          new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: resume.title, size: 28, color: a, font: 'Calibri' })] }),
-          new Paragraph({ spacing: { after: 200 }, border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: p } }, children: [new TextRun({ text: contact.join('  •  '), size: 18, color: '555555' })] }),
+          ...safeDocxHeader(tmpl),
           ...(resume.summary ? [sectionHead('PROFESSIONAL SUMMARY'), new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: resume.summary, size: 21, color: '444444' })] })] : []),
           ...(resume.experience?.length ? [sectionHead('EXPERIENCE'), ...resume.experience.flatMap(exp => expBlock(exp))] : []),
           ...(resume.education?.length ? [sectionHead('EDUCATION'), ...resume.education.map(edu => eduBlock(edu))] : []),
@@ -1334,7 +2337,10 @@ export default function LiquidResumePage() {
       });
       const blob = await Packer.toBlob(doc);
       saveAs(blob, `${resume.name?.replace(/\s+/g, '_') || 'resume'}.docx`);
-      showToast('Word document downloaded!', 'check_circle');
+    if (prepared.guardrailReport?.blockedChangeCount) {
+      showToast(`Truth locks restored ${prepared.guardrailReport.blockedChangeCount} protected change${prepared.guardrailReport.blockedChangeCount === 1 ? '' : 's'} before export.`, 'verified_user');
+    }
+    showToast('Word document downloaded!', 'check_circle');
       analytics.resumeDownload('word');
       clearDraft();
     } catch (e) { console.error('Word download error:', e); showToast('Download failed', 'cancel'); }
@@ -1351,6 +2357,10 @@ export default function LiquidResumePage() {
   const [resumeCheckResult, setResumeCheckResult] = useState<any>(null);
   const [resumeCheckLoading, setResumeCheckLoading] = useState(false);
   const [showResumeCheckPanel, setShowResumeCheckPanel] = useState(false);
+
+  useEffect(() => {
+    setHandledRecommendations({});
+  }, [resumeCheckResult?.atsScore, resumeCheckResult?.issues?.join('|'), resumeCheckResult?.suggestions?.join('|')]);
 
   const [linkedinResult, setLinkedinResult] = useState<any>(null);
   const [linkedinLoading, setLinkedinLoading] = useState(false);
@@ -1440,7 +2450,7 @@ export default function LiquidResumePage() {
   };
 
   const autoFixResume = async () => {
-    if (!resumeCheckResult?.suggestions?.length) return showToast('Run Resume Check first', 'cancel');
+    if (!resumeCheckResult?.suggestions?.length && !resumeCheckResult?.issues?.length) return showToast('Run Resume Check first', 'cancel');
     const currentResume = getDisplayResume();
     if (!currentResume) return;
     setAutoFixing(true);
@@ -1456,6 +2466,7 @@ export default function LiquidResumePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           resumeText,
+          resume: currentResume,
           suggestions: [...(resumeCheckResult.suggestions || []), ...(resumeCheckResult.issues || [])],
           targetJD: jobDescription || undefined,
         }),
@@ -1476,7 +2487,7 @@ export default function LiquidResumePage() {
         }, currentResume) as any;
         if (mode === 'morph') setMorphedResume(improved);
         else setBuildResume(improved);
-        showToast(`Resume auto-fixed! Score: ${data.score}/100 ${data.refined ? '(Dual-AI refined <span className="material-symbols-rounded align-middle mr-1">auto_awesome</span>)' : ''}`, 'check_circle');
+        showToast(`Resume improved. Score: ${data.score}/100`, 'check_circle');
 
         // Save skill gap analysis for Skill Bridge
         try {
@@ -1501,6 +2512,18 @@ export default function LiquidResumePage() {
     } finally { setAutoFixing(false); setEnhancePhase('idle'); setEnhancePipelineStage(0); }
   };
 
+  const resolveRecommendation = (id: string, action: 'applied' | 'kept' | 'passed' | 'ignored') => {
+    setHandledRecommendations(prev => ({ ...prev, [id]: action }));
+    const message = action === 'applied'
+      ? 'Recommendation applied to the review deck'
+      : action === 'kept'
+        ? 'Recommendation kept for later'
+        : action === 'passed'
+          ? 'Recommendation passed'
+          : 'Recommendation ignored';
+    showToast(message, action === 'ignored' ? 'visibility_off' : 'check_circle');
+  };
+
   const generateSummary = async () => {
     if (!buildResume.title) return showToast('Add a job title first', 'cancel');
     setAiSuggesting(true);
@@ -1508,7 +2531,10 @@ export default function LiquidResumePage() {
       const res = await authFetch('/api/resume/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate_summary', text: `Role: ${buildResume.title}\nExperience: ${buildResume.experience.map(e => e.role).join(', ') || 'Entry level'}` }),
+        body: JSON.stringify({
+          action: 'generate_summary',
+          text: serializeResumeToText(normalizeResume(buildResume)),
+        }),
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -1525,12 +2551,20 @@ export default function LiquidResumePage() {
   const generateAchievements = async (expIndex: number) => {
     const exp = buildResume.experience[expIndex];
     if (!exp?.role) return;
+    const sourceAchievements = (exp.achievements || []).map(item => item.trim()).filter(Boolean);
+    if (sourceAchievements.length === 0) {
+      showToast('Add one real responsibility or result first. AI can rewrite your evidence, but it will not invent it.', 'cancel');
+      return;
+    }
     setAiSuggesting(true);
     try {
       const res = await authFetch('/api/resume/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate_achievements', text: `Role: ${exp.role}\nCompany: ${exp.company}` }),
+        body: JSON.stringify({
+          action: 'generate_achievements',
+          text: `Role: ${exp.role}\nCompany: ${exp.company}\nSource evidence:\n${sourceAchievements.map(item => `- ${item}`).join('\n')}`,
+        }),
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -1541,19 +2575,24 @@ export default function LiquidResumePage() {
       const newExp = [...buildResume.experience];
       newExp[expIndex] = { ...exp, achievements: data.achievements };
       setBuildResume(prev => ({ ...prev, experience: newExp }));
-      showToast('Achievements generated!', 'check_circle');
+      showToast('Achievement evidence rewritten', 'check_circle');
     } catch { showToast('Failed to generate', 'cancel'); }
     finally { setAiSuggesting(false); }
   };
 
   const suggestSkills = async () => {
     if (!buildResume.title) return showToast('Add a job title first', 'cancel');
+    const sourceSkills = buildResume.skills.flatMap(group => group.items || []).map(item => item.trim()).filter(Boolean);
+    if (sourceSkills.length === 0) {
+      showToast('Add your real skills first. AI can organize them, but it will not infer skills from a job title.', 'cancel');
+      return;
+    }
     setAiSuggesting(true);
     try {
       const res = await authFetch('/api/resume/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'suggest_skills', text: `Role: ${buildResume.title}` }),
+        body: JSON.stringify({ action: 'suggest_skills', text: `Source skills:\n${sourceSkills.join('\n')}` }),
       });
       if (!res.ok) {
         const errData = await res.json();
@@ -1572,7 +2611,13 @@ export default function LiquidResumePage() {
     setStep('upload');
     setOriginalResume(null);
     setMorphedResume(null);
+    setGuardrailReport(null);
     setBuildResume({ ...EMPTY_RESUME });
+    setSourceResumeMeta({});
+    setShowSourceConfirmation(false);
+    setActiveStart('upload');
+    setTemplateFilter('all');
+    setSaveInlineStatus(null);
     setJobDescription('');
     setMatchScore(null);
     setMorphPercentage(75);
@@ -1584,128 +2629,326 @@ export default function LiquidResumePage() {
   // ===== RENDER: Mode Selection =====
   if (mode === 'choose') {
     return (
-      <div className="min-h-screen pt-10 md:pt-16 p-4 md:p-8 flex flex-col items-center">
-        <div className="w-full max-w-xl">
-          {/* Header */}
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-10 pl-10 lg:pl-0 relative">
-            <div className="absolute top-0 right-0">
-              <PageHelp toolId="resume" />
-            </div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wide mb-4"
-              style={{ background: 'linear-gradient(135deg, rgba(245,158,11,0.12) 0%, rgba(251,146,60,0.08) 100%)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.2)' }}>
-              <span className="material-symbols-rounded text-[14px]">auto_awesome</span>
-              AI-Powered Engine
-            </div>
-            <h1 className="text-3xl md:text-4xl font-bold text-[var(--text-primary)] tracking-tight">
-              Resume Morph Studio
-            </h1>
-            <p className="text-[14px] text-[var(--text-secondary)] mt-2 max-w-md mx-auto leading-relaxed">
-              Upload your resume — our dual-AI rewrites every bullet point to match any job description. One resume, infinite morphs.
-            </p>
-            <div className="flex items-center justify-center gap-4 mt-4">
-              {[
-                { icon: 'psychology', label: 'Dual-AI Rewrite' },
-                { icon: 'target', label: 'ATS Optimized' },
-                { icon: 'download', label: '1-Click Export' },
-              ].map(f => (
-                <div key={f.label} className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                  <span className="material-symbols-rounded text-[14px]" style={{ color: '#f59e0b' }}>{f.icon}</span>
-                  {f.label}
-                </div>
-              ))}
-            </div>
-          </motion.div>
+      <SuiteToolShell variant="editor">
+          <SuiteToolHeader
+            tool="resume"
+            title="Build, tailor, score, and ship the right resume."
+            subtitle="Turn one master resume into role-ready versions that stay connected to applications, cover letters, LinkedIn, and interview prep."
+          />
 
-          {/* Primary: Dropzone */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden"
-          >
-            <FileUploadDropzone
-              onUploadSuccess={(text) => {
-                setMode('morph');
-                handleFileExtracted(text);
-              }}
-              isUploading={isLoading}
-              setIsUploading={setIsLoading}
-              processingStage={processingStage}
-              variant="large"
-            />
-          </motion.div>
-
-          {/* Secondary: Build from scratch — Premium Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="mt-5"
-          >
-            <button
-              onClick={() => setMode('create')}
-              className="group shimmer-border w-full flex items-center gap-4 px-6 py-5 rounded-2xl bg-[var(--bg-card)] transition-all duration-200 hover:scale-[1.01]"
-              style={{
-                '--shimmer-color-1': 'rgba(168,85,247,0.45)',
-                '--shimmer-color-2': 'rgba(236,72,153,0.3)',
-                '--shimmer-color-3': 'rgba(99,102,241,0.35)',
-              } as React.CSSProperties}
+          <div className="space-y-5 lg:space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]"
             >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-150 group-hover:scale-110"
-                style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.15) 0%, rgba(236,72,153,0.1) 100%)', border: '1px solid rgba(168,85,247,0.25)' }}
-              >
-                <span className="material-symbols-rounded text-[22px]" style={{ color: '#a855f7' }}>draw</span>
-              </div>
-              <div className="text-left flex-1">
-                <p className="text-[14px] font-semibold text-[var(--text-primary)] leading-tight">
-                  Start from Scratch
-                </p>
-                <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
-                  Build a professional resume step-by-step with AI suggestions
-                </p>
-              </div>
-              <div className="flex items-center gap-1 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
-                <span className="material-symbols-rounded text-[20px]">arrow_forward</span>
-              </div>
-            </button>
-          </motion.div>
-
-          {/* Resume Vault - Subdued */}
-          {versions.length > 0 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mt-12">
-              <h3 className="text-[12px] font-medium text-[var(--text-muted)] mb-3 px-1 uppercase tracking-wider">Recent Resumes</h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {versions.slice(0, 4).map((v) => (
-                  <div
-                    key={v.id}
-                    onClick={() => loadVersionToMorph(v)}
-                    className="p-3 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] transition-all cursor-pointer relative group flex items-start gap-3"
-                  >
-                    <button
-                      onClick={(e) => handleDeleteVersion(e, v.id)}
-                      className="absolute top-1 right-1 p-1.5 rounded-md text-[var(--text-muted)] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <span className="material-symbols-rounded text-[14px]">close</span>
-                    </button>
-                    <div 
-                      className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0"
-                      style={{
-                        backgroundColor: 'var(--tag-blue-bg)',
-                        color: 'var(--tag-blue-text)'
-                      }}
-                    >
-                      <span className="material-symbols-rounded text-[16px]">description</span>
-                    </div>
-                    <div className="flex-1 min-w-0 pt-0.5">
-                      <h4 className="font-medium text-[12px] text-[var(--text-primary)] truncate">{v.version_name}</h4>
-                      <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{new Date(v.created_at).toLocaleDateString()}</p>
-                    </div>
+              <section className="flex h-full flex-col rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 sm:p-5">
+                <div className="flex items-center justify-between gap-3 pb-3 sm:pb-4">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Choose your starting point</p>
+                    <p className="text-[12px] text-[var(--text-secondary)] mt-1">Start simple, then let the workflow reveal only what you need next.</p>
                   </div>
-                ))}
-              </div>
+                  <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                    <span className="material-symbols-rounded text-[15px]">sync_saved_locally</span>
+                    Draft saved locally
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  {STARTING_POINTS.filter(point => point.id !== 'scratch').map(point => {
+                    const selected = activeStart === point.id;
+                    const disabledRecent = point.id === 'recent' && versions.length === 0;
+                    return (
+                      <button
+                        key={point.id}
+                        type="button"
+                        onClick={() => {
+                          if (disabledRecent) {
+                            showToast('Save a resume version first, then it will appear here.', 'info');
+                            return;
+                          }
+                          setActiveStart(point.id);
+                          if (point.id === 'recent') showToast('Choose a version from Recent versions.', 'info');
+                        }}
+                        className={`rounded-[13px] border p-3 text-left transition-all ${
+                          selected
+                            ? 'border-cyan-500/35 bg-cyan-500/[0.07]'
+                            : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)]'
+                        } ${disabledRecent ? 'opacity-60' : ''} min-h-[76px] md:min-h-[100px] md:p-4`}
+                      >
+                        <div className="flex items-start gap-2.5 md:gap-3">
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] md:h-11 md:w-11">
+                            <span className={`material-symbols-rounded text-[19px] ${selected ? 'text-cyan-600 dark:text-cyan-300' : 'icon-neutral'}`}>{point.icon}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[12px] font-semibold leading-tight text-[var(--text-primary)] sm:text-[13px]">{point.label}</p>
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--text-muted)] sm:mt-1.5 sm:text-[12px]">{point.detail}</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveStart('scratch');
+                    setMode('create');
+                  }}
+                  className={`group mt-2 flex min-h-[64px] w-full items-center gap-2.5 rounded-[14px] border p-3 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/25 sm:mt-3 sm:min-h-[88px] sm:gap-3 sm:p-4 ${
+                    activeStart === 'scratch'
+                      ? 'border-cyan-500/35 bg-cyan-500/[0.07]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  <div className="icon-shell-neutral flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[11px] border sm:h-11 sm:w-11 sm:rounded-[12px]">
+                    <span className={`material-symbols-rounded text-[19px] sm:text-[21px] ${activeStart === 'scratch' ? 'text-cyan-600 dark:text-cyan-300' : ''}`}>draw</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold leading-tight text-[var(--text-primary)] sm:text-[14px]">Build from scratch</p>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--text-secondary)] sm:mt-1.5 sm:text-[12px]">Use guided sections and AI suggestions when you do not have a clean base resume yet.</p>
+                  </div>
+                  <span className="material-symbols-rounded text-[22px] text-[var(--text-muted)] transition-colors group-hover:text-[var(--text-primary)]">arrow_forward</span>
+                </button>
+                <div className="mt-2 grid flex-1 grid-cols-3 gap-1.5 sm:mt-3 sm:gap-2">
+                  {STUDIO_ASSURANCES.map(item => (
+                    <div key={item.label} className="flex min-h-[58px] flex-col justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 py-2 md:min-h-[86px] md:px-4 md:py-3">
+                      <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)] font-medium sm:text-[10px] sm:tracking-[0.12em]">{item.label}</p>
+                      <p className="mt-1 text-[10.5px] font-medium leading-snug text-[var(--text-primary)] sm:text-[12px]">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="hidden rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 lg:block">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Resume vault</p>
+                    <h2 className="text-[16px] font-semibold text-[var(--text-primary)] mt-1">Recent versions</h2>
+                  </div>
+                  <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-[12px] font-medium tabular-nums text-[var(--text-muted)]">{versions.length}</span>
+                </div>
+                {versions.length > 0 ? (
+                  <div className="space-y-2">
+                    {versions.slice(0, 4).map((v) => (
+                      <div
+                        key={v.id}
+                        onClick={() => loadVersionToMorph(v)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            loadVersionToMorph(v);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        className="group relative flex cursor-pointer items-start gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/[0.04] focus:outline-none focus:ring-2 focus:ring-cyan-500/25"
+                        aria-label={`Load resume version ${v.version_name}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteVersion(e, v.id)}
+                          className="absolute right-2 top-2 rounded-md p-1.5 text-[var(--text-muted)] opacity-100 transition-opacity hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                          aria-label={`Delete resume version ${v.version_name}`}
+                        >
+                          <span className="material-symbols-rounded text-[14px]">close</span>
+                        </button>
+                        <div className="icon-shell-neutral flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[9px] border">
+                          <span className="material-symbols-rounded text-[16px]">description</span>
+                        </div>
+                        <div className="min-w-0 flex-1 pr-8">
+                          <h4 className="truncate text-[12px] font-medium text-[var(--text-primary)]">{v.version_name}</h4>
+                          <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
+                    <div className="icon-shell-neutral mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] border">
+                      <span className="material-symbols-rounded text-[18px]">folder_open</span>
+                    </div>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">No saved versions yet.</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Upload or build one to start your vault.</p>
+                  </div>
+                )}
+              </section>
             </motion.div>
-          )}
+
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.09 }}
+              className="space-y-4"
+            >
+              <section id="resume-import-workspace" className="scroll-mt-24 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-card)] overflow-hidden shadow-sm">
+                <div className="px-5 py-4 md:px-6 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Start here</p>
+                    <h2 className="text-[17px] font-semibold text-[var(--text-primary)] mt-1">Import a resume</h2>
+                    <p className="text-[12px] text-[var(--text-secondary)] mt-1">A richer upload step that becomes the source for every downstream tool.</p>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+                    <span className="material-symbols-rounded icon-neutral text-[17px]">verified</span>
+                    Keeps structure intact
+                  </div>
+                </div>
+                <FileUploadDropzone
+	                  onUploadSuccess={(text, fileName, meta) => {
+	                    setSourceResumeMeta({ fileName, sourceType: meta?.sourceType, storagePath: meta?.storagePath, characterCount: meta?.characterCount || text.trim().length, detectedType: meta?.detectedType, storagePathDeleted: meta?.storagePathDeleted });
+	                    setMode('morph');
+	                    handleFileExtracted(text);
+	                  }}
+                  showPasteFallback
+                  onPasteText={handlePastedResumeText}
+                  uploadContext="studio"
+                  isUploading={isLoading}
+                  setIsUploading={(state) => {
+                    setIsLoading(state);
+                    if (state) setProcessingStage('uploading');
+                  }}
+                  processingStage={processingStage}
+                  variant="large"
+                />
+              </section>
+
+              <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 lg:hidden">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Resume vault</p>
+                    <h2 className="mt-1 text-[16px] font-semibold text-[var(--text-primary)]">Recent versions</h2>
+                  </div>
+                  <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-[12px] font-medium tabular-nums text-[var(--text-muted)]">{versions.length}</span>
+                </div>
+                {versions.length > 0 ? (
+                  <div className="space-y-2">
+                    {versions.slice(0, 3).map((v) => (
+                      <div
+                        key={v.id}
+                        onClick={() => loadVersionToMorph(v)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            loadVersionToMorph(v);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        className="group relative flex cursor-pointer items-start gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 transition-all hover:border-cyan-500/30 hover:bg-cyan-500/[0.04] focus:outline-none focus:ring-2 focus:ring-cyan-500/25"
+                        aria-label={`Load resume version ${v.version_name}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteVersion(e, v.id)}
+                          className="absolute right-2 top-2 rounded-md p-1.5 text-[var(--text-muted)] transition-opacity hover:text-red-500"
+                          aria-label={`Delete resume version ${v.version_name}`}
+                        >
+                          <span className="material-symbols-rounded text-[14px]">close</span>
+                        </button>
+                        <div className="icon-shell-neutral flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[9px] border">
+                          <span className="material-symbols-rounded text-[16px]">description</span>
+                        </div>
+                        <div className="min-w-0 flex-1 pr-8">
+                          <h4 className="truncate text-[12px] font-medium text-[var(--text-primary)]">{v.version_name}</h4>
+                          <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{new Date(v.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
+                    <div className="icon-shell-neutral mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] border">
+                      <span className="material-symbols-rounded text-[18px]">folder_open</span>
+                    </div>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">No saved versions yet.</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Upload or build one to start your vault.</p>
+                  </div>
+                )}
+              </section>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.12 }}
+              className="grid grid-cols-1 gap-4"
+            >
+              <section className="overflow-hidden rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Operating model</p>
+                    <h2 className="text-[16px] font-semibold text-[var(--text-primary)] mt-1">Studio workflow</h2>
+                  </div>
+                  <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)]">
+                    <motion.span
+                      className="h-2 w-2 rounded-full bg-cyan-500"
+                      animate={prefersReducedMotion ? undefined : { opacity: [0.45, 1, 0.45], scale: [0.92, 1.14, 0.92] }}
+                      transition={prefersReducedMotion ? undefined : { duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                    Sequential scan
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {STUDIO_FLOW.map((item, index) => (
+                    <motion.div
+                      key={item.label}
+                      className="relative flex min-h-[112px] min-w-0 overflow-hidden rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4"
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.14 + index * 0.04 }}
+                    >
+                      <motion.div
+                        className="absolute inset-x-0 top-0 h-1 opacity-0"
+                        style={{
+                          backgroundImage: 'linear-gradient(90deg, rgba(6,182,212,0), rgba(6,182,212,0.95), rgba(16,185,129,0.9), rgba(6,182,212,0))',
+                          backgroundSize: '220% 100%',
+                        }}
+                        animate={prefersReducedMotion ? { opacity: 0.45 } : { opacity: [0, 1, 0], backgroundPosition: ['0% 50%', '220% 50%', '220% 50%'] }}
+                        transition={prefersReducedMotion ? undefined : { duration: 4.8, repeat: Infinity, ease: 'easeInOut', delay: index * 1.2 }}
+                      />
+                      <motion.div
+                        className="pointer-events-none absolute inset-0 rounded-[14px] opacity-0"
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(6,182,212,0.13), rgba(16,185,129,0.08), transparent 60%)',
+                        }}
+                        animate={prefersReducedMotion ? { opacity: 0.04 } : { opacity: [0, 0.18, 0] }}
+                        transition={prefersReducedMotion ? undefined : { duration: 4.8, repeat: Infinity, ease: 'easeInOut', delay: index * 1.2 }}
+                      />
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="icon-shell-neutral flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[11px] border">
+                          <span className="material-symbols-rounded text-[18px]">{item.icon}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Step {index + 1}</p>
+                          <p className="text-[13px] font-semibold text-[var(--text-primary)]">{item.label}</p>
+                          <p className="mt-1 text-[12px] leading-snug text-[var(--text-secondary)]">{item.detail}</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium mb-4">Connected next</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {CONNECTED_ACTIONS.map(action => (
+                    <div key={action.label} className="flex items-start gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                      <div className="icon-shell-neutral flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-[9px] border">
+                        <span className="material-symbols-rounded text-[17px]">{action.icon}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium text-[var(--text-primary)]">{action.label}</p>
+                        <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-relaxed">{action.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+            </motion.div>
+          </div>
 
           {/* Delete Confirmation Modal */}
           <AnimatePresence>
@@ -1725,42 +2968,145 @@ export default function LiquidResumePage() {
               </>
             )}
           </AnimatePresence>
-        </div>
-      </div>
+      </SuiteToolShell>
     );
   }
   // ===== RENDER: Morph Flow =====
   if (mode === 'morph') {
     const displayResume = getDisplayResume();
+    const resumeSnapshot = getResumeSnapshot(originalResume);
+    const jdSignals = getJobDescriptionSignals(jobDescription);
+    const optimizationModes = morphConsent.unlocked100
+      ? [
+        ...OPTIMIZATION_MODES,
+        { id: 'maximum', label: 'Maximum', value: RESUME_MORPH_FULL_UNLOCK, detail: 'Full rewrite strength, truth locks still on' },
+      ]
+      : OPTIMIZATION_MODES;
+    const activeOptimizationMode = optimizationModes.reduce((closest, mode) => (
+      Math.abs(mode.value - morphPercentage) < Math.abs(closest.value - morphPercentage) ? mode : closest
+    ), optimizationModes[1]);
+    const intelligenceScores = [
+      { label: 'Role Fit', value: matchScore || proofData?.optimizedScore || 0, icon: 'my_location', hint: 'JD alignment' },
+      { label: 'ATS', value: resumeCheckResult?.atsScore || matchScore || 0, icon: 'fact_check', hint: 'Machine readability' },
+      { label: 'Clarity', value: resumeCheckResult?.sectionScores?.content || resumeCheckResult?.sectionScores?.summary || resumeCheckResult?.atsScore || 0, icon: 'notes', hint: 'Readable signal' },
+      { label: 'Proof Strength', value: proofData?.optimizedScore || matchScore || 0, icon: 'verified', hint: 'Evidence density' },
+    ];
+    const recommendationGroups = [
+      {
+        id: 'safe-polish',
+        label: 'Safe Polish',
+        kicker: 'Highest impact',
+        icon: 'shield',
+        tone: 'emerald',
+        items: (resumeCheckResult?.issues || []).slice(0, 3).map((text: string, index: number) => ({
+          id: `safe-polish-${index}-${text.slice(0, 36)}`,
+          text,
+          why: 'This is the kind of mismatch recruiters and ATS notice before they read deeply.',
+          direction: 'Use precise, role-aligned evidence while preserving the facts already in your resume.',
+        })),
+        empty: 'No high-priority cleanup items found yet.',
+      },
+      {
+        id: 'should-improve',
+        label: 'Should Improve',
+        kicker: 'Strength builders',
+        icon: 'tune',
+        tone: 'amber',
+        items: (resumeCheckResult?.suggestions || []).slice(0, 4).map((text: string, index: number) => ({
+          id: `should-improve-${index}-${text.slice(0, 36)}`,
+          text,
+          why: 'These changes raise skim value and make the resume easier to match to the job.',
+          direction: 'Clarify scope, keywords, tools, and outcomes without over-writing your experience.',
+        })),
+        empty: 'Run the scan to reveal targeted improvements.',
+      },
+      {
+        id: 'polish',
+        label: 'Polish',
+        kicker: 'Final pass',
+        icon: 'auto_fix_high',
+        tone: 'cyan',
+        items: [
+          'Tighten the opening summary around the target role.',
+          'Keep quantified outcomes near the top of each role.',
+          'Confirm the final template preserves ATS-safe headings.',
+        ].map((text, index) => ({
+          id: `polish-${index}-${text.slice(0, 36)}`,
+          text,
+          why: 'Small presentation choices change what a recruiter remembers after the first skim.',
+          direction: 'Keep the final version concise, evidence-led, and easy to scan.',
+        })),
+        empty: '',
+      },
+    ].map(group => ({
+      ...group,
+      visibleItems: group.items.filter((item: RecommendationDeckItem) => !handledRecommendations[item.id]),
+      handledItems: group.items.filter((item: RecommendationDeckItem) => handledRecommendations[item.id]),
+    }));
+    const visibleRecommendations = recommendationGroups.flatMap(group => group.visibleItems);
+    const missingKeywords = proofData?.topJDTerms?.filter(term => term.matchedIn === 'neither' || term.matchedIn === 'original_only').slice(0, 8) || [];
+    const coveredKeywords = proofData?.topJDTerms?.filter(term => term.matchedIn === 'both' || term.matchedIn === 'morphed_only').slice(0, 8) || [];
+    const skimHighlights = [
+      displayResume?.title,
+      displayResume?.summary?.split('.').filter(Boolean)[0],
+      skillLabels(displayResume).slice(0, 5).join(', '),
+    ].filter(Boolean);
+    const templateSignalText = [
+      jdSignals.role,
+      jdSignals.keywords.join(' '),
+      jobDescription,
+      displayResume?.title,
+      displayResume?.summary,
+      skillLabels(displayResume).join(' '),
+    ].filter(Boolean).join(' ');
+    const recommendedTemplateIds = getRecommendedTemplateIds(templateSignalText);
+    const filteredTemplates = TEMPLATES.filter(template => templateMatchesFilter(template, templateFilter));
+    const educationInstitutionGaps = getMissingEducationInstitutions(displayResume);
+    const exportReadiness = [
+      { label: 'Contact present', ready: Boolean(displayResume?.email || displayResume?.phone), icon: 'alternate_email' },
+      { label: 'Summary present', ready: Boolean(displayResume?.summary), icon: 'notes' },
+      { label: 'Experience entry', ready: Boolean(displayResume?.experience?.length), icon: 'work_history' },
+      { label: 'School names verified', ready: educationInstitutionGaps.length === 0, icon: educationInstitutionGaps.length === 0 ? 'school' : 'priority_high' },
+      { label: 'Template selected', ready: Boolean(selectedTemplate?.id), icon: 'palette' },
+      { label: user ? 'Library save available' : 'Sign-in needed for library', ready: Boolean(user), icon: user ? 'cloud_done' : 'lock' },
+    ];
+    const morphProofReport = buildResumeMorphProofReport({
+      proof: proofData,
+      guardrailReport,
+      originalResume,
+      optimizedResume: displayResume,
+      jobDescription,
+      matchScore,
+      morphPercentage,
+      selectedTemplateName: selectedTemplate.name,
+      educationInstitutionGaps: educationInstitutionGaps.length,
+    });
 
     return (
-      <div className="min-h-screen p-4 md:p-8 relative">
-        <div className="max-w-6xl mx-auto z-10 relative">
-          {/* Header with Reset */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 md:mb-8 gap-3 pl-12 lg:pl-0">
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-white">Morph Your Resume</h1>
-              <p className="text-slate-500 text-sm">AI-powered resume optimization</p>
-            </div>
-            <div className="flex items-center gap-3">
+      <SuiteToolShell variant="editor" className="relative">
+          <SuiteToolHeader
+            tool="resume"
+            subtitle="Import, target, polish, template, and export."
+            actions={
+              <>
               <button onClick={resetAll} className="px-3 md:px-4 py-2 rounded-xl bg-[var(--theme-bg-elevated)] border border-[var(--theme-border)] text-[var(--theme-text-secondary)] hover:border-[var(--theme-border-hover)] hover:text-[var(--theme-text)] transition-all text-sm">
                 ← Start Over
               </button>
-              <PageHelp toolId="resume" />
-            </div>
-          </div>
+              </>
+            }
+          />
 
           {/* Progress Steps */}
           <div className="max-w-5xl mx-auto mb-8">
             <div className="flex items-center justify-between">
               {[
                 { id: 'upload', label: 'Upload', icon: 'description' },
-                { id: 'jd', label: 'Job Description', icon: 'work' },
-                { id: 'enhance', label: 'AI Enhance', icon: 'auto_awesome', pro: true },
+                { id: 'jd', label: 'Role Target', icon: 'work' },
+                { id: 'enhance', label: 'Resume Intelligence', icon: 'auto_awesome', pro: true },
                 { id: 'template', label: 'Template', icon: 'palette' },
-                { id: 'preview', label: 'Download', icon: 'arrow_downward' },
+                { id: 'preview', label: 'Export', icon: 'arrow_downward' },
               ].map((s, i) => {
-                const isEnhanceLocked = s.id === 'enhance' && tier !== 'pro';
+                const isEnhanceLocked = s.id === 'enhance' && !isPro;
                 const canNavigate = s.id === 'upload'
                   || (s.id === 'jd' && hasResumeData(originalResume))
                   || (s.id === 'enhance' && isPro && displayResume)
@@ -1769,7 +3115,7 @@ export default function LiquidResumePage() {
                 <div key={s.id} className="flex items-center">
                   <button
                     onClick={() => {
-                      if (isEnhanceLocked) { showToast('AI Enhancement is a Pro feature — $2.99/mo', 'info'); return; }
+                      if (isEnhanceLocked) { showToast('Resume Intelligence is a Pro feature', 'info'); return; }
                       if (canNavigate) setStep(s.id as any);
                     }}
                     className={`flex items-center gap-1.5 md:gap-2.5 px-3 md:px-4 py-2.5 rounded-xl transition-all text-xs md:text-sm whitespace-nowrap shadow-sm ${
@@ -1788,7 +3134,55 @@ export default function LiquidResumePage() {
                 );
               })}
             </div>
+            <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
+              <div className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+                <span className="material-symbols-rounded text-[16px] text-emerald-500">{user ? 'cloud_done' : 'sync_saved_locally'}</span>
+                {user ? 'Draft saved locally · save to library when ready' : 'Draft saved locally · sign in to save everywhere'}
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)]">
+                Recommended next: {step === 'jd' ? 'Optimize' : step === 'enhance' ? 'Choose Template' : step === 'template' ? 'Export or Save' : 'Confirm source'}
+              </div>
+            </div>
           </div>
+
+          {educationInstitutionGaps.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 rounded-[18px] border border-rose-500/25 bg-rose-500/[0.06] p-4 md:p-5"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[13px] border border-rose-500/20 bg-rose-500/10">
+                    <span className="material-symbols-rounded text-[22px] text-rose-600">school</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-rose-600 font-semibold">Sona needs school info</p>
+                    <h3 className="mt-1 text-[15px] font-semibold text-[var(--text-primary)]">Add the institution before this resume leaves the studio.</h3>
+                    <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
+                      A degree without a school name can look fabricated or incomplete. Talent Studio will not export, save, or track this version until the missing school is added.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid w-full gap-2 lg:max-w-[460px]">
+                  {educationInstitutionGaps.map((edu) => (
+                    <label key={`${edu.index}-${edu.degree}-${edu.year}`} className="grid gap-1.5 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                      <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+                        {[cleanResumeText(edu.degree) || 'Education entry', cleanResumeText(edu.year)].filter(Boolean).join(' · ')}
+                      </span>
+                      <input
+                        type="text"
+                        value={displayResume?.education?.[edu.index]?.institution || ''}
+                        onChange={(event) => updateEducationInstitution(edu.index, event.target.value)}
+                        placeholder="School or university name"
+                        className="min-h-[44px] rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition focus:border-rose-500/50 focus:ring-2 focus:ring-rose-500/10 md:text-[14px]"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
 
           {/* Step Content */}
           <AnimatePresence mode="wait">
@@ -1796,7 +3190,71 @@ export default function LiquidResumePage() {
             {step === 'upload' && (
               <motion.div key="upload" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                   <AnimatePresence mode="wait">
-                    {invalidDocumentError ? (
+                    {showSourceConfirmation && originalResume ? (
+                      <motion.div key="source-ready" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="max-w-4xl mx-auto rounded-[18px] border border-emerald-500/20 bg-[var(--bg-surface)] p-5 md:p-6">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-5">
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-[14px] bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                              <span className="material-symbols-rounded text-[24px] text-emerald-500">task_alt</span>
+                            </div>
+                            <div>
+                              <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Resume source</p>
+                              <h2 className="text-[20px] font-semibold text-[var(--text-primary)] mt-1">We have a clean source to work from.</h2>
+                              <p className="text-[13px] text-[var(--text-secondary)] mt-2 max-w-xl leading-relaxed">
+                                Confirm the imported resume, then paste the job description so the studio can optimize against a real target.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowSourceConfirmation(false);
+                                setOriginalResume(null);
+                                setSourceResumeMeta({});
+                              }}
+                              className="px-4 py-2.5 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                            >
+                              Replace
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowSourceConfirmation(false);
+                                setStep('jd');
+                              }}
+                              className="px-4 py-2.5 rounded-[11px] bg-[var(--text-primary)] text-[var(--bg-deep)] text-[12px] font-semibold hover:opacity-90"
+                            >
+                              Continue to Role Target
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-1 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: 'File', value: sourceResumeMeta.fileName || 'Resume source' },
+                            { label: 'Characters', value: sourceResumeMeta.characterCount ? sourceResumeMeta.characterCount.toLocaleString() : 'Parsed' },
+                            { label: 'Source type', value: sourceResumeMeta.sourceType === 'paste' ? 'Pasted text' : sourceResumeMeta.sourceType === 'storage' ? 'Secure upload' : 'Direct upload' },
+                            { label: 'Detected', value: sourceResumeMeta.detectedType?.toUpperCase() || 'Resume' },
+                          ].map(item => (
+                            <div key={item.label} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 min-w-0">
+                              <p className="text-[10px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                              <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1 truncate">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4">
+                          <p className="text-[12px] font-semibold text-[var(--text-primary)]">{originalResume.name || 'Imported resume'}</p>
+                          <p className="text-[12px] text-[var(--text-secondary)] mt-1">{originalResume.title || 'Target role pending'}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {skillLabels(originalResume).slice(0, 8).map(skill => (
+                              <span key={skill} className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15 text-[10px] font-medium">{skill}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : invalidDocumentError ? (
                       <motion.div key="error" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-2xl mx-auto p-8 rounded-2xl bg-red-500/[0.05] border border-red-500/20 text-center space-y-5 backdrop-blur-md">
                         <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center text-3xl mx-auto border border-red-500/20"><span className="material-symbols-rounded align-middle mr-1">description</span><span className="material-symbols-rounded align-middle mr-1">cancel</span></div>
                         <div>
@@ -1816,8 +3274,14 @@ export default function LiquidResumePage() {
                       </motion.div>
                     ) : (
                       <motion.div key="dropzone" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <FileUploadDropzone 
-                          onUploadSuccess={(text) => handleFileExtracted(text)}
+                        <FileUploadDropzone
+	                          onUploadSuccess={(text, fileName, meta) => {
+	                            setSourceResumeMeta({ fileName, sourceType: meta?.sourceType, storagePath: meta?.storagePath, characterCount: meta?.characterCount || text.trim().length, detectedType: meta?.detectedType, storagePathDeleted: meta?.storagePathDeleted });
+	                            handleFileExtracted(text);
+	                          }}
+                          showPasteFallback
+                          onPasteText={handlePastedResumeText}
+                          uploadContext="studio"
                           isUploading={isLoading}
                           setIsUploading={(state) => {
                             setIsLoading(state);
@@ -1835,258 +3299,256 @@ export default function LiquidResumePage() {
             {/* Step 2: JD */}
             {step === 'jd' && (
               <motion.div key="jd" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8">
-                  {/* Original Resume Preview */}
-                  <div className="elevation-1 p-4 md:p-6">
-                    <div>
-                      <div className="flex items-center gap-3 mb-5">
-                        <div className="w-10 h-10 rounded-lg bg-cyan-500/[0.08] border border-cyan-500/[0.15] flex items-center justify-center text-xl"><span className="material-symbols-rounded text-inherit align-middle">description</span></div>
-                        <div>
-                          <h3 className="text-base font-semibold text-white">Your Resume</h3>
-                          <p className="text-xs text-slate-500">Ready for optimization</p>
+                <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-5 md:gap-6">
+                  <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-hidden">
+                    <div className="p-5 md:p-6 border-b border-[var(--border-subtle)] flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Role target</p>
+                        <h2 className="text-[20px] md:text-[22px] font-semibold text-[var(--text-primary)] mt-1">Paste the job. We will shape the resume around it.</h2>
+                        <p className="text-[13px] text-[var(--text-secondary)] mt-2 max-w-2xl">The optimizer uses the job description to tune summary, bullets, skills, title language, ATS terms, and final page length.</p>
+                      </div>
+                      <div className="hidden sm:flex h-10 w-10 rounded-[10px] bg-amber-500/10 border border-amber-500/15 text-amber-600 items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-rounded text-[20px]">my_location</span>
+                      </div>
+                    </div>
+
+                    <div className="p-5 md:p-6 space-y-4">
+                      <textarea
+                        value={jobDescription}
+                        onChange={(e) => {
+                          setJobDescription(e.target.value);
+                          mergeApplicationKitContext({ jobDescription: e.target.value });
+                        }}
+                        placeholder="Paste the full job description here. Include responsibilities, requirements, company context, and preferred qualifications when available."
+                        className="w-full min-h-[260px] px-4 py-3 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/10 resize-y leading-relaxed text-[14px]"
+                      />
+
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        {[
+                          { label: 'Role', value: jdSignals.role },
+                          { label: 'Company', value: jdSignals.company },
+                          { label: 'Seniority', value: jdSignals.seniority },
+                          { label: 'Detail', value: `${jdSignals.wordCount} words` },
+                        ].map(signal => (
+                          <div key={signal.label} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-3 min-w-0">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">{signal.label}</p>
+                            <p className="text-[12px] text-[var(--text-primary)] font-medium mt-1 truncate">{signal.value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {jdSignals.keywords.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {jdSignals.keywords.map(keyword => (
+                            <span key={keyword} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-500/10 border border-amber-500/15 text-amber-600">
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <aside className="space-y-4">
+                    <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                      <div className="flex items-start gap-3 mb-4">
+                        <div className="w-9 h-9 rounded-[10px] bg-[var(--tag-blue-bg)] text-[var(--tag-blue-text)] flex items-center justify-center flex-shrink-0">
+                          <span className="material-symbols-rounded text-[18px]">description</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-semibold text-[var(--text-primary)] truncate">{resumeSnapshot.name}</p>
+                          <p className="text-[11px] text-[var(--text-secondary)] truncate">{resumeSnapshot.title}</p>
                         </div>
                       </div>
-                      {originalResume && (
-                        <div className="space-y-3">
-                          <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                            <p className="text-xs text-slate-500 mb-1">Name</p>
-                            <p className="text-white font-semibold">{originalResume.name}</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Signal', value: resumeSnapshot.signal },
+                          { label: 'Roles', value: resumeSnapshot.positions },
+                          { label: 'Skills', value: resumeSnapshot.skills },
+                        ].map(item => (
+                          <div key={item.label} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 text-center">
+                            <p className="text-[12px] font-semibold text-[var(--text-primary)]">{item.value}</p>
+                            <p className="text-[10px] text-[var(--text-muted)] mt-1">{item.label}</p>
                           </div>
-                          <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                            <p className="text-xs text-slate-500 mb-1">Target Role</p>
-                            <p className="text-white font-semibold">{originalResume.title}</p>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Optimization</p>
+                          <h3 className="text-[15px] font-semibold text-[var(--text-primary)] mt-1">Choose the rewrite strength</h3>
+                        </div>
+                        <span className="text-[12px] text-[var(--text-muted)]">{morphPercentage}%</span>
+                      </div>
+                      <div className="space-y-2">
+                        {optimizationModes.map(modeOption => {
+                          const isSelected = activeOptimizationMode.id === modeOption.id;
+                          return (
+                            <button
+                              key={modeOption.id}
+                              onClick={() => {
+                                setMorphPercentage(modeOption.value);
+                              }}
+                              className={`w-full text-left p-3 rounded-[12px] border transition-all ${
+                                isSelected
+                                  ? 'bg-amber-500/[0.08] border-amber-500/25'
+                                  : 'bg-[var(--bg-card)] border-[var(--border-subtle)] hover:border-[var(--border)]'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-[13px] font-semibold text-[var(--text-primary)]">{modeOption.label}</p>
+                                {isSelected && <span className="material-symbols-rounded text-[16px] text-amber-600">check_circle</span>}
+                              </div>
+                              <p className="text-[11px] text-[var(--text-secondary)] mt-1">{modeOption.detail}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <details className="mt-4 group">
+                        <summary className="list-none cursor-pointer flex items-center justify-between text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                          Advanced intensity
+                          <span className="material-symbols-rounded text-[16px] group-open:rotate-180 transition-transform">expand_more</span>
+                        </summary>
+                        <div className="mt-3">
+                          <input
+                            type="range"
+                            min="25"
+                            max={maxMorphPercentage}
+                            value={morphPercentage}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setMorphPercentage(Math.min(val, maxMorphPercentage));
+                            }}
+                            className="w-full accent-amber-500"
+                          />
+                          <div className="flex justify-between text-[10px] text-[var(--text-muted)] mt-1">
+                            <span>Light</span>
+                            <span>Balanced</span>
+                            <span>Maximum</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
-                              <p className="text-2xl font-bold text-cyan-400">{originalResume.experience?.length || 0}</p>
-                              <p className="text-xs text-slate-500">Positions</p>
-                            </div>
-                            <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
-                              <p className="text-2xl font-bold text-cyan-400">{originalResume.skills?.flatMap((s: { items: string[] }) => s.items).length || 0}</p>
-                              <p className="text-xs text-slate-500">Skills</p>
+                        </div>
+                      </details>
+
+                      {!morphConsent.unlocked100 && (
+                        <div className="mt-3 rounded-[12px] border border-amber-500/20 bg-amber-500/[0.08] p-3">
+                          <div className="flex items-start gap-2.5">
+                            <span className="material-symbols-rounded text-[17px] text-amber-600 mt-0.5">lock</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[12px] font-semibold text-[var(--text-primary)]">100% Morph is locked</p>
+                              <p className="text-[11px] mt-1 leading-relaxed text-[var(--text-secondary)]">
+                                Resume Morph is capped at {RESUME_MORPH_DEFAULT_MAX}% until you unlock maximum strength in Settings. Education and other protected facts stay locked either way.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => router.push('/suite/settings?tab=ai-safety')}
+                                className="mt-3 inline-flex items-center gap-1.5 rounded-[10px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] font-semibold text-amber-600 hover:bg-amber-500/15"
+                              >
+                                <span className="material-symbols-rounded text-[15px]">settings</span>
+                                Open AI Safety settings
+                              </button>
                             </div>
                           </div>
                         </div>
                       )}
-                    </div>
-                  </div>
 
-                  {/* JD Input */}
-                  <div className="space-y-4">
-                    <div className={`p-4 rounded-xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.02] border-white/[0.06]'}`}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xl"><span className="material-symbols-rounded text-inherit align-middle">work</span></span>
-                        <label className={`font-semibold ${isLight ? 'text-slate-800' : 'text-white'}`}>Job Description</label>
-                      </div>
-                      <textarea
-                        value={jobDescription}
-                        onChange={(e) => setJobDescription(e.target.value)}
-                        placeholder="Paste the full job description here..."
-                        className={`w-full h-44 px-4 py-3 rounded-xl border focus:outline-none resize-none ${isLight ? 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-indigo-300' : 'bg-white/[0.02] border-white/[0.06] text-white placeholder-slate-500 focus:border-indigo-500/50'}`}
-                      />
-                    </div>
-
-                    {/* Morph Intensity */}
-                    <div className={`p-4 rounded-xl border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.02] border-white/[0.06]'}`}>
-                      <div className="flex justify-between items-center mb-3">
-                        <label className={`font-semibold ${isLight ? 'text-slate-800' : 'text-white'}`}>Morph Intensity</label>
-                        <span className={`text-lg font-bold px-3 py-1 rounded-lg ${
-                          morphPercentage < 50 
-                            ? (isLight ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20')
-                            : morphPercentage < 75 
-                              ? (isLight ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'bg-white/5 text-white/70 border border-white/10')
-                              : (isLight ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-red-500/10 text-red-400 border border-red-500/20')
-                          }`}>{morphPercentage}%</span>
-                      </div>
-                      <div className="relative">
-                        <div className={`absolute inset-0 h-3 rounded-full opacity-20 ${isLight ? 'bg-gradient-to-r from-emerald-400 via-slate-300 to-red-400' : 'bg-gradient-to-r from-emerald-500 via-slate-500 to-red-500'}`} />
-                        <input
-                          type="range"
-                          min="25"
-                          max="100"
-                          value={morphPercentage}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setMorphPercentage(val);
-                            if (val < 80) setAcceptedRisk(false);
-                          }}
-                          className="relative w-full h-3 rounded-full appearance-none cursor-pointer"
-                          style={{
-                            background: `linear-gradient(to right, #10b981 ${0}%, #10b981 ${((morphPercentage - 25) / 75) * 33}%, #64748b ${((morphPercentage - 25) / 75) * 66}%, #ef4444 ${((morphPercentage - 25) / 75) * 100}%)`,
-                          }}
-                        />
-                      </div>
-                      <div className="flex justify-between text-xs mt-2">
-                        <span className={`font-medium ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}><span className="material-symbols-rounded text-inherit align-middle">psychiatry</span> Light Touch</span>
-                        <span className={`font-medium ${isLight ? 'text-slate-500' : 'text-white/50'}`}><span className="material-symbols-rounded text-inherit align-middle">bolt</span> Moderate</span>
-                        <span className={`font-medium ${isLight ? 'text-red-600' : 'text-red-400'}`}><span className="material-symbols-rounded text-inherit align-middle">local_fire_department</span> Aggressive</span>
-                      </div>
-
-                      {/* AI Detection Warning at 80%+ */}
-                      <AnimatePresence>
-                        {morphPercentage >= 80 && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0, y: -5 }}
-                            animate={{ opacity: 1, height: 'auto', y: 0 }}
-                            exit={{ opacity: 0, height: 0, y: -5 }}
-                            transition={{ duration: 0.2 }}
-                            className="mt-3"
-                          >
-                            <style>{`
-                              @keyframes flash-warning-box {
-                                0%, 100% { box-shadow: 0 0 0px rgba(220, 38, 38, 0); }
-                                50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.8); background-color: rgba(220, 38, 38, 0.4); }
-                              }
-                              @keyframes persistent-red-glow {
-                                0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.3), 0 0 20px rgba(239, 68, 68, 0.15); }
-                                50% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.5), 0 0 35px rgba(239, 68, 68, 0.25); }
-                              }
-                              .flashing-warning {
-                                animation: flash-warning-box 1s ease-in-out 3;
-                              }
-                              .persistent-glow {
-                                animation: persistent-red-glow 2s ease-in-out infinite;
-                              }
-                            `}</style>
-                            <div 
-                              className={`p-3 rounded-xl border transition-colors duration-300 ${flashWarning ? 'flashing-warning' : ''} ${!acceptedRisk ? 'persistent-glow' : ''}`}
-                              style={
-                                isLight ? { 
-                                  backgroundColor: `rgba(254, 226, 226, ${0.4 + ((morphPercentage - 80) / 20) * 0.6})`,
-                                  borderColor: `rgba(220, 38, 38, ${0.5 + ((morphPercentage - 80) / 20) * 0.5})`,
-                                  boxShadow: !acceptedRisk ? undefined : (morphPercentage >= 95 ? `0 4px 14px 0 rgba(220,38,38,0.2)` : 'none')
-                                } : { 
-                                  backgroundColor: `rgba(239, 68, 68, ${0.1 + ((morphPercentage - 80) / 20) * 0.4})`,
-                                  borderColor: `rgba(220, 38, 38, ${0.5 + ((morphPercentage - 80) / 20) * 0.5})`,
-                                  boxShadow: !acceptedRisk ? undefined : (morphPercentage >= 95 ? `0 0 ${((morphPercentage - 90) / 10) * 15}px rgba(239,68,68,0.5)` : 'none')
-                                }
-                              }
-                            >
-                              <div className="flex items-start gap-2.5">
-                                <span className="text-lg mt-0.5"><span className="material-symbols-rounded text-inherit align-middle">warning</span></span>
-                                <div>
-                                  <p className={`text-xs font-bold transition-colors ${
-                                    isLight ? (morphPercentage >= 95 ? 'text-red-800' : 'text-red-700') : (morphPercentage >= 95 ? 'text-white' : 'text-red-400')
-                                  }`}>AI Detection Risk — High Intensity</p>
-                                  <p className={`text-[11px] mt-1 leading-relaxed transition-colors ${
-                                    isLight ? 'text-red-900/80' : (morphPercentage >= 95 ? 'text-red-50' : 'text-red-300/80')
-                                  }`}>
-                                    At {morphPercentage}% morph, your resume may trigger AI-detection systems used by recruiters. 
-                                    Many companies now flag heavily AI-rewritten applications. We recommend <strong className="text-amber-400">60–75%</strong> for the best balance of keyword alignment and authentic voice.
-                                  </p>
-                                  {morphPercentage >= 90 && (
-                                    <p className={`text-[10px] mt-1.5 font-bold transition-colors ${
-                                      isLight ? 'text-red-800' : (morphPercentage >= 95 ? 'text-white' : 'text-red-400/90')
-                                    }`}>
-                                      <span className="material-symbols-rounded align-middle mr-1">emergency</span> Above 90% — Your original voice will be almost entirely replaced. Proceed only if you understand the risk.
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                              <div className={`mt-4 flex items-center gap-2 p-2.5 rounded-lg border ${
-                                isLight ? 'bg-red-200/50 border-red-300 shadow-sm' : 'bg-red-900/40 border-red-500/50 shadow-inner'
-                              }`}>
-                                <input 
-                                  type="checkbox" 
-                                  id="acceptRisk" 
-                                  checked={acceptedRisk} 
-                                  onChange={e => setAcceptedRisk(e.target.checked)} 
-                                  className={`w-4 h-4 rounded cursor-pointer ${
-                                    isLight ? 'accent-red-600' : 'accent-red-500 bg-red-500/10 border-red-500/50 focus:ring-red-500'
-                                  }`} 
-                                />
-                                <label htmlFor="acceptRisk" className={`text-xs font-bold cursor-pointer leading-snug transition-colors ${
-                                  isLight ? 'text-red-900' : 'text-white'
-                                }`}>
-                                  I accept to proceed
-                                </label>
-                              </div>
+                      {morphConsent.unlocked100 && morphPercentage === RESUME_MORPH_FULL_UNLOCK && (
+                        <div className="mt-3 rounded-[12px] border border-emerald-500/20 bg-emerald-500/[0.08] p-3">
+                          <div className="flex items-start gap-2.5">
+                            <span className="material-symbols-rounded text-[17px] text-emerald-600 mt-0.5">verified_user</span>
+                            <div>
+                              <p className="text-[12px] font-semibold text-[var(--text-primary)]">Maximum rewrite, truth locks still on</p>
+                              <p className="text-[11px] mt-1 leading-relaxed text-[var(--text-secondary)]">
+                                The system can rewrite more aggressively, but schools, degrees, credentials, employers, titles, dates, and contact fields are restored from your source resume.
+                              </p>
                             </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                          </div>
+                        </div>
+                      )}
 
-                    {/* Page Count */}
-                    <div>
-                      <label className={`block font-semibold mb-2 ${isLight ? 'text-slate-800' : 'text-white'}`}>Target Length</label>
-                      <div className="flex gap-2">
+                      <div className="mt-5">
+                        <p className="text-[12px] font-semibold text-[var(--text-primary)] mb-2">Target length</p>
+                        <div className="grid grid-cols-3 gap-2">
                         {(['auto', 1, 2] as const).map((pc) => (
                           <button
                             key={pc}
                             onClick={() => setTargetPageCount(pc)}
-                            className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${targetPageCount === pc 
-                              ? (isLight ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-500 text-white shadow-md') 
-                              : (isLight ? 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200' : 'bg-white/5 text-white/60 border border-white/10 hover:bg-white/10')
-                              }`}
+                            className={`py-2 rounded-[10px] text-[12px] font-medium border transition-all ${targetPageCount === pc
+                              ? 'bg-[var(--text-primary)] text-[var(--bg-deep)] border-[var(--text-primary)]'
+                              : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border)]'
+                            }`}
                           >
                             {pc === 'auto' ? 'Auto' : `${pc} Page${pc > 1 ? 's' : ''}`}
                           </button>
                         ))}
+                        </div>
                       </div>
-                    </div>
 
-                    <button
-                      onClick={handleMorph}
-                      disabled={isLoading || !jobDescription.trim() || (morphPercentage >= 80 && !acceptedRisk)}
-                      className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all text-center ${
-                        !jobDescription.trim()
-                          ? (isLight 
-                              ? 'bg-slate-200 border border-slate-300 text-slate-500 cursor-not-allowed shadow-none'
-                              : 'bg-slate-800/50 border border-slate-700 text-slate-500 cursor-not-allowed shadow-none')
-                          : morphPercentage >= 80 && !acceptedRisk
-                          ? (isLight 
-                              ? 'bg-red-600 border-2 border-red-700 text-white shadow-[0_2px_10px_rgba(220,38,38,0.3)] cursor-not-allowed'
-                              : 'bg-red-600 border-2 border-red-500 text-white shadow-[0_2px_15px_rgba(239,68,68,0.4)] cursor-not-allowed')
-                          : (isLight
-                              ? 'bg-indigo-600 border border-indigo-700 text-white hover:bg-indigo-700 shadow-[0_2px_8px_rgba(99,102,241,0.3)] disabled:opacity-50'
-                              : 'bg-indigo-600 border border-indigo-500 text-white hover:bg-indigo-500 shadow-[0_2px_12px_rgba(99,102,241,0.3)] disabled:opacity-50')
-                      }`}
-                    >
-                      {isLoading ? <><span className="material-symbols-rounded align-middle mr-1">psychology</span> AI is Rewriting...</> : !jobDescription.trim() ? <><span className="material-symbols-rounded align-middle mr-1">warning</span> Paste Job Description First</> : (morphPercentage >= 80 && !acceptedRisk) ? <><span className="material-symbols-rounded align-middle mr-1">emergency</span> Check &quot;I accept&quot; to Proceed</> : <><span className="material-symbols-rounded align-middle mr-1">psychology</span> Morph Resume to Match JD</>}
-                    </button>
+                      <button
+                        onClick={handleMorph}
+                        disabled={isLoading || !jobDescription.trim() || morphConsentLoading}
+                        className={`w-full mt-5 py-3.5 rounded-[12px] font-semibold text-sm transition-all text-center ${
+                          !jobDescription.trim() || morphConsentLoading
+                            ? 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] cursor-not-allowed'
+                            : 'bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 shadow-sm'
+                        }`}
+                      >
+                        {isLoading ? <><span className="material-symbols-rounded align-middle mr-1">psychology</span> Optimizing...</> : !jobDescription.trim() ? 'Paste a job description first' : morphConsentLoading ? 'Checking safety settings...' : 'Optimize Resume'}
+                      </button>
+                      {isLoading && (
+                        <div className="mt-3">
+                          <SonaThinkingTile
+                            variant="resume"
+                            icon="auto_fix_high"
+                            title="Sona is morphing the resume"
+                            description="Preserving facts, mapping proof to the JD, and checking ATS fit."
+                            activeStage="optimizing"
+                            stages={['Facts', 'Keywords', 'Proof', 'ATS']}
+                            compact
+                          />
+                        </div>
+                      )}
+                    </section>
 
-                    {/* Day-Zero Blueprint */}
                     <button
                       onClick={handleBlueprint}
                       disabled={isBlueprintLoading || !jobDescription.trim() || isLoading}
-                      className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                        !jobDescription.trim()
-                          ? (isLight 
-                              ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                              : 'bg-slate-800/50 border border-slate-700 text-slate-500 cursor-not-allowed shadow-none')
-                          : isLight
-                          ? 'bg-slate-50 border border-slate-300 text-slate-700 shadow-sm hover:bg-slate-100 hover:border-slate-400 disabled:opacity-50'
-                          : 'bg-white/[0.04] border border-white/[0.1] text-white/80 hover:bg-white/[0.08] disabled:opacity-50'
-                      }`}
+                      className="w-full rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-amber-500/25 transition-all p-4 text-left disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {!jobDescription.trim() ? (
-                        <><span><span className="material-symbols-rounded text-inherit align-middle">warning</span></span> Paste JD for Blueprint{tier !== 'pro' && <span className="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-slate-400/20 border border-slate-400/30 font-bold opacity-50">PRO</span>}</>
-                      ) : isBlueprintLoading ? (
-                        <><span className="animate-spin"><span className="material-symbols-rounded text-inherit align-middle">hourglass_top</span></span> Generating Blueprint...</>
-                      ) : (
-                        <><span><span className="material-symbols-rounded text-inherit align-middle">content_paste</span></span> Generate Day-Zero Blueprint{tier !== 'pro' && <span className="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-white/20 border border-white/30 font-bold">PRO</span>}</>
-                      )}
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-[10px] bg-amber-500/10 text-amber-600 flex items-center justify-center flex-shrink-0">
+                          <span className="material-symbols-rounded text-[18px]">{isBlueprintLoading ? 'hourglass_top' : 'content_paste'}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-[var(--text-primary)]">
+                            {isBlueprintLoading ? 'Generating blueprint...' : 'Day-Zero Blueprint'} {!isPro && <span className="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 font-bold">PRO</span>}
+                          </p>
+                          <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">Create a first-90-days talking plan from this role target.</p>
+                        </div>
+                      </div>
                     </button>
-                  </div>
+                  </aside>
                 </div>
               </motion.div>
             )}
 
-            {/* Step 3: AI Enhancement (Pro Only) */}
+            {/* Step 3: Resume Intelligence (Pro Only) */}
             {step === 'enhance' && (
               <motion.div key="enhance" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-                <div className="max-w-5xl mx-auto">
+                <div className="max-w-6xl mx-auto">
                   {/* Header */}
-                  <div className="flex items-center justify-between mb-6">
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
                     <div>
-                      <div className="flex items-center gap-3">
-                        <h2 className="text-2xl font-bold text-white"><span className="material-symbols-rounded text-inherit align-middle">auto_awesome</span> AI Enhancement</h2>
-                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold">DUAL-AI: Advanced Engine</span>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium tracking-wide mb-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                        <span className="material-symbols-rounded text-[14px]">verified</span>
+                        Resume Intelligence
                       </div>
-                      <p className="text-sm text-slate-400 mt-1">Check, fix, and generate — powered by two AI models</p>
+                      <h2 className="text-2xl md:text-3xl font-semibold text-[var(--text-primary)] tracking-tight">Polish the version before it leaves the studio.</h2>
+                      <p className="text-[13px] text-[var(--text-secondary)] mt-2 max-w-2xl">Run a quality scan, apply focused improvements, and send the same resume context into follow-up tools when you are ready.</p>
                     </div>
-                    <button onClick={() => setStep('template')} className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${isLight ? 'bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100' : 'bg-indigo-500/[0.08] border border-indigo-500/[0.15] text-indigo-400 hover:bg-indigo-500/[0.12]'}`}>
+                    <button onClick={() => setStep('template')} className="px-4 py-2.5 rounded-[12px] font-medium text-sm transition-all bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90">
                       Continue to Template →
                     </button>
                   </div>
@@ -2099,8 +3561,8 @@ export default function LiquidResumePage() {
                       <div className={`absolute inset-0 ${isLight ? 'bg-gradient-to-r from-slate-50/50 via-indigo-50/30 to-slate-50/50' : 'bg-gradient-to-r from-white/[0.01] via-indigo-500/[0.02] to-white/[0.01]'}`} />
                       <div className="relative flex items-center gap-4">
                         {[
-                          { label: 'AI Writing', stage: 1 },
-                          { label: 'AI Checking', stage: 2 },
+                          { label: 'Writing', stage: 1 },
+                          { label: 'Checking', stage: 2 },
                           { label: 'Refining', stage: 3 },
                         ].map((p) => (
                           <div key={p.stage} className="flex items-center gap-2">
@@ -2121,31 +3583,81 @@ export default function LiquidResumePage() {
                     </motion.div>
                   )}
 
-                  <div className="grid lg:grid-cols-2 gap-6">
-                    {/* Left: Resume Check + Auto-Fix */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                    {intelligenceScores.map(score => (
+                      <div key={score.label} className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">{score.label}</p>
+                            <p className="mt-2 text-[24px] font-semibold tracking-tight text-[var(--text-primary)]">{score.value ? `${score.value}` : '—'}<span className="text-[12px] font-medium text-[var(--text-muted)]">{score.value ? '/100' : ''}</span></p>
+                          </div>
+                          <div className="w-9 h-9 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] flex items-center justify-center">
+                            <span className="material-symbols-rounded text-[17px] text-[var(--text-secondary)]">{score.icon}</span>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-3">{score.hint}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {guardrailReport && (
+                    <div className="mb-6 rounded-[16px] border border-emerald-500/20 bg-emerald-500/[0.06] p-4">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <span className="material-symbols-rounded text-[22px] text-emerald-600">verified_user</span>
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--text-primary)]">Truth guardrails applied</p>
+                            <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">
+                              Protected facts were checked after the rewrite. Education, credentials, employers, job titles, dates, and contact fields stay tied to your source resume.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-[11px]">
+                          <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1 text-[var(--text-secondary)]">
+                            {guardrailReport.effectiveMorphPercentage}% strength
+                          </span>
+                          <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1 text-[var(--text-secondary)]">
+                            {guardrailReport.blockedChangeCount || 0} protected edits blocked
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {morphProofReport && (
+                    <div className="mb-6">
+                      <ProofEngineReport report={morphProofReport} />
+                    </div>
+                  )}
+
+                  <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-6 items-start">
+                    {/* Left: Resume Check + Apply Improvements */}
                     <div className="space-y-4">
                       {/* Resume Quality Check */}
-                      <div className={`rounded-xl p-5 border ${isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+                      <div className="rounded-[16px] p-5 border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
-                            <span className={`text-sm font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}><span className="material-symbols-rounded text-inherit align-middle">search</span> Resume Quality Check</span>
-                            <span className={`text-[8px] px-1.5 py-0.5 rounded font-mono ${isLight ? 'bg-slate-100 border border-slate-200 text-slate-500' : 'bg-white/5 border border-white/10 text-white/40'}`}>AI Flash</span>
+                            <span className="text-sm font-semibold text-[var(--text-primary)]"><span className="material-symbols-rounded text-inherit align-middle">search</span> Quality Scan</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)]">ATS + clarity</span>
                           </div>
-                          <button onClick={() => { setEnhancePhase('checking'); setEnhancePipelineStage(2); checkResume(); }} disabled={resumeCheckLoading} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50 ${isLight ? 'bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100' : 'bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/15'}`}>
-                            {resumeCheckLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">search</span> Analyzing...</> : resumeCheckResult ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">sync</span> Re-check</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">play_arrow</span> Run Check</>}
+                          <button onClick={() => { setEnhancePhase('checking'); setEnhancePipelineStage(2); checkResume(); }} disabled={resumeCheckLoading} className="px-3 py-1.5 rounded-[9px] text-xs font-medium transition-all disabled:opacity-50 bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)]">
+                            {resumeCheckLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">search</span> Scanning...</> : resumeCheckResult ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">sync</span> Re-scan</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">play_arrow</span> Run Scan</>}
                           </button>
                         </div>
 
                         {/* Check Loading Animation */}
                         {resumeCheckLoading && (
-                          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3 py-4">
-                            {['Parsing resume structure...', 'Analyzing ATS compatibility...', 'Scoring keywords & formatting...', 'Generating suggestions...'].map((text, i) => (
-                              <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.8 }} className="flex items-center gap-2">
-                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className={`w-3 h-3 border-2 rounded-full ${isLight ? 'border-indigo-200 border-t-indigo-500' : 'border-indigo-500/30 border-t-indigo-400'}`} />
-                                <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-white/40'}`}>{text}</span>
-                              </motion.div>
-                            ))}
-                          </motion.div>
+                          <div className="py-4">
+                            <SonaThinkingTile
+                              variant="resume"
+                              icon="fact_check"
+                              title="Sona is reviewing resume intelligence"
+                              description="Parsing structure, ATS compatibility, keyword quality, and priority suggestions."
+                              activeStage="scanning"
+                              stages={['Structure', 'ATS', 'Keywords', 'Suggestions']}
+                              compact
+                            />
+                          </div>
                         )}
 
                         {/* Check Results */}
@@ -2211,10 +3723,10 @@ export default function LiquidResumePage() {
                               {autoFixing ? (
                                 <span className="flex items-center justify-center gap-2">
                                   <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}><span className="material-symbols-rounded text-inherit align-middle">sync</span></motion.span>
-                                  Auto-Fixing with Dual-AI...
+                                  Applying improvements...
                                 </span>
                               ) : (
-                                <><span className="material-symbols-rounded text-inherit align-middle">build</span> Auto-Fix Resume (Apply All Suggestions)</>
+                                <><span className="material-symbols-rounded text-inherit align-middle">build</span> Apply Recommended Improvements</>
                               )}
                               {autoFixing && <motion.div className={`absolute bottom-0 left-0 h-0.5 ${isLight ? 'bg-emerald-500' : 'bg-emerald-400'}`} initial={{ width: '0%' }} animate={{ width: '100%' }} transition={{ duration: 15, ease: 'linear' }} />}
                             </button>
@@ -2229,16 +3741,191 @@ export default function LiquidResumePage() {
                                     : 'bg-gradient-to-r from-cyan-500/[0.06] to-emerald-500/[0.06] border-cyan-500/[0.12] text-cyan-400 hover:from-cyan-500/[0.1] hover:to-emerald-500/[0.1]'
                                 }`}
                               >
-                                <span className="material-symbols-rounded text-[16px]">bridge</span> Bridge Your Gaps — Learn the Skills AI Enhanced
+                                <span className="material-symbols-rounded text-[16px]">bridge</span> Bridge Your Gaps
                               </button>
                             )}
                           </motion.div>
                         )}
                       </div>
 
+                      <div className="rounded-[16px] p-5 border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Priority Review</p>
+                            <h3 className="text-[15px] font-semibold text-[var(--text-primary)] mt-1">What deserves attention first</h3>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {resumeCheckResult && visibleRecommendations.length > 0 && (
+                              <button
+                                onClick={() => {
+                                  setHandledRecommendations(prev => ({
+                                    ...prev,
+                                    ...Object.fromEntries(visibleRecommendations.map(item => [item.id, 'applied'] as const)),
+                                  }));
+                                  autoFixResume();
+                                }}
+                                disabled={resumeCheckLoading || autoFixing}
+                                className="px-3 py-2 rounded-[10px] bg-emerald-500/10 border border-emerald-500/20 text-[12px] font-semibold text-emerald-600 hover:bg-emerald-500/15 transition-all disabled:opacity-50"
+                              >
+                                Apply All
+                              </button>
+                            )}
+                            <button
+                              onClick={resumeCheckResult ? autoFixResume : checkResume}
+                              disabled={resumeCheckLoading || autoFixing}
+                              className="px-3 py-2 rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] transition-all disabled:opacity-50"
+                            >
+                              {resumeCheckResult ? 'Safe Polish' : 'Run Scan'}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          {recommendationGroups.map(group => (
+                            <div
+                              key={group.label}
+                              className="relative overflow-hidden rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3"
+                            >
+                              <div
+                                className={`pointer-events-none absolute inset-x-3 top-11 h-px ${
+                                  group.tone === 'emerald'
+                                    ? 'bg-gradient-to-r from-emerald-500/30 via-transparent to-transparent'
+                                    : group.tone === 'amber'
+                                      ? 'bg-gradient-to-r from-amber-500/30 via-transparent to-transparent'
+                                      : 'bg-gradient-to-r from-cyan-500/30 via-transparent to-transparent'
+                                }`}
+                              />
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className={`material-symbols-rounded text-[17px] ${
+                                  group.tone === 'emerald' ? 'text-emerald-500' : group.tone === 'amber' ? 'text-amber-500' : 'text-cyan-500'
+                                }`}>{group.icon}</span>
+                                <div className="min-w-0">
+                                  <p className="text-[12px] font-semibold text-[var(--text-primary)]">{group.label}</p>
+                                  <p className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-muted)]">{group.kicker}</p>
+                                </div>
+                                <span className="ml-auto rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">
+                                  {group.visibleItems.length}/{group.items.length}
+                                </span>
+                              </div>
+                              <div className="relative min-h-[150px]">
+                                <AnimatePresence mode="popLayout">
+                                  {group.visibleItems.length > 0 ? group.visibleItems.map((item: RecommendationDeckItem, index: number) => (
+                                  <motion.div
+                                    key={item.id}
+                                    layout
+                                    initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1, rotate: index === 0 ? 0 : index % 2 === 0 ? 0.45 : -0.45 }}
+                                    exit={{ opacity: 0, x: 48, scale: 0.96, filter: 'blur(4px)' }}
+                                    transition={{ type: 'spring', bounce: 0.18, duration: 0.42 }}
+                                    className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 shadow-[0_10px_28px_rgba(15,23,42,0.04)]"
+                                    style={{
+                                      marginTop: index === 0 ? 0 : -4,
+                                      zIndex: group.visibleItems.length - index,
+                                    }}
+                                  >
+                                    <div className="flex items-start gap-3">
+                                      <div
+                                        className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border ${
+                                          group.tone === 'emerald'
+                                            ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600'
+                                            : group.tone === 'amber'
+                                              ? 'border-amber-500/20 bg-amber-500/10 text-amber-600'
+                                              : 'border-cyan-500/20 bg-cyan-500/10 text-cyan-600'
+                                        }`}
+                                      >
+                                        <span className="material-symbols-rounded text-[15px]">{index === 0 ? 'priority' : 'task_alt'}</span>
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-[12px] leading-relaxed text-[var(--text-primary)]">{item.text}</p>
+                                        <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                                          <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-2.5">
+                                            <p className="text-[9px] uppercase tracking-[0.11em] text-[var(--text-muted)]">Why it matters</p>
+                                            <p className="text-[11px] leading-relaxed text-[var(--text-secondary)] mt-1">{item.why}</p>
+                                          </div>
+                                          <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-2.5">
+                                            <p className="text-[9px] uppercase tracking-[0.11em] text-[var(--text-muted)]">Better direction</p>
+                                            <p className="text-[11px] leading-relaxed text-[var(--text-secondary)] mt-1">{item.direction}</p>
+                                          </div>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                          <button
+                                            onClick={() => {
+                                              resolveRecommendation(item.id, 'applied');
+                                              if (resumeCheckResult && !autoFixing) autoFixResume();
+                                            }}
+                                            disabled={!resumeCheckResult || autoFixing}
+                                            className="inline-flex items-center gap-1.5 rounded-[10px] bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-600 transition hover:bg-emerald-500/15 disabled:opacity-50"
+                                          >
+                                            <span className="material-symbols-rounded text-[14px]">check</span>
+                                            Apply
+                                          </button>
+                                          <button
+                                            onClick={() => resolveRecommendation(item.id, 'kept')}
+                                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+                                          >
+                                            Keep
+                                          </button>
+                                          <button
+                                            onClick={() => resolveRecommendation(item.id, 'passed')}
+                                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+                                          >
+                                            Pass
+                                          </button>
+                                          <button
+                                            onClick={() => resolveRecommendation(item.id, 'ignored')}
+                                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-transparent px-2 py-1.5 text-[11px] font-semibold text-[var(--text-muted)] transition hover:bg-[var(--bg-card)] hover:text-[var(--text-secondary)]"
+                                          >
+                                            Ignore
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                )) : (
+                                  <motion.div
+                                    key={`${group.id}-empty`}
+                                    initial={{ opacity: 0, y: 8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0 }}
+                                    className="flex min-h-[132px] items-center justify-center rounded-[14px] border border-dashed border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-5 text-center"
+                                  >
+                                    <div className="w-full max-w-[320px]">
+                                      <span className="material-symbols-rounded text-[20px] text-emerald-500">check_circle</span>
+                                      <p className="mt-2 text-[12px] font-semibold text-[var(--text-primary)]">
+                                        {group.handledItems.length > 0
+                                          ? `${group.handledItems.length} of ${group.items.length} reviewed`
+                                          : group.items.length > 0
+                                            ? `${group.items.length} of ${group.items.length} clear`
+                                            : 'Nothing pending yet'}
+                                      </p>
+                                      <p className="mt-1 text-[11px] text-[var(--text-muted)]">{group.empty || 'This deck is clear.'}</p>
+                                      {group.handledItems.length > 0 && (
+                                        <div className="mt-3 grid grid-cols-4 gap-1.5">
+                                          {[
+                                            { label: 'Applied', value: group.handledItems.filter((item: RecommendationDeckItem) => handledRecommendations[item.id] === 'applied').length, tone: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/15' },
+                                            { label: 'Kept', value: group.handledItems.filter((item: RecommendationDeckItem) => handledRecommendations[item.id] === 'kept').length, tone: 'text-cyan-600 bg-cyan-500/10 border-cyan-500/15' },
+                                            { label: 'Passed', value: group.handledItems.filter((item: RecommendationDeckItem) => handledRecommendations[item.id] === 'passed').length, tone: 'text-amber-600 bg-amber-500/10 border-amber-500/15' },
+                                            { label: 'Ignored', value: group.handledItems.filter((item: RecommendationDeckItem) => handledRecommendations[item.id] === 'ignored').length, tone: 'text-[var(--text-muted)] bg-[var(--bg-card)] border-[var(--border-subtle)]' },
+                                          ].map(metric => (
+                                            <div key={metric.label} className={`rounded-[10px] border px-2 py-1.5 ${metric.tone}`}>
+                                              <p className="text-[12px] font-semibold leading-none">{metric.value}</p>
+                                              <p className="mt-1 text-[8px] uppercase tracking-[0.08em] opacity-80">{metric.label}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </motion.div>
+                                )}
+                                </AnimatePresence>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* ── Next Steps: Cover Letter & LinkedIn ── */}
-                      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
-                        <div className="text-xs font-semibold text-[var(--text-muted)] mb-3 uppercase tracking-wider">Continue With Your Resume</div>
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                        <div className="text-xs font-semibold text-[var(--text-muted)] mb-3 uppercase tracking-wider">Connected next moves</div>
                         <div className="space-y-2.5">
                           {/* Cover Letter — No-Navigate */}
                           <button
@@ -2262,12 +3949,12 @@ export default function LiquidResumePage() {
                                 : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)]'
                             }`}
                           >
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: coverLetterSent ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                              <span className="material-symbols-rounded text-[18px]" style={{ color: '#10b981' }}>{coverLetterSent ? 'check_circle' : 'mail'}</span>
+                            <div className="icon-shell-neutral w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0">
+                              <span className={`material-symbols-rounded text-[18px] ${coverLetterSent ? 'icon-status-success' : ''}`}>{coverLetterSent ? 'check_circle' : 'mail'}</span>
                             </div>
                             <div className="flex-1">
                               <p className="text-[13px] font-semibold text-[var(--text-primary)]">{coverLetterSent ? '✓ Sent to Cover Letter' : 'Generate Cover Letter'}</p>
-                              <p className="text-[11px] text-[var(--text-muted)]">{coverLetterSent ? 'Resume & JD ready — open from sidebar when you\'re done here' : 'Dual-AI powered, auto-filled with your resume + JD'}</p>
+                              <p className="text-[11px] text-[var(--text-muted)]">{coverLetterSent ? 'Resume & JD ready. Open from sidebar when you\'re done here' : 'Auto-filled with this resume and role target'}</p>
                             </div>
                             {coverLetterSent ? (
                               <span
@@ -2301,12 +3988,12 @@ export default function LiquidResumePage() {
                                 : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)]'
                             }`}
                           >
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: linkedInSent ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}>
-                              <span className="material-symbols-rounded text-[18px]" style={{ color: '#3b82f6' }}>{linkedInSent ? 'check_circle' : 'work'}</span>
+                            <div className="icon-shell-neutral w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0">
+                              <span className={`material-symbols-rounded text-[18px] ${linkedInSent ? 'icon-status-success' : ''}`}>{linkedInSent ? 'check_circle' : 'work'}</span>
                             </div>
                             <div className="flex-1">
                               <p className="text-[13px] font-semibold text-[var(--text-primary)]">{linkedInSent ? '✓ Sent to LinkedIn Optimizer' : 'Optimize LinkedIn Profile'}</p>
-                              <p className="text-[11px] text-[var(--text-muted)]">{linkedInSent ? 'Resume & JD ready — open from sidebar when you\'re done here' : 'Headline, about, skills — optimized for recruiter search'}</p>
+                              <p className="text-[11px] text-[var(--text-muted)]">{linkedInSent ? 'Resume & JD ready. Open from sidebar when you\'re done here' : 'Headline, about, skills optimized for recruiter search'}</p>
                             </div>
                             {linkedInSent ? (
                               <span
@@ -2326,7 +4013,7 @@ export default function LiquidResumePage() {
                                 if (displayResume.name) parts.push(displayResume.name);
                                 if (displayResume.title) parts.push(displayResume.title);
                                 if (displayResume.summary) parts.push(displayResume.summary);
-                                if (displayResume.skills?.length) parts.push(`Skills: ${displayResume.skills.join(', ')}`);
+                                if (displayResume.skills?.length) parts.push(`Skills: ${skillLabels(displayResume).join(', ')}`);
                                 if (displayResume.experience?.length) {
                                   parts.push('Experience:');
                                   displayResume.experience.forEach((e: any) => {
@@ -2340,22 +4027,23 @@ export default function LiquidResumePage() {
                               if (jobDescription) {
                                 sessionStorage.setItem('tc_morphed_jd', jobDescription);
                               }
-                              router.push('/suite/flashcards');
+                              router.push('/suite/interview-sim?mode=full_mock');
                             }}
                             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)] transition-all group text-left"
                           >
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                              <span className="material-symbols-rounded text-[18px]" style={{ color: '#ef4444' }}>swords</span>
+                            <div className="icon-shell-neutral w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0">
+                              <span className="material-symbols-rounded text-[18px]">swords</span>
                             </div>
                             <div className="flex-1">
                               <p className="text-[13px] font-semibold text-[var(--text-primary)]">Practice Interview</p>
-                              <p className="text-[11px] text-[var(--text-muted)]">Mock interview with this JD + resume — AI graded</p>
+                              <p className="text-[11px] text-[var(--text-muted)]">Interview Studio with this JD + resume</p>
                             </div>
                             <span className="material-symbols-rounded text-[16px] text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">arrow_forward</span>
                           </button>
                         </div>
                       </div>
 
+                      <div className="lg:hidden space-y-4">
                       {/* ── Saved Blueprints ── */}
                       <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                         <button
@@ -2367,7 +4055,7 @@ export default function LiquidResumePage() {
                           className="w-full flex items-center justify-between text-left"
                         >
                           <div className="flex items-center gap-2">
-                            <span className="material-symbols-rounded text-[16px]" style={{ color: '#f59e0b' }}>content_paste</span>
+                            <span className="material-symbols-rounded icon-neutral text-[16px]">content_paste</span>
                             <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Saved Blueprints</span>
                             {savedBlueprints.length > 0 && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 font-bold">{savedBlueprints.length}</span>
@@ -2398,8 +4086,8 @@ export default function LiquidResumePage() {
                                         setShowBlueprintModal(true);
                                       }}
                                     >
-                                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
-                                        <span className="material-symbols-rounded text-[16px]" style={{ color: '#f59e0b' }}>description</span>
+                                      <div className="icon-shell-neutral w-8 h-8 rounded-lg border flex items-center justify-center flex-shrink-0">
+                                        <span className="material-symbols-rounded text-[16px]">description</span>
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">{bp.targetRole || 'Day-Zero Blueprint'}</p>
@@ -2441,9 +4129,190 @@ export default function LiquidResumePage() {
                       {/* Navigation */}
                       <div className="flex gap-3">
                         <button onClick={() => setStep('jd')} className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${isLight ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50' : 'bg-white/[0.02] border-white/[0.06] text-slate-400 hover:border-white/[0.12]'}`}>
-                          ← Back to JD
+                          ← Back to role target
                         </button>
                         <button onClick={() => setStep('template')} className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${isLight ? 'bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100' : 'bg-indigo-500/[0.08] border border-indigo-500/[0.15] text-indigo-400 hover:bg-indigo-500/[0.12]'}`}>
+                          Choose Template →
+                        </button>
+                      </div>
+                      </div>
+                    </div>
+
+                    <div className="hidden lg:block space-y-4 sticky top-6">
+                      <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Live Preview</p>
+                            <h3 className="text-[15px] font-semibold text-[var(--text-primary)] mt-1">{displayResume?.title || 'Optimized resume'}</h3>
+                          </div>
+                          <button onClick={() => setStep('template')} className="px-3 py-2 rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] transition-all">
+                            Templates
+                          </button>
+                        </div>
+                        {displayResume && (
+                          <div className="h-[620px] overflow-hidden rounded-[12px] border border-[var(--border-subtle)] bg-white">
+                            <div className="origin-top scale-[0.72] w-[138.5%] pointer-events-none">
+                              <MemoizedResumeTemplate resume={displayResume} template={selectedTemplateWithPalette} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={resumeCheckResult ? autoFixResume : checkResume}
+                          disabled={resumeCheckLoading || autoFixing}
+                          className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left hover:border-[var(--border)] transition-all disabled:opacity-50"
+                        >
+                          <span className="material-symbols-rounded text-[18px] text-emerald-500">auto_fix_high</span>
+                          <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-2">Safe Polish</p>
+                          <p className="text-[11px] text-[var(--text-muted)] mt-1">Low-risk cleanup only.</p>
+                        </button>
+                        <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                          <span className="material-symbols-rounded text-[18px] text-cyan-500">travel_explore</span>
+                          <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-2">Keyword Map</p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {(coveredKeywords.length ? coveredKeywords : jdSignals.keywords.slice(0, 5).map(term => ({ term }))).map((term: any) => (
+                              <span key={term.term} className="px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-[10px] border border-emerald-500/15">{term.term}</span>
+                            ))}
+                            {missingKeywords.slice(0, 3).map(term => (
+                              <span key={term.term} className="px-2 py-1 rounded-full bg-amber-500/10 text-amber-600 text-[10px] border border-amber-500/15">{term.term}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                          <span className="material-symbols-rounded text-[18px] text-violet-500">rule</span>
+                          <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-2">Proof Checker</p>
+                          <p className="text-[11px] text-[var(--text-muted)] mt-1">{proofData ? `${proofData.gapsClosed.length} keyword gaps closed. ${proofData.improvement}.` : 'Run optimization proof to flag vague claims.'}</p>
+                        </div>
+                        <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                          <span className="material-symbols-rounded text-[18px] text-amber-500">visibility</span>
+                          <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-2">Skim Test</p>
+                          <div className="mt-2 space-y-1">
+                            {skimHighlights.slice(0, 3).map((highlight, index) => (
+                              <p key={index} className="text-[11px] text-[var(--text-secondary)] line-clamp-1">{highlight}</p>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="material-symbols-rounded text-[17px] text-[var(--text-secondary)]">compare_arrows</span>
+                          <p className="text-[12px] font-semibold text-[var(--text-primary)]">Version Compare</p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { label: 'Original', value: sourceResumeMeta.fileName ? 'Uploaded' : 'Draft' },
+                            { label: 'Optimized', value: matchScore ? `${matchScore}%` : 'Ready' },
+                            { label: 'Final', value: selectedTemplate.name },
+                          ].map(item => (
+                            <div key={item.label} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                              <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                              <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1 truncate">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* ── Finish Controls ── */}
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                        <button
+                          onClick={() => {
+                            setShowSavedBlueprints(!showSavedBlueprints);
+                            try { setSavedBlueprints(JSON.parse(localStorage.getItem('tc_blueprints') || '[]')); } catch {}
+                          }}
+                          className="w-full flex items-center justify-between text-left"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="material-symbols-rounded icon-neutral text-[17px]">content_paste</span>
+                            <div className="min-w-0">
+                              <span className="block text-[12px] font-semibold text-[var(--text-primary)]">Saved Blueprints</span>
+                              <span className="block text-[10px] text-[var(--text-muted)]">{savedBlueprints.length ? `${savedBlueprints.length} saved role briefs` : 'No saved blueprints yet'}</span>
+                            </div>
+                          </div>
+                          <span className={`material-symbols-rounded text-[16px] text-[var(--text-muted)] transition-transform duration-200 ${showSavedBlueprints ? 'rotate-180' : ''}`}>expand_more</span>
+                        </button>
+
+                        <AnimatePresence>
+                          {showSavedBlueprints && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 space-y-2">
+                                {savedBlueprints.length === 0 ? (
+                                  <p className="text-[11px] text-[var(--text-muted)] text-center py-3">Generate one from the JD step and it will live here.</p>
+                                ) : (
+                                  savedBlueprints.map((bp) => (
+                                    <div
+                                      key={bp.id}
+                                      className="flex items-center gap-3 px-3 py-2.5 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)] transition-all group cursor-pointer"
+                                      onClick={() => {
+                                        setBlueprintContent(bp.content);
+                                        setShowBlueprintModal(true);
+                                      }}
+                                    >
+                                      <div className="icon-shell-neutral w-8 h-8 rounded-[10px] border flex items-center justify-center flex-shrink-0">
+                                        <span className="material-symbols-rounded text-[16px]">description</span>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[12px] font-medium text-[var(--text-primary)] truncate">{bp.targetRole || 'Day-Zero Blueprint'}</p>
+                                        <p className="text-[10px] text-[var(--text-muted)]">{new Date(bp.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                                      </div>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const updated = savedBlueprints.filter(b => b.id !== bp.id);
+                                          setSavedBlueprints(updated);
+                                          localStorage.setItem('tc_blueprints', JSON.stringify(updated));
+                                          showToast('Blueprint deleted', 'delete');
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-red-500/10"
+                                        title="Delete blueprint"
+                                      >
+                                        <span className="material-symbols-rounded text-[14px] text-red-400">close</span>
+                                      </button>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Session Summary</p>
+                            <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1">Current scan state</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[22px] leading-none font-semibold text-[var(--text-primary)]">{resumeCheckResult?.atsScore || '—'}</p>
+                            <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)] mt-1">ATS</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                            <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">Fit</p>
+                            <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1">{matchScore ? `${matchScore}%` : 'Ready'}</p>
+                          </div>
+                          <div className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                            <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">Template</p>
+                            <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1 truncate">{selectedTemplate.name}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setStep('jd')} className={`py-3 rounded-[14px] border text-sm font-medium transition-all ${isLight ? 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50' : 'bg-white/[0.02] border-white/[0.06] text-slate-400 hover:border-white/[0.12]'}`}>
+                          ← Back
+                        </button>
+                        <button onClick={() => setStep('template')} className={`py-3 rounded-[14px] font-bold text-sm transition-all ${isLight ? 'bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100' : 'bg-indigo-500/[0.08] border border-indigo-500/[0.15] text-indigo-400 hover:bg-indigo-500/[0.12]'}`}>
                           Choose Template →
                         </button>
                       </div>
@@ -2457,101 +4326,364 @@ export default function LiquidResumePage() {
             {step === 'template' && (
               <motion.div key="template" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                 {displayResume ? (
-                  <>
-                    {matchScore && (
-                      <div className="mb-6 p-4 rounded-xl bg-[var(--theme-bg-card)] border border-green-500/[0.15]">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-lg bg-green-500/[0.08] border border-green-500/[0.15] flex items-center justify-center">
-                              <span className="text-lg font-bold text-green-400">{matchScore}%</span>
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-white">Resume Morphed!</h3>
-                              <p className="text-xs text-slate-500">Matches {matchScore}% of job requirements</p>
-                            </div>
+                  <div className="space-y-5">
+                    <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+                        <div>
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Visual system</p>
+                        <h2 className="text-[22px] font-semibold text-[var(--text-primary)] mt-1">Pick the format that fits the audience.</h2>
+                        <p className="text-[13px] text-[var(--text-secondary)] mt-2">Keep it ATS-safe, readable, and aligned to the role. You can switch templates without losing the optimized content.</p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 lg:min-w-[320px]">
+                          <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-3">
+                            <p className="text-[13px] font-semibold text-[var(--text-primary)]">{TEMPLATES.filter(t => t.tier === 'free').length}</p>
+                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Free</p>
                           </div>
-                          <button onClick={() => setStep('preview')} className="px-4 py-2 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all">
-                            Preview & Download →
-                          </button>
+                          <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-3">
+                            <p className="text-[13px] font-semibold text-[var(--text-primary)]">{TEMPLATES.filter(t => t.tier === 'pro').length}</p>
+                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Pro</p>
+                          </div>
+                          <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-3">
+                            <p className="text-[13px] font-semibold text-[var(--text-primary)]">{matchScore ? `${matchScore}%` : 'Ready'}</p>
+                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Match</p>
+                          </div>
                         </div>
                       </div>
-                    )}
-
-                    {/* ATS Proof Engine — Deterministic Before/After */}
-                    {proofData && (
-                      <div className="mb-6">
-                        <ProofCard proof={proofData} isLight={isLight} />
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xl font-bold text-[var(--text-primary)]">Choose a Professional Template</h3>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] px-2.5 py-0.5 rounded-md font-semibold bg-[var(--border-subtle)] border border-[var(--border-subtle)] text-[var(--text-secondary)]">{TEMPLATES.filter(t => t.tier === 'free').length} Free</span>
-                        <span className="text-[10px] px-2.5 py-0.5 rounded-md font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 tracking-wide">{TEMPLATES.filter(t => t.tier === 'pro').length} Pro</span>
-                      </div>
                     </div>
-                    <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
-                      {TEMPLATES.map((template) => {
-                        const isLocked = template.tier === 'pro' && !isPro;
-                        return (
-                        <motion.button
-                          key={template.id}
-                          onClick={() => {
-                            if (isLocked) { showToast('Upgrade to Pro to unlock this template — $2.99/mo', 'info'); return; }
-                            setSelectedTemplate(template);
-                          }}
-                          whileHover={!isLocked ? { scale: 1.02, y: -2 } : {}}
-                          whileTap={!isLocked ? { scale: 0.98 } : {}}
-                          className={`p-4 rounded-xl border transition-all text-left relative overflow-hidden flex flex-col group ${
-                            isLocked 
-                              ? 'border-[var(--border-subtle)] bg-[var(--bg-surface)] opacity-70 cursor-not-allowed' 
-                              : selectedTemplate.id === template.id 
-                                ? 'border-cyan-500/40 bg-cyan-500/5 shadow-md shadow-cyan-500/10' 
-                                : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--text-secondary)] hover:shadow-lg cursor-pointer'
-                          }`}
-                        >
-                          {isLocked && (
-                            <div className="absolute top-3 right-3 px-1.5 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/25 text-[8px] font-black text-emerald-700 dark:text-emerald-400 tracking-widest uppercase">PRO</div>
-                          )}
-                          <div 
-                            className={`w-[46px] h-[46px] rounded-[14px] mb-3 flex items-center justify-center shadow-inner transition-colors duration-300 ${isLocked ? 'bg-[var(--border-subtle)] text-[var(--text-muted)] border border-[var(--border-subtle)]' : ''}`}
-                            style={!isLocked ? { backgroundColor: `${template.colors.primary}1A`, color: template.colors.primary, border: `1px solid ${template.colors.primary}33` } : {}}
-                          >
-                            <span className="material-symbols-rounded text-[26px]">
-                              {isLocked ? 'lock' : template.preview}
-                            </span>
+
+                    <div className="grid grid-cols-1 xl:grid-cols-[0.82fr_1.18fr] gap-6 items-stretch">
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 xl:h-[986px] flex flex-col">
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Template Menu</p>
+                            <p className="text-[13px] font-semibold text-[var(--text-primary)] mt-1">{selectedTemplate.name}</p>
                           </div>
-                          <h4 className="font-bold text-[14px] text-[var(--text-primary)] leading-tight mb-1">{template.name}</h4>
-                          <p className="text-[11px] text-[var(--text-muted)] leading-snug">{template.description}</p>
-                        </motion.button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Mini Preview */}
-                    <div className="rounded-xl glass-card p-5">
-                      <div className="flex justify-between mb-4">
-                        <h4 className="font-bold text-white">Preview</h4>
-                        <button onClick={() => setStep('preview')} className="text-sm text-cyan-400">Full Size →</button>
+                          <span className="text-[11px] text-[var(--text-muted)]">{filteredTemplates.length} formats</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {TEMPLATE_FILTERS.map(filter => (
+                            <button
+                              key={filter.id}
+                              type="button"
+                              onClick={() => setTemplateFilter(filter.id)}
+                              className={`px-2.5 py-1.5 rounded-full border text-[10px] font-medium transition-all ${
+                                templateFilter === filter.id
+                                  ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
+                                  : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                              }`}
+                            >
+                              {filter.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="space-y-2 overflow-y-auto pr-1 flex-1 min-h-0">
+                          {filteredTemplates.map((template) => {
+                            const isLocked = template.tier === 'pro' && !isPro;
+                            const isSelected = selectedTemplate.id === template.id;
+                            const recommended = recommendedTemplateIds.has(template.id);
+                            const cardPaletteId = canUseTemplatePalettes
+                              ? templatePaletteSelections[template.id] || (isSelected ? activePaletteId : getDefaultPaletteId(template.id))
+                              : getDefaultPaletteId(template.id);
+                            const cardPalette = getTemplatePalette(template, cardPaletteId);
+                            return (
+                              <div
+                                key={template.id}
+                                role="button"
+                                tabIndex={isLocked ? -1 : 0}
+                                onClick={() => selectTemplate(template)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    selectTemplate(template);
+                                  }
+                                }}
+                                className={`w-full p-3 rounded-[12px] border transition-all text-left relative overflow-hidden group ${
+                                  isLocked
+                                    ? 'border-[var(--border-subtle)] bg-[var(--bg-card)] opacity-60 cursor-not-allowed'
+                                    : isSelected
+                                      ? 'border-amber-500/35 bg-amber-500/[0.06]'
+                                      : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)] cursor-pointer'
+                                }`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div
+                                    className="w-10 h-10 rounded-[10px] flex items-center justify-center flex-shrink-0 border"
+                                    style={!isLocked ? { backgroundColor: `${cardPalette.colors.primary}14`, color: cardPalette.colors.primary, borderColor: `${cardPalette.colors.primary}28` } : {}}
+                                  >
+                                    <span className="material-symbols-rounded text-[20px]">{isLocked ? 'lock' : template.preview}</span>
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-col gap-2">
+                                      <div className="min-w-0">
+                                        <p className="font-semibold text-[13px] leading-snug text-[var(--text-primary)] text-pretty">{template.name}</p>
+                                        <p className="text-[11px] text-[var(--text-muted)] leading-snug mt-1 text-pretty">{template.description}</p>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {template.tier === 'pro' && <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold whitespace-nowrap">PRO</span>}
+                                        {recommended && <span className="text-[8px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-500 border border-cyan-500/20 font-bold whitespace-nowrap">RECOMMENDED</span>}
+                                      </div>
+                                    </div>
+                                    <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+                                      <PaletteDots colors={cardPalette.colors} selected={isSelected} />
+                                      <span className="ml-1 min-w-0 text-[10px] text-[var(--text-muted)]">
+                                        <span className="font-medium text-[var(--text-secondary)]">{cardPalette.label}</span>
+                                        {!canUseTemplatePalettes && <span> · {cardPalette.isDefault ? 'Included' : 'Max palette'}</span>}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <div className="bg-white rounded-xl p-6 text-slate-900 max-h-64 overflow-hidden relative">
-                        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white to-transparent" />
-                        <h2 className="text-xl font-bold" style={{ color: selectedTemplate.colors.primary }}>{displayResume.name}</h2>
-                        <p className="text-sm" style={{ color: selectedTemplate.colors.accent }}>{displayResume.title}</p>
-                        <p className="text-xs text-gray-500 mb-3">{[displayResume.email, displayResume.phone, displayResume.location].filter(Boolean).join(' • ')}</p>
-                        <p className="text-xs text-gray-700">{displayResume.summary}</p>
-                      </div>
-                    </div>
 
-                    {!matchScore && (
-                      <div className="mt-6 flex justify-end">
-                        <button onClick={() => setStep('preview')} className="px-4 py-2 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all">
-                          Preview & Download →
+                    <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 xl:sticky xl:top-6 xl:min-h-[986px]">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Selected</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <h3 className="text-[17px] font-semibold text-[var(--text-primary)]">{selectedTemplate.name}</h3>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${
+                              selectedTemplate.tier === 'pro'
+                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                                : 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20'
+                            }`}>
+                              {selectedTemplate.tier.toUpperCase()}
+                            </span>
+                            {recommendedTemplateIds.has(selectedTemplate.id) && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded border font-bold bg-cyan-500/10 text-cyan-500 border-cyan-500/20">
+                                RECOMMENDED
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[12px] text-[var(--text-secondary)] mt-1">{selectedTemplate.description}</p>
+                        </div>
+                        <button onClick={() => setStep('preview')} className="px-4 py-2.5 rounded-[12px] font-medium text-sm bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 transition-all whitespace-nowrap self-start sm:self-auto">
+                          Export →
                         </button>
                       </div>
-                    )}
-                  </>
+
+                      <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                        <div className="mb-3 grid grid-cols-3 gap-2">
+                          {[
+                            { label: 'Preview', value: 'Exact' },
+                            { label: 'Export', value: 'PDF/Word' },
+                            { label: 'ATS', value: 'Text-safe' },
+                          ].map(item => (
+                            <div key={item.label} className="rounded-[9px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
+                              <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                              <p className="text-[11px] font-semibold text-[var(--text-primary)] mt-0.5 truncate">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mb-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Palette</p>
+                                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${
+                                  canUseTemplatePalettes
+                                    ? 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                                    : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)]'
+                                }`}>
+                                  {canUseTemplatePalettes ? 'MAX ACTIVE' : 'MAX PALETTES'}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-[12px] font-semibold text-[var(--text-primary)]">{selectedPalette.label}</p>
+                              <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">Choose a three-color set for this exact resume design.</p>
+                            </div>
+                            {!canUseTemplatePalettes && (
+                              <button
+                                type="button"
+                                onClick={openMaxPaletteUpgrade}
+                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[10px] border border-amber-500/25 bg-amber-500/10 px-3 text-[11px] font-semibold text-amber-700 transition-all hover:bg-amber-500/15 dark:text-amber-300"
+                              >
+                                <span className="material-symbols-rounded text-[15px]">workspace_premium</span>
+                                Unlock Max
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="relative mt-3">
+                            <button
+                              type="button"
+                              aria-haspopup="listbox"
+                              aria-expanded={showPaletteMenu}
+                              onClick={() => setShowPaletteMenu(open => !open)}
+                              className="flex w-full min-w-0 items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2.5 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+                            >
+                              <span className="flex min-w-0 items-center gap-2.5">
+                                <PaletteDots colors={selectedPalette.colors} selected size="md" />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-[12px] font-semibold text-[var(--text-primary)]">{selectedPalette.label}</span>
+                                  <span className="block truncate text-[10px] text-[var(--text-muted)]">{selectedPalette.isDefault ? 'Included palette' : 'Max palette'} · Choose palette</span>
+                                </span>
+                              </span>
+                              <span className="material-symbols-rounded shrink-0 text-[18px] text-[var(--text-muted)]">
+                                {showPaletteMenu ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+                              </span>
+                            </button>
+
+                            <AnimatePresence>
+                              {showPaletteMenu && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -6 }}
+                                  transition={{ duration: 0.16 }}
+                                  className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[320px] overflow-y-auto rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 shadow-xl"
+                                  role="listbox"
+                                  aria-label={`${selectedTemplate.name} palette choices`}
+                                >
+                                  {getTemplatePalettes(selectedTemplate).map(palette => {
+                                    const paletteSelected = activePaletteId === palette.id;
+                                    const paletteLocked = !palette.isDefault && !canUseTemplatePalettes;
+                                    return (
+                                      <button
+                                        key={palette.id}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={paletteSelected}
+                                        aria-label={`${selectedTemplate.name} ${palette.label} palette${paletteLocked ? ', Talent Max' : ''}`}
+                                        onClick={() => selectTemplatePalette(selectedTemplate, palette)}
+                                        className={`flex w-full min-w-0 items-center gap-2.5 rounded-[11px] border px-2.5 py-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/25 ${
+                                          paletteSelected
+                                            ? 'border-amber-400/70 bg-amber-400/[0.08]'
+                                            : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-card)]'
+                                        }`}
+                                      >
+                                        <PaletteDots colors={palette.colors} selected={paletteSelected} locked={paletteLocked} size="md" />
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block truncate text-[11px] font-semibold text-[var(--text-primary)]">{palette.label}</span>
+                                          <span className="block truncate text-[9px] text-[var(--text-muted)]">{palette.isDefault ? 'Included' : canUseTemplatePalettes ? 'Max palette' : 'Max locked'}</span>
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+
+                        <div className="relative h-[720px] overflow-auto rounded-[12px] border border-slate-200 bg-slate-100 p-4 shadow-inner">
+                          <div className="mx-auto h-[810px] w-[572px] max-w-none">
+                            <div
+                              key={selectedTemplate.id}
+                              className="origin-top-left scale-[0.72] w-[794px] rounded-[10px] overflow-hidden shadow-xl"
+                            >
+                              <MemoizedResumeTemplate resume={displayResume} template={selectedTemplateWithPalette} />
+                            </div>
+                          </div>
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-100 to-transparent" />
+                        </div>
+
+                        <button
+                          onClick={() => setStep('preview')}
+                          className="mt-3 w-full py-2.5 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] transition-all"
+                        >
+                          Open full-size preview
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                    {morphProofReport && <ProofEngineReport report={morphProofReport} />}
+
+                    <details className="group rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-hidden">
+                      <summary className="list-none cursor-pointer p-5 flex items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <div className="icon-shell-neutral w-10 h-10 rounded-[11px] border flex items-center justify-center flex-shrink-0">
+                            <span className="material-symbols-rounded text-[20px]">tune</span>
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-semibold text-[var(--text-primary)]">Power User Details</p>
+                            <p className="text-[11px] text-[var(--text-muted)] mt-1">ATS proof, template reasoning, and export context when you want the deeper read.</p>
+                          </div>
+                        </div>
+                        <span className="material-symbols-rounded text-[18px] text-[var(--text-muted)] group-open:rotate-180 transition-transform">expand_more</span>
+                      </summary>
+                      <div className="px-5 pb-5 grid lg:grid-cols-[0.95fr_1.05fr] gap-4">
+                        {proofData ? (
+                          <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-[12px] font-semibold text-[var(--text-primary)]">TF-IDF proof summary</p>
+                                <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-muted)]">
+                                  Deterministic keyword similarity improved from source to optimized resume.
+                                </p>
+                              </div>
+                              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600">
+                                +{proofData.delta} pts
+                              </span>
+                            </div>
+                            <div className="mt-4 grid grid-cols-3 gap-2">
+                              {[
+                                { label: 'Source', value: proofData.baselineScore },
+                                { label: 'Optimized', value: proofData.optimizedScore },
+                                { label: 'Gaps closed', value: proofData.gapsClosed.length },
+                              ].map(item => (
+                                <div key={item.label} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                                  <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                                  <p className="mt-1 text-[13px] font-semibold text-[var(--text-primary)] tabular-nums">{item.value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-4 flex flex-wrap gap-1.5">
+                              {proofData.topJDTerms.slice(0, 8).map(term => (
+                                <span
+                                  key={`${term.term}-${term.matchedIn}`}
+                                  className={`rounded-full border px-2 py-1 text-[10px] font-medium ${
+                                    term.matchedIn === 'both'
+                                      ? 'border-emerald-500/15 bg-emerald-500/10 text-emerald-600'
+                                      : term.matchedIn === 'morphed_only'
+                                        ? 'border-cyan-500/15 bg-cyan-500/10 text-cyan-600'
+                                        : 'border-amber-500/15 bg-amber-500/10 text-amber-600'
+                                  }`}
+                                >
+                                  {term.term}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5">
+                            <p className="text-[12px] font-semibold text-[var(--text-primary)]">ATS Proof Engine</p>
+                            <p className="text-[11px] text-[var(--text-muted)] mt-2 leading-relaxed">Run optimization or Resume Intelligence to see TF-IDF match proof, gaps closed, and keyword coverage here.</p>
+                          </div>
+                        )}
+                        <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5">
+                          <p className="text-[12px] font-semibold text-[var(--text-primary)]">Why This Template Fits</p>
+                          <div className="mt-4 grid sm:grid-cols-3 gap-2">
+                            {[
+                              { label: 'Audience', value: selectedTemplate.name },
+                              { label: 'Match', value: matchScore ? `${matchScore}%` : 'Role-ready' },
+                              { label: 'Export', value: 'PDF + Word' },
+                            ].map(item => (
+                              <div key={item.label} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                                <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                                <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1 truncate">{item.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-4 space-y-2">
+                            {[
+                              'Exact preview uses the same template renderer as the final resume view.',
+                              'PDF export uses text-normalized, ATS-conscious section ordering.',
+                              'Word export preserves the selected visual language where supported.',
+                            ].map(item => (
+                              <div key={item} className="flex items-start gap-2 text-[11px] text-[var(--text-secondary)]">
+                                <span className="material-symbols-rounded text-[14px] text-emerald-500 mt-0.5">check_circle</span>
+                                <span>{item}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
                 ) : (
                   <div className="max-w-lg mx-auto text-center py-12">
                     <div className="rounded-2xl bg-red-500/10 border border-red-500/30 p-8">
@@ -2559,7 +4691,7 @@ export default function LiquidResumePage() {
                       <h3 className="text-xl font-bold text-white mb-2">Resume Data Missing</h3>
                       <p className="text-silver mb-6">Something went wrong loading your resume.</p>
                       <div className="flex gap-3 justify-center">
-                        <button onClick={() => setStep('jd')} className="px-6 py-3 rounded-xl bg-[var(--theme-bg-elevated)] text-white font-medium hover:bg-white/10"><span className="material-symbols-rounded text-[14px] align-middle mr-1">arrow_back</span> Back to JD</button>
+                        <button onClick={() => setStep('jd')} className="px-6 py-3 rounded-xl bg-[var(--theme-bg-elevated)] text-white font-medium hover:bg-white/10"><span className="material-symbols-rounded text-[14px] align-middle mr-1">arrow_back</span> Back to role target</button>
                         <button onClick={() => { if (originalResume) setMorphedResume(originalResume); }} className="px-6 py-3 rounded-xl bg-cyan-500 text-white font-bold">Use Original Resume</button>
                       </div>
                     </div>
@@ -2574,67 +4706,100 @@ export default function LiquidResumePage() {
                 {displayResume ? (
                   <div className="grid lg:grid-cols-3 gap-6">
                     <div className="space-y-4">
-                      <div className="rounded-xl glass-card p-5">
-                        <h3 className="font-semibold text-white mb-4">Actions</h3>
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Export station</p>
+                        <h3 className="text-[19px] font-semibold text-[var(--text-primary)] mt-1">Your resume is ready.</h3>
+                        <p className="text-[12px] text-[var(--text-secondary)] mt-2 mb-4">Download, save a reusable version, or attach it to an application pipeline.</p>
 
                         {/* Free-tier usage counter */}
                         {!isPro && user && (
-                          <div className={`mb-3 px-3 py-2 rounded-lg flex items-center gap-2 ${isLight ? 'bg-amber-50 border border-amber-200' : 'bg-amber-500/[0.08] border border-amber-500/[0.15]'}`}>
-                            <span className={`material-symbols-rounded text-[16px] ${isLight ? 'text-amber-600' : 'text-amber-400'}`}>token</span>
-                            <span className={`text-xs ${isLight ? 'text-slate-700' : 'text-amber-300'}`}>{remaining('morphs')} of {caps?.morphs || 3} free uses left</span>
+                          <div className="mb-3 px-3 py-2 rounded-[10px] flex items-center gap-2 bg-amber-500/[0.08] border border-amber-500/[0.15]">
+                            <span className="material-symbols-rounded icon-status-warning text-[16px]">token</span>
+                            <span className="text-xs text-[var(--text-secondary)]">{remaining('morphs')} of {caps?.morphs || 3} free uses left</span>
                           </div>
                         )}
                         {!user && (
-                          <div className={`mb-3 px-3 py-2 rounded-lg flex items-center gap-2 ${isLight ? 'bg-cyan-50 border border-cyan-200' : 'bg-cyan-500/[0.06] border border-cyan-500/[0.12]'}`}>
-                            <span className={`material-symbols-rounded text-[16px] ${isLight ? 'text-cyan-600' : 'text-cyan-400'}`}>lock_open</span>
-                            <span className={`text-xs ${isLight ? 'text-slate-700' : 'text-cyan-300'}`}>Sign in to download your resume</span>
+                          <div className="mb-3 px-3 py-2 rounded-[10px] flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--border-subtle)]">
+                            <span className="material-symbols-rounded text-[16px] text-[var(--text-secondary)]">lock_open</span>
+                            <span className="text-xs text-[var(--text-secondary)]">Sign in to download your resume</span>
                           </div>
                         )}
 
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-2">
-                            <button onClick={downloadPDF} disabled={isLoading} className="py-2.5 rounded-xl font-semibold bg-cyan-500/[0.1] border border-cyan-500/[0.2] text-cyan-400 hover:bg-cyan-500/[0.15] transition-all disabled:opacity-50 text-sm">
-                              {isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">description</span> PDF</>}
+                          <div className="grid grid-cols-1 gap-2">
+                            <button onClick={downloadPDF} disabled={isLoading} className="w-full py-3 rounded-[12px] font-semibold bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 transition-all disabled:opacity-50 text-sm">
+                              {isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span> Preparing...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">description</span> Download PDF</>}
                             </button>
-                            <button onClick={downloadWord} disabled={isLoading} className="py-2.5 rounded-xl font-semibold bg-blue-500/[0.08] border border-blue-500/[0.15] text-blue-400 hover:bg-blue-500/[0.12] transition-all disabled:opacity-50 text-sm">
-                              {isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">edit_document</span> Word</>}
+                            <button onClick={downloadWord} disabled={isLoading} className="w-full py-3 rounded-[12px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--border)] transition-all disabled:opacity-50 text-sm">
+                              {isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span> Preparing...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">edit_document</span> Download Word</>}
                             </button>
                           </div>
-                          <button onClick={() => setShowApplicationModal(true)} className="w-full py-3 rounded-xl font-semibold text-sm bg-green-500/[0.08] border border-green-500/[0.15] text-green-400 hover:bg-green-500/[0.12] transition-all">
+                          <button onClick={() => setShowApplicationModal(true)} className="w-full py-3 rounded-[12px] font-medium text-sm bg-emerald-500/[0.08] border border-emerald-500/[0.15] text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.12] transition-all">
                             <span className="material-symbols-rounded align-middle mr-1">my_location</span> Track Application
                           </button>
-                          <button onClick={handleSave} className="w-full py-2.5 rounded-xl font-medium bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] text-white transition-all text-sm"><span className="material-symbols-rounded text-inherit align-middle">save</span> Save Version</button>
-                          <button onClick={() => setStep('template')} className="w-full py-2.5 rounded-xl font-medium bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] text-slate-500 transition-all text-sm"><span className="material-symbols-rounded text-inherit align-middle">palette</span> Change Template</button>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button onClick={saveVersionOnly} disabled={isSaving} className="py-2.5 rounded-[10px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-sm disabled:opacity-50">
+                              {isSaving ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1 animate-spin">hourglass_top</span> Saving...</> : saveInlineStatus?.type === 'success' ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">check_circle</span> Saved</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">save</span> Save</>}
+                            </button>
+                            <button onClick={() => setStep('template')} className="py-2.5 rounded-[10px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-sm"><span className="material-symbols-rounded text-[14px] align-middle mr-1">palette</span> Template</button>
+                          </div>
+                          {saveInlineStatus && (
+                            <div className={`rounded-[10px] border px-3 py-2 text-[11px] leading-relaxed ${
+                              saveInlineStatus.type === 'success'
+                                ? 'bg-emerald-500/[0.08] border-emerald-500/[0.18] text-emerald-600 dark:text-emerald-400'
+                                : 'bg-red-500/[0.07] border-red-500/[0.18] text-red-600 dark:text-red-400'
+                            }`}>
+                              {saveInlineStatus.message}
+                            </div>
+                          )}
                         </div>
                       </div>
 
 
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Export readiness</p>
+                            <h4 className="text-[14px] font-semibold text-[var(--text-primary)] mt-1">Final checks</h4>
+                          </div>
+                          <span className="text-[11px] text-[var(--text-muted)]">{exportReadiness.filter(item => item.ready).length}/{exportReadiness.length}</span>
+                        </div>
+                        <div className="space-y-2">
+                          {exportReadiness.map(item => (
+                            <div key={item.label} className="flex items-center gap-3 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                              <span className={`material-symbols-rounded text-[17px] ${item.ready ? 'icon-status-success' : 'icon-status-warning'}`}>{item.ready ? 'check_circle' : item.icon}</span>
+                              <span className="text-[12px] text-[var(--text-secondary)]">{item.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       {matchScore && (
-                        <div className="rounded-xl bg-[var(--theme-bg-card)] border border-green-500/[0.15] p-5">
+                        <div className="rounded-[16px] bg-[var(--bg-surface)] border border-emerald-500/[0.15] p-5">
                           <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-lg bg-green-500/[0.08] border border-green-500/[0.15] flex items-center justify-center">
-                              <span className="text-lg font-bold text-green-400">{matchScore}%</span>
+                            <div className="w-12 h-12 rounded-[12px] bg-emerald-500/[0.08] border border-emerald-500/[0.15] flex items-center justify-center">
+                              <span className="text-lg font-semibold text-emerald-500">{matchScore}%</span>
                             </div>
                             <div>
-                              <h4 className="font-bold text-white">Match Score</h4>
-                              <div className="h-2 w-32 bg-white/10 rounded-full overflow-hidden mt-1">
-                                <div className="h-full bg-green-500 rounded-full" style={{ width: `${matchScore}%` }} />
+                              <h4 className="font-semibold text-[var(--text-primary)]">Role match</h4>
+                              <div className="h-2 w-32 bg-[var(--bg-card)] rounded-full overflow-hidden mt-1">
+                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${matchScore}%` }} />
                               </div>
                             </div>
                           </div>
                         </div>
                       )}
 
-                      <div className="rounded-xl glass-card p-5">
-                        <h4 className="font-semibold text-white mb-2">Template: {selectedTemplate.name}</h4>
-                        <p className="text-xs text-slate-500">{selectedTemplate.description}</p>
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                        <h4 className="font-semibold text-[var(--text-primary)] mb-2">{selectedTemplate.name}</h4>
+                        <p className="text-xs text-[var(--text-secondary)]">{selectedTemplate.description}</p>
                       </div>
                     </div>
 
                     <div className="lg:col-span-2">
-                      <div className="rounded-xl glass-card p-4">
-                        <div ref={resumeRef} className="bg-white rounded-xl" style={{ minHeight: '800px' }}>
-                          <ResumeTemplate resume={displayResume} template={selectedTemplate} />
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                        <div ref={resumeRef} className="bg-white rounded-[12px] overflow-hidden" style={{ minHeight: '800px' }}>
+                          <MemoizedResumeTemplate resume={displayResume} template={selectedTemplateWithPalette} />
                         </div>
                       </div>
                     </div>
@@ -2651,8 +4816,6 @@ export default function LiquidResumePage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
         {/* Upgrade Modal */}
         <UpgradeModal
           isOpen={showUpgradeModal}
@@ -2837,7 +5000,7 @@ export default function LiquidResumePage() {
             </>
           )}
         </AnimatePresence>
-      </div>
+      </SuiteToolShell>
     );
   }
 
@@ -2846,18 +5009,17 @@ export default function LiquidResumePage() {
     const displayResume = buildResume;
 
     return (
-      <div className="min-h-screen p-8">
-        <div className="max-w-6xl mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8 pl-12 lg:pl-0">
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-white">Build From Scratch</h1>
-              <p className="text-slate-500 text-sm">Create a professional resume with AI assistance</p>
-            </div>
-            <button onClick={resetAll} className="px-4 py-2 rounded-xl glass-card text-slate-500 hover:border-white/[0.12] hover:text-white transition-all text-sm">
-              ← Start Over
-            </button>
-          </div>
+      <SuiteToolShell variant="editor">
+          <SuiteToolHeader
+            tool="resume"
+            title="Build From Scratch"
+            subtitle="Create a professional resume with AI assistance."
+            actions={
+              <button onClick={resetAll} className="px-4 py-2 rounded-xl glass-card text-slate-500 hover:border-white/[0.12] hover:text-white transition-all text-sm">
+                ← Start Over
+              </button>
+            }
+          />
 
           {/* Steps */}
           <AnimatePresence mode="wait">
@@ -2923,7 +5085,7 @@ export default function LiquidResumePage() {
                 </div>
                 <div className="flex justify-between">
                   <button onClick={() => setStep('upload')} className="px-4 py-2 rounded-xl glass-card text-slate-500 hover:border-white/[0.12] text-sm"><span className="material-symbols-rounded text-[14px] align-middle mr-1">arrow_back</span> Back</button>
-                  <button onClick={() => setStep(isPro ? 'enhance' : 'template')} className="px-4 py-2 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all">{isPro ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">auto_awesome</span> AI Enhance &rarr;</> : 'Choose Template →'}</button>
+                  <button onClick={() => setStep(isPro ? 'enhance' : 'template')} className="px-4 py-2 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all">{isPro ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">auto_awesome</span> Resume Intelligence &rarr;</> : 'Choose Template →'}</button>
                 </div>
               </motion.div>
             )}
@@ -2934,25 +5096,137 @@ export default function LiquidResumePage() {
                   <div className="space-y-4">
                     {step === 'template' && (
                       <>
-                        <h3 className="text-xl font-bold text-white">Choose Template</h3>
+                        <h3 className="text-xl font-bold text-[var(--text-primary)]">Choose Template</h3>
                         <div className="grid grid-cols-2 gap-3">
                           {TEMPLATES.map((t) => {
                             const isLocked = t.tier === 'pro' && !isPro;
+                            const isSelected = selectedTemplate.id === t.id;
+                            const cardPaletteId = canUseTemplatePalettes
+                              ? templatePaletteSelections[t.id] || (isSelected ? activePaletteId : getDefaultPaletteId(t.id))
+                              : getDefaultPaletteId(t.id);
+                            const cardPalette = getTemplatePalette(t, cardPaletteId);
                             return (
-                            <button key={t.id} onClick={() => { if (isLocked) { showToast('Upgrade to Pro — $2.99/mo', 'info'); return; } setSelectedTemplate(t); }} className={`p-3 rounded-xl border text-left text-sm relative ${isLocked ? 'border-white/[0.04] bg-[var(--theme-bg-card)] opacity-60' : selectedTemplate.id === t.id ? 'border-cyan-500/[0.2] bg-cyan-500/[0.03]' : 'border-white/[0.06] bg-[var(--theme-bg-card)] hover:border-white/[0.12]'}`}>
-                              {isLocked && <span className="absolute top-1 right-1 text-[8px] px-1 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 font-bold">PRO</span>}
-                              <span className="text-xl block mb-1">{isLocked ? 'lock' : t.preview}</span>
-                              <span className="text-white font-medium">{t.name}</span>
-                            </button>
+                              <div
+                                key={t.id}
+                                role="button"
+                                tabIndex={isLocked ? -1 : 0}
+                                onClick={() => selectTemplate(t)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    selectTemplate(t);
+                                  }
+                                }}
+                                className={`p-3 rounded-xl border text-left text-sm relative transition-all ${
+                                  isLocked
+                                    ? 'border-[var(--border-subtle)] bg-[var(--bg-card)] opacity-60 cursor-not-allowed'
+                                    : isSelected
+                                      ? 'border-cyan-500/[0.2] bg-cyan-500/[0.03]'
+                                      : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)] cursor-pointer'
+                                }`}
+                              >
+                                {isLocked && <span className="absolute top-1 right-1 text-[8px] px-1 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 font-bold">PRO</span>}
+                                <span
+                                  className="mb-2 flex h-8 w-8 items-center justify-center rounded-[9px] border text-xl"
+                                  style={!isLocked ? { backgroundColor: `${cardPalette.colors.primary}14`, color: cardPalette.colors.primary, borderColor: `${cardPalette.colors.primary}28` } : undefined}
+                                >
+                                  <span className="material-symbols-rounded text-[18px]">{isLocked ? 'lock' : t.preview}</span>
+                                </span>
+                                <span className="block font-medium text-[var(--text-primary)]">{t.name}</span>
+                                <span className="mt-1 block truncate text-[10px] text-[var(--text-muted)]">
+                                  <span className="font-medium text-[var(--text-secondary)]">{cardPalette.label}</span>
+                                  {!canUseTemplatePalettes && <span> · {cardPalette.isDefault ? 'Included' : 'Max palette'}</span>}
+                                </span>
+                                <div className="mt-2">
+                                  <PaletteDots colors={cardPalette.colors} selected={isSelected} size="xs" />
+                                </div>
+                              </div>
                             );
                           })}
                         </div>
-                        <button onClick={() => setStep('preview')} className="w-full py-2.5 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all">Preview & Download →</button>
+                        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Palette</p>
+                              <p className="mt-0.5 truncate text-[12px] font-semibold text-[var(--text-primary)]">{selectedPalette.label}</p>
+                            </div>
+                            {!canUseTemplatePalettes && (
+                              <button
+                                type="button"
+                                onClick={openMaxPaletteUpgrade}
+                                className="shrink-0 rounded-[10px] border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                              >
+                                Unlock Max
+                              </button>
+                            )}
+                          </div>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              aria-haspopup="listbox"
+                              aria-expanded={showPaletteMenu}
+                              onClick={() => setShowPaletteMenu(open => !open)}
+                              className="flex w-full min-w-0 items-center justify-between gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 py-2 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+                            >
+                              <span className="flex min-w-0 items-center gap-2">
+                                <PaletteDots colors={selectedPalette.colors} selected />
+                                <span className="min-w-0">
+                                  <span className="block truncate text-[11px] font-semibold text-[var(--text-primary)]">{selectedPalette.label}</span>
+                                  <span className="block truncate text-[9px] text-[var(--text-muted)]">Choose palette</span>
+                                </span>
+                              </span>
+                              <span className="material-symbols-rounded shrink-0 text-[17px] text-[var(--text-muted)]">
+                                {showPaletteMenu ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+                              </span>
+                            </button>
+
+                            <AnimatePresence>
+                              {showPaletteMenu && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -6 }}
+                                  transition={{ duration: 0.16 }}
+                                  className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[260px] overflow-y-auto rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1.5 shadow-xl"
+                                  role="listbox"
+                                  aria-label={`${selectedTemplate.name} palette choices`}
+                                >
+                                  {getTemplatePalettes(selectedTemplate).map(palette => {
+                                    const paletteSelected = activePaletteId === palette.id;
+                                    const paletteLocked = !palette.isDefault && !canUseTemplatePalettes;
+                                    return (
+                                      <button
+                                        key={palette.id}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={paletteSelected}
+                                        aria-label={`${selectedTemplate.name} ${palette.label} palette${paletteLocked ? ', Talent Max' : ''}`}
+                                        onClick={() => selectTemplatePalette(selectedTemplate, palette)}
+                                        className={`flex w-full min-w-0 items-center gap-2 rounded-[10px] border px-2 py-1.5 text-left transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/25 ${
+                                          paletteSelected
+                                            ? 'border-amber-400/70 bg-amber-400/[0.08]'
+                                            : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-card)]'
+                                        }`}
+                                      >
+                                        <PaletteDots colors={palette.colors} selected={paletteSelected} locked={paletteLocked} />
+                                        <span className="min-w-0">
+                                          <span className="block truncate text-[11px] font-semibold text-[var(--text-primary)]">{palette.label}</span>
+                                          <span className="block truncate text-[9px] text-[var(--text-muted)]">{palette.isDefault ? 'Included' : canUseTemplatePalettes ? 'Max palette' : 'Max locked'}</span>
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+                        <button onClick={() => setStep('preview')} className="w-full py-2.5 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all">Preview & Export →</button>
                       </>
                     )}
                     {step === 'preview' && (
                       <div className="rounded-xl glass-card p-5 space-y-3">
-                        <h3 className="font-semibold text-white mb-4">Actions</h3>
+                        <h3 className="font-semibold text-white mb-4">Export</h3>
 
                         {/* Free-tier usage counter */}
                         {!isPro && user && (
@@ -2972,7 +5246,18 @@ export default function LiquidResumePage() {
                           <button onClick={downloadPDF} disabled={isLoading} className="py-2.5 rounded-xl font-semibold bg-cyan-500/[0.1] border border-cyan-500/[0.2] text-cyan-400 hover:bg-cyan-500/[0.15] transition-all disabled:opacity-50 text-sm">{isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">description</span> PDF</>}</button>
                           <button onClick={downloadWord} disabled={isLoading} className="py-2.5 rounded-xl font-semibold bg-blue-500/[0.08] border border-blue-500/[0.15] text-blue-400 hover:bg-blue-500/[0.12] transition-all disabled:opacity-50 text-sm">{isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">edit_document</span> Word</>}</button>
                         </div>
-                        <button onClick={handleSave} className="w-full py-2.5 rounded-xl font-medium bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] text-white transition-all text-sm"><span className="material-symbols-rounded text-inherit align-middle">save</span> Save Version</button>
+                        <button onClick={saveVersionOnly} disabled={isSaving} className="w-full py-2.5 rounded-xl font-medium bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] text-white transition-all text-sm disabled:opacity-50">
+                          {isSaving ? <><span className="material-symbols-rounded text-inherit align-middle animate-spin">hourglass_top</span> Saving...</> : saveInlineStatus?.type === 'success' ? <><span className="material-symbols-rounded text-inherit align-middle">check_circle</span> Saved</> : <><span className="material-symbols-rounded text-inherit align-middle">save</span> Save Version</>}
+                        </button>
+                        {saveInlineStatus && (
+                          <div className={`rounded-xl border px-3 py-2 text-xs ${
+                            saveInlineStatus.type === 'success'
+                              ? 'bg-emerald-500/[0.08] border-emerald-500/[0.18] text-emerald-300'
+                              : 'bg-red-500/[0.08] border-red-500/[0.18] text-red-300'
+                          }`}>
+                            {saveInlineStatus.message}
+                          </div>
+                        )}
                         <button onClick={() => setStep('template')} className="w-full py-2.5 rounded-xl font-medium bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] text-slate-500 transition-all text-sm"><span className="material-symbols-rounded text-inherit align-middle">palette</span> Change Template</button>
                       </div>
                     )}
@@ -2980,7 +5265,7 @@ export default function LiquidResumePage() {
                   <div className="lg:col-span-2">
                     <div className="rounded-xl glass-card p-4">
                       <div ref={resumeRef} className="bg-white rounded-xl overflow-hidden" style={{ minHeight: '800px' }}>
-                        <ResumeTemplate resume={displayResume} template={selectedTemplate} />
+                        <MemoizedResumeTemplate resume={displayResume} template={selectedTemplateWithPalette} />
                       </div>
                     </div>
                   </div>
@@ -2988,60 +5273,8 @@ export default function LiquidResumePage() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
 
-        {/* Save Modal (reused) */}
-        <AnimatePresence>
-          {showSaveModal && (
-            <>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { if (!isSaving) { setShowSaveModal(false); setSaveVersionName(''); setSaveCompanyName(''); }}} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" />
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="relative w-full max-w-md rounded-3xl glass-card overflow-hidden">
-                  {saveSuccess ? (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-12 text-center">
-                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 10 }} className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-500/20 border-2 border-green-500 flex items-center justify-center">
-                        <span className="text-4xl"><span className="material-symbols-rounded text-inherit align-middle">check_circle</span></span>
-                      </motion.div>
-                      <h3 className="text-xl font-bold text-white">Saved & Tracked!</h3>
-                      <p className="text-sm text-silver mt-2">Resume saved for <span className="text-cyan-400 font-semibold">{saveCompanyName}</span></p>
-                      <p className="text-xs text-silver/60 mt-1">View in Applications tab →</p>
-                    </motion.div>
-                  ) : (
-                    <>
-                      <div className="relative p-6 border-b border-white/10">
-                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-blue-500/10" />
-                        <div className="relative flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center"><span className="text-2xl"><span className="material-symbols-rounded text-inherit align-middle">save</span></span></div>
-                          <div><h3 className="text-xl font-bold text-white">Save & Track</h3><p className="text-sm text-silver">Save this resume and track the application</p></div>
-                        </div>
-                      </div>
-                      <div className="p-6 space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-white mb-2">Company Name <span className="text-red-400">*</span></label>
-                          <input type="text" value={saveCompanyName} onChange={(e) => setSaveCompanyName(e.target.value)} placeholder="e.g., Google, Meta, Stripe" autoFocus className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-white mb-2">Resume Version Name</label>
-                          <input type="text" value={saveVersionName} onChange={(e) => setSaveVersionName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && saveCompanyName.trim() && saveVersionName.trim()) confirmSave(); }} placeholder="e.g., Senior PM Resume" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                        </div>
-                        <div className="rounded-xl bg-cyan-500/[0.06] border border-cyan-500/[0.12] p-3">
-                          <p className="text-xs text-cyan-400/80"><span className="material-symbols-rounded text-inherit align-middle">lightbulb</span> This will save your resume <strong>and</strong> create an application entry you can track in the Applications tab.</p>
-                        </div>
-                      </div>
-                      <div className="p-6 pt-0 flex gap-3">
-                        <button onClick={() => { setShowSaveModal(false); setSaveVersionName(''); setSaveCompanyName(''); }} disabled={isSaving} className={`flex-1 px-4 py-3 rounded-xl font-medium transition-colors ${isLight ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}>Cancel</button>
-                        <button onClick={confirmSave} disabled={!saveCompanyName.trim() || isSaving} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all disabled:opacity-50 ${isLight ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-md'}`}>
-                          {isSaving ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1 animate-spin">hourglass_top</span> Saving...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">save</span> Save & Track</>}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </motion.div>
-              </div>
-            </>
-          )}
-        </AnimatePresence>
-      </div>
+      </SuiteToolShell>
     );
   }
 
@@ -3062,3 +5295,5 @@ function ResumeTemplate({ resume, template }: { resume: ResumeData; template: ty
     />
   );
 }
+
+const MemoizedResumeTemplate = memo(ResumeTemplate);

@@ -9,8 +9,15 @@
  */
 
 import { getAdminDb } from '@/lib/firebase-admin';
-import { searchJobsAdzuna, calculateFitScore, extractSkillsFromDescription } from '@/lib/job-search-api';
+import { calculateFitScore, extractSkillsFromDescription } from '@/lib/job-search-api';
+import { searchTalentJobSupply } from '@/lib/job-recommendation-platform';
 import { searchCompanyJobs } from '@/lib/portal-scanner';
+import { createStoryBankStory, listStoryBankStories } from '@/lib/story-bank';
+import { invalidateTwin } from '@/lib/career-twin';
+import { extractResumeSkills, getLatestResumeForUser } from '@/lib/server-resume';
+import { runSonaAgentHarness } from '@/lib/sona/agent-harness';
+import { runGuardedSonaResumeMorph } from '@/lib/sona/guarded-resume-morph';
+import type { PlanTier } from '@/lib/pricing-tiers';
 
 // ── Tool Schemas (for OpenRouter/Gemini function calling) ──
 
@@ -51,6 +58,27 @@ export const SONA_TOOLS = [
           location: { type: 'string', description: 'City or "remote"' },
         },
         required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'run_career_goal_harness',
+      description: 'Start Sona\'s review-first career goal harness. Use when the user asks Sona to find jobs, prepare opportunities, tailor a resume, or work toward a target such as "$120k hybrid jobs in New Jersey". This creates Agent Queue items for user review and never submits applications.',
+      parameters: {
+        type: 'object',
+        properties: {
+          userRequest: { type: 'string', description: 'The user\'s full request in their own words' },
+          targetRole: { type: 'string', description: 'Optional target role if the user gave one' },
+          location: { type: 'string', description: 'Optional target location, city, state, or remote area' },
+          salaryTarget: { type: 'number', description: 'Optional target salary in dollars, for example 120000' },
+          remotePreference: { type: 'string', enum: ['remote', 'hybrid', 'onsite', 'any'], description: 'The user\'s preferred work mode' },
+          maxPackets: { type: 'number', description: 'How many roles to queue, up to the user tier cap' },
+          mode: { type: 'string', enum: ['scout', 'prepare'], description: 'Use scout for Pro or broad search, prepare for Max packet generation' },
+          notify: { type: 'boolean', description: 'Whether to create notification and send email if account settings allow it' },
+        },
+        required: ['userRequest'],
       },
     },
   },
@@ -109,8 +137,10 @@ export const SONA_TOOLS = [
         type: 'object',
         properties: {
           jobTitle: { type: 'string', description: 'Target job title' },
+          company: { type: 'string', description: 'Target company, when known' },
           jobDescription: { type: 'string', description: 'The job description to optimize for' },
           emphasis: { type: 'string', description: 'Optional: specific skills or experiences to emphasize' },
+          morphPercentage: { type: 'number', description: 'Optional rewrite strength from 10 to 100. Values above 80 require the user\'s AI Safety unlock.' },
         },
         required: ['jobTitle'],
       },
@@ -137,7 +167,7 @@ export const SONA_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'queue_application',
-      description: 'Save a prepared application to the user\'s "Ready to Submit" queue. This does NOT submit the application — the user reviews and submits manually. Use after morph_resume_for_job and draft_cover_letter to package everything together.',
+      description: 'Save a prepared application to the user\'s "Ready to Submit" queue only after explicit user approval. This does NOT submit the application — the user reviews and submits manually.',
       parameters: {
         type: 'object',
         properties: {
@@ -147,8 +177,9 @@ export const SONA_TOOLS = [
           fitScore: { type: 'number', description: 'Fit score from analyze_job_fit' },
           resumeSummary: { type: 'string', description: 'Brief description of resume customizations made' },
           coverLetterPreview: { type: 'string', description: 'First 200 chars of the cover letter draft' },
+          userConfirmed: { type: 'boolean', description: 'True only when the user explicitly asked to queue this application or approved the prepared packet' },
         },
-        required: ['company', 'role'],
+        required: ['company', 'role', 'userConfirmed'],
       },
     },
   },
@@ -163,6 +194,7 @@ export const SONA_TOOLS = [
           jobTitle: { type: 'string', description: 'Target job title' },
           jobDescription: { type: 'string', description: 'The full job description to tailor for' },
           company: { type: 'string', description: 'Company name' },
+          morphPercentage: { type: 'number', description: 'Optional rewrite strength from 10 to 100. Values above 80 require the user\'s AI Safety unlock.' },
         },
         required: ['jobTitle'],
       },
@@ -517,11 +549,11 @@ function assessLevelMatch(
   };
 }
 
-// ── Salary Intelligence (from Adzuna data) ──
+// ── Salary Intelligence (from job source data) ──
 
 async function fetchSalaryIntelligence(jobTitle: string, location?: string): Promise<{ min: number | null; max: number | null; currency: string } | null> {
   try {
-    const result = await searchJobsAdzuna({
+    const result = await searchTalentJobSupply({
       query: jobTitle,
       location: location || '',
       country: 'us',
@@ -556,53 +588,16 @@ async function fetchSalaryIntelligence(jobTitle: string, location?: string): Pro
 export async function executeTool(
   toolName: string,
   args: Record<string, any>,
-  uid: string
+  uid: string,
+  context: { resumeVersionId?: string | null; tier?: PlanTier; email?: string | null; activationConfirmed?: boolean } = {},
 ): Promise<string> {
   const db = getAdminDb();
 
   switch (toolName) {
     case 'fetch_resume': {
       try {
-        const vaultSnap = await db.collection('users').doc(uid).collection('vault').orderBy('createdAt', 'desc').limit(1).get();
-        
-        let resume: any = null;
-        let source = 'vault';
-
-        if (!vaultSnap.empty) {
-          const data = vaultSnap.docs[0].data();
-          resume = data.resume || data.parsed || {};
-        } else {
-          // Fallback 1: resume_versions collection (client-side saves here)
-          const versionsSnap = await db.collection('users').doc(uid).collection('resume_versions')
-            .orderBy('created_at', 'desc').limit(1).get();
-          if (!versionsSnap.empty) {
-            const data = versionsSnap.docs[0].data();
-            resume = data.content || data;
-            source = 'resume_versions';
-          } else {
-            // Fallback 2: onboarding profile — parsed or raw text
-            const profileSnap = await db.collection('users').doc(uid).collection('profile').doc('main').get();
-            if (profileSnap.exists) {
-              const profileData = profileSnap.data()!;
-              if (profileData.base_resume_parsed) {
-                resume = profileData.base_resume_parsed;
-                source = 'onboarding';
-              } else if (profileData.base_resume_text) {
-                // Raw text fallback — still useful for cover letters and basic context
-                resume = {
-                  name: profileData.full_name || '',
-                  summary: profileData.base_resume_text.substring(0, 500),
-                  rawText: profileData.base_resume_text,
-                  skills: [],
-                  experience: [],
-                  education: [],
-                  _source: 'onboarding_raw_text',
-                };
-                source = 'onboarding_raw';
-              }
-            }
-          }
-        }
+        const latest = await getLatestResumeForUser(db, uid);
+        const resume = latest.resume;
 
         if (!resume) {
           return JSON.stringify({ found: false, message: 'No resume found in Vault. The user hasn\'t uploaded a resume yet.' });
@@ -610,11 +605,13 @@ export async function executeTool(
 
         return JSON.stringify({
           found: true,
-          source,
+          source: latest.source || 'unknown',
+          resumeId: latest.id,
+          updatedAt: latest.updatedAt,
           name: resume.name || '',
           title: resume.title || '',
           summary: resume.summary || '',
-          skills: (resume.skills || []).flatMap((s: any) => s.items || []).slice(0, 30),
+          skills: extractResumeSkills(resume).slice(0, 30),
           experience: (resume.experience || []).slice(0, 5).map((e: any) => ({
             role: e.role || e.title || '',
             company: e.company || '',
@@ -682,7 +679,7 @@ export async function executeTool(
 
     case 'search_jobs': {
       try {
-        const result = await searchJobsAdzuna({
+        const result = await searchTalentJobSupply({
           query: args.query,
           location: args.location || '',
           country: 'us',
@@ -698,11 +695,67 @@ export async function executeTool(
           url: j.url,
           salary: j.salary,
           skills: j.skills.slice(0, 5),
+          source: j.sourceMeta.sourceName,
+          sourceType: j.sourceMeta.sourceType,
         }));
 
-        return JSON.stringify({ found: true, count: jobs.length, jobs });
+        return JSON.stringify({ found: true, count: jobs.length, providerStatus: result.providerStatus, jobs });
       } catch (e: any) {
         return JSON.stringify({ found: false, error: e.message });
+      }
+    }
+
+    case 'run_career_goal_harness': {
+      if (context.activationConfirmed !== true) {
+        return JSON.stringify({
+          action: 'run_career_goal_harness',
+          success: false,
+          code: 'PREFLIGHT_REQUIRED',
+          retryable: false,
+          approvalRequired: true,
+          message: 'Open the Target brief and run Preview scout first. No scout quota, queue item, packet, notification, or external application was created.',
+        });
+      }
+      try {
+        const result = await runSonaAgentHarness(db, uid, {
+          userRequest: args.userRequest || args.request || '',
+          resumeVersionId: context.resumeVersionId || undefined,
+          targetRole: args.targetRole,
+          location: args.location,
+          salaryTarget: typeof args.salaryTarget === 'number' ? args.salaryTarget : undefined,
+          remotePreference: args.remotePreference,
+          maxPackets: typeof args.maxPackets === 'number' ? args.maxPackets : undefined,
+          mode: args.mode,
+          notify: args.notify !== false,
+          tier: context.tier || 'free',
+          email: context.email || null,
+        });
+
+        return JSON.stringify({
+          action: 'run_career_goal_harness',
+          success: result.success,
+          runId: result.runId,
+          status: result.status,
+          goal: result.goal,
+          mode: result.mode,
+          queuedCount: result.queuedCount,
+          queued: result.queued,
+          nextActions: result.nextActions,
+          approvalRequired: result.approvalRequired,
+          notification: result.notification,
+          warnings: result.warnings,
+          code: result.code,
+          retryable: result.retryable,
+          error: result.error,
+          needsResume: result.needsResume,
+          message: result.code === 'RESUME_LOOKUP_UNAVAILABLE'
+            ? 'Sona could not load the selected resume right now. Retry without changing the resume selection.'
+            : result.queuedCount > 0
+            ? `Sona queued ${result.queuedCount} role${result.queuedCount === 1 ? '' : 's'} for review. The user must review every packet before applying.`
+            : 'Sona completed the run but did not find a strong match yet.',
+        });
+      } catch (e: any) {
+        return JSON.stringify({ error: e.message || 'Sona harness failed' });
       }
     }
 
@@ -755,21 +808,10 @@ export async function executeTool(
 
     case 'analyze_job_fit': {
       try {
-        // Get user resume data
-        const vaultSnap = await db.collection('users').doc(uid).collection('vault').orderBy('createdAt', 'desc').limit(1).get();
-        const userSkills: string[] = [];
-        let experienceCount = 0;
-        let latestRole = '';
-
-        if (!vaultSnap.empty) {
-          const data = vaultSnap.docs[0].data();
-          const resume = data.resume || data.parsed || {};
-          (resume.skills || []).forEach((s: any) => {
-            if (s.items) userSkills.push(...s.items);
-          });
-          experienceCount = (resume.experience || []).length;
-          latestRole = resume.experience?.[0]?.role || '';
-        }
+        const { resume } = await getLatestResumeForUser(db, uid);
+        const userSkills = extractResumeSkills(resume);
+        const experienceCount = (resume?.experience || []).length;
+        const latestRole = resume?.experience?.[0]?.role || resume?.experience?.[0]?.title || '';
 
         // Extract job skills from description
         const jd = args.jobDescription || '';
@@ -849,9 +891,8 @@ export async function executeTool(
         // Accumulates across evaluations, building a story bank for interview prep
         if (fitScore >= 60 && latestRole && matchingSkills.length > 0) {
           try {
-            const storyId = `fit_${args.jobTitle?.replace(/\W+/g, '_').toLowerCase()}_${Date.now()}`;
             const topSkills = matchingSkills.slice(0, 3).join(', ');
-            await db.collection('users').doc(uid).collection('stories').doc(storyId).set({
+            await createStoryBankStory(uid, {
               title: `${latestRole} → ${args.jobTitle || 'Target Role'}`,
               situation: `While working as ${latestRole}, I encountered challenges that directly relate to the ${args.jobTitle} role requiring ${topSkills}.`,
               task: `The key requirement was demonstrating competency in ${topSkills}, which maps to this JD's core asks.`,
@@ -860,10 +901,9 @@ export async function executeTool(
               reflection: `This story maps ${matchingSkills.length} skills from the ${args.company || 'target'} JD. Refine it before your interview.`,
               tags: [...matchingSkills.slice(0, 4), args.company || 'General'].filter(Boolean),
               source: 'fit_analysis',
-              createdAt: new Date().toISOString(),
-              fitScore,
-              targetCompany: args.company || '',
-              targetRole: args.jobTitle || '',
+              sourceTool: 'sona_fit_gate',
+              company: args.company || '',
+              role: args.jobTitle || '',
             });
           } catch { /* story save is best-effort, don't break fit analysis */ }
         }
@@ -897,62 +937,47 @@ export async function executeTool(
 
     case 'morph_resume_for_job': {
       try {
-        // Get user resume
-        const vaultSnap = await db.collection('users').doc(uid).collection('vault').orderBy('createdAt', 'desc').limit(1).get();
-        if (vaultSnap.empty) {
-          return JSON.stringify({ error: 'No resume found in Vault. Upload a resume first.' });
-        }
-
-        const data = vaultSnap.docs[0].data();
-        const resume = data.resume || data.parsed || {};
-        const jd = args.jobDescription || '';
-        const jobSkills = jd ? extractSkillsFromDescription(jd) : [];
-        const userSkills = (resume.skills || []).flatMap((s: any) => s.items || []);
-
-        // Find which JD keywords are missing from the resume
-        const userLower = userSkills.map((s: string) => s.toLowerCase().trim());
-        const keywordsToInject = jobSkills.filter(js => {
-          const jLower = js.toLowerCase().trim();
-          return !userLower.some((us: string) =>
-            us.includes(jLower) || jLower.includes(us)
-          );
+        const result = await runGuardedSonaResumeMorph({
+          uid,
+          jobTitle: args.jobTitle,
+          company: args.company,
+          jobDescription: args.jobDescription,
+          emphasis: args.emphasis,
+          requestedMorphPercentage: args.morphPercentage,
+          resumeVersionId: context.resumeVersionId,
+          source: 'sona_chat_morph',
         });
-
         return JSON.stringify({
           action: 'morph_resume',
-          jobTitle: args.jobTitle,
-          emphasis: args.emphasis || '',
-          currentSkills: userSkills.slice(0, 20),
-          experience: (resume.experience || []).slice(0, 4).map((e: any) => ({
-            role: e.role || e.title || '',
-            company: e.company || '',
-            bullets: (e.bullets || e.highlights || []).slice(0, 4),
-          })),
-          keywordsToInject: keywordsToInject.slice(0, 10),
-          matchingKeywords: jobSkills.filter(js => !keywordsToInject.includes(js)).slice(0, 10),
-          instruction: `Rewrite the resume experience bullets to naturally incorporate these missing keywords: [${keywordsToInject.join(', ')}]. Keep all facts truthful — only reframe existing experiences to emphasize relevant skills. Do NOT invent new experiences or skills. HUMANIZE: Use varied action verbs (built, shipped, cut, grew, ran, designed). Each bullet = micro-story (what → how → result). Mix sentence lengths. Never use: spearheaded, leveraged, utilized, facilitated, comprehensive, robust, seamless. Present as a draft for user review.`,
+          ...result,
+          instruction: result.success
+            ? 'Describe this already guarded draft and direct the user to review it. Do not rewrite, expand, or alter any resume field in chat.'
+            : 'Explain the typed recovery message and ask only for the missing next step.',
         });
       } catch (e: any) {
-        return JSON.stringify({ error: e.message });
+        return JSON.stringify({
+          action: 'morph_resume',
+          success: false,
+          code: 'generation_failed',
+          error: 'Sona could not prepare the guarded draft.',
+          recovery: 'The verified resume was not changed. Retry after confirming the resume and job description.',
+        });
       }
     }
 
     case 'draft_cover_letter': {
       try {
-        // Get user resume for context
-        const vaultSnap = await db.collection('users').doc(uid).collection('vault').orderBy('createdAt', 'desc').limit(1).get();
+        const { resume } = await getLatestResumeForUser(db, uid);
         let userName = '';
         let latestRole = '';
         let latestCompany = '';
         let topSkills: string[] = [];
 
-        if (!vaultSnap.empty) {
-          const data = vaultSnap.docs[0].data();
-          const resume = data.resume || data.parsed || {};
+        if (resume) {
           userName = resume.name || '';
-          latestRole = resume.experience?.[0]?.role || '';
+          latestRole = resume.experience?.[0]?.role || resume.experience?.[0]?.title || '';
           latestCompany = resume.experience?.[0]?.company || '';
-          topSkills = (resume.skills || []).flatMap((s: any) => s.items || []).slice(0, 10);
+          topSkills = extractResumeSkills(resume).slice(0, 10);
         }
 
         return JSON.stringify({
@@ -979,10 +1004,31 @@ CRITICAL: Only use facts from the provided resume data. If you don't have enough
 
     case 'queue_application': {
       try {
-        const queueRef = db.collection('users').doc(uid).collection('applicationQueue');
+        if (args.userConfirmed !== true) {
+          return JSON.stringify({
+            approvalRequired: true,
+            message: 'Ask the user to approve adding this packet to Agent Queue. Do not create a queue item until they confirm.',
+          });
+        }
+
+        const queueRef = db.collection('users').doc(uid).collection('agent_queue');
 
         // Check queue size (cap at 25 pending)
-        const pendingSnap = await queueRef.where('status', '==', 'queued').get();
+        const pendingSnap = await queueRef.where('status', '==', 'pending').get();
+        const existing = pendingSnap.docs.find(docSnap => {
+          const data = docSnap.data();
+          return String(data.company || '').toLowerCase() === String(args.company || '').toLowerCase()
+            && String(data.job_title || '').toLowerCase() === String(args.role || '').toLowerCase();
+        });
+        if (existing) {
+          return JSON.stringify({
+            success: true,
+            queueId: existing.id,
+            idempotent: true,
+            message: `A pending packet for ${args.role} at ${args.company} is already in Agent Queue.`,
+            queueSize: pendingSnap.size,
+          });
+        }
         if (pendingSnap.size >= 25) {
           return JSON.stringify({
             error: 'Your application queue is full (25 pending). Submit or skip some before adding more.',
@@ -991,20 +1037,38 @@ CRITICAL: Only use facts from the provided resume data. If you don't have enough
         }
 
         const doc = await queueRef.add({
+          user_id: uid,
+          job_title: args.role,
           company: args.company,
-          role: args.role,
-          url: args.url || '',
-          fitScore: args.fitScore || 0,
-          resumeSummary: args.resumeSummary || '',
-          coverLetterPreview: args.coverLetterPreview || '',
-          status: 'queued',
-          createdAt: new Date().toISOString(),
+          location: args.location || 'Not specified',
+          job_url: args.url || '',
+          job_description: args.jobDescription || '',
+          salary: { min: null, max: null },
+          employment_type: args.employmentType || 'Not specified',
+          posted_date: new Date().toISOString(),
+          match_score: Math.max(0, Math.min(100, Number(args.fitScore || 0))),
+          match_reason: args.resumeSummary || 'Queued by Sona for your review.',
+          morphed_resume: null,
+          cover_letter: args.coverLetterPreview || '',
+          status: 'pending',
+          source: 'sona_chat',
+          packetStatus: 'needs_review',
+          fitSignals: args.resumeSummary ? [args.resumeSummary] : ['Sona prepared this from your chat context.'],
+          riskSignals: ['Review the posting, resume, and cover letter before submitting.'],
+          nextAction: 'Review the packet, refine it with Sona if needed, then apply manually.',
+          feedbackTags: [],
+          agentRunId: `sona_${Date.now()}`,
+          created_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          batch_id: 'sona_chat',
+          batch_date: new Date().toISOString().split('T')[0],
         });
+        invalidateTwin(uid).catch(() => {});
 
         return JSON.stringify({
           success: true,
           queueId: doc.id,
-          message: `Application for ${args.role} at ${args.company} has been queued. Review and submit from your Application Queue.`,
+          message: `Application for ${args.role} at ${args.company} has been queued. Review the packet from Agent Queue before submitting.`,
           queueSize: pendingSnap.size + 1,
         });
       } catch (e: any) {
@@ -1015,87 +1079,30 @@ CRITICAL: Only use facts from the provided resume data. If you don't have enough
     // ── v3.0: Generate Tailored Resume ──
     case 'generate_tailored_resume': {
       try {
-        const vaultSnap = await db.collection('users').doc(uid).collection('vault').orderBy('createdAt', 'desc').limit(1).get();
-        if (vaultSnap.empty) {
-          return JSON.stringify({ error: 'No resume found in Vault. Upload a resume first.' });
-        }
-
-        const data = vaultSnap.docs[0].data();
-        const resume = data.resume || data.parsed || {};
-        const jd = args.jobDescription || '';
-        const jobSkills = jd ? extractSkillsFromDescription(jd) : [];
-        const userSkills = (resume.skills || []).flatMap((s: any) => s.items || []);
-
-        // Find keyword overlap and gaps
-        const userLower = userSkills.map((s: string) => s.toLowerCase().trim());
-        const matchedKeywords = jobSkills.filter(js => {
-          const jLower = js.toLowerCase().trim();
-          return userLower.some((us: string) => us.includes(jLower) || jLower.includes(us));
+        const result = await runGuardedSonaResumeMorph({
+          uid,
+          jobTitle: args.jobTitle,
+          company: args.company,
+          jobDescription: args.jobDescription,
+          requestedMorphPercentage: args.morphPercentage,
+          resumeVersionId: context.resumeVersionId,
+          source: 'sona_chat_tailor',
         });
-        const missingKeywords = jobSkills.filter(js => !matchedKeywords.includes(js));
-
-        // Build core competencies from JD (top 6-8 keywords)
-        const coreCompetencies = [...matchedKeywords.slice(0, 4), ...missingKeywords.slice(0, 4)];
-
-        // Calculate keyword coverage
-        const keywordCoverage = jobSkills.length > 0
-          ? Math.round((matchedKeywords.length / jobSkills.length) * 100)
-          : 50;
-
         return JSON.stringify({
           action: 'generate_tailored_resume',
-          jobTitle: args.jobTitle,
-          company: args.company || '',
-          resumeData: {
-            name: resume.name || '',
-            title: resume.title || '',
-            email: resume.email || '',
-            phone: resume.phone || '',
-            location: resume.location || '',
-            linkedin: resume.linkedin || '',
-            website: resume.website || '',
-            summary: resume.summary || '',
-            experience: (resume.experience || []).slice(0, 5).map((e: any) => ({
-              role: e.role || e.title || '',
-              company: e.company || '',
-              duration: e.duration || '',
-              achievements: (e.bullets || e.highlights || e.achievements || []).slice(0, 5),
-            })),
-            education: (resume.education || []).slice(0, 3).map((e: any) => ({
-              degree: e.degree || '',
-              institution: e.institution || '',
-              year: e.year || '',
-              details: e.details || '',
-            })),
-            skills: (resume.skills || []).slice(0, 6).map((s: any) => ({
-              category: s.category || '',
-              items: s.items || [],
-            })),
-            certifications: resume.certifications || [],
-          },
-          coreCompetencies,
-          keywordsToInject: missingKeywords.slice(0, 8),
-          matchedKeywords: matchedKeywords.slice(0, 8),
-          keywordCoverage,
-          instruction: `Generate a tailored resume for the ${args.jobTitle} role at ${args.company || 'the target company'}.
-
-Rewrite the SUMMARY to naturally incorporate these JD keywords: [${missingKeywords.slice(0, 5).join(', ')}]. Keep it 2-3 sentences, specific and human.
-
-For EXPERIENCE bullets, rewrite to emphasize relevance to this JD:
-- Prioritize bullets that match JD requirements
-- Inject keywords naturally: [${missingKeywords.join(', ')}]
-- Keep all facts truthful — only reframe, never invent
-- Each bullet: action verb → what you did → measurable result
-- Vary action verbs: built, shipped, cut, grew, ran, designed, reduced, launched
-
-Add a CORE COMPETENCIES section with 6-8 keyword phrases from the JD.
-
-HUMANIZE: Use contractions, mix sentence lengths, use concrete numbers. Never use banned words (spearheaded, leveraged, utilized, facilitated, comprehensive, robust, seamless).
-
-Present the tailored resume in a clear format the user can review and download as a PDF. Note the keyword coverage: ${keywordCoverage}%.`,
+          ...result,
+          instruction: result.success
+            ? 'Describe this already guarded draft and its evidence gaps. Direct the user to Resume Studio to review or export it. Do not regenerate resume text in chat.'
+            : 'Explain the typed recovery message and ask only for the missing next step.',
         });
       } catch (e: any) {
-        return JSON.stringify({ error: e.message });
+        return JSON.stringify({
+          action: 'generate_tailored_resume',
+          success: false,
+          code: 'generation_failed',
+          error: 'Sona could not prepare the guarded tailored resume.',
+          recovery: 'The verified resume was not changed. Retry after confirming the resume and job description.',
+        });
       }
     }
 
@@ -1113,7 +1120,7 @@ Present the tailored resume in a clear format the user can review and download a
           });
         }
 
-        const doc = await storiesRef.add({
+        const story = await createStoryBankStory(uid, {
           title: args.title,
           situation: args.situation,
           task: args.task,
@@ -1122,12 +1129,13 @@ Present the tailored resume in a clear format the user can review and download a
           reflection: args.reflection || '',
           tags: args.tags || [],
           source: 'chat',
-          createdAt: new Date().toISOString(),
+          sourceTool: 'sona_chat',
         });
+        invalidateTwin(uid).catch(() => {});
 
         return JSON.stringify({
           success: true,
-          storyId: doc.id,
+          storyId: story.id,
           message: `Saved "${args.title}" to your Story Bank. You now have ${countSnap.data().count + 1} stories ready for interview prep.`,
           tags: args.tags || [],
         });
@@ -1139,14 +1147,10 @@ Present the tailored resume in a clear format the user can review and download a
     // ── v3.0: Get Story Bank ──
     case 'get_story_bank': {
       try {
-        const storiesRef = db.collection('users').doc(uid).collection('agent_stories');
         const limit = args.limit || 10;
+        const { stories: bankStories } = await listStoryBankStories(uid, { limit: Math.min(limit, 50) });
 
-        let query = storiesRef.orderBy('createdAt', 'desc').limit(limit);
-
-        const snap = await query.get();
-
-        if (snap.empty) {
+        if (bankStories.length === 0) {
           return JSON.stringify({
             found: false,
             count: 0,
@@ -1154,20 +1158,19 @@ Present the tailored resume in a clear format the user can review and download a
           });
         }
 
-        let stories = snap.docs.map(d => {
-          const s = d.data();
-          return {
-            id: d.id,
-            title: s.title,
-            situation: s.situation,
-            task: s.task,
-            action: s.action,
-            result: s.result,
-            reflection: s.reflection || '',
-            tags: s.tags || [],
-            createdAt: s.createdAt,
-          };
-        });
+        let stories = bankStories.map(s => ({
+          id: s.id,
+          title: s.title,
+          situation: s.situation,
+          task: s.task,
+          action: s.action,
+          result: s.result,
+          reflection: s.reflection || '',
+          tags: s.tags || [],
+          category: s.category,
+          proofScore: s.proofScore,
+          createdAt: s.createdAt,
+        }));
 
         // Filter by tags if provided
         if (args.tags && args.tags.length > 0) {
@@ -1191,7 +1194,7 @@ Present the tailored resume in a clear format the user can review and download a
     case 'prep_for_interview': {
       try {
         // Fetch story bank
-        const storySnap = await db.collection('users').doc(uid).collection('agent').doc('stories').collection('items').orderBy('createdAt', 'desc').limit(20).get();
+        const storySnap = await db.collection('users').doc(uid).collection('agent_stories').orderBy('createdAt', 'desc').limit(20).get();
         const storyList = storySnap.docs.map(d => ({ title: (d.data() as any).title, tags: (d.data() as any).tags || [] }));
 
         // Find matching application for more context
@@ -1327,7 +1330,7 @@ Present the tailored resume in a clear format the user can review and download a
 
         // Auto-generate STAR story
         if (args.strengths) {
-          await db.collection('users').doc(uid).collection('stories').add({
+          await createStoryBankStory(uid, {
             title: `${role} @ ${company} — Interview Debrief`,
             situation: `Interviewed at ${company} for the ${role} position (${(args.roundType || 'behavioral').replace('_', ' ')} round).`,
             task: `Demonstrate qualification for the ${role} role.`,
@@ -1336,7 +1339,9 @@ Present the tailored resume in a clear format the user can review and download a
             reflection: args.weaknesses || 'Continue preparing for similar questions.',
             tags: [company, (args.roundType || 'behavioral').replace('_', ' ')],
             source: 'interview_debrief',
-            createdAt: new Date().toISOString(),
+            sourceTool: 'sona_debrief',
+            company,
+            role,
           });
         }
 

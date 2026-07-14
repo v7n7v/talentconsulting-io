@@ -8,7 +8,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { geminiJSONCompletion } from '@/lib/ai/gemini-client';
 import { buildHumanizePrompt } from '@/lib/writing-prompts';
 import { detectAI } from '@/lib/ai-detection';
 import { authenticateRequest } from '@/lib/api-auth';
@@ -16,6 +15,8 @@ import { checkUsageAllowed, incrementUsage, countWords } from '@/lib/usage-track
 import { getUserTier } from '@/lib/pricing-tiers';
 import { verifyTurnstile } from '@/lib/turnstile';
 import { monitor } from '@/lib/monitor';
+import { writingJSONCompletion } from '@/lib/ai/writing-model-router';
+import { evaluateHumanizationQuality, extractProtectedTerms } from '@/lib/writing-quality';
 
 const FREE_WORD_CAP = 300;
 const ANON_DAILY_LIMIT = 3;
@@ -91,8 +92,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Bot protection: verify Turnstile token for anonymous users
+    // Bot protection: require Turnstile for anonymous production requests.
     const authUser = await authenticateRequest(req);
+    if (!authUser && process.env.NODE_ENV === 'production' && !body.turnstileToken) {
+      return NextResponse.json(
+        { error: 'Bot verification required. Please refresh and try again.' },
+        { status: 403 }
+      );
+    }
     if (!authUser && body.turnstileToken) {
       const isHuman = await verifyTurnstile(body.turnstileToken, ip);
       if (!isHuman) {
@@ -111,8 +118,11 @@ export async function POST(req: NextRequest) {
       if (!usage.allowed) {
         return NextResponse.json(
           {
-            error: 'Free usage limit reached. Upgrade to Pro for unlimited access.',
+            error: 'You used your free writing toolkit runs. Your work is saved.',
             limitReached: true,
+            feature: 'writingTools',
+            used: usage.used,
+            cap: usage.cap,
             upgradeUrl: '/suite/upgrade',
           },
           { status: 429 }
@@ -152,63 +162,29 @@ export async function POST(req: NextRequest) {
       maxTokens: Math.min(4096, Math.max(2048, wordCount * 8)),
     };
 
-    let result: HumanizeResult;
-    let engine: 'gemini' | 'openrouter' = 'gemini';
-
-    // Primary: Gemini
-    try {
-      result = await geminiJSONCompletion<HumanizeResult>(systemPrompt, userPrompt, aiOptions);
-    } catch (geminiErr) {
-      console.warn('[humanize-free] Gemini failed, falling back to OpenRouter:', geminiErr instanceof Error ? geminiErr.message : geminiErr);
-      monitor.warn('Humanizer Gemini fallback triggered', String(geminiErr));
-
-      // Fallback: OpenRouter (Qwen 3.6 Plus)
-      const orKey = process.env.OPENROUTER_API_KEY;
-      if (!orKey) throw new Error('No fallback AI configured');
-
-      const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${orKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://talentconsulting.io',
-          'X-Title': 'TalentConsulting AI Humanizer',
-        },
-        body: JSON.stringify({
-          model: 'qwen/qwen3.6-plus',
-          messages: [
-            { role: 'system', content: systemPrompt + '\n\nIMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanations, no code fences.' },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: aiOptions.temperature,
-          max_tokens: aiOptions.maxTokens,
-          response_format: { type: 'json_object' },
-        }),
-      });
-
-      if (!orRes.ok) {
-        const errText = await orRes.text();
-        console.error('[humanize-free] OpenRouter also failed:', orRes.status, errText.slice(0, 200));
-        throw new Error('Both AI engines unavailable');
-      }
-
-      const orData = await orRes.json();
-      const rawContent = orData.choices?.[0]?.message?.content || '';
-
-      // Parse JSON from the response
-      let parsed: HumanizeResult;
-      try {
-        parsed = JSON.parse(rawContent);
-      } catch {
-        const start = rawContent.indexOf('{');
-        const end = rawContent.lastIndexOf('}');
-        if (start === -1 || end <= start) throw new Error('Could not parse fallback response');
-        parsed = JSON.parse(rawContent.slice(start, end + 1));
-      }
-
-      result = parsed;
-      engine = 'openrouter';
-    }
+    const protectedTerms = extractProtectedTerms(text);
+    const completion = await writingJSONCompletion<HumanizeResult>({
+      task: 'public_humanize',
+      systemPrompt,
+      userPrompt,
+      temperature: aiOptions.temperature,
+      maxTokens: aiOptions.maxTokens,
+      userTier: authUser ? await getUserTier(authUser.uid, authUser.email) : 'public',
+      title: 'TalentConsulting.io Public Humanizer',
+      qualityPolicy: candidate => {
+        const cleaned = cleanAIPunctuation(candidate.rewritten || '');
+        const after = detectAI(cleaned);
+        return evaluateHumanizationQuality({
+          originalText: text,
+          rewrittenText: cleaned,
+          protectedTerms,
+          lengthMode: 'exact',
+          originalDetection: beforeDetection,
+          finalDetection: after,
+        });
+      },
+    });
+    const result = completion.result;
 
     const cleanedText = cleanAIPunctuation(result.rewritten || '');
 
@@ -220,7 +196,7 @@ export async function POST(req: NextRequest) {
       await incrementUsage(authUser.uid, 'writingTools');
     }
 
-    console.log(`[humanize-free] Success via ${engine} (${wordCount} words)`);
+    console.log(`[humanize-free] Success via ${completion.model} (${wordCount} words)`);
 
     return NextResponse.json({
       rewritten: cleanedText,
@@ -235,6 +211,14 @@ export async function POST(req: NextRequest) {
       },
       wordCount,
       isAuthenticated: !!authUser,
+      engine: completion.engine,
+      model: completion.model,
+      fallbackCount: completion.fallbackCount,
+      latencyMs: completion.latencyMs,
+      qualityDecision: completion.qualityDecision.decision,
+      qualityGates: completion.qualityDecision.gates,
+      protectedTerms,
+      warnings: completion.qualityDecision.warnings,
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);

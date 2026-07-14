@@ -5,7 +5,7 @@
  */
 export default function SuiteLoading() {
   return (
-    <div className="flex-1 p-8 animate-pulse" style={{ minHeight: '100vh' }}>
+    <div className="flex-1 p-8 animate-pulse" style={{ minHeight: '100dvh' }}>
       {/* Header skeleton */}
       <div className="mb-8">
         <div

@@ -1,11 +1,10 @@
 /**
  * Pricing Tier Configuration
  * Free tier: limited trial access — account required
- * Pro tier ($9.99/mo): 3x free limits + priority queue
+ * Pro tier: 3x free limits + priority queue. Display pricing is sourced from Stripe.
  */
 
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAdminDb } from '@/lib/firebase-admin';
 
 export type PlanTier = 'free' | 'pro' | 'studio' | 'god';
 
@@ -36,10 +35,10 @@ export function isMasterAccount(email?: string): boolean {
 
 export const PLAN_PRICE = {
   free: 0,
-  pro_monthly: 9.99,
-  pro_annual: 99.99, // $8.33/mo effective — 17% discount vs monthly
-  studio_monthly: 19.99,
-  studio_annual: 179.99, // $15.00/mo effective — 25% discount vs monthly
+  pro_monthly: null,
+  pro_annual: null,
+  studio_monthly: null,
+  studio_annual: null,
 } as const;
 
 /** Rate limits per route per tier (requests per minute). GOD bypasses this entirely. */
@@ -76,18 +75,6 @@ export function getRateLimit(route: string, tier: PlanTier = 'free'): number {
   return limits[tier as Exclude<PlanTier, 'god'>] || limits['pro'] || 30;
 }
 
-// Firebase client for Firestore reads
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-};
-
-function getDb() {
-  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-  return getFirestore(app);
-}
-
 /** Check user's subscription tier from Firestore (with master/god override) */
 export async function getUserTier(uid: string, email?: string): Promise<PlanTier> {
   // GOD account — instant god tier
@@ -99,9 +86,13 @@ export async function getUserTier(uid: string, email?: string): Promise<PlanTier
     return 'studio';
   }
   try {
-    const db = getDb();
-    const subDoc = await getDoc(doc(db, 'users', uid, 'subscription', 'current'));
-    const subStatus = subDoc.exists() ? subDoc.data()?.status : null;
+    const subDoc = await getAdminDb()
+      .collection('users')
+      .doc(uid)
+      .collection('subscription')
+      .doc('current')
+      .get();
+    const subStatus = subDoc.exists ? subDoc.data()?.status : null;
     if (subStatus === 'active' || subStatus === 'trialing') {
       const plan = subDoc.data()?.plan;
       if (plan === 'studio') return 'studio';
@@ -120,8 +111,7 @@ export async function getUserTier(uid: string, email?: string): Promise<PlanTier
 /** Grant premium access to any user (GOD only) */
 export async function grantPremiumAccess(targetUid: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const db = getDb();
-    await setDoc(doc(db, 'users', targetUid, 'subscription', 'current'), {
+    await getAdminDb().collection('users').doc(targetUid).collection('subscription').doc('current').set({
       plan: 'pro',
       status: 'active',
       grantedBy: 'god_account',
@@ -137,8 +127,7 @@ export async function grantPremiumAccess(targetUid: string): Promise<{ success: 
 /** Revoke premium access from any user (GOD only) */
 export async function revokePremiumAccess(targetUid: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const db = getDb();
-    await deleteDoc(doc(db, 'users', targetUid, 'subscription', 'current'));
+    await getAdminDb().collection('users').doc(targetUid).collection('subscription').doc('current').delete();
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -148,15 +137,15 @@ export async function revokePremiumAccess(targetUid: string): Promise<{ success:
 /** List all users with their subscription status (GOD only) */
 export async function listAllUsers(): Promise<{ uid: string; email?: string; plan: PlanTier }[]> {
   try {
-    const db = getDb();
-    const usersSnap = await getDocs(collection(db, 'users'));
+    const db = getAdminDb();
+    const usersSnap = await db.collection('users').get();
     const users: { uid: string; email?: string; plan: PlanTier }[] = [];
     for (const userDoc of usersSnap.docs) {
       const data = userDoc.data();
       let plan: PlanTier = 'free';
       try {
-        const subDoc = await getDoc(doc(db, 'users', userDoc.id, 'subscription', 'current'));
-        if (subDoc.exists() && subDoc.data()?.status === 'active') plan = 'pro';
+        const subDoc = await db.collection('users').doc(userDoc.id).collection('subscription').doc('current').get();
+        if (subDoc.exists && subDoc.data()?.status === 'active') plan = 'pro';
       } catch {}
       if (GOD_EMAILS.includes(data.email?.toLowerCase())) plan = 'god';
       users.push({ uid: userDoc.id, email: data.email, plan });

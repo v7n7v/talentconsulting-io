@@ -10,6 +10,33 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { monitor } from '@/lib/monitor';
 
+const CONTACT_TYPES = new Set(['recruiter', 'hiring_manager', 'referral', 'peer', 'other']);
+const UPDATE_FIELDS = [
+  'name',
+  'company',
+  'role',
+  'email',
+  'phone',
+  'linkedin',
+  'type',
+  'notes',
+  'applicationId',
+  'followUpDate',
+] as const;
+
+function cleanText(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function cleanType(value: unknown) {
+  return typeof value === 'string' && CONTACT_TYPES.has(value) ? value : 'other';
+}
+
+function cleanNullable(value: unknown) {
+  const text = cleanText(value);
+  return text || null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const guard = await guardApiRoute(req, { rateLimit: 30, rateLimitWindow: 60_000 });
@@ -46,21 +73,22 @@ export async function POST(req: NextRequest) {
     const contactsRef = db.collection('users').doc(userId).collection('network_contacts');
 
     if (action === 'create') {
-      const { name, company, role, email, phone, linkedin, type, notes, applicationId } = body;
-      if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+      const { name, company, role, email, phone, linkedin, type, notes, applicationId, followUpDate } = body;
+      const safeName = cleanText(name);
+      if (!safeName) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
 
       const doc = await contactsRef.add({
-        name,
-        company: company || '',
-        role: role || '',
-        email: email || '',
-        phone: phone || '',
-        linkedin: linkedin || '',
-        type: type || 'other', // recruiter | hiring_manager | referral | peer | other
-        notes: notes || '',
-        applicationId: applicationId || null,
+        name: safeName,
+        company: cleanText(company),
+        role: cleanText(role),
+        email: cleanText(email),
+        phone: cleanText(phone),
+        linkedin: cleanText(linkedin),
+        type: cleanType(type), // recruiter | hiring_manager | referral | peer | other
+        notes: cleanText(notes),
+        applicationId: cleanNullable(applicationId),
         lastContactedAt: null,
-        followUpDate: null,
+        followUpDate: cleanNullable(followUpDate),
         interactions: [],
         created_at: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
@@ -72,26 +100,40 @@ export async function POST(req: NextRequest) {
     if (action === 'update') {
       const { id, ...updates } = body;
       if (!id) return NextResponse.json({ error: 'Contact ID required' }, { status: 400 });
+
+      const safeUpdates: Record<string, unknown> = {};
+      for (const field of UPDATE_FIELDS) {
+        if (!(field in updates)) continue;
+        if (field === 'type') safeUpdates[field] = cleanType(updates[field]);
+        else if (field === 'applicationId' || field === 'followUpDate') safeUpdates[field] = cleanNullable(updates[field]);
+        else safeUpdates[field] = cleanText(updates[field]);
+      }
+
+      if (typeof safeUpdates.name === 'string' && !safeUpdates.name) {
+        return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+      }
+
       await contactsRef.doc(id).update({
-        ...updates,
-        action: FieldValue.delete(), // remove `action` from updates
+        ...safeUpdates,
         updated_at: FieldValue.serverTimestamp(),
       });
       return NextResponse.json({ success: true });
     }
 
     if (action === 'log_interaction') {
-      const { id, interactionType, note } = body;
+      const { id, interactionType, note, followUpDate } = body;
       if (!id) return NextResponse.json({ error: 'Contact ID required' }, { status: 400 });
-      await contactsRef.doc(id).update({
+      const updateData: Record<string, unknown> = {
         interactions: FieldValue.arrayUnion({
-          type: interactionType || 'note', // email | call | meeting | linkedin | note
-          note: note || '',
+          type: cleanText(interactionType) || 'note', // email | call | meeting | linkedin | referral | note
+          note: cleanText(note),
           date: new Date().toISOString(),
         }),
         lastContactedAt: FieldValue.serverTimestamp(),
         updated_at: FieldValue.serverTimestamp(),
-      });
+      };
+      if ('followUpDate' in body) updateData.followUpDate = cleanNullable(followUpDate);
+      await contactsRef.doc(id).update(updateData);
       return NextResponse.json({ success: true });
     }
 

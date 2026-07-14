@@ -37,11 +37,12 @@ export default function Toast() {
   }, []);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 space-y-2">
+    <div className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-stretch gap-2 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-auto sm:max-w-sm" aria-live="polite" aria-atomic="false">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="glass rounded-xl px-6 py-4 flex items-center gap-3 neon-border animate-in slide-in-from-right duration-300"
+          role="status"
+          className="glass flex w-full max-w-full items-center gap-3 rounded-xl px-4 py-3 neon-border animate-in slide-in-from-right duration-300 sm:px-6 sm:py-4"
         >
           {isMaterialIcon(toast.icon) ? (
             <span className="material-symbols-rounded text-xl">{toast.icon}</span>

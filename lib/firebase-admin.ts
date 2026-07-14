@@ -5,10 +5,12 @@
 import { initializeApp, getApps, cert, type App } from 'firebase-admin/app';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getStorage, type Storage } from 'firebase-admin/storage';
 
 let adminApp: App;
 let adminAuth: Auth;
 let adminDb: Firestore;
+let adminStorage: Storage;
 
 function getAdminApp(): App {
   if (adminApp) return adminApp;
@@ -26,12 +28,14 @@ function getAdminApp(): App {
     adminApp = initializeApp({
       credential: cert(serviceAccount),
       projectId: serviceAccount.project_id,
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     });
   } else {
     // Fallback: projectId-only (works for token verification but NOT Firestore writes)
     console.warn('[firebase-admin] FIREBASE_SERVICE_ACCOUNT_JSON not set — Firestore calls will fail.');
     adminApp = initializeApp({
       projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
     });
   }
 
@@ -48,6 +52,12 @@ export function getAdminDb(): Firestore {
   if (adminDb) return adminDb;
   adminDb = getFirestore(getAdminApp());
   return adminDb;
+}
+
+export function getAdminStorage(): Storage {
+  if (adminStorage) return adminStorage;
+  adminStorage = getStorage(getAdminApp());
+  return adminStorage;
 }
 
 /**

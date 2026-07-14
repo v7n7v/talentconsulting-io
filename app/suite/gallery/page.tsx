@@ -1,20 +1,23 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { showToast } from '@/components/Toast';
 import { authFetch } from '@/lib/auth-fetch';
 import { useAuthGate } from '@/hooks/useAuthGate';
-import PageHelp from '@/components/PageHelp';
 import { useUserTier } from '@/hooks/use-user-tier';
+import AnimatedToolIcon from '@/components/AnimatedToolIcon';
+import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
 
 // ── Tool Registry ──
 interface GalleryTool {
   id: string;
   label: string;
   description: string;
+  lane: 'Polish' | 'Communicate' | 'Research';
+  output: string;
   icon: string;
   color: string;
   gradient: string;
@@ -22,11 +25,57 @@ interface GalleryTool {
   placeholder: string;
 }
 
+interface CareerWritingTool {
+  id: string;
+  label: string;
+  description: string;
+  path: string;
+  output: string;
+  icon: string;
+  color: string;
+  badge?: string;
+}
+
+const CAREER_WRITING_TOOLS: CareerWritingTool[] = [
+  {
+    id: 'cover-letter',
+    label: 'Cover Letter',
+    description: 'Generate a tailored letter from your resume, target role, and job context.',
+    path: '/suite/cover-letter',
+    output: 'Role-specific letter',
+    icon: 'edit_document',
+    color: '#f43f5e',
+    badge: 'PRO',
+  },
+  {
+    id: 'linkedin',
+    label: 'LinkedIn Profile',
+    description: 'Rewrite your headline, about section, and experience for the roles you want.',
+    path: '/suite/linkedin',
+    output: 'Profile-ready copy',
+    icon: 'badge',
+    color: '#3b82f6',
+    badge: 'PRO',
+  },
+  {
+    id: 'ai-humanizer',
+    label: 'AI Humanizer',
+    description: 'Make AI-assisted writing sound credible, clear, and genuinely yours.',
+    path: '/suite/writing-tools',
+    output: 'Humanized draft + checks',
+    icon: 'ink_pen',
+    color: '#f43f5e',
+    badge: 'PRO',
+  },
+];
+
 const TOOLS: GalleryTool[] = [
   {
     id: 'grammar-checker',
     label: 'Grammar Checker',
     description: 'Fix grammar, punctuation, and style issues instantly.',
+    lane: 'Polish',
+    output: 'Corrected draft + issue list',
     icon: 'spellcheck',
     color: '#10b981',
     gradient: 'from-emerald-500/20 to-teal-500/20',
@@ -37,6 +86,8 @@ const TOOLS: GalleryTool[] = [
     id: 'word-counter',
     label: 'Word Counter',
     description: 'Get detailed text statistics: words, sentences, reading time.',
+    lane: 'Polish',
+    output: 'Stats, timing, top words',
     icon: 'calculate',
     color: '#06b6d4',
     gradient: 'from-cyan-500/20 to-sky-500/20',
@@ -47,6 +98,8 @@ const TOOLS: GalleryTool[] = [
     id: 'citation-machine',
     label: 'Citation Machine',
     description: 'Generate APA, MLA, Chicago, and Harvard citations.',
+    lane: 'Research',
+    output: 'References + in-text citations',
     icon: 'format_quote',
     color: '#3b82f6',
     gradient: 'from-blue-500/20 to-cyan-500/20',
@@ -57,6 +110,8 @@ const TOOLS: GalleryTool[] = [
     id: 'summarizer',
     label: 'Summarizer',
     description: 'Condense long text into key points and bullet summaries.',
+    lane: 'Research',
+    output: 'Brief, detailed, bullets',
     icon: 'compress',
     color: '#f59e0b',
     gradient: 'from-amber-500/20 to-yellow-500/20',
@@ -67,6 +122,8 @@ const TOOLS: GalleryTool[] = [
     id: 'tone-analyzer',
     label: 'Tone Analyzer',
     description: 'Analyze the emotional tone, formality, and sentiment.',
+    lane: 'Polish',
+    output: 'Tone, formality, suggestions',
     icon: 'sentiment_satisfied',
     color: '#8b5cf6',
     gradient: 'from-violet-500/20 to-purple-500/20',
@@ -77,6 +134,8 @@ const TOOLS: GalleryTool[] = [
     id: 'paraphraser',
     label: 'Paraphraser',
     description: 'Rewrite text in 3 styles: formal, casual, and concise.',
+    lane: 'Polish',
+    output: 'Style variations',
     icon: 'swap_horiz',
     color: '#f43f5e',
     gradient: 'from-rose-500/20 to-pink-500/20',
@@ -87,6 +146,8 @@ const TOOLS: GalleryTool[] = [
     id: 'email-composer',
     label: 'Email Composer',
     description: 'Draft polished professional emails from rough notes.',
+    lane: 'Communicate',
+    output: 'Subject + email body',
     icon: 'mail',
     color: '#ec4899',
     gradient: 'from-pink-500/20 to-fuchsia-500/20',
@@ -97,12 +158,20 @@ const TOOLS: GalleryTool[] = [
     id: 'thesis-generator',
     label: 'Thesis Generator',
     description: 'Generate strong, arguable thesis statements for essays.',
+    lane: 'Research',
+    output: 'Thesis options + outline hints',
     icon: 'school',
     color: '#14b8a6',
     gradient: 'from-teal-500/20 to-emerald-500/20',
     tier: 'pro',
     placeholder: 'Enter your essay topic and position...',
   },
+];
+
+const LANES: { label: GalleryTool['lane']; icon: string; description: string }[] = [
+  { label: 'Polish', icon: 'auto_fix_high', description: 'Clean up, measure, and reshape text without losing intent.' },
+  { label: 'Communicate', icon: 'outgoing_mail', description: 'Turn rough notes into recruiter-ready communication.' },
+  { label: 'Research', icon: 'library_books', description: 'Summarize sources, cite properly, and shape arguments.' },
 ];
 
 // ── Tool-Specific Result Renderers ──
@@ -181,7 +250,12 @@ function ToolResult({ toolId, result, color }: { toolId: string; result: any; co
 
   // Citation Machine — formatted cards
   if (toolId === 'citation-machine') {
-    const citations = result.citations || [];
+    const citationsRaw = result.citations || [];
+    const citations = Array.isArray(citationsRaw)
+      ? citationsRaw
+      : Object.entries(citationsRaw).map(([format, formatted]) => ({ format, formatted }));
+    const inTextRaw = result.inText || {};
+    const inText = Object.entries(inTextRaw).map(([format, formatted]) => ({ format, formatted }));
     if (Array.isArray(citations) && citations.length > 0) {
       return (
         <div className="space-y-3">
@@ -197,6 +271,18 @@ function ToolResult({ toolId, result, color }: { toolId: string; result: any; co
               <p className="text-sm text-[var(--text-primary)] leading-relaxed">{c.formatted || c.citation || JSON.stringify(c)}</p>
             </div>
           ))}
+          {inText.length > 0 && (
+            <div className="rounded-xl p-3" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">In-text citations</p>
+              <div className="flex flex-wrap gap-2">
+                {inText.map((c: any) => (
+                  <span key={c.format} className="rounded-lg border border-[var(--border-subtle)] px-2 py-1 text-xs text-[var(--text-secondary)]">
+                    <span className="font-semibold uppercase text-[var(--text-primary)]">{c.format}</span>: {String(c.formatted)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -205,10 +291,15 @@ function ToolResult({ toolId, result, color }: { toolId: string; result: any; co
 
   // Summarizer — bullet points
   if (toolId === 'summarizer') {
-    const summary = result.summary || result.text || '';
-    const keyPoints = result.keyPoints || result.bullets || result.points || [];
+    const summary = result.summary || result.brief || result.detailed || result.oneLiner || result.text || '';
+    const keyPoints = result.keyPoints || result.bullets || result.bulletPoints || result.points || [];
     return (
       <div className="space-y-4">
+        {result.oneLiner && (
+          <div className="rounded-xl p-3 text-sm font-semibold text-[var(--text-primary)]" style={{ background: `${color}08`, border: `1px solid ${color}20` }}>
+            {result.oneLiner}
+          </div>
+        )}
         {summary && (
           <div className="p-4 rounded-xl text-sm leading-relaxed text-[var(--text-primary)]" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
             {summary}
@@ -234,19 +325,30 @@ function ToolResult({ toolId, result, color }: { toolId: string; result: any; co
 
   // Tone Analyzer — visual bars
   if (toolId === 'tone-analyzer') {
-    const tones = result.tones || result.emotions || [];
+    const tones = result.tones || result.emotions || result.secondaryTones || [];
     const formality = result.formality ?? result.formalityScore;
     const sentiment = result.sentiment || result.overallSentiment || '';
+    const sentimentKey = String(sentiment).toLowerCase();
+    const primaryTone = result.primaryTone || result.tone || '';
     const sentimentColors: Record<string, string> = { positive: '#10b981', negative: '#ef4444', neutral: '#64748b', mixed: '#f59e0b' };
     return (
       <div className="space-y-4">
+        {primaryTone && (
+          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+            <span className="material-symbols-rounded text-xl" style={{ color }}>record_voice_over</span>
+            <div>
+              <p className="text-sm font-bold text-[var(--text-primary)] capitalize">{primaryTone}</p>
+              <p className="text-[10px] text-[var(--text-tertiary)]">Primary tone</p>
+            </div>
+          </div>
+        )}
         {sentiment && (
           <div className="flex items-center gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
-            <span className="material-symbols-rounded text-xl" style={{ color: sentimentColors[sentiment.toLowerCase()] || color }}>
-              {sentiment.toLowerCase() === 'positive' ? 'sentiment_satisfied' : sentiment.toLowerCase() === 'negative' ? 'sentiment_dissatisfied' : 'sentiment_neutral'}
+            <span className="material-symbols-rounded text-xl" style={{ color: sentimentColors[sentimentKey] || color }}>
+              {sentimentKey === 'positive' ? 'sentiment_satisfied' : sentimentKey === 'negative' ? 'sentiment_dissatisfied' : 'sentiment_neutral'}
             </span>
             <div>
-              <p className="text-sm font-bold text-[var(--text-primary)] capitalize">{sentiment}</p>
+              <p className="text-sm font-bold text-[var(--text-primary)] capitalize">{typeof sentiment === 'number' ? `${sentiment > 0 ? '+' : ''}${sentiment}` : sentiment}</p>
               <p className="text-[10px] text-[var(--text-tertiary)]">Overall sentiment</p>
             </div>
           </div>
@@ -294,8 +396,13 @@ function ToolResult({ toolId, result, color }: { toolId: string; result: any; co
   // Paraphraser — side-by-side styles
   if (toolId === 'paraphraser') {
     const styles = result.paraphrased || result.versions || result;
-    const styleEntries = typeof styles === 'object' && !Array.isArray(styles)
-      ? Object.entries(styles).filter(([, v]) => typeof v === 'string')
+    const variationEntries: [string, string][] = Array.isArray(result.variations)
+      ? result.variations.map((v: any) => [v.style || v.tone || 'variation', v.text || v.body || JSON.stringify(v)])
+      : [];
+    const styleEntries: [string, string][] = variationEntries.length > 0
+      ? variationEntries
+      : typeof styles === 'object' && !Array.isArray(styles)
+      ? Object.entries(styles).filter(([, v]) => typeof v === 'string') as [string, string][]
       : [];
     if (styleEntries.length > 0) {
       const styleIcons: Record<string, string> = { formal: 'business_center', casual: 'chat', concise: 'compress', creative: 'palette' };
@@ -352,14 +459,16 @@ function ToolResult({ toolId, result, color }: { toolId: string; result: any; co
 
   // Thesis Generator — statement + reasoning
   if (toolId === 'thesis-generator') {
-    const thesis = result.thesis || result.statement || result.thesisStatement || '';
+    const thesisStatements = result.thesisStatements || [];
+    const thesis = result.thesis || result.statement || result.thesisStatement || thesisStatements?.[0]?.statement || '';
     const reasoning = result.reasoning || result.explanation || '';
-    const alternatives = result.alternatives || result.variations || [];
+    const alternatives = result.alternatives || result.variations || thesisStatements.slice(1).map((t: any) => t.statement || t);
+    const outlineHints = result.outlineHints || [];
     return (
       <div className="space-y-4">
         {thesis && (
-          <div className="p-4 rounded-xl border-l-2" style={{ background: 'var(--bg-elevated)', borderColor: color, borderRight: '1px solid var(--border-subtle)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
-            <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color }}>Thesis Statement</p>
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Thesis Statement</p>
             <p className="text-base font-medium text-[var(--text-primary)] leading-relaxed italic">"{thesis}"</p>
           </div>
         )}
@@ -377,6 +486,19 @@ function ToolResult({ toolId, result, color }: { toolId: string; result: any; co
                 <div key={i} className="flex items-start gap-2 p-2.5 rounded-xl text-sm text-[var(--text-secondary)]" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
                   <span className="text-[10px] font-bold tabular-nums mt-0.5 w-4 shrink-0" style={{ color }}>{i + 1}</span>
                   {typeof alt === 'string' ? alt : JSON.stringify(alt)}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {Array.isArray(outlineHints) && outlineHints.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider mb-2">Outline Hints</p>
+            <div className="space-y-2">
+              {outlineHints.map((hint: string, i: number) => (
+                <div key={i} className="flex items-start gap-2 p-2.5 rounded-xl text-sm text-[var(--text-secondary)]" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+                  <span className="material-symbols-rounded mt-0.5 text-sm" style={{ color }}>notes</span>
+                  {typeof hint === 'string' ? hint : JSON.stringify(hint)}
                 </div>
               ))}
             </div>
@@ -436,6 +558,7 @@ export default function GalleryPage() {
   const { user } = useStore();
   const { handleApiError, renderAuthModal } = useAuthGate();
   const { tier } = useUserTier();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [selectedTool, setSelectedTool] = useState<GalleryTool | null>(null);
@@ -503,15 +626,14 @@ export default function GalleryPage() {
         return;
       }
 
-      // ── Generic tools (via /api/ai) ──
-      const res = await authFetch('/api/ai', {
+      // ── Toolkit tools (dedicated route with tool-specific prompts) ──
+      const res = await authFetch('/api/gallery/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'json',
-          prompt: input,
-          systemPrompt: `You are a ${selectedTool.label}. ${selectedTool.description} Respond with a JSON object.`,
-          usageFeature: 'galleryTools',
+          tool: selectedTool.id,
+          input,
+          options: { temperature: 0.25, maxTokens: 1800 },
         }),
       });
 
@@ -522,9 +644,9 @@ export default function GalleryPage() {
       }
 
       const data = await res.json();
-      let parsed = data;
-      if (typeof data === 'string') {
-        try { parsed = JSON.parse(data); } catch { parsed = { result: data }; }
+      let parsed = data.result ?? data;
+      if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch { parsed = { result: parsed }; }
       }
       setResult(parsed);
       showToast(`${selectedTool.label} complete`, selectedTool.icon);
@@ -543,104 +665,148 @@ export default function GalleryPage() {
   };
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
+    <SuiteToolShell variant="standard">
       {renderAuthModal()}
 
-      {/* ── HEADER ── */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl glass-card p-6 mb-8"
-      >
-        <div className="absolute inset-0 overflow-hidden">
-          <motion.div
-            animate={{ x: [0, 30, 0], y: [0, -20, 0], scale: [1, 1.1, 1] }}
-            transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute top-0 right-0 w-72 h-72 bg-violet-500/15 rounded-full blur-3xl"
-          />
-          <motion.div
-            animate={{ x: [0, -20, 0], y: [0, 30, 0] }}
-            transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute bottom-0 left-0 w-56 h-56 bg-cyan-500/15 rounded-full blur-3xl"
-          />
-        </div>
+      <SuiteToolHeader
+        tool="gallery"
+        subtitle="Fast utilities for polishing drafts, writing recruiter messages, summarizing research, and preparing clean citations."
+      />
 
-        <div className="relative z-10 flex items-start justify-between">
-          <div>
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-500/10 border border-violet-500/30 mb-4"
-            >
-              <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }} className="w-2 h-2 rounded-full bg-violet-500" />
-              <span className="text-xs font-medium text-violet-400">Writing Tools</span>
-            </motion.div>
-            <h1 className="text-2xl font-semibold mb-2 text-[var(--text-primary)]">Writing Tools Gallery</h1>
-            <p className="text-[var(--text-secondary)] text-sm max-w-xl">
-              One-click writing utilities. Free tools available to everyone — Pro tools unlock with your subscription.
-            </p>
-          </div>
-          <PageHelp toolId="gallery" />
-        </div>
-      </motion.div>
-
-      <div className="max-w-5xl mx-auto">
+      <div className="min-w-0">
         <AnimatePresence mode="wait">
           {!selectedTool ? (
-            /* ── TOOL GRID ── */
+            /* ── TOOL WORKBENCH ── */
             <motion.div
               key="grid"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+              className="space-y-5"
             >
-              {TOOLS.map((tool, i) => {
-                const isLocked = tool.tier === 'pro' && !isPro;
-                return (
-                  <motion.button
-                    key={tool.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    whileHover={{ scale: 1.03, y: -4 }}
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => selectTool(tool)}
-                    className={`group relative p-5 rounded-2xl glass-card text-left transition-all overflow-hidden border ${
-                      isLocked ? 'border-white/5 opacity-70' : 'border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    <div className={`absolute inset-0 bg-gradient-to-br ${tool.gradient} opacity-0 group-hover:opacity-100 transition-opacity`} />
-                    <div className="relative">
-                      <div className="flex items-center justify-between mb-3">
-                        <div
-                          className="w-10 h-10 rounded-xl flex items-center justify-center border shadow-inner"
-                          style={{ backgroundColor: `${tool.color}15`, borderColor: `${tool.color}30` }}
-                        >
-                          <span className="material-symbols-rounded text-lg" style={{ color: tool.color }}>{tool.icon}</span>
-                        </div>
-                        {tool.tier === 'pro' && (
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                            isPro ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          }`}>
-                            {isPro ? '✓ PRO' : 'PRO'}
+              <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-rounded text-[20px] text-[var(--accent)]">draw</span>
+                      <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">Career Writing</h2>
+                    </div>
+                    <p className="premium-copy-wrap mt-1 max-w-2xl text-xs leading-5 text-[var(--text-secondary)]">
+                      High-stakes writing for applications, profiles, and AI-assisted drafts.
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full border border-[var(--border-subtle)] px-2 py-1 text-[10px] font-semibold text-[var(--text-muted)]">
+                    {CAREER_WRITING_TOOLS.length} suites
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  {CAREER_WRITING_TOOLS.map((tool, i) => (
+                    <motion.button
+                      key={tool.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.03 }}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => router.push(tool.path)}
+                      className="group relative min-h-[172px] overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-left transition-all hover:border-[var(--border)]"
+                    >
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <AnimatedToolIcon
+                          icon={tool.icon}
+                          color={tool.color}
+                          size="md"
+                          state="idle"
+                        />
+                        {tool.badge && (
+                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-500">
+                            {tool.badge}
                           </span>
                         )}
-                        {tool.tier === 'free' && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-white/5 text-[var(--text-secondary)] border border-white/10">FREE</span>
-                        )}
                       </div>
-                      <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1">{tool.label}</h3>
-                      <p className="text-[var(--text-secondary)] text-xs leading-relaxed">{tool.description}</p>
-                      {isLocked && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-2xl backdrop-blur-[1px]">
-                          <span className="material-symbols-rounded text-2xl text-amber-400">lock</span>
-                        </div>
-                      )}
+                      <h3 className="premium-heading-wrap text-sm font-semibold text-[var(--text-primary)]">{tool.label}</h3>
+                      <p className="premium-copy-wrap mt-1.5 text-xs leading-5 text-[var(--text-secondary)]">{tool.description}</p>
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{tool.output}</p>
+                        <span className="material-symbols-rounded text-[18px] text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5">arrow_forward</span>
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+              </section>
+
+              <div className="grid gap-3 lg:grid-cols-3">
+                {LANES.map((lane) => (
+                  <div key={lane.label} className="rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-hover)] text-[var(--accent)]">
+                        <span className="material-symbols-rounded text-[22px]">{lane.icon}</span>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">{lane.label}</p>
+                        <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">{lane.description}</p>
+                      </div>
                     </div>
-                  </motion.button>
-                );
-              })}
+                  </div>
+                ))}
+              </div>
+
+              {LANES.map((lane) => (
+                <section key={lane.label} className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-rounded text-[20px] text-[var(--accent)]">{lane.icon}</span>
+                      <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)]">{lane.label}</h2>
+                    </div>
+                    <span className="rounded-full border border-[var(--border-subtle)] px-2 py-1 text-[10px] font-semibold text-[var(--text-muted)]">
+                      {TOOLS.filter(tool => tool.lane === lane.label).length} tools
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {TOOLS.filter(tool => tool.lane === lane.label).map((tool, i) => {
+                      const isLocked = tool.tier === 'pro' && !isPro;
+                      return (
+                        <motion.button
+                          key={tool.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.03 }}
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => selectTool(tool)}
+                          className={`group relative min-h-[166px] overflow-hidden rounded-[18px] border bg-[var(--card-bg)] p-4 text-left transition-all ${
+                            isLocked ? 'border-[var(--border-subtle)] opacity-75' : 'border-[var(--border-subtle)] hover:border-[var(--border)]'
+                          }`}
+                        >
+                          <div className="mb-4 flex items-start justify-between gap-3">
+                            <AnimatedToolIcon
+                              icon={tool.icon}
+                              color={tool.color}
+                              size="md"
+                              state={isLocked ? 'locked' : 'idle'}
+                            />
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                              tool.tier === 'pro'
+                                ? isPro ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-500' : 'border-amber-500/20 bg-amber-500/10 text-amber-500'
+                                : 'border-[var(--border-subtle)] bg-[var(--bg-hover)] text-[var(--text-secondary)]'
+                            }`}>
+                              {tool.tier === 'pro' ? (isPro ? 'PRO' : 'PRO') : 'FREE'}
+                            </span>
+                          </div>
+                          <h3 className="premium-heading-wrap text-sm font-semibold text-[var(--text-primary)]">{tool.label}</h3>
+                          <p className="premium-copy-wrap mt-1.5 text-xs leading-5 text-[var(--text-secondary)]">{tool.description}</p>
+                          <p className="mt-3 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{tool.output}</p>
+                          {isLocked && (
+                            <div className="absolute inset-0 flex items-center justify-center rounded-[18px] bg-[var(--bg-surface)]/70 backdrop-blur-[1px]">
+                              <span className="material-symbols-rounded text-2xl text-amber-500">lock</span>
+                            </div>
+                          )}
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </motion.div>
           ) : (
             /* ── TOOL EXECUTION PANEL ── */
@@ -654,14 +820,19 @@ export default function GalleryPage() {
               {/* Toolbar */}
               <div className="flex items-center gap-3">
                 <button onClick={closeTool} className="flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
-                  <span className="material-symbols-rounded text-sm">arrow_back</span> Back to Gallery
+                  <span className="material-symbols-rounded text-sm">arrow_back</span> Back to Toolkit
                 </button>
                 <div className="flex-1" />
                 <div
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
                   style={{ borderColor: `${selectedTool.color}30`, backgroundColor: `${selectedTool.color}08` }}
                 >
-                  <span className="material-symbols-rounded text-sm" style={{ color: selectedTool.color }}>{selectedTool.icon}</span>
+                  <AnimatedToolIcon
+                    icon={selectedTool.icon}
+                    color={selectedTool.color}
+                    size="xs"
+                    state={isLoading ? 'thinking' : 'active'}
+                  />
                   <span className="text-xs font-medium" style={{ color: selectedTool.color }}>{selectedTool.label}</span>
                 </div>
               </div>
@@ -686,9 +857,26 @@ export default function GalleryPage() {
                     style={{ background: `linear-gradient(135deg, ${selectedTool.color}, ${selectedTool.color}cc)` }}
                   >
                     {isLoading ? (
-                      <><span className="material-symbols-rounded animate-spin text-sm">progress_activity</span> Processing...</>
+                      <>
+                        <AnimatedToolIcon
+                          icon={selectedTool.icon}
+                          color={selectedTool.color}
+                          size="xs"
+                          state="thinking"
+                          className="bg-[var(--card-bg)]"
+                        />
+                        Processing...
+                      </>
                     ) : (
-                      <><span className="material-symbols-rounded text-sm">{selectedTool.icon}</span> Run {selectedTool.label}</>
+                      <>
+                        <AnimatedToolIcon
+                          icon={selectedTool.icon}
+                          color={selectedTool.color}
+                          size="xs"
+                          state="active"
+                        />
+                        Run {selectedTool.label}
+                      </>
                     )}
                   </motion.button>
                 </div>
@@ -704,7 +892,17 @@ export default function GalleryPage() {
                         const text = selectedTool?.id === 'word-counter'
                           ? Object.entries(result).map(([k, v]) => `${k}: ${v}`).join('\n')
                           : typeof result === 'string' ? result
-                          : result?.correctedText || result?.summary || result?.citations?.map((c: any) => c.formatted).join('\n') || result?.paraphrased?.formal || result?.email || result?.thesis || JSON.stringify(result, null, 2);
+                          : result?.correctedText
+                            || result?.summary
+                            || result?.brief
+                            || (Array.isArray(result?.citations) ? result.citations.map((c: any) => c.formatted || c.citation).join('\n') : '')
+                            || (Array.isArray(result?.variations) ? result.variations.map((v: any) => `${v.style || 'Variation'}: ${v.text}`).join('\n\n') : '')
+                            || result?.paraphrased?.formal
+                            || result?.email
+                            || result?.body
+                            || result?.thesis
+                            || result?.thesisStatement
+                            || JSON.stringify(result, null, 2);
                         navigator.clipboard.writeText(text);
                         showToast('Copied to clipboard', 'content_copy');
                       }}
@@ -720,6 +918,6 @@ export default function GalleryPage() {
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </SuiteToolShell>
   );
 }

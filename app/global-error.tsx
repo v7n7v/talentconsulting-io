@@ -20,12 +20,17 @@ export default function GlobalError({
     console.error('[Global Error Boundary]', error);
   }, [error]);
 
+  const handleRetry = () => {
+    reset();
+    window.location.reload();
+  };
+
   return (
     <html lang="en">
       <body
         style={{
           margin: 0,
-          minHeight: '100vh',
+          minHeight: '100dvh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -86,7 +91,7 @@ export default function GlobalError({
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
             <button
-              onClick={reset}
+              onClick={handleRetry}
               style={{
                 padding: '12px 24px',
                 borderRadius: 12,

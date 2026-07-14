@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { CHECKOUT_ATTRIBUTION_SOURCES } from '@/lib/billing/checkout-attribution';
 
 // ──────────────────────────────────────────────
 // Shared / Reusable
@@ -55,6 +56,13 @@ export const ResumeMorphSchema = z.object({
   targetPageCount: z.union([z.number().int().min(1).max(5), z.literal('auto')]).optional(),
 });
 
+export const ResumeMorphConsentSchema = z.object({
+  unlock100: z.boolean(),
+  typedName: SafeString(120).optional(),
+  acknowledgements: z.array(SafeString(500)).max(10).optional(),
+  consentVersion: SafeString(80).optional(),
+});
+
 export const ResumeAISchema = z.object({
   action: z.enum(['extract_company', 'generate_summary', 'generate_achievements', 'suggest_skills']),
   text: SafeString(20_000).optional(),
@@ -80,6 +88,7 @@ export const LinkedInSchema = z.object({
 
 export const AutoFixSchema = z.object({
   resumeText: SafeText(100_000),
+  resume: z.record(z.string(), z.unknown()),
   suggestions: z.array(z.string().max(2000)).min(1).max(20),
   targetJD: SafeText(30_000).optional(),
 });
@@ -162,6 +171,15 @@ export const AdminActionSchema = z.object({
   months: z.number().int().min(1).max(120).optional(),
 });
 
+export const AdminEmailSchema = z.object({
+  to: z.string().trim().email().max(320),
+  uid: z.string().min(1).max(128).optional(),
+  subject: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(50_000),
+  ctaLabel: z.string().trim().max(100).optional(),
+  ctaUrl: z.string().trim().url().max(2000).optional(),
+});
+
 // ──────────────────────────────────────────────
 // /api/oracle/analyze
 // ──────────────────────────────────────────────
@@ -188,6 +206,7 @@ export const DashboardInsightsSchema = z.object({
 export const StripeSubscribeSchema = z.object({
   interval: z.enum(['month', 'year']).optional().default('month'),
   plan: z.enum(['pro', 'studio']).optional().default('pro'),
+  source: z.enum(CHECKOUT_ATTRIBUTION_SOURCES).optional().default('direct'),
 });
 
 // ──────────────────────────────────────────────
@@ -195,9 +214,13 @@ export const StripeSubscribeSchema = z.object({
 // ──────────────────────────────────────────────
 
 export const VaultGenerateSchema = z.object({
-  type: z.enum(['flashcards', 'interview']),
+  type: z.enum(['flashcards', 'interview', 'skill-bridge']),
   topic: SafeString(500),
   items: z.array(z.record(z.string(), z.unknown())).min(1).max(50),
+  skill: SafeString(200).optional(),
+  applicationId: z.string().max(100).optional().nullable(),
+  resumeVersionId: z.string().max(100).optional().nullable(),
+  sourceTool: SafeString(80).optional(),
 });
 
 export const VaultExportPlanSchema = z.object({
@@ -205,6 +228,7 @@ export const VaultExportPlanSchema = z.object({
   schedule: z.array(z.record(z.string(), z.unknown())).min(1).max(30),
   summary: SafeString(5000).optional(),
   applicationId: z.string().max(100).optional().nullable(),
+  resumeVersionId: z.string().max(100).optional().nullable(),
 });
 
 // ──────────────────────────────────────────────
@@ -236,6 +260,23 @@ export const JobSearchSchema = z.object({
 });
 
 // ──────────────────────────────────────────────
+// /api/agent/harness
+// ──────────────────────────────────────────────
+
+export const SonaAgentHarnessSchema = z.object({
+  userRequest: SafeString(4000),
+  resumeVersionId: z.string().trim().regex(/^[A-Za-z0-9_-]{1,180}$/).optional(),
+  targetRole: SafeString(160).optional(),
+  location: SafeString(160).optional(),
+  salaryTarget: z.number().min(0).max(1_000_000).optional(),
+  remotePreference: z.enum(['remote', 'hybrid', 'onsite', 'any']).optional(),
+  maxPackets: z.number().int().min(1).max(8).optional(),
+  mode: z.enum(['scout', 'prepare']).optional(),
+  notify: z.boolean().optional(),
+  activationReceipt: z.string().trim().min(80).max(4096).optional(),
+});
+
+// ──────────────────────────────────────────────
 // /api/writing/humanize
 // ──────────────────────────────────────────────
 
@@ -244,6 +285,11 @@ export const HumanizeSchema = z.object({
   domain: z.enum(['general', 'academic', 'resume', 'marketing', 'creative']).optional().default('general'),
   tone: z.enum(['professional', 'creative', 'casual', 'academic', 'confident']).optional().default('professional'),
   lengthMode: z.enum(['exact', 'condense', 'expand']).optional().default('exact'),
+  mode: z.enum(['safe_polish', 'voice_match', 'recruiter_ready', 'academic_integrity', 'creative_rewrite']).optional(),
+  intensity: z.enum(['light', 'balanced', 'deep']).optional().default('balanced'),
+  qualityMode: z.enum(['fast', 'best']).optional().default('fast'),
+  protectedTerms: z.array(z.string().trim().min(1).max(120)).max(120).optional(),
+  rewriteScope: z.enum(['full', 'flagged_paragraphs']).optional().default('flagged_paragraphs'),
   paragraphIndices: z.array(z.number().int().min(0).max(200)).optional(),
 });
 
@@ -277,4 +323,3 @@ export const ATSScoreSchema = z.object({
   resumeText: SafeText(100_000),
   jobDescription: SafeText(30_000),
 });
-

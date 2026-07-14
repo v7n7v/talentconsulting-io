@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img" aria-label="TalentConsulting.io">
+  <defs>
+    <linearGradient id="tcAccentBlue" x1="118" y1="102" x2="394" y2="410" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#5A6BFF"/>
+      <stop offset="100%" stop-color="#2E3FFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#FFFFFF"/>
+  <path d="M106 374H184L276 154H211L106 374Z" fill="url(#tcAccentBlue)"/>
+  <path d="M326 374H404L299 154H234L326 374Z" fill="url(#tcAccentBlue)" opacity="0.96"/>
+  <path d="M206 374H306L256 266L206 374Z" fill="#FFFFFF"/>
+</svg>

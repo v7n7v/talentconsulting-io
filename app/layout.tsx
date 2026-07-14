@@ -1,14 +1,28 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Google_Sans_Flex, Inter, JetBrains_Mono } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
 import ClientProviders from '@/components/ClientProviders';
-import PromoBanner from '@/components/PromoBanner';
+
+const BRAND_NAME = 'TalentConsulting.io';
+const BRAND_WORDMARK = '/brand/talentconsulting-logo-white.png';
+const BRAND_OG_IMAGE = '/brand/brand-og-v2.png';
+const BRAND_MARK_192 = '/brand/brand-icon-192.png';
+const BRAND_MARK_512 = '/brand/brand-icon-512.png';
+const BRAND_APPLE_ICON = '/brand/brand-icon-180.png';
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter',
   display: 'swap',
+});
+
+const googleSansFlex = Google_Sans_Flex({
+  subsets: ['latin'],
+  variable: '--font-brand',
+  display: 'swap',
+  weight: 'variable',
+  axes: ['GRAD', 'opsz'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -22,13 +36,12 @@ export const metadata: Metadata = {
     default: 'Talent Studio — AI-Powered Career Intelligence Platform',
     template: '%s | Talent Studio',
   },
-  description: 'Free AI text humanizer & detector — bypass AI detection instantly. Build ATS-optimized resumes, practice AI interviews, detect AI writing patterns, humanize text, track applications, and decode job descriptions. All-in-one career platform, free to start.',
+  description: 'AI career workspace for resumes, ATS checks, interview prep, job tracking, and Sona-guided application workflows. Start with free tools.',
   keywords: [
     'free AI humanizer',
     'free AI text detector',
     'AI writing detector',
     'humanize AI text',
-    'bypass AI detection',
     'AI text humanizer free',
     'AI content detector',
     'AI resume builder',
@@ -47,7 +60,7 @@ export const metadata: Metadata = {
     'market oracle salary data',
     'skill gap analysis',
     'ChatGPT detector',
-    'undetectable AI writing',
+    'AI writing trust checker',
     'AI checker free',
     'free grammar checker',
     'free paraphraser online',
@@ -58,9 +71,9 @@ export const metadata: Metadata = {
     'talent studio',
     'talentconsulting.io',
   ],
-  authors: [{ name: 'Talent Consulting', url: 'https://talentconsulting.io' }],
-  creator: 'Talent Consulting',
-  publisher: 'Talent Consulting',
+  authors: [{ name: BRAND_NAME, url: 'https://talentconsulting.io' }],
+  creator: BRAND_NAME,
+  publisher: BRAND_NAME,
   category: 'Career Tools',
   metadataBase: new URL('https://talentconsulting.io'),
   alternates: {
@@ -70,23 +83,23 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: 'https://talentconsulting.io',
-    siteName: 'Talent Studio',
-    title: 'Free AI Humanizer & Text Detector — Talent Studio Career Platform',
-    description: 'Free AI humanizer: paste AI text, get human-sounding results instantly. Plus: ATS resume builder, AI interview simulator, and 22+ career tools. No sign-up required.',
+    siteName: BRAND_NAME,
+    title: 'Talent Studio — AI Career Intelligence Platform',
+    description: 'AI writing trust tools, ATS resume builder, AI interview simulator, and 22+ career intelligence tools.',
     images: [
       {
-        url: '/og-image.png',
+        url: BRAND_OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: 'Talent Studio — AI Career Intelligence Platform',
+        alt: 'TalentConsulting.io — AI Career Intelligence Platform',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Free AI Humanizer & Text Detector — Talent Studio',
-    description: 'Free AI text humanizer: bypass detection in one click. Plus ATS resume builder, AI interview simulator, and 22+ career intelligence tools.',
-    images: ['/og-image.png'],
+    description: 'AI writing trust tools, ATS resume builder, AI interview simulator, and 22+ career intelligence tools.',
+    images: [BRAND_OG_IMAGE],
     creator: '@talentconsulting',
   },
   robots: {
@@ -103,10 +116,22 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: BRAND_MARK_192, sizes: '192x192', type: 'image/png' },
+      { url: BRAND_MARK_512, sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: [
+      { url: BRAND_APPLE_ICON, sizes: '180x180', type: 'image/png' },
+    ],
   },
   manifest: '/site.webmanifest',
+  ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? {
+        verification: {
+          google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION,
+        },
+      }
+    : {}),
 };
 
 export default function RootLayout({
@@ -115,7 +140,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head>
         {/* Preconnect to critical third-party origins */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -157,7 +182,7 @@ export default function RootLayout({
             `,
           }}
         />
-        {/* JSON-LD Structured Data */}
+        {/* Global JSON-LD Structured Data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -165,74 +190,23 @@ export default function RootLayout({
               '@context': 'https://schema.org',
               '@graph': [
                 {
-                  '@type': 'SoftwareApplication',
-                  name: 'Talent Studio',
-                  applicationCategory: 'BusinessApplication',
-                  operatingSystem: 'Web',
-                  url: 'https://talentconsulting.io',
-                  description: 'Free AI text humanizer and detector. AI-powered career intelligence platform with resume morphing, interview simulation, and 22+ career tools.',
-                  offers: [
-                    {
-                      '@type': 'Offer',
-                      price: '0',
-                      priceCurrency: 'USD',
-                      name: 'Free',
-                      description: '3 resume morphs, 3 interviews, AI detector — free forever',
-                    },
-                    {
-                      '@type': 'Offer',
-                      price: '9.99',
-                      priceCurrency: 'USD',
-                      name: 'Pro',
-                      description: 'Unlimited morphs, interviews, AI detection & humanizer (4K words/mo)',
-                    },
-                    {
-                      '@type': 'Offer',
-                      price: '19.99',
-                      priceCurrency: 'USD',
-                      name: 'Max',
-                      description: 'Everything in Pro + Sona AI Agent, 50K word humanizer, unlimited detection, priority support',
-                    },
-                  ],
-                  featureList: [
-                    'Free AI Text Humanizer',
-                    'Free AI Writing Detector',
-                    'AI Resume Morphing',
-                    'Interview Simulator with STAR Grading',
-                    'AI Text Detection (100+ patterns)',
-                    'AI Writing Humanizer',
-                    'Market Intelligence & Salary Data',
-                    'Job Application Tracker',
-                    'Skill Gap Analysis',
-                    'Resume Templates & Export',
-                    'Sona AI Career Agent',
-                    'Cover Letter Generator',
-                  ],
-                },
-                {
                   '@type': 'Organization',
-                  name: 'Talent Consulting',
+                  name: BRAND_NAME,
                   url: 'https://talentconsulting.io',
-                  logo: 'https://talentconsulting.io/logo.png',
+                  logo: `https://talentconsulting.io${BRAND_WORDMARK}`,
                   sameAs: [],
                 },
                 {
                   '@type': 'WebSite',
                   name: 'Talent Studio',
                   url: 'https://talentconsulting.io',
-                  potentialAction: {
-                    '@type': 'SearchAction',
-                    target: 'https://talentconsulting.io/suite/job-search?q={search_term_string}',
-                    'query-input': 'required name=search_term_string',
-                  },
                 },
               ],
             }),
           }}
         />
       </head>
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
-        <PromoBanner />
+      <body className={`${inter.variable} ${googleSansFlex.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         <div className="relative z-10">
           <ClientProviders>{children}</ClientProviders>
         </div>

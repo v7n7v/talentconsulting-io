@@ -11,6 +11,7 @@ import { validateBody } from '@/lib/validate';
 import { AutoFixSchema } from '@/lib/schemas';
 import { sanitizeForAI } from '@/lib/sanitize';
 import { monitor } from '@/lib/monitor';
+import { applyResumeMorphGuardrails, resolveResumeMorphAccess } from '@/lib/resume-morph-guardrails';
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     const validated = await validateBody(req, AutoFixSchema);
     if (!validated.success) return validated.error;
-    const { resumeText, suggestions, targetJD } = validated.data;
+    const { resumeText, resume, suggestions, targetJD } = validated.data;
 
     const writerPrompt = `You are a veteran resume writer and career strategist. Write like a real human — never like an AI.
 Apply the given improvement suggestions while sounding natural and authentic.
@@ -35,7 +36,7 @@ Apply the given improvement suggestions while sounding natural and authentic.
 RULES:
 1. Apply ALL suggested improvements to the resume content
 2. Maintain the person's authentic voice — keep their quirks, their tone, their way of saying things
-3. Strengthen weak bullet points with quantified achievements (use SPECIFIC numbers: "$1.2M" not "$1M", "37%" not "40%")
+3. Strengthen weak bullet points using only facts and numbers already present in the source. Never create, estimate, improve, round, or infer a metric. If the source has no metric, keep the statement qualitative and explain what evidence the user could add.
 4. Improve keyword density for ATS — but bury keywords naturally in achievements, never list-dump them
 5. Keep the same structure (sections, ordering) — only improve content quality
 
@@ -76,7 +77,7 @@ Apply all suggestions and return the improved resume as a JSON object.`;
       'Resume quality after applying improvement suggestions',
       [
         'All suggestions have been addressed',
-        'Achievements are quantified with metrics',
+        'Existing metrics are preserved and no new metric is introduced',
         'Keywords match the target role',
         'Professional tone maintained',
         'ATS-friendly formatting preserved',
@@ -99,8 +100,15 @@ Apply all suggestions and return the improved resume as a JSON object.`;
       }
     }
 
-    return NextResponse.json({
+    const guardedResult = applyResumeMorphGuardrails(
+      resume,
       improvedResume,
+      resolveResumeMorphAccess({ requestedMorphPercentage: 80, hasFullConsent: false, mode: 'automated' }),
+    );
+
+    return NextResponse.json({
+      improvedResume: guardedResult.resume,
+      guardrailReport: guardedResult.report,
       score: result.score,
       refined: result.refined,
       modelAgreement: result.modelAgreement,

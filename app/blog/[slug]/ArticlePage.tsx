@@ -76,13 +76,13 @@ registerArticle('auto-apply-bots-are-ruining-your-job-search', (
 
     <h2>A Better Way: Quality Intelligence Over Volume</h2>
     <p>
-      At TalentConsulting, we built our platform around the opposite philosophy: <strong>apply to fewer jobs, but apply better</strong>. Here&apos;s our approach:
+      At TalentConsulting.io, we built our platform around the opposite philosophy: <strong>apply to fewer jobs, but apply better</strong>. Here&apos;s our approach:
     </p>
     <ul>
-      <li><strong>AI Resume Morphing</strong> — Instead of blasting one generic resume, our <Link href="/suite/resume">Resume Studio</Link> rewrites your resume to match each specific job description. Same career, different emphasis. This alone doubles your ATS pass-through rate.</li>
-      <li><strong>Fit Scoring</strong> — Our <Link href="/suite/market-oracle">Market Oracle</Link> analyzes a JD against your skills and tells you your fit score <em>before</em> you apply. If you&apos;re a 40% match, we tell you — saving you from wasting your shot.</li>
-      <li><strong>Draft &amp; Approve, Never Auto-Submit</strong> — Our upcoming AI agent, <Link href="/suite/agent">Sona</Link>, will draft cover letters, prep follow-up emails, and recommend jobs — but YOU click submit. We believe the human should always have the final say on what goes out under their name.</li>
-      <li><strong>Interview Preparation</strong> — Our <Link href="/suite/flashcards">Gauntlet simulator</Link> trains you for the specific role you applied to, so when you land the interview, you&apos;re ready to speak to exactly why you&apos;re there.</li>
+      <li><strong>AI Resume Morphing</strong> — Instead of blasting one generic resume, our <Link href="/tools/resume-builder">Resume Builder</Link> rewrites your resume to match each specific job description. Same career, different emphasis. This alone doubles your ATS pass-through rate.</li>
+      <li><strong>Fit Scoring</strong> — Our <Link href="/tools/ats-analyzer">ATS Analyzer</Link> analyzes a JD against your skills and tells you your fit score <em>before</em> you apply. If you&apos;re a 40% match, we tell you — saving you from wasting your shot.</li>
+      <li><strong>Draft &amp; Approve, Never Auto-Submit</strong> — Talent Studio can draft cover letters, prep follow-up emails, and recommend jobs — but YOU click submit. We believe the human should always have the final say on what goes out under their name.</li>
+      <li><strong>Interview Preparation</strong> — Our <Link href="/tools/interview-prep">interview prep tool</Link> trains you for the specific role you applied to, so when you land the interview, you&apos;re ready to speak to exactly why you&apos;re there.</li>
     </ul>
 
     <h2>What the Data Tells Us to Do Instead</h2>
@@ -105,7 +105,7 @@ registerArticle('auto-apply-bots-are-ruining-your-job-search', (
       We think there&apos;s a better way. <strong>Use AI to be a better candidate, not to apply to more jobs.</strong> Morph your resume. Practice your interviews. Understand your market value. Draft thoughtful outreach. And when you apply, make it count.
     </p>
     <p>
-      That&apos;s what TalentConsulting is built for.
+      That&apos;s what TalentConsulting.io is built for.
     </p>
   </>
 ));
@@ -137,7 +137,7 @@ registerArticle('how-to-pass-ats-resume-screening-2026', (
       This is the single most important factor. The ATS compares your resume against the job posting&apos;s keywords. If a job requires &quot;project management&quot; and you only wrote &quot;managed projects,&quot; some systems won&apos;t make the connection.
     </p>
     <p>
-      <strong>Pro tip:</strong> Use our <Link href="/suite/resume">AI Resume Morph tool</Link> to automatically match your resume&apos;s language to any job description.
+      <strong>Pro tip:</strong> Use our <Link href="/tools/resume-builder">AI resume builder</Link> to automatically match your resume&apos;s language to any job description.
     </p>
 
     <h3>3. Avoid Graphics, Tables, and Columns</h3>
@@ -147,7 +147,7 @@ registerArticle('how-to-pass-ats-resume-screening-2026', (
 
     <h3>4. Use .docx Format When Possible</h3>
     <p>
-      While PDFs preserve styling, some older ATS systems parse .docx files more accurately. When in doubt, submit as Word. Our <Link href="/suite/resume">resume builder</Link> lets you download in both formats.
+      While PDFs preserve styling, some older ATS systems parse .docx files more accurately. When in doubt, submit as Word. Our <Link href="/tools/resume-builder">resume builder</Link> lets you download in both formats.
     </p>
 
     <h3>5. Include Both Acronyms and Full Terms</h3>
@@ -167,7 +167,7 @@ registerArticle('how-to-pass-ats-resume-screening-2026', (
 
     <h2>How to Check Your ATS Score</h2>
     <p>
-      Before submitting your resume, run it through an ATS compatibility checker. Our <Link href="/suite/resume">Liquid Resume</Link> tool includes built-in ATS scoring that analyzes keyword density, formatting issues, and section structure. You can also test with our free <Link href="/tools/ai-detector">AI Detector</Link> to ensure your resume doesn&apos;t trigger AI-generation flags.
+      Before submitting your resume, run it through an ATS compatibility checker. Our <Link href="/tools/ats-analyzer">ATS Analyzer</Link> reviews keyword density, formatting issues, and section structure. You can also test with our free <Link href="/tools/ai-detector">AI Detector</Link> to ensure your resume doesn&apos;t trigger AI-generation flags.
     </p>
 
     <h2>The Bottom Line</h2>
@@ -214,7 +214,7 @@ registerArticle('ai-resume-writing-will-it-get-rejected', (
 
     <h3>4. Run It Through an AI Detector</h3>
     <p>
-      Before submitting, check your resume with our <Link href="/tools/ai-detector">free AI detection tool</Link>. If patterns are flagged, use our <Link href="/suite/writing-tools">AI Humanizer</Link> to rewrite flagged sections while preserving your meaning.
+      Before submitting, check your resume with our <Link href="/tools/ai-detector">free AI detection tool</Link>. If patterns are flagged, use our <Link href="/tools/ai-humanizer">AI Humanizer</Link> to rewrite flagged sections while preserving your meaning.
     </p>
 
     <h2>The Verdict</h2>
@@ -265,7 +265,7 @@ registerArticle('resume-keywords-by-industry-2026', (
 
     <h2>How to Use These Keywords</h2>
     <p>
-      Don&apos;t just copy-paste keyword lists into your skills section. Instead, weave them naturally into your achievement bullets. Our <Link href="/suite/resume">AI Resume Morph</Link> automatically identifies which keywords from a specific job posting you&apos;re missing and integrates them into your experience descriptions.
+      Don&apos;t just copy-paste keyword lists into your skills section. Instead, weave them naturally into your achievement bullets. Our <Link href="/tools/ats-analyzer">ATS Analyzer</Link> identifies which keywords from a specific job posting you&apos;re missing so you can integrate them into your experience descriptions.
     </p>
   </>
 ));
@@ -301,7 +301,7 @@ registerArticle('ai-interview-prep-star-method', (
 
     <h2>Practice with AI</h2>
     <p>
-      The best way to master STAR is practice. Our <Link href="/suite/resume">Interview Simulator (The Gauntlet)</Link> generates realistic behavioral questions, lets you respond by text or voice, and grades your answers on STAR structure in real time. It identifies when your responses are missing context, skipping the Action step, or lacking quantified Results.
+      The best way to master STAR is practice. Our <Link href="/tools/interview-prep">AI interview practice tool</Link> generates realistic behavioral questions, lets you respond by text or voice, and grades your answers on STAR structure in real time. It identifies when your responses are missing context, skipping the Action step, or lacking quantified Results.
     </p>
 
     <h2>Common Mistakes to Avoid</h2>
@@ -341,7 +341,7 @@ registerArticle('cover-letter-that-gets-interviews', (
 
     <h2>Generate Yours with AI</h2>
     <p>
-      Our <Link href="/suite/resume">Cover Letter Generator</Link> creates customized cover letters matched to specific job descriptions. It pulls from your resume data to ensure consistency, and you can edit every line before downloading.
+      Our <Link href="/tools/resume-builder">resume workflow</Link> helps create customized application materials matched to specific job descriptions. It pulls from your resume data to ensure consistency, and you can edit every line before downloading.
     </p>
   </>
 ));
@@ -409,7 +409,7 @@ registerArticle('ghost-jobs-how-to-spot-fake-listings', (
 
     <h2>How AI Can Detect Ghost Jobs (And Save Your Time)</h2>
     <p>
-      Reading 6 red flags is useful. Having AI check for them automatically is better. At <Link href="/suite/agent">TalentConsulting</Link>, we built ghost job detection directly into Sona&apos;s Fit Gate — our AI career agent that analyzes every job before you apply.
+      Reading 6 red flags is useful. Having AI check for them automatically is better. At <Link href="/tools/ats-analyzer">TalentConsulting.io</Link>, our fit workflow analyzes every job before you apply.
     </p>
     <p>When you paste a job description, Sona doesn&apos;t just check your skill match. It runs a <strong>6-signal legitimacy assessment</strong>:</p>
     <ul>
@@ -438,7 +438,7 @@ registerArticle('ghost-jobs-how-to-spot-fake-listings', (
       Ghost jobs are one more reason why the spray-and-pray approach fails. When 40% of listings aren&apos;t real, applying to 200 jobs means 80 of them were never going to hire you — no matter how perfect your resume was.
     </p>
     <p>
-      At TalentConsulting, our entire platform is built around the opposite philosophy: <strong>apply to fewer jobs, but apply to the right ones</strong>. Sona&apos;s <Link href="/suite/agent">Fit Gate</Link> checks fit score, posting legitimacy, salary alignment, and level match before you invest a minute. Our <Link href="/suite/resume">Resume Studio</Link> tailors your resume to the specific JD. Our <Link href="/suite/agent">Story Bank</Link> builds your interview prep automatically from every conversation.
+      At TalentConsulting.io, our entire platform is built around the opposite philosophy: <strong>apply to fewer jobs, but apply to the right ones</strong>. Our <Link href="/tools/ats-analyzer">ATS Analyzer</Link> checks fit score and level match before you invest a minute. Our <Link href="/tools/resume-builder">Resume Builder</Link> tailors your resume to the specific JD. Story Bank then becomes a conversion feature inside the signed-in workflow, where it can build interview prep from your real career stories.
     </p>
     <p>
       Stop wasting time on ghosts. Let AI do the vetting so you can focus on the applications that actually matter.

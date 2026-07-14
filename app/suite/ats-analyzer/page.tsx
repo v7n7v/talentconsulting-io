@@ -1,35 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useTheme } from '@/components/ThemeProvider';
-import PageHelp from '@/components/PageHelp';
+import ApplicationKitContextBar from '@/components/ApplicationKitContextBar';
+import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
+import { useApplicationKitContext } from '@/hooks/useApplicationKitContext';
 
 type ATSTab = 'preview' | 'score';
 
 export default function ATSAnalyzerPage() {
+  const searchParams = useSearchParams();
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const [activeTab, setActiveTab] = useState<ATSTab>('preview');
+  const { context: kitContext, updateContext } = useApplicationKitContext();
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('mobileTab');
+    if (requestedTab === 'score' || requestedTab === 'preview') setActiveTab(requestedTab);
+  }, [searchParams]);
 
   return (
-    <div className="min-h-screen p-4 md:p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-              <span className="material-symbols-rounded text-white text-2xl">scanner</span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">ATS Analyzer</h1>
-              <p className="text-sm text-[var(--text-tertiary)]">Preview how ATS reads your resume & score keyword matches</p>
-            </div>
-          </div>
-          <PageHelp toolId="ats-analyzer" />
-        </div>
-
-        {/* Tab switcher */}
+    <SuiteToolShell variant="standard">
+      <SuiteToolHeader tool="ats-analyzer">
         <div className="flex gap-1 p-1 rounded-xl w-fit" style={{
           background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
           border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
@@ -52,7 +47,13 @@ export default function ATSAnalyzerPage() {
             </button>
           ))}
         </div>
-      </motion.div>
+      </SuiteToolHeader>
+
+      <ApplicationKitContextBar
+        context={kitContext}
+        activeTool="ats"
+        onChange={updateContext}
+      />
 
       {/* Tab content — lazy loaded */}
       <motion.div
@@ -63,7 +64,7 @@ export default function ATSAnalyzerPage() {
       >
         {activeTab === 'preview' ? <ATSPreviewTab /> : <ATSScoreTab />}
       </motion.div>
-    </div>
+    </SuiteToolShell>
   );
 }
 

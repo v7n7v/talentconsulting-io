@@ -64,7 +64,7 @@ export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded, person
           console.warn('[Avatar] Custom .glb not found at /models/interviewer.glb');
           if (mounted) {
             setStatus('error');
-            setErrorMsg('Add a .glb avatar model to /public/models/interviewer.glb');
+            setErrorMsg('The 3D layer is unavailable, so Sona will continue in live audio mode.');
             return;
           }
         }
@@ -76,7 +76,7 @@ export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded, person
         console.error('[Avatar] Init error:', err);
         if (mounted) {
           setStatus('error');
-          setErrorMsg(err.message || 'Failed to load 3D avatar engine');
+          setErrorMsg('The 3D layer is unavailable, so Sona will continue in live audio mode.');
         }
       }
     };
@@ -126,8 +126,8 @@ export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded, person
               </span>
             </motion.div>
           </div>
-          <p className="text-sm text-[var(--text-secondary)] mb-1">Audio-only mode</p>
-          <p className="text-[11px] text-[var(--text-muted)]">{errorMsg}</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">Sona Live Room</p>
+          <p className="max-w-[260px] text-center text-[11px] leading-relaxed text-[var(--text-muted)]">{errorMsg}</p>
         </div>
       )}
 

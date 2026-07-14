@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { showToast } from '@/components/Toast';
-import PageHelp from '@/components/PageHelp';
+import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
 
 // ── Types ──
 interface DebriefEntry {
@@ -50,7 +50,7 @@ const OUTCOME_CONFIG = {
   ghosted: { label: 'Ghosted', color: '#6b7280', icon: 'visibility_off' },
 };
 
-export function DebriefContent() {
+function DebriefContent() {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const { user } = useStore();
@@ -76,6 +76,7 @@ export function DebriefContent() {
   const [surprises, setSurprises] = useState('');
   const [wouldChange, setWouldChange] = useState('');
   const [interviewerVibe, setInterviewerVibe] = useState<'warm' | 'neutral' | 'tough'>('neutral');
+  const idempotencyKeyRef = useRef('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -98,18 +99,20 @@ export function DebriefContent() {
   const saveDebrief = async () => {
     if (!company.trim() || !role.trim()) return;
     setSaving(true);
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
     try {
       const res = await authFetch('/api/agent/debriefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          company, role, roundType, date,
+          company, role, roundType, date, idempotencyKey: idempotencyKeyRef.current,
           questions: questions.filter(q => q.text.trim()),
           overallFeeling, strengths, weaknesses, surprises, wouldChange,
           interviewerVibe, followUpSent: false, outcome: 'pending',
         }),
       });
       if (res.ok) {
+        idempotencyKeyRef.current = '';
         showToast('Debrief saved! Your Story Bank will be updated.', 'check_circle');
         setShowForm(false);
         resetForm();
@@ -155,6 +158,7 @@ export function DebriefContent() {
   };
 
   const resetForm = () => {
+    idempotencyKeyRef.current = '';
     setCompany(''); setRole(''); setRoundType('behavioral');
     setDate(new Date().toISOString().split('T')[0]);
     setQuestions([{ text: '', confidence: 50, category: 'Behavioral' }]);
@@ -195,26 +199,21 @@ export function DebriefContent() {
   const inputBorder = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
 
   return (
-    <div className="min-h-screen p-4 md:p-6 max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <span className="material-symbols-rounded text-white text-2xl">rate_review</span>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">Interview Debrief</h1>
-              <p className="text-sm text-[var(--text-tertiary)]">Log every interview. Track patterns. Get better.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-xl overflow-hidden" style={{ border: `1px solid ${cardBorder}` }}>
+    <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto space-y-5 px-4 py-3 md:space-y-6 md:p-6">
+      <SuiteToolHeader
+        tool="interview-debrief"
+        title="Interview Debrief"
+        subtitle="Log every interview. Track patterns. Get better."
+        icon="rate_review"
+        pageHelpId="interview-debrief"
+        actions={
+          <>
+            <div className="flex overflow-hidden rounded-xl" style={{ border: `1px solid ${cardBorder}` }}>
               {(['list', 'insights'] as const).map(mode => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}
-                  className="px-3 py-1.5 text-xs font-medium transition-all capitalize"
+                  className="px-3 py-1.5 text-xs font-medium capitalize transition-all"
                   style={{
                     background: viewMode === mode ? 'rgba(139,92,246,0.1)' : 'transparent',
                     color: viewMode === mode ? '#8b5cf6' : 'var(--text-muted)',
@@ -225,17 +224,19 @@ export function DebriefContent() {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => setShowForm(!showForm)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white"
+              onClick={() => {
+                if (showForm) resetForm();
+                setShowForm(!showForm);
+              }}
+              className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white"
               style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}
             >
               <span className="material-symbols-rounded text-sm">{showForm ? 'close' : 'add'}</span>
               {showForm ? 'Cancel' : 'New Debrief'}
             </motion.button>
-            <PageHelp toolId="interview-debrief" />
-          </div>
-        </div>
-      </motion.div>
+          </>
+        }
+      />
 
       {/* Stats Row */}
       <div className="grid grid-cols-4 gap-3">
@@ -704,8 +705,8 @@ export function DebriefContent() {
   );
 }
 
-// Redirect standalone route to Interview Sim
+// Redirect standalone route to Interview Studio debrief review
 import { redirect } from 'next/navigation';
 export default function InterviewDebriefPage() {
-  redirect('/suite/flashcards');
+  redirect('/suite/interview-sim?mode=debrief_review');
 }

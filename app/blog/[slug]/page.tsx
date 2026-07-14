@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import JsonLd from '@/components/seo/JsonLd';
+import { articleJsonLd, breadcrumbJsonLd, parseBlogDate } from '@/lib/seo';
 import { BLOG_POSTS } from '../posts';
 import ArticlePage from './ArticlePage';
 
@@ -21,7 +24,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: post.description,
       url: `https://talentconsulting.io/blog/${post.slug}`,
       type: 'article',
-      publishedTime: '2026-04-15T00:00:00Z',
+      publishedTime: parseBlogDate(post.date).toISOString(),
     },
     alternates: {
       canonical: `/blog/${post.slug}`,
@@ -31,5 +34,22 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function BlogArticlePage({ params }: Props) {
   const { slug } = await params;
-  return <ArticlePage slug={slug} />;
+  const post = BLOG_POSTS.find(p => p.slug === slug);
+  if (!post) notFound();
+
+  return (
+    <>
+      <JsonLd
+        data={[
+          articleJsonLd(post),
+          breadcrumbJsonLd([
+            { name: 'Home', path: '/' },
+            { name: 'Blog', path: '/blog' },
+            { name: post.title, path: `/blog/${post.slug}` },
+          ]),
+        ]}
+      />
+      <ArticlePage slug={slug} />
+    </>
+  );
 }

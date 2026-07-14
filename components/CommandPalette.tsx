@@ -1,272 +1,402 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { TalentConsultingMark } from '@/components/BrandLogo';
+import { suiteToolRegistry, type SuiteToolDefinition } from '@/lib/suite-tool-registry';
 
-interface Command {
+type CommandCategory = 'action' | 'tool' | 'workspace';
+
+interface SuiteCommand {
   id: string;
   label: string;
-  icon: string;
   description: string;
+  icon: string;
+  category: CommandCategory;
   path?: string;
-  action?: () => void;
-  category: 'navigation' | 'action' | 'suite';
   keywords: string[];
+  action?: () => void;
+  recommended?: boolean;
 }
 
-const commands: Command[] = [
-  // Talent Suite
-  { id: 'resume', label: 'Resume Builder', icon: 'description', description: 'Liquid Resume Architect', path: '/suite/resume', category: 'navigation', keywords: ['build', 'create', 'cv', 'morph'] },
-  { id: 'flashcards', label: 'Study Cards', icon: 'view_carousel', description: 'Flash Cards', path: '/suite/flashcards', category: 'navigation', keywords: ['study', 'flash', 'cards', 'learn'] },
-  { id: 'vault', label: 'Study Vault', icon: 'menu_book', description: 'Saved Coach Notes', path: '/suite/vault', category: 'navigation', keywords: ['study', 'vault', 'notes', 'coach', 'feedback'] },
-  { id: 'oracle', label: 'Market Oracle', icon: 'hub', description: 'JD Decoder + Career Intelligence', path: '/suite/market-oracle', category: 'navigation', keywords: ['market', 'career', 'salary', 'trends', 'job', 'description', 'decode', 'fit'] },
-  { id: 'applications', label: 'Applications', icon: 'bar_chart', description: 'Track Your Jobs', path: '/suite/applications', category: 'navigation', keywords: ['track', 'apply', 'jobs', 'status'] },
-  { id: 'job-search', label: 'Job Search', icon: 'search', description: 'Find Opportunities', path: '/suite/job-search', category: 'navigation', keywords: ['search', 'find', 'jobs', 'openings'] },
-  { id: 'negotiate', label: 'Salary Coach', icon: 'payments', description: 'Negotiation Strategy', path: '/suite/negotiate', category: 'navigation', keywords: ['salary', 'negotiate', 'offer', 'counter', 'compensation'] },
-  { id: 'linkedin', label: 'LinkedIn Optimizer', icon: 'badge', description: 'Profile Optimizer', path: '/suite/linkedin', category: 'navigation', keywords: ['linkedin', 'profile', 'headline', 'recruiter'] },
-  { id: 'cover-letter', label: 'Cover Letter Studio', icon: 'edit_document', description: 'AI Cover Letters', path: '/suite/cover-letter', category: 'navigation', keywords: ['cover', 'letter', 'write', 'application'] },
-  { id: 'network', label: 'Network CRM', icon: 'contacts', description: 'Contact Tracker', path: '/suite/network', category: 'navigation', keywords: ['network', 'contacts', 'recruiter', 'referral', 'crm'] },
-  { id: 'analytics', label: 'Analytics', icon: 'analytics', description: 'Pipeline Insights', path: '/suite/analytics', category: 'navigation', keywords: ['analytics', 'stats', 'funnel', 'pipeline', 'chart'] },
+const categoryLabels: Record<CommandCategory, string> = {
+  action: 'Frequent actions',
+  tool: 'Suite tools',
+  workspace: 'Workspace',
+};
 
-  // Quick Links
-  { id: 'talent-suite', label: 'Talent Suite', icon: 'auto_awesome', description: 'AI Career Intelligence', path: '/suite/resume', category: 'suite', keywords: ['job', 'seeker', 'candidate'] },
-  { id: 'dashboard', label: 'Dashboard', icon: 'home', description: 'Return to Dashboard', path: '/suite', category: 'suite', keywords: ['home', 'main', 'dashboard'] },
-];
+const categoryOrder: CommandCategory[] = ['action', 'workspace', 'tool'];
+
+function Icon({ name, className = '' }: { name: string; className?: string }) {
+  return <span className={`material-symbols-rounded ${className}`} aria-hidden="true">{name}</span>;
+}
+
+function normalize(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function openSona(prompt: string, contextLabel: string, context?: Record<string, unknown>) {
+  window.dispatchEvent(new CustomEvent('sona:open', {
+    detail: {
+      prompt,
+      contextLabel,
+      context: {
+        source: 'suite-command-palette',
+        approvalRequired: true,
+        ...context,
+      },
+    },
+  }));
+}
 
 export default function CommandPalette() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const showLauncher = pathname !== '/';
+  const inputRef = useRef<HTMLInputElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
-  const pathname = usePathname();
 
-  const filteredCommands = commands.filter((command) => {
-    if (!query) return true;
-    const searchLower = query.toLowerCase();
-    return (
-      command.label.toLowerCase().includes(searchLower) ||
-      command.description.toLowerCase().includes(searchLower) ||
-      command.keywords.some(k => k.includes(searchLower))
-    );
-  });
+  const commands = useMemo<SuiteCommand[]>(() => {
+    const registeredTools = suiteToolRegistry as readonly SuiteToolDefinition[];
+    const toolCommands: SuiteCommand[] = registeredTools.map(tool => ({
+      id: `tool-${tool.id}`,
+      label: tool.title,
+      description: tool.mobileDescription || tool.subtitle,
+      icon: tool.icon,
+      category: tool.id === 'dashboard' ? 'workspace' : 'tool',
+      path: tool.mobileHref || tool.path,
+      keywords: [
+        tool.id,
+        tool.title,
+        tool.subtitle,
+        tool.eyebrow,
+        tool.group,
+        tool.mobileLabel || '',
+        tool.mobileActionLabel || '',
+      ],
+    }));
 
-  const groupedCommands = {
-    suite: filteredCommands.filter(c => c.category === 'suite'),
-    navigation: filteredCommands.filter(c => c.category === 'navigation'),
-    action: filteredCommands.filter(c => c.category === 'action'),
-  };
+    const actionCommands: SuiteCommand[] = [
+      {
+        id: 'ask-sona-next-action',
+        label: 'Ask Sona for next action',
+        description: 'Review current context, risks, and what needs approval.',
+        icon: 'auto_awesome',
+        category: 'action',
+        keywords: ['sona', 'coach', 'next', 'help', 'risk', 'approval'],
+        recommended: true,
+        action: () => openSona(
+          'Review my current Talent Studio context and tell me the best next action. Show evidence, risks, and anything that needs my approval.',
+          'Next action',
+          { currentPath: pathname },
+        ),
+      },
+      {
+        id: 'prepare-application-packet',
+        label: 'Create application packet',
+        description: 'Ask Sona to prepare resume, cover letter, and screening notes for review.',
+        icon: 'fact_check',
+        category: 'action',
+        keywords: ['packet', 'apply', 'application', 'cover letter', 'screening', 'resume', 'review'],
+        recommended: true,
+        action: () => openSona(
+          'Create a review-first application packet from my saved jobs and resume context. Include resume edits, cover letter angle, screening answer notes, missing evidence, and approval checklist. Do not submit anything.',
+          'Application packet',
+          { artifactTargets: ['resume', 'cover-letter', 'screening-answers', 'approval-checklist'] },
+        ),
+      },
+      {
+        id: 'review-agent-queue',
+        label: 'Review application queue',
+        description: 'Open prepared packets that need a human decision.',
+        icon: 'pending_actions',
+        category: 'action',
+        path: '/suite/agent/queue',
+        keywords: ['queue', 'review', 'approval', 'packet', 'prepared'],
+      },
+      {
+        id: 'upload-resume',
+        label: 'Upload or check resume',
+        description: 'Open Resume Studio in the fastest review path.',
+        icon: 'upload_file',
+        category: 'action',
+        path: '/suite/resume?mobileAction=check',
+        keywords: ['upload', 'resume', 'cv', 'check', 'proof'],
+      },
+      {
+        id: 'save-job',
+        label: 'Save a job',
+        description: 'Open Job Search to capture a role before building a packet.',
+        icon: 'bookmark_add',
+        category: 'action',
+        path: '/suite/job-search?intent=save-job',
+        keywords: ['save', 'job', 'role', 'posting', 'opportunity'],
+      },
+      {
+        id: 'due-follow-ups',
+        label: 'Review follow-ups',
+        description: 'Open applications that need a reply, nudge, or decision.',
+        icon: 'forward_to_inbox',
+        category: 'action',
+        path: '/suite/applications?mobileView=followups',
+        keywords: ['follow up', 'email', 'recruiter', 'application', 'due'],
+      },
+      {
+        id: 'start-mock-interview',
+        label: 'Start mock interview',
+        description: 'Open Interview Studio in quick drill mode.',
+        icon: 'interpreter_mode',
+        category: 'action',
+        path: '/suite/interview-sim?mode=quick_drill',
+        keywords: ['interview', 'mock', 'practice', 'drill', 'prep'],
+      },
+      {
+        id: 'billing',
+        label: 'Open billing and plan',
+        description: 'Review plan, limits, Stripe billing, and upgrade options.',
+        icon: 'credit_card',
+        category: 'workspace',
+        path: '/suite/settings?tab=subscription',
+        keywords: ['billing', 'stripe', 'plan', 'subscription', 'upgrade', 'usage'],
+      },
+    ];
 
-  const flatCommands = [...groupedCommands.suite, ...groupedCommands.navigation, ...groupedCommands.action];
+    return [...actionCommands, ...toolCommands];
+  }, [pathname]);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Open with Cmd+K or Ctrl+K
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-      e.preventDefault();
-      setIsOpen(true);
-      setQuery('');
-      setSelectedIndex(0);
-    }
+  const filteredCommands = useMemo(() => {
+    const needle = normalize(query);
+    if (!needle) return commands;
 
-    // Close with Escape
-    if (e.key === 'Escape' && isOpen) {
-      setIsOpen(false);
-    }
-  }, [isOpen]);
+    return commands.filter(command => {
+      const haystack = [
+        command.label,
+        command.description,
+        command.category,
+        ...command.keywords,
+      ].map(normalize).join(' ');
+      return haystack.includes(needle);
+    });
+  }, [commands, query]);
 
-  const handlePaletteKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex(i => Math.min(i + 1, flatCommands.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex(i => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter' && flatCommands[selectedIndex]) {
-      executeCommand(flatCommands[selectedIndex]);
-    }
-  };
+  const groupedCommands = useMemo(() => {
+    return categoryOrder.reduce<Record<CommandCategory, SuiteCommand[]>>((groups, category) => {
+      groups[category] = filteredCommands.filter(command => command.category === category);
+      return groups;
+    }, { action: [], tool: [], workspace: [] });
+  }, [filteredCommands]);
 
-  const executeCommand = (command: Command) => {
+  const selectedCommand = filteredCommands[selectedIndex];
+
+  const closePalette = useCallback(() => {
     setIsOpen(false);
-    if (command.path) {
-      router.push(command.path);
-    } else if (command.action) {
+    setQuery('');
+    setSelectedIndex(0);
+  }, []);
+
+  const openPalette = useCallback(() => {
+    setIsOpen(true);
+    setQuery('');
+    setSelectedIndex(0);
+  }, []);
+
+  const executeCommand = useCallback((command?: SuiteCommand) => {
+    if (!command) return;
+    setIsOpen(false);
+    setQuery('');
+    setSelectedIndex(0);
+
+    if (command.action) {
       command.action();
+      return;
     }
-  };
+
+    if (command.path) router.push(command.path);
+  }, [router]);
 
   useEffect(() => {
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openPalette();
+      }
+      if (event.key === 'Escape' && isOpen) {
+        event.preventDefault();
+        closePalette();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closePalette, isOpen, openPalette]);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (!isOpen) return;
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 40);
+    return () => window.clearTimeout(timer);
   }, [isOpen]);
 
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
 
-  // Don't render on landing page
-  if (pathname === '/') return null;
+  useEffect(() => {
+    if (selectedIndex <= filteredCommands.length - 1) return;
+    setSelectedIndex(Math.max(filteredCommands.length - 1, 0));
+  }, [filteredCommands.length, selectedIndex]);
+
+  const handlePaletteKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSelectedIndex(index => Math.min(index + 1, Math.max(filteredCommands.length - 1, 0)));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSelectedIndex(index => Math.max(index - 1, 0));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      executeCommand(selectedCommand);
+    }
+  };
 
   return (
     <>
-      {/* Keyboard shortcut hint */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
+      {showLauncher && (
         <button
-          onClick={() => setIsOpen(true)}
-          className="group flex items-center gap-2 px-3 py-2 rounded-xl bg-black/80 border border-white/10 backdrop-blur-xl hover:border-white/20 transition-all"
+          type="button"
+          onClick={openPalette}
+          className="fixed bottom-5 left-1/2 z-30 hidden -translate-x-1/2 items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] shadow-sm transition hover:border-[var(--border)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 lg:flex"
+          aria-label="Open command palette"
         >
-          <svg className="w-4 h-4 text-silver" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <span className="text-xs text-silver">Quick Jump</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-silver font-mono"><span className="material-symbols-rounded align-middle mr-1">keyboard_command_key</span>K</kbd>
+          <Icon name="search" className="text-[17px]" />
+          <span>Command</span>
+          <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+            Cmd K
+          </kbd>
         </button>
-      </div>
-
-      {/* Command Palette Modal */}
-      <AnimatePresence>
-        {isOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsOpen(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-            />
-
-            {/* Palette */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -20 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed top-[20%] left-1/2 -translate-x-1/2 w-full max-w-xl z-50"
-            >
-              <div className="mx-4 rounded-2xl glass-card shadow-2xl shadow-black/50 overflow-hidden">
-                {/* Search Input */}
-                <div className="flex items-center gap-3 p-4 border-b border-white/10 bg-[var(--theme-bg-elevated)]">
-                  <svg className="w-5 h-5 text-silver" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={handlePaletteKeyDown}
-                    placeholder="Search or jump to..."
-                    className="flex-1 bg-transparent text-white placeholder-silver/50 outline-none text-lg"
-                  />
-                  <kbd className="px-2 py-1 rounded bg-[var(--theme-bg-elevated)] text-xs text-silver font-mono border border-white/10">ESC</kbd>
-                </div>
-
-                {/* Results */}
-                <div className="max-h-[400px] overflow-y-auto p-2">
-                  {flatCommands.length === 0 ? (
-                    <div className="p-8 text-center text-silver">
-                      <span className="text-3xl block mb-2"><span className="material-symbols-rounded">search</span></span>
-                      No results found
-                    </div>
-                  ) : (
-                    <>
-                      {groupedCommands.suite.length > 0 && (
-                        <div className="mb-2">
-                          <p className="px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider">Suites</p>
-                          {groupedCommands.suite.map((command, i) => {
-                            const globalIndex = i;
-                            return (
-                              <CommandItem
-                                key={command.id}
-                                command={command}
-                                isSelected={selectedIndex === globalIndex}
-                                onSelect={() => executeCommand(command)}
-                                onHover={() => setSelectedIndex(globalIndex)}
-                              />
-                            );
-                          })}
-                        </div>
-                      )}
-                      {groupedCommands.navigation.length > 0 && (
-                        <div>
-                          <p className="px-3 py-2 text-xs font-medium text-slate-500 uppercase tracking-wider">Navigation</p>
-                          {groupedCommands.navigation.map((command, i) => {
-                            const globalIndex = groupedCommands.suite.length + i;
-                            return (
-                              <CommandItem
-                                key={command.id}
-                                command={command}
-                                isSelected={selectedIndex === globalIndex}
-                                onSelect={() => executeCommand(command)}
-                                onHover={() => setSelectedIndex(globalIndex)}
-                              />
-                            );
-                          })}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between p-3 border-t border-white/10 bg-[var(--theme-bg-elevated)]">
-                  <div className="flex items-center gap-4 text-xs text-silver">
-                    <span className="flex items-center gap-1">
-                      <kbd className="px-1.5 py-0.5 rounded bg-[var(--theme-bg-elevated)] text-silver border border-white/10">↑↓</kbd>
-                      Navigate
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <kbd className="px-1.5 py-0.5 rounded bg-[var(--theme-bg-elevated)] text-silver border border-white/10">↵</kbd>
-                      Select
-                    </span>
-                  </div>
-                  <span className="text-xs text-silver">TalentConsulting.io</span>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
-
-function CommandItem({
-  command,
-  isSelected,
-  onSelect,
-  onHover
-}: {
-  command: Command;
-  isSelected: boolean;
-  onSelect: () => void;
-  onHover: () => void;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      onMouseEnter={onHover}
-      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors ${isSelected ? 'bg-[var(--theme-bg-hover)] text-white border border-white/10' : 'text-silver hover:bg-[var(--theme-bg-elevated)]'
-        }`}
-    >
-      <span className="text-xl material-symbols-rounded align-middle">{command.icon}</span>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{command.label}</p>
-        <p className="text-sm text-silver truncate">{command.description}</p>
-      </div>
-      {isSelected && (
-        <svg className="w-4 h-4 text-silver" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
       )}
-    </button>
+
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-start justify-center bg-[color-mix(in_srgb,var(--bg-deep)_82%,transparent)] px-3 pt-[12vh]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Command palette"
+          onMouseDown={closePalette}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex min-w-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
+              <Icon name="search" className="shrink-0 text-[21px] text-[var(--text-muted)]" />
+              <input
+                ref={inputRef}
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={handlePaletteKeyDown}
+                placeholder="Search tools or run an action"
+                className="min-h-10 min-w-0 flex-1 bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                aria-label="Search commands"
+                aria-activedescendant={selectedCommand ? `command-${selectedCommand.id}` : undefined}
+              />
+              <button
+                type="button"
+                onClick={closePalette}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                aria-label="Close command palette"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            <div className="max-h-[58vh] overflow-y-auto p-2">
+              {filteredCommands.length === 0 ? (
+                <div className="px-4 py-10 text-center" role="status">
+                  <Icon name="search_off" className="mx-auto text-[30px] text-[var(--text-muted)]" />
+                  <h2 className="mt-3 text-sm font-semibold text-[var(--text-primary)]">No matching command</h2>
+                  <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-[var(--text-muted)]">
+                    Try resume, packet, follow-up, billing, interview, or Sona.
+                  </p>
+                </div>
+              ) : (
+                categoryOrder.map((category) => {
+                  const categoryCommands = groupedCommands[category];
+                  if (categoryCommands.length === 0) return null;
+
+                  return (
+                    <section key={category} className="py-1" aria-label={categoryLabels[category]}>
+                      <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                        {categoryLabels[category]}
+                      </h2>
+                      <div className="space-y-1">
+                        {categoryCommands.map((command) => {
+                          const globalIndex = filteredCommands.findIndex(item => item.id === command.id);
+                          const selected = globalIndex === selectedIndex;
+
+                          return (
+                            <button
+                              key={command.id}
+                              id={`command-${command.id}`}
+                              type="button"
+                              onClick={() => executeCommand(command)}
+                              onMouseEnter={() => setSelectedIndex(globalIndex)}
+                              className={`flex w-full min-w-0 items-center gap-3 rounded-[14px] border px-3 py-3 text-left transition ${
+                                selected
+                                  ? 'border-[var(--border)] bg-[var(--bg-hover)]'
+                                  : 'border-transparent hover:bg-[var(--bg-elevated)]'
+                              }`}
+                            >
+                              <span className="icon-shell-neutral inline-grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border">
+                                <Icon name={command.icon} className="icon-neutral text-[21px]" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex min-w-0 flex-wrap items-center gap-2">
+                                  <span className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                                    {command.label}
+                                  </span>
+                                  {command.recommended && (
+                                    <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+                                      Review first
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="mt-0.5 block truncate text-xs text-[var(--text-muted)]">
+                                  {command.description}
+                                </span>
+                              </span>
+                              <Icon
+                                name={command.action ? 'bolt' : 'arrow_forward'}
+                                className={`shrink-0 text-[17px] ${selected ? 'text-[var(--text-secondary)]' : 'text-[var(--text-muted)]'}`}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex min-w-0 items-center justify-between gap-3 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
+              <div className="hidden min-w-0 items-center gap-2 text-xs text-[var(--text-muted)] sm:flex">
+                <TalentConsultingMark className="h-5 w-5 rounded-[7px]" />
+                <span className="truncate">Review-first actions. Nothing submits without approval.</span>
+              </div>
+              <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                <span className="hidden sm:inline">Move</span>
+                <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5">Up</kbd>
+                <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5">Down</kbd>
+                <span>Run</span>
+                <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5">Enter</kbd>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

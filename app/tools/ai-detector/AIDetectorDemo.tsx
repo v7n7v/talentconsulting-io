@@ -3,6 +3,9 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
+import { TalentConsultingWordmark } from '@/components/BrandLogo';
+import { MobileStickyActionBar } from '@/components/mobile/MobileWorkbench';
+import { WRITING_TRUST_DRAFT_KEY } from '@/lib/writing-pipeline';
 
 const SAMPLES: Record<string, string> = {
   ChatGPT: `In today's rapidly evolving landscape, it is important to note that artificial intelligence has significantly impacted various industries. Furthermore, the integration of AI-driven solutions has enabled organizations to streamline their operations and enhance overall efficiency. Moreover, the transformative potential of these technologies cannot be understated, as they continue to reshape how businesses approach complex challenges in an ever-changing environment. Additionally, it is worth noting that the paradigm shift brought about by these innovations has created unprecedented opportunities for growth and development across multiple sectors.`,
@@ -47,19 +50,18 @@ function analyzeText(text: string) {
   const score = Math.max(0, Math.min(100, high * 20 + med * 10));
   return {
     score,
-    verdict: score >= 60 ? 'Likely AI-Generated' : score >= 30 ? 'Mixed / Uncertain' : 'Likely Human-Written',
+    verdict: score >= 60 ? 'Low Trust' : score >= 30 ? 'Mixed Signals' : 'Strong Trust',
     flags, wordCount: words.length, sentenceCount: sentences.length,
   };
 }
 
-function ScoreRing({ score, size = 160 }: { score: number; size?: number }) {
+function ScoreRing({ score, size = 116 }: { score: number; size?: number }) {
   const r = (size - 16) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const color = score >= 60 ? '#ef4444' : score >= 30 ? '#f59e0b' : '#34d399';
-  const glow = score >= 60 ? '0 0 30px rgba(239,68,68,0.3)' : score >= 30 ? '0 0 30px rgba(245,158,11,0.3)' : '0 0 30px rgba(52,211,153,0.3)';
+  const color = score >= 70 ? '#34d399' : score >= 45 ? '#f59e0b' : '#ef4444';
   return (
-    <div className="relative" style={{ width: size, height: size, filter: `drop-shadow(${glow})` }}>
+    <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth="6" opacity="0.5" />
         <motion.circle
@@ -71,7 +73,7 @@ function ScoreRing({ score, size = 160 }: { score: number; size?: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <motion.span
-          className="font-extrabold tracking-tight" style={{ color, fontSize: size * 0.28, lineHeight: 1 }}
+          className="font-semibold tracking-tight" style={{ color, fontSize: size * 0.24, lineHeight: 1 }}
           initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.3, duration: 0.5, ease: 'easeOut' }}
         >{score}</motion.span>
@@ -105,20 +107,35 @@ export default function AIDetectorDemo() {
   };
 
   const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
-  const scoreColor = result ? (result.score >= 60 ? '#ef4444' : result.score >= 30 ? '#f59e0b' : '#34d399') : '#34d399';
+  const trustScore = result ? 100 - result.score : 100;
+  const scoreColor = trustScore >= 70 ? '#34d399' : trustScore >= 45 ? '#f59e0b' : '#ef4444';
+  const saveDraftForSuite = () => {
+    if (!text.trim()) return;
+    sessionStorage.setItem(WRITING_TRUST_DRAFT_KEY, JSON.stringify({
+      text,
+      source: 'Public AI trust check',
+      documentName: 'Public trust check draft',
+      createdAt: new Date().toISOString(),
+    }));
+  };
 
   return (
-    <div style={{ background: 'var(--bg-deep)', color: 'var(--text-primary)', minHeight: '100vh' }}>
+    <div className="premium-brand-page mobile-app-page min-h-dvh" style={{ background: 'var(--bg-deep)', color: 'var(--text-primary)' }}>
       {/* ── Nav ── */}
       <nav className="sticky top-0 z-50 backdrop-blur-2xl" style={{ background: 'color-mix(in srgb, var(--bg-deep) 85%, transparent)', borderBottom: '1px solid var(--border-subtle)' }}>
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="text-sm font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-            TalentConsulting<span style={{ color: 'var(--text-muted)' }}>.io</span>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <Link href="/" aria-label="TalentConsulting.io home" className="inline-flex min-w-0 items-center">
+            <TalentConsultingWordmark className="w-[min(210px,48vw)]" />
           </Link>
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-3 sm:gap-5">
             <Link href="/tools/ai-humanizer" className="text-xs transition-colors" style={{ color: 'var(--text-muted)' }}>Humanizer</Link>
-            <Link href="/templates" className="text-xs transition-colors" style={{ color: 'var(--text-muted)' }}>Templates</Link>
-            <Link href="/suite/writing-tools" className="text-xs font-semibold px-4 py-1.5 rounded-lg transition-all bg-gradient-to-r from-emerald-500 to-teal-500 text-black hover:shadow-lg hover:shadow-emerald-500/20">
+            <Link href="/templates" className="hidden text-xs transition-colors sm:inline" style={{ color: 'var(--text-muted)' }}>Templates</Link>
+            <Link
+              href="/suite/writing-tools"
+              onClick={saveDraftForSuite}
+              className="rounded-[10px] px-4 py-2 text-xs font-semibold transition hover:opacity-90"
+              style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}
+            >
               Open Suite →
             </Link>
           </div>
@@ -126,30 +143,25 @@ export default function AIDetectorDemo() {
       </nav>
 
       {/* ── Hero ── */}
-      <header className="relative pt-16 pb-10 text-center px-6 overflow-hidden">
-        {/* Ambient glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full opacity-[0.07]"
-          style={{ background: 'radial-gradient(circle, #34d399 0%, transparent 70%)' }} />
-
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-semibold uppercase tracking-[0.15em] mb-6"
-            style={{ background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid var(--border-subtle)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Free AI Detection Engine
+      <header className="px-4 py-8 sm:px-6 sm:py-10">
+        <div className="premium-brand-hero glass-card relative mx-auto max-w-5xl overflow-hidden rounded-2xl p-6 md:p-8">
+          <div className="premium-brand-kicker mb-5 inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+            Free Writing Trust Check
           </div>
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-[-0.03em] mb-4" style={{ color: 'var(--text-primary)' }}>
-            AI Detector
+          <h1 className="mb-4 text-4xl font-semibold tracking-tight md:text-5xl" style={{ color: 'var(--text-primary)' }}>
+            Read the trust signals before you send it.
           </h1>
-          <p className="text-base md:text-lg max-w-xl mx-auto leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Paste any text below. We'll scan <strong style={{ color: 'var(--text-secondary)' }}>100+ linguistic patterns</strong> to detect AI-generated content.
+          <p className="max-w-2xl text-sm leading-6 md:text-base" style={{ color: 'var(--text-secondary)' }}>
+            Paste any text below. We'll scan <strong style={{ color: 'var(--text-secondary)' }}>100+ linguistic patterns</strong> for trust, originality, and readability signals.
           </p>
 
           {/* Sample pills */}
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-8">
-            <span className="text-[11px] mr-1" style={{ color: 'var(--text-muted)' }}>Try:</span>
+          <div className="mobile-segmented-control mt-8">
+            <span className="mr-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>Try:</span>
             {Object.keys(SAMPLES).map(key => (
               <button key={key} onClick={() => loadSample(key)}
-                className="text-[11px] font-medium px-3.5 py-1.5 rounded-full transition-all duration-200"
+                className="rounded-[10px] px-3.5 py-2 text-[11px] font-medium transition duration-200"
                 style={{
                   background: activeSample === key ? 'var(--accent-hover)' : 'transparent',
                   border: `1px solid ${activeSample === key ? 'var(--accent)' : 'var(--border-subtle)'}`,
@@ -163,12 +175,12 @@ export default function AIDetectorDemo() {
       </header>
 
       {/* ── Main workspace ── */}
-      <div className="max-w-6xl mx-auto px-6 pb-12">
+      <div className="mx-auto max-w-6xl px-6 pb-12">
         <div className={`flex flex-col ${result ? 'lg:flex-row' : ''} gap-5`}>
 
           {/* Textarea card */}
           <div className={`${result ? 'lg:w-[58%]' : 'max-w-4xl mx-auto w-full'} transition-all duration-700`}>
-            <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
+            <div className="overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm">
               <textarea
                 value={text}
                 onChange={(e) => {
@@ -176,11 +188,11 @@ export default function AIDetectorDemo() {
                   if (w.length <= 500) { setText(e.target.value); setResult(null); setActiveSample(null); }
                 }}
                 placeholder="Paste your resume, cover letter, essay, or any text here..."
-                className="w-full p-6 resize-none text-[15px] leading-[1.8] bg-transparent focus:outline-none"
-                style={{ color: 'var(--text-primary)', height: result ? 380 : 400, caretColor: '#34d399' }}
+                className="ai-detector-textarea w-full resize-none bg-transparent p-6 text-sm leading-7 focus:outline-none"
+                style={{ color: 'var(--text-primary)', height: result ? 380 : 400, caretColor: '#2563eb' }}
               />
               {/* Toolbar */}
-              <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+              <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--card-bg)' }}>
                 <div className="flex items-center gap-4">
                   <span className="text-[11px] font-mono tabular-nums" style={{ color: wordCount > 450 ? '#f59e0b' : 'var(--text-muted)' }}>
                     {wordCount}<span style={{ color: 'var(--border)' }}>/500</span>
@@ -192,8 +204,8 @@ export default function AIDetectorDemo() {
                   )}
                 </div>
                 <button onClick={handleAnalyze} disabled={text.trim().length < 50 || isAnalyzing}
-                  className="relative px-8 py-2.5 rounded-xl text-[13px] font-bold transition-all disabled:opacity-25"
-                  style={{ background: 'linear-gradient(135deg, #34d399 0%, #2dd4bf 100%)', color: '#000', boxShadow: text.trim().length >= 50 ? '0 4px 20px rgba(52,211,153,0.3)' : 'none' }}>
+                  className="relative rounded-[12px] px-7 py-2.5 text-[13px] font-semibold transition disabled:opacity-35"
+                  style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}>
                   {isAnalyzing ? (
                     <span className="flex items-center gap-2">
                       <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" /><path d="M12 2a10 10 0 019.95 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
@@ -214,12 +226,12 @@ export default function AIDetectorDemo() {
               <motion.div ref={resultsRef}
                 initial={{ opacity: 0, y: 20, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                className="lg:w-[42%] space-y-4">
+                className="space-y-4 lg:w-[42%]">
 
                 {/* Score card */}
-                <div className="rounded-2xl p-8 text-center" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', boxShadow: '0 8px 40px rgba(0,0,0,0.15)' }}>
+                <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center shadow-sm">
                   <div className="flex justify-center mb-4">
-                    <ScoreRing score={result.score} />
+                    <ScoreRing score={trustScore} />
                   </div>
                   <p className="text-sm font-bold mb-1" style={{ color: scoreColor }}>{result.verdict}</p>
                   <div className="flex justify-center gap-5 mt-4">
@@ -229,7 +241,7 @@ export default function AIDetectorDemo() {
                       { label: 'Flags', val: result.flags.length },
                     ].map(s => (
                       <div key={s.label} className="text-center">
-                        <div className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{s.val}</div>
+                        <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{s.val}</div>
                         <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{s.label}</div>
                       </div>
                     ))}
@@ -238,16 +250,16 @@ export default function AIDetectorDemo() {
 
                 {/* Flags */}
                 {result.flags.length > 0 && (
-                  <div className="rounded-2xl p-5" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-                    <h3 className="text-[11px] font-bold uppercase tracking-[0.1em] mb-3" style={{ color: 'var(--text-muted)' }}>
-                      Detected Patterns
+                  <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                    <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: 'var(--text-muted)' }}>
+                      Writing Signals
                     </h3>
                     <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                       {result.flags.map((flag, i) => (
                         <motion.div key={i} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.05 }}
-                          className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-[12px]"
-                          style={{ background: 'var(--bg-elevated)' }}>
+                          className="flex items-start gap-2.5 rounded-[12px] px-3 py-2.5 text-[12px]"
+                          style={{ background: 'var(--card-bg)' }}>
                           <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full" style={{
                             background: flag.severity === 'high' ? '#ef4444' : '#f59e0b',
                             boxShadow: flag.severity === 'high' ? '0 0 6px rgba(239,68,68,0.5)' : '0 0 6px rgba(245,158,11,0.5)',
@@ -260,13 +272,13 @@ export default function AIDetectorDemo() {
                 )}
 
                 {/* Cross-sell */}
-                <div className="rounded-2xl p-5 relative overflow-hidden" style={{ border: '1px solid rgba(52,211,153,0.2)', background: 'linear-gradient(135deg, rgba(52,211,153,0.05) 0%, rgba(45,212,191,0.03) 100%)' }}>
-                  <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Text flagged? Fix it instantly.</p>
-                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Our Humanizer rewrites flagged sections while preserving your voice.</p>
-                  <Link href="/tools/ai-humanizer"
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-xs font-bold transition-all hover:shadow-lg hover:shadow-emerald-500/20"
-                    style={{ background: 'linear-gradient(135deg, #34d399, #2dd4bf)', color: '#000' }}>
-                    Try Humanizer <span className="text-sm">→</span>
+                <div className="relative overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                  <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Mixed signals? Open the studio.</p>
+                  <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Rewrite risky sections with controlled presets while preserving meaning and voice.</p>
+                  <Link href="/suite/writing-tools" onClick={saveDraftForSuite}
+                    className="inline-flex items-center gap-1.5 rounded-[10px] px-5 py-2 text-xs font-semibold transition hover:opacity-90"
+                    style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}>
+                    Continue in Studio <span className="text-sm">→</span>
                   </Link>
                 </div>
               </motion.div>
@@ -279,41 +291,41 @@ export default function AIDetectorDemo() {
       <div className="py-5" style={{ borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
         <div className="max-w-4xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-center gap-6">
           <span className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <span className="material-symbols-rounded text-emerald-400 text-base">verified</span>
+            <span className="material-symbols-rounded icon-neutral text-base">verified</span>
             100+ heuristic patterns analyzed
           </span>
           <span className="hidden sm:block text-xs" style={{ color: 'var(--border-subtle)' }}>•</span>
           <span className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-            <span className="material-symbols-rounded text-emerald-400 text-base">speed</span>
+            <span className="material-symbols-rounded icon-neutral text-base">speed</span>
             Results in under 2 seconds
           </span>
           <span className="hidden sm:block text-xs" style={{ color: 'var(--border-subtle)' }}>•</span>
-          <Link href="/suite/writing-tools" className="text-xs font-medium transition-colors text-emerald-400/70 hover:text-emerald-400">
+          <Link href="/suite/writing-tools" className="text-xs font-medium transition-colors text-[var(--accent)] hover:opacity-80">
             Full suite →
           </Link>
         </div>
       </div>
 
       {/* SEO Content */}
-      <div className="max-w-3xl mx-auto px-6 py-16">
+      <div className="max-w-3xl mx-auto px-4 py-16 sm:px-6">
         <section className="space-y-10">
           {[
-            { title: 'How Our AI Detector Works', body: 'Our heuristic AI text detection engine analyzes your writing using over 100 linguistic patterns commonly found in AI-generated content from models like ChatGPT, Claude, Gemini, and others. Unlike simple plagiarism checkers, we examine sentence structure uniformity, cliché phrase density, transition word overuse, and statistical anomalies in your writing.' },
-            { title: 'Why AI Detection Matters for Resumes', body: '67% of recruiters now use AI detection tools to screen resumes and cover letters. If your application is flagged as AI-generated, it may be rejected before a human ever reads it. Our detector helps you identify and fix the patterns that trigger these flags.' },
-            { title: 'Free vs Pro Detection', body: 'The free version provides heuristic-based analysis with a 500-word limit. Our Pro plan includes unlimited detection, deep pattern analysis, section-by-section breakdowns, and our AI Humanizer tool that automatically rewrites flagged sections while preserving your original voice.' },
+            { title: 'How The Trust Check Works', body: 'Our heuristic engine analyzes over 100 linguistic patterns commonly associated with AI-assisted writing, including sentence uniformity, cliché phrase density, transition overuse, and statistical rhythm. Treat the result as an indicator, not proof.' },
+            { title: 'Why This Matters for Career Writing', body: 'Recruiters and schools increasingly use automated writing signals, but detectors can be wrong. The safer workflow is to review patterns, preserve your real voice, and make the document clearer and more specific.' },
+            { title: 'Free vs Pro Trust Studio', body: 'The free version provides a 500-word trust preview. The suite adds deep scan, paragraph fixes, verification, exports, and saved writing sessions.' },
           ].map((s, i) => (
             <div key={i}>
-              <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)' }}>{s.title}</h2>
+              <h2 className="mb-2 text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{s.title}</h2>
               <p className="text-sm leading-relaxed" style={{ color: 'var(--text-muted)' }}>{s.body}</p>
             </div>
           ))}
           <div>
-            <h3 className="text-base font-bold mb-4" style={{ color: 'var(--text-primary)' }}>FAQ</h3>
+            <h3 className="mb-4 text-base font-semibold" style={{ color: 'var(--text-primary)' }}>FAQ</h3>
             {[
               { q: 'Is this AI detector free?', a: 'Yes — completely free with a 500-word limit. No account required.' },
               { q: 'Can AI detectors be wrong?', a: 'Yes, no detector is 100% accurate. Heuristic analysis provides indicators, not proof.' },
-              { q: 'What models can it detect?', a: 'ChatGPT, Claude, Gemini, Llama, and most major language models.' },
-              { q: 'How to make text less AI-detectable?', a: 'Vary sentence lengths, avoid cliché phrases, add personal anecdotes. Or use our AI Humanizer.' },
+              { q: 'What models can it detect?', a: 'It looks for model-like writing signals common across ChatGPT, Claude, Gemini, Llama, and other systems, but it cannot prove authorship.' },
+              { q: 'How do I improve trust signals?', a: 'Vary sentence lengths, avoid cliché phrases, add specific context, and revise only the sections that need it.' },
             ].map((faq, i) => (
               <details key={i} className="mb-2 rounded-xl overflow-hidden group" style={{ border: '1px solid var(--border-subtle)' }}>
                 <summary className="cursor-pointer px-4 py-3 text-sm font-medium flex items-center justify-between" style={{ color: 'var(--text-secondary)', background: 'var(--bg-surface)' }}>
@@ -325,7 +337,42 @@ export default function AIDetectorDemo() {
             ))}
           </div>
         </section>
+        <div className="mt-10 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+          <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Use the trust check with these tools</h2>
+          <div className="mobile-card-rail mt-4 grid gap-3 md:grid-cols-3">
+            {[
+              { href: '/tools/ai-humanizer', title: 'AI Humanizer', desc: 'Rewrite flagged sections without losing meaning.' },
+              { href: '/tools/resume-builder', title: 'Resume Builder', desc: 'Improve resume bullets after checking trust signals.' },
+              { href: '/tools/ats-analyzer', title: 'ATS Analyzer', desc: 'Pair writing trust with keyword fit.' },
+            ].map((link) => (
+              <Link key={link.href} href={link.href} className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 transition hover:border-[var(--border)]">
+                <span className="block text-sm font-semibold text-[var(--text-primary)]">{link.title}</span>
+                <span className="mt-1 block text-xs leading-5 text-[var(--text-secondary)]">{link.desc}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+          <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Source context</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+            Use detector-style feedback as a signal, not proof. For responsible AI context, see the{' '}
+            <a href="https://www.nist.gov/itl/ai-risk-management-framework" rel="noopener noreferrer" target="_blank" className="font-medium text-[var(--accent)] hover:underline">
+              NIST AI Risk Management Framework
+            </a>.
+          </p>
+        </div>
       </div>
+      <MobileStickyActionBar
+        primaryLabel="Analyze text"
+        primaryIcon="radar"
+        onPrimary={handleAnalyze}
+        disabled={text.trim().length < 50 || isAnalyzing}
+        loading={isAnalyzing}
+        secondaryActions={[
+          { label: 'Sample', icon: 'article', onClick: () => loadSample('Mixed') },
+        ]}
+      />
     </div>
   );
 }

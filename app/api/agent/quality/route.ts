@@ -77,10 +77,10 @@ export async function GET(req: NextRequest) {
       ? Math.round((interviewPlusCount / totalApplications) * 100)
       : 0;
 
-    // ── 2. Application Queue (tailored = those with fitScore) ──
+    // ── 2. Agent Queue (tailored = those with a Sona fit score) ──
     const queueSnap = await db
       .collection('users').doc(uid)
-      .collection('applicationQueue')
+      .collection('agent_queue')
       .get();
 
     let fitScoreSum = 0;
@@ -89,8 +89,9 @@ export async function GET(req: NextRequest) {
 
     for (const doc of queueSnap.docs) {
       const q = doc.data();
-      if (q.fitScore && q.fitScore > 0) {
-        fitScoreSum += q.fitScore;
+      const score = q.match_score || q.fitScore || 0;
+      if (score > 0) {
+        fitScoreSum += score;
         fitScoreCount++;
         tailoredCount++;
       }
@@ -118,7 +119,7 @@ export async function GET(req: NextRequest) {
       pipeline,
       interviewYield,
       weeklyVelocity: thisWeekApps.length,
-      queueSize: queueSnap.docs.filter(d => d.data().status === 'queued').length,
+      queueSize: queueSnap.docs.filter(d => ['pending', 'approved'].includes(d.data().status)).length,
       recentActivity,
     };
 

@@ -6,7 +6,8 @@
  * All single-column for maximum ATS compatibility.
  */
 
-import type { CanonicalResume, CanonicalSkillGroup, CanonicalExperience, CanonicalEducation } from '@/lib/resume-normalizer';
+import { cleanResumeText, type CanonicalResume, type CanonicalSkillGroup, type CanonicalExperience, type CanonicalEducation } from '@/lib/resume-normalizer';
+import { ResumeHeader, ResumeSectionTitle } from './header-system';
 
 interface TemplateProps {
   resume: CanonicalResume;
@@ -16,17 +17,6 @@ interface TemplateProps {
 // ============================================================
 // SHARED SECTION RENDERERS
 // ============================================================
-
-function ContactBar({ resume, separator = '|', className = '' }: { resume: CanonicalResume; separator?: string; className?: string }) {
-  const items = [resume.email, resume.phone, resume.location, resume.linkedin, resume.website].filter(Boolean);
-  return (
-    <div className={`flex flex-wrap gap-2 text-sm text-gray-500 ${className}`}>
-      {items.map((item, i) => (
-        <span key={i}>{i > 0 && <span className="mr-2">{separator}</span>}{item}</span>
-      ))}
-    </div>
-  );
-}
 
 function SkillsGrid({ skills, colors, layout = 'category' }: { skills: CanonicalSkillGroup[]; colors: TemplateProps['colors']; layout?: 'category' | 'pills' | 'inline' | 'compact' }) {
   if (!skills?.length) return null;
@@ -120,13 +110,37 @@ function EducationList({ education, colors, layout = 'default' }: {
 
   return (
     <div>
-      {education.map((edu, i) => (
-        <div key={i} className={`mb-2 ${layout === 'center' ? 'text-center' : ''}`}>
-          <p className="font-semibold text-gray-900">{edu.degree}</p>
-          <p className="text-sm text-gray-500">{edu.institution}{edu.year ? ` • ${edu.year}` : ''}</p>
-          {edu.details && <p className="text-xs text-gray-400 mt-0.5">{edu.details}</p>}
-        </div>
-      ))}
+      {education.map((edu, i) => {
+        const degree = cleanResumeText(edu.degree);
+        const institution = cleanResumeText(edu.institution);
+        const year = cleanResumeText(edu.year);
+        const details = cleanResumeText(edu.details);
+        const meta = [institution, year].filter(Boolean).join(' • ');
+        return (
+          <div key={i} className={`mb-2 ${layout === 'center' ? 'text-center' : ''}`}>
+            {degree && <p className="font-semibold text-gray-900">{degree}</p>}
+            {meta && <p className="text-sm text-gray-500">{meta}</p>}
+            {details && <p className="text-xs text-gray-400 mt-0.5">{details}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EducationInstitutionFirst({ edu, withDetails = false }: { edu: CanonicalEducation; withDetails?: boolean }) {
+  const institution = cleanResumeText(edu.institution);
+  const degree = cleanResumeText(edu.degree);
+  const year = cleanResumeText(edu.year);
+  const details = cleanResumeText(edu.details);
+  return (
+    <div className="flex justify-between mb-2">
+      <div>
+        {institution && <p className="font-bold text-gray-900">{institution}</p>}
+        {degree && <p className="text-sm italic text-gray-700">{degree}</p>}
+        {withDetails && details && <p className="text-xs text-gray-500 mt-0.5">{details}</p>}
+      </div>
+      {year && <span className="text-sm text-gray-500">{year}</span>}
     </div>
   );
 }
@@ -136,19 +150,7 @@ function SectionTitle({ children, colors, style = 'default' }: {
   colors: TemplateProps['colors'];
   style?: 'default' | 'border' | 'uppercase' | 'center' | 'tracked' | 'mono';
 }) {
-  const base = 'mb-3';
-  if (style === 'border') return <h2 className={`${base} text-sm font-bold uppercase tracking-wider border-b pb-1`} style={{ color: colors.primary, borderColor: `${colors.primary}40` }}>{children}</h2>;
-  if (style === 'uppercase') return <h2 className={`${base} text-sm uppercase tracking-widest text-gray-400`}>{children}</h2>;
-  if (style === 'center') return (
-    <div className={`${base} flex items-center gap-4`}>
-      <div className="h-px flex-1" style={{ backgroundColor: `${colors.accent}40` }} />
-      <h2 className="text-xs uppercase tracking-[0.3em] font-semibold" style={{ color: colors.primary }}>{children}</h2>
-      <div className="h-px flex-1" style={{ backgroundColor: `${colors.accent}40` }} />
-    </div>
-  );
-  if (style === 'tracked') return <h2 className={`${base} text-[11px] uppercase tracking-[0.25em] font-medium`} style={{ color: colors.accent }}>{children}</h2>;
-  if (style === 'mono') return <h2 className={`${base} font-bold uppercase tracking-wider font-mono`} style={{ color: colors.primary }}>// {children}</h2>;
-  return <h2 className={`${base} text-lg font-bold uppercase tracking-wider`} style={{ color: colors.primary }}>{children}</h2>;
+  return <ResumeSectionTitle colors={colors} style={style}>{children}</ResumeSectionTitle>;
 }
 
 // ============================================================
@@ -157,11 +159,7 @@ function SectionTitle({ children, colors, style = 'default' }: {
 function ExecutiveTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10 font-serif" style={{ color: colors.text }}>
-      <div className="border-b-4 pb-6 mb-6" style={{ borderColor: colors.primary }}>
-        <h1 className="text-4xl font-bold tracking-tight" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-xl mt-1" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} className="mt-3" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="executive" />
       {resume.summary && <div className="mb-6"><SectionTitle colors={colors}>Professional Summary</SectionTitle><p className="text-gray-700 leading-relaxed">{resume.summary}</p></div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors}>Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
       <div className="grid grid-cols-2 gap-6">
@@ -178,11 +176,7 @@ function ExecutiveTemplate({ resume, colors }: TemplateProps) {
 function MinimalTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10" style={{ color: colors.text }}>
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-light tracking-wide">{resume.name}</h1>
-        <p className="text-gray-500 mt-1">{resume.title}</p>
-        <ContactBar resume={resume} separator="•" className="justify-center mt-3" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="minimal" />
       {resume.summary && <div className="border-t border-gray-200 pt-6 mb-6"><p className="text-gray-700 text-center max-w-2xl mx-auto">{resume.summary}</p></div>}
       {resume.experience.length > 0 && <div className="mb-8"><SectionTitle colors={colors} style="uppercase">Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="minimal" /></div>}
       <div className="grid grid-cols-2 gap-8">
@@ -199,17 +193,7 @@ function MinimalTemplate({ resume, colors }: TemplateProps) {
 function CompactTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-6 text-xs" style={{ color: colors.text }}>
-      <div className="flex justify-between items-end border-b-2 pb-3 mb-4" style={{ borderColor: colors.primary }}>
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-          <p className="text-sm text-gray-600 mt-0.5">{resume.title}</p>
-        </div>
-        <div className="text-right text-gray-500 space-y-0.5">
-          {resume.email && <p>{resume.email}</p>}
-          {resume.phone && <p>{resume.phone}</p>}
-          {resume.location && <p>{resume.location}</p>}
-        </div>
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="compact" className="mb-4" />
       {resume.summary && <div className="mb-3 p-2.5 rounded" style={{ backgroundColor: `${colors.primary}08` }}><p className="text-gray-700 leading-relaxed">{resume.summary}</p></div>}
       {resume.skills.length > 0 && <div className="mb-3"><SectionTitle colors={colors} style="border">Core Competencies</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="pills" /></div>}
       {resume.experience.length > 0 && <div className="mb-3"><SectionTitle colors={colors} style="border">Professional Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="compact" /></div>}
@@ -227,11 +211,7 @@ function CompactTemplate({ resume, colors }: TemplateProps) {
 function TechnicalTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-8 font-mono text-sm" style={{ color: colors.text }}>
-      <div className="border-b-2 pb-4 mb-6" style={{ borderColor: colors.primary }}>
-        <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-lg" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} separator="|" className="mt-2" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="technical" />
       {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="mono">Summary</SectionTitle><p className="text-gray-700 bg-gray-50 p-3 rounded border-l-4" style={{ borderColor: colors.accent }}>{resume.summary}</p></div>}
       {resume.skills.length > 0 && (
         <div className="mb-6">
@@ -253,11 +233,8 @@ function TechnicalTemplate({ resume, colors }: TemplateProps) {
 function HarvardTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10 font-serif" style={{ color: colors.text }}>
-      <div className="text-center border-b-2 pb-5 mb-6" style={{ borderColor: colors.primary }}>
-        <h1 className="text-3xl font-bold tracking-tight" style={{ color: colors.primary }}>{resume.name}</h1>
-        <ContactBar resume={resume} separator="|" className="justify-center mt-2" />
-      </div>
-      {resume.education.length > 0 && <div className="mb-5"><SectionTitle colors={colors} style="border">Education</SectionTitle>{resume.education.map((edu, i) => (<div key={i} className="flex justify-between mb-2"><div><p className="font-bold text-gray-900">{edu.institution}</p><p className="text-sm italic text-gray-700">{edu.degree}</p></div><span className="text-sm text-gray-500">{edu.year}</span></div>))}</div>}
+      <ResumeHeader resume={resume} colors={colors} templateId="harvard" />
+      {resume.education.length > 0 && <div className="mb-5"><SectionTitle colors={colors} style="border">Education</SectionTitle>{resume.education.map((edu, i) => <EducationInstitutionFirst key={i} edu={edu} />)}</div>}
       {resume.experience.length > 0 && <div className="mb-5"><SectionTitle colors={colors} style="border">Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} companyFirst /></div>}
       {resume.skills.length > 0 && <div className="mb-5"><SectionTitle colors={colors} style="border">Skills &amp; Interests</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="inline" /></div>}
       {resume.summary && <div><SectionTitle colors={colors} style="border">Summary</SectionTitle><p className="text-sm text-gray-700 leading-relaxed">{resume.summary}</p></div>}
@@ -271,15 +248,7 @@ function HarvardTemplate({ resume, colors }: TemplateProps) {
 function ElegantTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10 font-serif" style={{ color: colors.text }}>
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-light tracking-[0.2em] uppercase" style={{ color: colors.primary }}>{resume.name}</h1>
-        <div className="flex justify-center items-center gap-4 mt-3">
-          <div className="h-px flex-1 max-w-[80px]" style={{ backgroundColor: colors.accent }} />
-          <p className="text-sm tracking-wider uppercase" style={{ color: colors.accent }}>{resume.title}</p>
-          <div className="h-px flex-1 max-w-[80px]" style={{ backgroundColor: colors.accent }} />
-        </div>
-        <ContactBar resume={resume} className="justify-center mt-4 text-xs tracking-wider" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="elegant" />
       {resume.summary && <div className="mb-8 max-w-xl mx-auto text-center"><p className="text-sm text-gray-600 leading-relaxed italic">&ldquo;{resume.summary}&rdquo;</p></div>}
       {resume.experience.length > 0 && <div className="mb-8"><SectionTitle colors={colors} style="center">Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
       <div className="grid grid-cols-2 gap-8">
@@ -296,12 +265,7 @@ function ElegantTemplate({ resume, colors }: TemplateProps) {
 function NordicTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-12" style={{ color: colors.text }}>
-      <div className="mb-10">
-        <h1 className="text-3xl font-light tracking-wide">{resume.name}</h1>
-        <p className="text-lg mt-1" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} className="mt-4" separator="" />
-        <div className="mt-6 h-px w-full" style={{ backgroundColor: `${colors.accent}30` }} />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="nordic" className="mb-10" />
       {resume.summary && <div className="mb-10"><p className="text-sm leading-7 max-w-[85%]" style={{ color: `${colors.text}cc` }}>{resume.summary}</p></div>}
       {resume.experience.length > 0 && (
         <div className="mb-10">
@@ -315,7 +279,11 @@ function NordicTemplate({ resume, colors }: TemplateProps) {
         </div>
       )}
       <div className="grid grid-cols-[140px_1fr] gap-6">
-        {resume.education.length > 0 && <><div><SectionTitle colors={colors} style="tracked">Education</SectionTitle></div><div className="space-y-3">{resume.education.map((edu, i) => <div key={i}><p className="font-medium text-gray-900">{edu.degree}</p><p className="text-sm text-gray-500">{edu.institution} — {edu.year}</p></div>)}</div></>}
+        {resume.education.length > 0 && <><div><SectionTitle colors={colors} style="tracked">Education</SectionTitle></div><div className="space-y-3">{resume.education.map((edu, i) => {
+          const degree = cleanResumeText(edu.degree);
+          const meta = [cleanResumeText(edu.institution), cleanResumeText(edu.year)].filter(Boolean).join(' — ');
+          return <div key={i}>{degree && <p className="font-medium text-gray-900">{degree}</p>}{meta && <p className="text-sm text-gray-500">{meta}</p>}</div>;
+        })}</div></>}
       </div>
       {resume.skills.length > 0 && <div className="mt-8 grid grid-cols-[140px_1fr] gap-6"><div><SectionTitle colors={colors} style="tracked">Skills</SectionTitle></div><SkillsGrid skills={resume.skills} colors={colors} layout="compact" /></div>}
     </div>
@@ -328,11 +296,7 @@ function NordicTemplate({ resume, colors }: TemplateProps) {
 function ATSUltraTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10" style={{ color: colors.text }}>
-      <div className="mb-6 pb-4 border-b-2" style={{ borderColor: colors.primary }}>
-        <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-sm mt-0.5" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} separator="•" className="mt-3 text-xs" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="ats-optimized" />
       {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="border">Summary</SectionTitle><p className="text-sm text-gray-600 leading-relaxed">{resume.summary}</p></div>}
       {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Core Competencies</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="inline" /></div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Professional Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
@@ -348,11 +312,7 @@ function ATSUltraTemplate({ resume, colors }: TemplateProps) {
 function FAANGTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10" style={{ color: colors.text }}>
-      <div className="mb-6 pb-4 border-b-2" style={{ borderColor: colors.primary }}>
-        <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-sm mt-0.5" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} separator="•" className="mt-3 text-xs" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="faang" />
       {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="border">Summary</SectionTitle><p className="text-sm text-gray-600 leading-relaxed">{resume.summary}</p></div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="timeline" /></div>}
       {resume.skills.length > 0 && (
@@ -379,11 +339,7 @@ function FAANGTemplate({ resume, colors }: TemplateProps) {
 function FederalTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10" style={{ color: colors.text }}>
-      <div className="mb-6 pb-4 border-b-2" style={{ borderColor: colors.primary }}>
-        <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-sm mt-0.5" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} separator="•" className="mt-3 text-xs" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="federal" />
       {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="border">Professional Summary</SectionTitle><p className="text-sm text-gray-600 leading-relaxed">{resume.summary}</p></div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Professional Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
       {resume.skills.length > 0 && (
@@ -411,15 +367,7 @@ function FederalTemplate({ resume, colors }: TemplateProps) {
 function ModernTemplate({ resume, colors }: TemplateProps) {
   return (
     <div style={{ color: colors.text }}>
-      <div className="p-8 pb-6" style={{ backgroundColor: colors.primary }}>
-        <h1 className="text-3xl font-bold text-white">{resume.name}</h1>
-        <p className="text-lg text-white/80 mt-1">{resume.title}</p>
-        <div className="flex flex-wrap gap-4 mt-3 text-sm text-white/70">
-          {resume.email && <span>{resume.email}</span>}
-          {resume.phone && <span>{resume.phone}</span>}
-          {resume.location && <span>{resume.location}</span>}
-        </div>
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="modern" />
       <div className="p-8 pt-6">
         {resume.summary && <div className="mb-6"><SectionTitle colors={colors}>About Me</SectionTitle><p className="text-gray-700 leading-relaxed">{resume.summary}</p></div>}
         {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors}>Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="timeline" /></div>}
@@ -434,17 +382,9 @@ function ModernTemplate({ resume, colors }: TemplateProps) {
 // TEMPLATE 12: CREATIVE — Initials badge, colored chips
 // ============================================================
 function CreativeTemplate({ resume, colors }: TemplateProps) {
-  const initials = resume.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '';
   return (
     <div className="p-8" style={{ color: colors.text }}>
-      <div className="flex items-start gap-6 mb-8">
-        <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-3xl font-bold text-white shrink-0" style={{ backgroundColor: colors.primary }}>{initials}</div>
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-          <p className="text-xl text-gray-600">{resume.title}</p>
-          <ContactBar resume={resume} className="mt-2" />
-        </div>
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="creative" />
       {resume.summary && <div className="mb-6 p-4 rounded-xl" style={{ backgroundColor: `${colors.primary}10` }}><p className="text-gray-700">{resume.summary}</p></div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors}>Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="boxed" /></div>}
       <div className="grid grid-cols-2 gap-6">
@@ -461,14 +401,7 @@ function CreativeTemplate({ resume, colors }: TemplateProps) {
 function CascadeTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10" style={{ color: colors.text }}>
-      <div className="mb-8">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white mb-4" style={{ backgroundColor: colors.primary }}>
-          {resume.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
-        </div>
-        <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-sm text-gray-500 mt-1">{resume.title}</p>
-        <ContactBar resume={resume} separator="•" className="mt-3" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="cascade" />
       {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="border">Profile</SectionTitle><p className="text-sm text-gray-600 leading-relaxed">{resume.summary}</p></div>}
       {resume.experience.length > 0 && (
         <div className="mb-6">
@@ -496,11 +429,7 @@ function CascadeTemplate({ resume, colors }: TemplateProps) {
 function ColumnistTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10" style={{ color: colors.text }}>
-      <div className="mb-6 pb-4 border-b-2" style={{ borderColor: colors.primary }}>
-        <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-sm mt-0.5" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} separator="•" className="mt-3 text-xs" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="double-column" />
       {resume.skills.length > 0 && (
         <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: `${colors.primary}06` }}>
           <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: colors.primary }}>Key Competencies</p>
@@ -520,15 +449,7 @@ function ColumnistTemplate({ resume, colors }: TemplateProps) {
 function MetroTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-8" style={{ color: colors.text }}>
-      <div className="mb-8 p-6 rounded-2xl" style={{ backgroundColor: colors.primary }}>
-        <h1 className="text-3xl font-bold text-white">{resume.name}</h1>
-        <p className="text-lg text-white/80 mt-1">{resume.title}</p>
-        <div className="flex flex-wrap gap-4 mt-3 text-sm text-white/60">
-          {resume.email && <span>{resume.email}</span>}
-          {resume.phone && <span>{resume.phone}</span>}
-          {resume.location && <span>{resume.location}</span>}
-        </div>
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="infographic" />
       {resume.summary && <div className="mb-6"><div className="flex items-center gap-3 mb-3"><div className="w-1 h-6 rounded-full" style={{ backgroundColor: colors.accent }} /><h2 className="text-lg font-bold" style={{ color: colors.primary }}>Summary</h2></div><p className="text-sm text-gray-600 leading-relaxed pl-4">{resume.summary}</p></div>}
       {resume.experience.length > 0 && <div className="mb-6"><div className="flex items-center gap-3 mb-3"><div className="w-1 h-6 rounded-full" style={{ backgroundColor: colors.accent }} /><h2 className="text-lg font-bold" style={{ color: colors.primary }}>Experience</h2></div><div className="pl-4"><ExperienceList experience={resume.experience} colors={colors} /></div></div>}
       {resume.skills.length > 0 && <div className="mb-6"><div className="flex items-center gap-3 mb-3"><div className="w-1 h-6 rounded-full" style={{ backgroundColor: colors.accent }} /><h2 className="text-lg font-bold" style={{ color: colors.primary }}>Skills</h2></div><div className="pl-4"><SkillsGrid skills={resume.skills} colors={colors} layout="pills" /></div></div>}
@@ -543,11 +464,7 @@ function MetroTemplate({ resume, colors }: TemplateProps) {
 function ConsultantTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10" style={{ color: colors.text }}>
-      <div className="border-b-4 pb-5 mb-6" style={{ borderColor: colors.primary }}>
-        <h1 className="text-3xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-lg mt-1" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} separator="|" className="mt-3" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="deloitte" />
       {resume.summary && <div className="mb-6 p-4 border-l-4 bg-gray-50 rounded-r" style={{ borderColor: colors.accent }}><p className="text-sm text-gray-700 leading-relaxed italic">{resume.summary}</p></div>}
       {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Areas of Expertise</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="inline" /></div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Professional Impact</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
@@ -565,12 +482,7 @@ function ConsultantTemplate({ resume, colors }: TemplateProps) {
 function StartupTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-8" style={{ color: colors.text }}>
-      <div className="mb-6">
-        <h1 className="text-4xl font-black" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-lg font-medium mt-1" style={{ color: colors.accent }}>{resume.title}</p>
-        <ContactBar resume={resume} separator="/" className="mt-2" />
-        <div className="mt-4 h-1 w-20 rounded-full" style={{ backgroundColor: colors.accent }} />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="startup" />
       {resume.summary && <div className="mb-6"><p className="text-gray-700 leading-relaxed font-medium">{resume.summary}</p></div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">What I&apos;ve Built</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="timeline" /></div>}
       {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Stack</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="pills" /></div>}
@@ -585,16 +497,158 @@ function StartupTemplate({ resume, colors }: TemplateProps) {
 function AcademicTemplate({ resume, colors }: TemplateProps) {
   return (
     <div className="p-10 font-serif" style={{ color: colors.text }}>
-      <div className="text-center border-b-2 pb-5 mb-6" style={{ borderColor: colors.primary }}>
-        <h1 className="text-3xl font-bold" style={{ color: colors.primary }}>{resume.name}</h1>
-        <p className="text-lg mt-1 text-gray-600">{resume.title}</p>
-        <ContactBar resume={resume} separator="|" className="justify-center mt-3 text-xs" />
-      </div>
+      <ResumeHeader resume={resume} colors={colors} templateId="academic" />
       {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="border">Research Statement</SectionTitle><p className="text-sm text-gray-700 leading-relaxed">{resume.summary}</p></div>}
-      {resume.education.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Education</SectionTitle>{resume.education.map((edu, i) => (<div key={i} className="flex justify-between mb-3"><div><p className="font-bold text-gray-900">{edu.institution}</p><p className="text-sm italic text-gray-700">{edu.degree}</p>{edu.details && <p className="text-xs text-gray-500 mt-0.5">{edu.details}</p>}</div><span className="text-sm text-gray-500">{edu.year}</span></div>))}</div>}
+      {resume.education.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Education</SectionTitle>{resume.education.map((edu, i) => <EducationInstitutionFirst key={i} edu={edu} withDetails />)}</div>}
       {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Academic Positions</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="timeline" /></div>}
       {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Research Areas &amp; Methods</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="inline" /></div>}
       {resume.certifications.length > 0 && <div><SectionTitle colors={colors} style="border">Publications &amp; Grants</SectionTitle><ul>{resume.certifications.map((c, i) => <li key={i} className="text-sm text-gray-700 mb-2">{c}</li>)}</ul></div>}
+    </div>
+  );
+}
+
+function impactSnippets(resume: CanonicalResume) {
+  const achievements = resume.experience.flatMap(exp => exp.achievements || []);
+  const withNumbers = achievements.filter(item => /(\$|%|\d)/.test(item)).slice(0, 3);
+  return (withNumbers.length ? withNumbers : achievements.slice(0, 3)).map(item => {
+    const metric = item.match(/(\$[\d,.]+[kKmMbB]?|\d+[%xX]?|\d+[,.]\d+)/)?.[0] || 'Impact';
+    return { metric, text: item };
+  });
+}
+
+// ============================================================
+// TEMPLATE 19: BOARDROOM — Executive memo with impact signals
+// ============================================================
+function BoardroomTemplate({ resume, colors }: TemplateProps) {
+  const impacts = impactSnippets(resume);
+  return (
+    <div className="p-10" style={{ color: colors.text }}>
+      <ResumeHeader resume={resume} colors={colors} templateId="boardroom" />
+      {impacts.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {impacts.map((impact, i) => (
+            <div key={i} className="border border-gray-200 p-3">
+              <p className="text-xl font-semibold" style={{ color: colors.accent }}>{impact.metric}</p>
+              <p className="text-[11px] text-gray-600 mt-1 leading-snug">{impact.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="tracked">Board Brief</SectionTitle><p className="text-sm leading-relaxed text-gray-700">{resume.summary}</p></div>}
+      {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="tracked">Leadership Record</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
+      {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="tracked">Operating Strengths</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="inline" /></div>}
+      {resume.education.length > 0 && <div><SectionTitle colors={colors} style="tracked">Education</SectionTitle><EducationList education={resume.education} colors={colors} /></div>}
+    </div>
+  );
+}
+
+// ============================================================
+// TEMPLATE 20: PRODUCT BRIEF — Product/program leadership
+// ============================================================
+function ProductBriefTemplate({ resume, colors }: TemplateProps) {
+  return (
+    <div className="p-9" style={{ color: colors.text }}>
+      <ResumeHeader resume={resume} colors={colors} templateId="product-brief" />
+      {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="border">Positioning</SectionTitle><p className="text-sm text-gray-700 leading-relaxed">{resume.summary}</p></div>}
+      {resume.skills.length > 0 && (
+        <div className="mb-6">
+          <SectionTitle colors={colors} style="border">Discovery, Delivery, Scale</SectionTitle>
+          <SkillsGrid skills={resume.skills} colors={colors} layout="pills" />
+        </div>
+      )}
+      {resume.experience.length > 0 && (
+        <div className="mb-6">
+          <SectionTitle colors={colors} style="border">Product Outcomes</SectionTitle>
+          <ExperienceList experience={resume.experience} colors={colors} style="boxed" />
+        </div>
+      )}
+      {resume.education.length > 0 && <div><SectionTitle colors={colors} style="border">Education</SectionTitle><EducationList education={resume.education} colors={colors} /></div>}
+    </div>
+  );
+}
+
+// ============================================================
+// TEMPLATE 21: OPERATOR — Operations command sheet
+// ============================================================
+function OperatorTemplate({ resume, colors }: TemplateProps) {
+  return (
+    <div className="p-8" style={{ color: colors.text }}>
+      <ResumeHeader resume={resume} colors={colors} templateId="operator" className="mb-5" />
+      {resume.summary && <div className="mb-5 p-3 border border-gray-200"><p className="text-sm leading-relaxed text-gray-700">{resume.summary}</p></div>}
+      {resume.skills.length > 0 && <div className="mb-5"><SectionTitle colors={colors} style="border">Systems and Levers</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="inline" /></div>}
+      {resume.experience.length > 0 && <div className="mb-5"><SectionTitle colors={colors} style="border">Execution Record</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="compact" /></div>}
+      {resume.education.length > 0 && <div><SectionTitle colors={colors} style="border">Credentials</SectionTitle><EducationList education={resume.education} colors={colors} /></div>}
+    </div>
+  );
+}
+
+// ============================================================
+// TEMPLATE 22: DATA SIGNAL — Analytics, AI, and technical strategy
+// ============================================================
+function DataSignalTemplate({ resume, colors }: TemplateProps) {
+  const coreSkills = resume.skills.flatMap(group => group.items).slice(0, 12);
+  return (
+    <div className="p-9 font-mono" style={{ color: colors.text }}>
+      <ResumeHeader resume={resume} colors={colors} templateId="data-signal" />
+      {coreSkills.length > 0 && (
+        <div className="grid grid-cols-4 gap-2 mb-6">
+          {coreSkills.map((skill, i) => (
+            <span key={i} className="text-[10px] border border-gray-200 px-2 py-1 text-center text-gray-700">{skill}</span>
+          ))}
+        </div>
+      )}
+      {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="mono">Signal Summary</SectionTitle><p className="text-sm font-sans text-gray-700 leading-relaxed">{resume.summary}</p></div>}
+      {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="mono">Models Shipped / Systems Improved</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
+      {resume.education.length > 0 && <div><SectionTitle colors={colors} style="mono">Education</SectionTitle><EducationList education={resume.education} colors={colors} /></div>}
+    </div>
+  );
+}
+
+// ============================================================
+// TEMPLATE 23: FINANCE LEDGER — Precise finance/consulting
+// ============================================================
+function FinanceLedgerTemplate({ resume, colors }: TemplateProps) {
+  const impacts = impactSnippets(resume);
+  return (
+    <div className="p-10" style={{ color: colors.text }}>
+      <ResumeHeader resume={resume} colors={colors} templateId="finance-ledger" />
+      {impacts.length > 0 && <div className="mb-6 border-y border-gray-200 py-3 grid grid-cols-3 gap-4">{impacts.map((impact, i) => <div key={i}><p className="text-lg font-semibold" style={{ color: colors.accent }}>{impact.metric}</p><p className="text-[10px] text-gray-500 mt-1 leading-snug">{impact.text}</p></div>)}</div>}
+      {resume.summary && <div className="mb-6"><SectionTitle colors={colors} style="border">Investment Thesis</SectionTitle><p className="text-sm leading-relaxed text-gray-700">{resume.summary}</p></div>}
+      {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Measured Experience</SectionTitle><ExperienceList experience={resume.experience} colors={colors} /></div>}
+      {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Analytical Toolkit</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="inline" /></div>}
+      {resume.education.length > 0 && <div><SectionTitle colors={colors} style="border">Education</SectionTitle><EducationList education={resume.education} colors={colors} /></div>}
+    </div>
+  );
+}
+
+// ============================================================
+// TEMPLATE 24: STORYLINE — Editorial strategy narrative
+// ============================================================
+function StorylineTemplate({ resume, colors }: TemplateProps) {
+  return (
+    <div className="p-10" style={{ color: colors.text }}>
+      <ResumeHeader resume={resume} colors={colors} templateId="storyline" />
+      {resume.summary && <div className="mb-8 max-w-[86%]"><p className="text-lg leading-relaxed text-gray-700">{resume.summary}</p></div>}
+      {resume.experience.length > 0 && <div className="mb-8"><SectionTitle colors={colors} style="tracked">Chapters of Impact</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="minimal" /></div>}
+      {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="tracked">Recurring Themes</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="compact" /></div>}
+      {resume.education.length > 0 && <div><SectionTitle colors={colors} style="tracked">Education</SectionTitle><EducationList education={resume.education} colors={colors} /></div>}
+    </div>
+  );
+}
+
+// ============================================================
+// TEMPLATE 25: VENTURE — Startup traction and scope
+// ============================================================
+function VentureTemplate({ resume, colors }: TemplateProps) {
+  const impacts = impactSnippets(resume);
+  return (
+    <div className="p-8" style={{ color: colors.text }}>
+      <ResumeHeader resume={resume} colors={colors} templateId="venture" />
+      {impacts.length > 0 && <div className="mb-6 grid grid-cols-3 gap-2">{impacts.map((impact, i) => <div key={i} className="border-l-4 pl-3" style={{ borderColor: colors.accent }}><p className="text-xl font-bold" style={{ color: colors.primary }}>{impact.metric}</p><p className="text-[10px] text-gray-600 mt-1">{impact.text}</p></div>)}</div>}
+      {resume.summary && <div className="mb-6"><p className="text-sm text-gray-700 leading-relaxed font-medium">{resume.summary}</p></div>}
+      {resume.experience.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Traction Built</SectionTitle><ExperienceList experience={resume.experience} colors={colors} style="timeline" /></div>}
+      {resume.skills.length > 0 && <div className="mb-6"><SectionTitle colors={colors} style="border">Founder-Mode Stack</SectionTitle><SkillsGrid skills={resume.skills} colors={colors} layout="pills" /></div>}
+      {resume.education.length > 0 && <div><SectionTitle colors={colors} style="border">Education</SectionTitle><EducationList education={resume.education} colors={colors} /></div>}
     </div>
   );
 }
@@ -607,6 +661,8 @@ const TEMPLATE_MAP: Record<string, React.FC<TemplateProps>> = {
   'minimal': MinimalTemplate,
   'compact': CompactTemplate,
   'technical': TechnicalTemplate,
+  'boardroom': BoardroomTemplate,
+  'product-brief': ProductBriefTemplate,
   'harvard': HarvardTemplate,
   'elegant': ElegantTemplate,
   'nordic': NordicTemplate,
@@ -621,6 +677,11 @@ const TEMPLATE_MAP: Record<string, React.FC<TemplateProps>> = {
   'deloitte': ConsultantTemplate,
   'startup': StartupTemplate,
   'academic': AcademicTemplate,
+  'operator': OperatorTemplate,
+  'data-signal': DataSignalTemplate,
+  'finance-ledger': FinanceLedgerTemplate,
+  'storyline': StorylineTemplate,
+  'venture': VentureTemplate,
 };
 
 export function ResumeTemplate({ resume, templateId, colors }: {

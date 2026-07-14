@@ -1,209 +1,369 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
 import { useTheme } from '@/components/ThemeProvider';
 import { authFetch } from '@/lib/auth-fetch';
 import { analytics } from '@/lib/analytics';
 import { useRouter } from 'next/navigation';
+import { useBillingPrices } from '@/hooks/use-billing-prices';
+import { type PublicBillingPrice } from '@/lib/billing-price-types';
+import { getPlanIdentity } from '@/lib/plan-identity';
+import { PlanBadge } from '@/components/plan/PlanIdentity';
+import { getSonaDailyWorkloadBudget, resolveSonaWorkloadEntitlement } from '@/lib/sona/workload-policy';
+import {
+  resolveStripeCheckoutRecovery,
+  type StripeCheckoutRecovery,
+} from '@/lib/billing/stripe-checkout-recovery';
+import {
+  parseStripeCheckoutPublicStatus,
+  parseStripeCheckoutResumeResult,
+  recoveryForStripeCheckoutStatus,
+} from '@/lib/billing/stripe-checkout-status';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+const stripePromise = stripePublishableKey
+  ? loadStripe(stripePublishableKey)
+  : Promise.resolve(null);
 
 type BillingInterval = 'month' | 'year';
 type PlanOption = 'pro' | 'studio';
 
-const PLAN_CONFIG = {
+const FREE_SONA_OUTCOME = resolveSonaWorkloadEntitlement('free');
+const PRO_SONA_OUTCOME = resolveSonaWorkloadEntitlement('pro');
+const MAX_SONA_OUTCOME = resolveSonaWorkloadEntitlement('studio');
+const PRO_SONA_DAILY = getSonaDailyWorkloadBudget('pro');
+const MAX_SONA_DAILY = getSonaDailyWorkloadBudget('studio');
+
+function parsePlanParam(value: string | null): PlanOption {
+  return value === 'studio' || value === 'pro' ? value : 'pro';
+}
+
+function parseIntervalParam(value: string | null): BillingInterval {
+  return value === 'year' || value === 'month' ? value : 'month';
+}
+
+const PLAN_COPY = {
   pro: {
-    month: {
-      price: '$9.99', period: '/mo', label: 'Monthly',
-      billed: 'Billed monthly — cancel anytime',
-    },
-    year: {
-      price: '$99.99', period: '/yr', label: 'Annual', savings: 'Save 17%',
-      billed: 'Billed annually — $8.33/mo effective',
-    },
+    month: { label: 'Monthly' },
+    year: { label: 'Annual' },
   },
   studio: {
-    month: {
-      price: '$19.99', period: '/mo', label: 'Monthly',
-      billed: 'Billed monthly — cancel anytime',
-    },
-    year: {
-      price: '$179.99', period: '/yr', label: 'Annual', savings: 'Save 25%',
-      billed: 'Billed annually — $15.00/mo effective',
-    },
+    month: { label: 'Monthly' },
+    year: { label: 'Annual' },
   },
 } as const;
 
+const PLAN_VALUE_COPY: Record<PlanOption, { description: string; selector: string; summary: string }> = {
+  pro: {
+    description: 'Move active applications forward with job insight, resume tools, interview practice, and focused skill plans.',
+    selector: 'Core active job-search tools',
+    summary: 'Practical tools for resumes, applications, interviews, and skill gaps.',
+  },
+  studio: {
+    description: 'Let Sona scout, rank, and prepare opportunities while you control every application and alert.',
+    selector: 'Sona-led search workflow',
+    summary: 'A trusted Sona-led workflow from job discovery to application review.',
+  },
+};
+
+function priceIsAvailable(price: PublicBillingPrice) {
+  return price.unitAmount != null && price.active && price.sourceInterval === price.interval;
+}
+
+function billingLine(price: PublicBillingPrice) {
+  if (price.unitAmount != null && !price.active) return 'This plan is not available for checkout yet.';
+  if (!priceIsAvailable(price)) return 'Price unavailable. Check again shortly.';
+  if (price.interval === 'year') {
+    return `Billed annually. ${price.effectiveMonthlyDisplay}.`;
+  }
+  return 'Billed monthly. Manage or cancel from Settings.';
+}
+
 const PRO_FEATURES = [
-  { icon: 'bolt', color: '#f59e0b', title: '3× AI Speed & Volume', desc: 'Triple rate limits across all tools.' },
-  { icon: 'auto_awesome', color: '#3b82f6', title: 'Resume AI Morphing — Unlimited', desc: 'Tailor your resume to any job description.' },
-  { icon: 'mic', color: '#a855f7', title: 'Full Interview Simulator', desc: 'Unlimited AI interview sessions with voice.' },
-  { icon: 'route', color: '#10b981', title: 'Skill Bridge — Priority Access', desc: 'Generate learning paths for any skill gap.' },
-  { icon: 'troubleshoot', color: '#a855f7', title: 'Market Oracle — Full Intel', desc: 'Decode any JD: fit score, salary, red flags.' },
-  { icon: 'folder_open', color: '#f97316', title: 'Unlimited Study Vault', desc: 'Save every coaching note and interview feedback.' },
-  { icon: 'build', color: '#8b5cf6', title: 'Tools Gallery — Pro Tools', desc: 'Paraphraser, Email Composer, Thesis Generator.' },
-  { icon: 'verified_user', color: '#06b6d4', title: 'Priority Support', desc: 'Jump the queue — direct help when you need it.' },
+  { icon: 'troubleshoot', title: 'Job fit and market insight', desc: 'Review role fit, salary signals, skill gaps, and red flags before you apply.' },
+  { icon: 'description', title: 'Resume tools for active roles', desc: 'Shape each resume around the job while keeping your experience clear and accurate.' },
+  { icon: 'mic', title: 'Interview practice', desc: 'Rehearse role-specific interviews with voice and focused feedback.' },
+  { icon: 'route', title: 'Skill gap plans', desc: 'Turn missing skills into a focused learning path for the roles you want.' },
+  { icon: 'work_history', title: 'Application workspace', desc: 'Keep target roles, next steps, and preparation together.' },
+  { icon: 'inventory_2', title: 'Saved career evidence', desc: 'Reuse coaching notes, proof, and interview feedback across your search.' },
+  { icon: 'edit_note', title: 'Application writing tools', desc: 'Create cover letters, recruiter replies, and LinkedIn updates in one workflow.' },
+  { icon: 'support_agent', title: 'Priority support', desc: 'Get faster help when something blocks your search.' },
 ];
 
 const STUDIO_EXTRAS = [
-  { icon: 'auto_awesome', color: '#f43f5e', title: 'Sona AI Agent', desc: 'Context-aware career strategist — unlimited conversations.' },
-  { icon: 'ink_pen', color: '#f43f5e', title: 'AI Humanizer', desc: '50,000 words/mo of AI-to-human rewriting.' },
-  { icon: 'verified', color: '#10b981', title: 'Uniqueness Verification', desc: 'AI-powered plagiarism pattern detection per document.' },
-  { icon: 'download', color: '#3b82f6', title: 'Export to Word (.docx)', desc: 'Download formatted, submission-ready documents.' },
-  { icon: 'radar', color: '#f59e0b', title: 'AI Detection Engine', desc: '100+ pattern heuristic analysis — instant, zero-cost.' },
+  { icon: 'travel_explore', title: 'Proactive Sona scouting', desc: MAX_SONA_OUTCOME.outcomeDescription },
+  { icon: 'sort', title: 'Ranked job picks', desc: 'See the strongest matches first, with clear reasons for every recommendation.' },
+  { icon: 'verified_user', title: 'Truth-locked resume tailoring', desc: 'Tailor against each role without inventing experience, skills, or credentials.' },
+  { icon: 'inventory', title: 'Review-ready application packets', desc: 'Bring the resume, cover letter, role context, and next steps together before you apply.' },
+  { icon: 'notifications_active', title: 'User-controlled alerts', desc: 'Choose what Sona watches and when you hear about new matches.' },
 ];
 
 const COMPARISON = [
-  { label: 'Resume morphs', free: '3 lifetime', pro: 'Unlimited', studio: 'Unlimited' },
-  { label: 'Interview sessions', free: '3 lifetime', pro: 'Unlimited', studio: 'Unlimited' },
-  { label: 'Market Oracle', free: '3 lifetime', pro: 'Unlimited', studio: 'Unlimited' },
-  { label: 'Gallery — Pro tools', free: '—', pro: '✓', studio: '✓' },
-  { label: 'AI Detection', free: '—', pro: '4,000 words/mo', studio: '◆ Unlimited' },
-  { label: 'AI Humanizer', free: '—', pro: '4,000 words/mo', studio: '◆ 50,000 words/mo' },
-  { label: 'Uniqueness Check', free: '—', pro: '✓', studio: '✓' },
-  { label: 'Export to .docx', free: '—', pro: '✓', studio: '✓' },
-  { label: 'Priority support', free: '—', pro: '✓', studio: '✓ Priority+' },
+  { label: 'Job fit and market insight', free: 'Starter access', pro: 'Full access', studio: 'Full access' },
+  { label: 'Resume tools', free: 'Starter access', pro: 'Full access', studio: 'Truth-locked' },
+  { label: 'Interview practice', free: 'Starter access', pro: 'Full access', studio: 'Full access' },
+  { label: 'Skill gap plans', free: 'Starter access', pro: 'Full access', studio: 'Full access' },
+  { label: 'Sona workflow', free: 'One preview', pro: 'On demand', studio: 'Proactive + prep' },
+  { label: 'Ranked job picks', free: `${FREE_SONA_OUTCOME.maxRankedRoles} once`, pro: `${PRO_SONA_OUTCOME.maxRankedRoles} per run`, studio: `${MAX_SONA_OUTCOME.maxPreparedPackets} prepared` },
+  { label: 'Daily Sona workloads', free: 'One lifetime', pro: `${PRO_SONA_DAILY.runsMax} manual`, studio: `${MAX_SONA_DAILY.runsMax} incl. proactive` },
+  { label: 'Application packets', free: 'Not included', pro: 'Prepare manually', studio: 'Sona prepares' },
+  { label: 'Email controls', free: 'Opt-in picks', pro: 'Opt-in picks', studio: 'Proactive digest' },
 ];
 
 export default function UpgradePage() {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const router = useRouter();
+  const { prices, checkout, loading: pricesLoading, error: pricesError, refresh: refreshBilling } = useBillingPrices();
   const [interval, setInterval] = useState<BillingInterval>('month');
-  const [selectedPlan, setSelectedPlan] = useState<PlanOption>('studio');
+  const [selectedPlan, setSelectedPlan] = useState<PlanOption>('pro');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [recoveryOperation, setRecoveryOperation] = useState<'checking' | 'resuming' | null>(null);
   const [error, setError] = useState('');
+  const [recovery, setRecovery] = useState<StripeCheckoutRecovery | null>(null);
+  const checkoutRequestRef = useRef(0);
+
+  const resetCheckoutState = useCallback(() => {
+    checkoutRequestRef.current += 1;
+    setClientSecret(null);
+    setError('');
+    setRecovery(null);
+    setLoading(false);
+    setRecoveryOperation(null);
+  }, []);
 
   const createCheckoutSession = useCallback(async (plan: PlanOption, int: BillingInterval) => {
+    const requestId = checkoutRequestRef.current + 1;
+    checkoutRequestRef.current = requestId;
     setLoading(true);
     setError('');
+    setRecovery(null);
     setClientSecret(null);
+    let failureReason = 'network_or_unknown';
     try {
+      if (!checkout.options[plan][int]) {
+        throw new Error('This billing option is temporarily unavailable. Your current plan remains active.');
+      }
+      const selectedPrice = prices.plans[plan][int];
+      const selectedPriceLookupFailed = Boolean(pricesError) || selectedPrice.sourceStatus === 'retrieval_error';
+      if (!priceIsAvailable(selectedPrice) && !selectedPriceLookupFailed) {
+        throw new Error('This plan is not available for checkout yet. Please contact support.');
+      }
+
       const res = await authFetch('/api/stripe/subscribe', {
         method: 'POST',
-        body: JSON.stringify({ interval: int, plan }),
+        body: JSON.stringify({ interval: int, plan, source: 'upgrade_page' }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to initialize payment');
-      if (!data.clientSecret) throw new Error('No client secret returned');
+      if (checkoutRequestRef.current !== requestId) return;
+      if (!res.ok) {
+        failureReason = 'server_rejected';
+        const nextRecovery = resolveStripeCheckoutRecovery(data);
+        analytics.checkoutSessionFailed('upgrade_page', plan, int, failureReason);
+        setRecovery(nextRecovery);
+        setError(nextRecovery.message);
+        return;
+      }
+      if (!data.clientSecret) throw new Error('Checkout is unavailable right now. Please try again.');
       setClientSecret(data.clientSecret);
-      const price = parseFloat(PLAN_CONFIG[plan][int].price.replace('$', ''));
-      analytics.beginCheckout(plan, price);
+      const measuredPriceAvailable = priceIsAvailable(selectedPrice);
+      analytics.beginCheckout(plan, measuredPriceAvailable ? selectedPrice.unitAmount! / 100 : undefined, {
+        source: 'upgrade_page',
+        interval: int,
+        currency: measuredPriceAvailable ? selectedPrice.currency : undefined,
+      });
     } catch (err: any) {
-      setError(err.message || 'Something went wrong');
+      if (checkoutRequestRef.current !== requestId) return;
+      analytics.checkoutSessionFailed('upgrade_page', plan, int, failureReason);
+      const nextRecovery = resolveStripeCheckoutRecovery({ error: err.message || 'Something went wrong' });
+      setRecovery(nextRecovery);
+      setError(nextRecovery.message);
     } finally {
-      setLoading(false);
+      if (checkoutRequestRef.current === requestId) setLoading(false);
     }
+  }, [checkout, prices, pricesError]);
+
+  const checkCheckoutStatus = useCallback(async () => {
+    const requestId = checkoutRequestRef.current + 1;
+    checkoutRequestRef.current = requestId;
+    setRecoveryOperation('checking');
+    try {
+      const response = await authFetch('/api/stripe/checkout/status', {
+        method: 'GET',
+        cache: 'no-store',
+      });
+      const payload = await response.json();
+      if (checkoutRequestRef.current !== requestId) return;
+      const status = parseStripeCheckoutPublicStatus(payload) || 'pending';
+      if (status === 'complete' || status === 'idle' || status === 'expired') {
+        await refreshBilling().catch(() => {});
+      }
+      const nextRecovery = recoveryForStripeCheckoutStatus(status);
+      setRecovery(nextRecovery);
+      setError(nextRecovery?.message || '');
+    } catch {
+      if (checkoutRequestRef.current !== requestId) return;
+      const nextRecovery = recoveryForStripeCheckoutStatus('pending');
+      setRecovery(nextRecovery);
+      setError('Checkout status is temporarily unavailable. No new checkout was started.');
+    } finally {
+      if (checkoutRequestRef.current === requestId) setRecoveryOperation(null);
+    }
+  }, [refreshBilling]);
+
+  const resumeCheckout = useCallback(async () => {
+    const requestId = checkoutRequestRef.current + 1;
+    checkoutRequestRef.current = requestId;
+    setRecoveryOperation('resuming');
+    try {
+      const response = await authFetch('/api/stripe/checkout/resume', {
+        method: 'POST',
+        cache: 'no-store',
+      });
+      const payload = parseStripeCheckoutResumeResult(await response.json());
+      if (checkoutRequestRef.current !== requestId) return;
+      if (!payload) throw new Error('Invalid checkout recovery response');
+      if (payload.status === 'open' && payload.mode === 'embedded') {
+        setRecovery(null);
+        setError('');
+        setClientSecret(payload.clientSecret);
+        return;
+      }
+      if (payload.status === 'open' && payload.mode === 'hosted') {
+        window.location.assign(payload.url);
+        return;
+      }
+      if (payload.status === 'complete' || payload.status === 'idle' || payload.status === 'expired') {
+        await refreshBilling().catch(() => {});
+      }
+      const nextRecovery = recoveryForStripeCheckoutStatus(payload.status);
+      setRecovery(nextRecovery);
+      setError(nextRecovery?.message || '');
+    } catch {
+      if (checkoutRequestRef.current !== requestId) return;
+      const nextRecovery = recoveryForStripeCheckoutStatus('open');
+      setRecovery(nextRecovery);
+      setError('Checkout could not be resumed safely. No new checkout was started.');
+    } finally {
+      if (checkoutRequestRef.current === requestId) setRecoveryOperation(null);
+    }
+  }, [refreshBilling]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialPlan = parsePlanParam(params.get('plan'));
+    const initialInterval = parseIntervalParam(params.get('interval'));
+
+    setSelectedPlan(initialPlan);
+    setInterval(initialInterval);
+    analytics.upgradeViewed('upgrade_page', initialPlan, initialInterval);
+  }, []);
+
+  useEffect(() => () => {
+    checkoutRequestRef.current += 1;
   }, []);
 
   useEffect(() => {
-    createCheckoutSession(selectedPlan, interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    resetCheckoutState();
+  }, [selectedPlan, interval, resetCheckoutState]);
 
   const handlePlanChange = (plan: PlanOption) => {
     if (plan === selectedPlan) return;
+    analytics.upgradePlanSelected('upgrade_page', plan, interval);
     setSelectedPlan(plan);
-    createCheckoutSession(plan, interval);
   };
 
   const handleIntervalChange = (newInterval: BillingInterval) => {
     if (newInterval === interval) return;
+    analytics.upgradeIntervalSelected('upgrade_page', selectedPlan, newInterval);
     setInterval(newInterval);
-    createCheckoutSession(selectedPlan, newInterval);
   };
 
-  const planCfg = PLAN_CONFIG[selectedPlan][interval];
+  const planCfg = prices.plans[selectedPlan][interval];
+  const priceLookupFailed = Boolean(pricesError) || planCfg.sourceStatus === 'retrieval_error';
+  const checkoutAvailable = checkout.options[selectedPlan][interval]
+    && !pricesLoading
+    && (priceLookupFailed || priceIsAvailable(planCfg));
+  const checkoutUnavailable = !pricesLoading && !checkout.options[selectedPlan][interval];
+  const checkoutConfirmationPending = recovery?.code === 'STRIPE_CHECKOUT_CONFIRMATION_PENDING';
   const isStudio = selectedPlan === 'studio';
+  const selectedIdentity = getPlanIdentity(selectedPlan);
+  const proIdentity = getPlanIdentity('pro');
+  const maxIdentity = getPlanIdentity('studio');
 
   return (
     <div
-      className="min-h-screen flex flex-col lg:flex-row"
+      className="mobile-app-content flex min-h-dvh flex-col min-[1360px]:flex-row"
       style={{ background: isLight ? '#F8FAFC' : '#060608' }}
     >
 
       {/* ───── LEFT PANEL ───── */}
-      <div className="w-full lg:w-[55%] px-6 sm:px-10 lg:px-14 py-10 lg:py-14 flex flex-col overflow-y-auto">
+      <div className="flex w-full flex-col overflow-y-auto px-4 py-4 sm:px-10 sm:py-8 min-[1360px]:w-[55%] min-[1360px]:px-14 min-[1360px]:py-14">
 
         {/* Back */}
         <button
+          type="button"
           onClick={() => router.push('/suite')}
-          className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors mb-8 w-fit"
+          className="mb-8 flex min-h-11 w-fit items-center gap-1.5 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
         >
-          <span className="material-symbols-rounded text-[16px]">arrow_back</span>
-          Back to Dashboard
+          <span className="material-symbols-rounded text-[16px]" aria-hidden="true">arrow_back</span>
+          Back to dashboard
         </button>
 
         {/* Hero */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold mb-4"
-            style={{
-              background: isStudio ? 'rgba(244,63,94,0.1)' : 'rgba(16,185,129,0.1)',
-              color: isStudio ? '#f43f5e' : '#10b981',
-              border: `1px solid ${isStudio ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)'}`,
-            }}>
-            <span className="material-symbols-rounded text-[12px]">{isStudio ? 'ink_pen' : 'bolt'}</span>
-            {isStudio ? 'TALENT MAX' : 'TALENT PRO'}
-          </div>
+          <PlanBadge tier={selectedPlan} active size="md" className="mb-4" />
           <h1 className="text-3xl sm:text-4xl font-bold text-[var(--text-primary)] mb-3 leading-tight">
-            {isStudio ? <>AI Writing +<br />Career Intelligence</> : <>Supercharge your<br />career intelligence</>}
+            {selectedIdentity.displayName}
           </h1>
-          <p className="text-[var(--text-secondary)] text-base max-w-md">
-            {isStudio
-              ? 'Everything in Pro plus the AI Humanizer pipeline — 50K words/month of AI-to-human rewriting.'
-              : 'Every tool. No daily caps. 3× faster AI. Your unfair advantage in the job market.'}
+          <p className="max-w-md text-base leading-7 text-[var(--text-secondary)]">
+            {PLAN_VALUE_COPY[selectedPlan].description}
           </p>
         </motion.div>
 
         {/* Plan Selector */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="mb-6">
-          <div className="grid grid-cols-2 gap-3 max-w-md">
+          <div className="grid max-w-md grid-cols-1 gap-3 sm:grid-cols-2">
             {(['pro', 'studio'] as PlanOption[]).map(plan => {
               const active = selectedPlan === plan;
-              const accent = plan === 'studio' ? '#f43f5e' : '#10b981';
+              const identity = getPlanIdentity(plan);
               return (
                 <motion.button
                   key={plan}
+                  type="button"
+                  aria-pressed={active}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => handlePlanChange(plan)}
-                  className="p-4 rounded-xl text-left transition-all relative overflow-hidden"
+                  className="relative min-h-11 min-w-0 overflow-hidden rounded-lg p-4 text-left transition-all"
                   style={{
-                    background: active ? `${accent}12` : isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-                    border: `2px solid ${active ? accent : isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
-                    boxShadow: active ? `0 4px 20px ${accent}20` : 'none',
+                    background: active ? identity.surface : 'var(--bg-surface)',
+                    border: `2px solid ${active ? identity.accent : 'var(--border-subtle)'}`,
+                    boxShadow: active ? `0 4px 20px color-mix(in srgb, ${identity.accent} 18%, transparent)` : 'none',
                   }}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: accent }}>
-                      {plan === 'studio' ? 'Max' : 'Pro'}
-                    </span>
-                    {plan === 'studio' && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                        RECOMMENDED
-                      </span>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <PlanBadge tier={plan} active={active} size="xs" />
+                    {active && (
+                      <motion.span
+                        layoutId="plan-check"
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+                        style={{ backgroundColor: identity.accent, color: identity.buttonText }}
+                      >
+                        <span className="material-symbols-rounded text-[13px]" aria-hidden="true">check</span>
+                      </motion.span>
                     )}
                   </div>
-                  <p className="text-xl font-black text-[var(--text-primary)]">
-                    {PLAN_CONFIG[plan][interval].price}
-                    <span className="text-sm font-normal text-[var(--text-secondary)]">{PLAN_CONFIG[plan][interval].period}</span>
+                  <p className="break-words text-xl font-black leading-tight text-[var(--text-primary)]">
+                    {prices.plans[plan][interval].display}
                   </p>
-                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">
-                    {plan === 'studio' ? 'Everything + 50K AI words/mo' : 'All career tools unlocked'}
+                  <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+                    {PLAN_VALUE_COPY[plan].selector}
                   </p>
-                  {active && (
-                    <motion.div
-                      layoutId="plan-check"
-                      className="absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: accent }}
-                    >
-                      <span className="text-white text-xs">✓</span>
-                    </motion.div>
-                  )}
                 </motion.button>
               );
             })}
@@ -213,99 +373,121 @@ export default function UpgradePage() {
         {/* Billing Toggle */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-8">
           <div
-            className="inline-flex p-1 rounded-xl gap-1"
+            className="grid w-full max-w-md grid-cols-2 gap-1 rounded-lg p-1"
             style={{ background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)' }}
           >
             {(['month', 'year'] as BillingInterval[]).map(int => {
-              const accent = isStudio ? '#f43f5e' : '#10b981';
+              const optionPrice = prices.plans[selectedPlan][int];
               return (
                 <button
                   key={int}
+                  type="button"
+                  aria-pressed={interval === int}
                   onClick={() => handleIntervalChange(int)}
-                  className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all relative ${
+                  className={`relative min-h-11 min-w-0 rounded-lg px-2 py-2 text-sm font-semibold transition-all ${
                     interval === int
-                      ? 'text-white shadow-lg'
+                      ? 'shadow-lg'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
-                  style={interval === int ? { backgroundColor: accent, boxShadow: `0 4px 14px ${accent}30` } : {}}
+                  style={interval === int ? {
+                    background: selectedIdentity.surface,
+                    color: 'var(--text-primary)',
+                    border: `1px solid ${selectedIdentity.border}`,
+                    boxShadow: `0 4px 14px color-mix(in srgb, ${selectedIdentity.accent} 22%, transparent)`,
+                  } : {}}
                 >
-                  {PLAN_CONFIG[selectedPlan][int].label} — {PLAN_CONFIG[selectedPlan][int].price}{PLAN_CONFIG[selectedPlan][int].period}
-                  {int === 'year' && (
-                    <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                      interval === 'year' ? 'bg-white/25 text-white' : `text-[${accent}]`
-                    }`}
-                      style={interval !== 'year' ? { background: `${accent}18`, color: accent } : {}}
-                    >
-                      {(PLAN_CONFIG[selectedPlan][int] as any).savings}
-                    </span>
-                  )}
+                  <span className="block">{PLAN_COPY[selectedPlan][int].label}</span>
+                  <span className="mt-0.5 block break-words text-[11px] leading-4 opacity-80">
+                    {optionPrice.display}
+                    {int === 'year' && optionPrice.savingsLabel ? ` - ${optionPrice.savingsLabel}` : ''}
+                  </span>
                 </button>
               );
             })}
           </div>
-          <p className="text-xs mt-2 ml-1 flex items-center gap-1"
-            style={{ color: isStudio ? '#f43f5e' : '#10b981' }}>
-            <span className="material-symbols-rounded text-[13px]">
+          <p className="ml-1 mt-2 flex min-w-0 items-start gap-1 text-xs leading-5"
+            style={{ color: selectedIdentity.accent }}>
+            <span className="material-symbols-rounded mt-0.5 shrink-0 text-[13px]" aria-hidden="true">
               {interval === 'year' ? 'trending_down' : 'local_cafe'}
             </span>
-            {planCfg.billed}
+            <span className="min-w-0">{billingLine(planCfg)}</span>
           </p>
         </motion.div>
 
         {/* Features */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="mb-8">
           <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-4">
-            {isStudio ? 'Everything in Pro, plus:' : 'Everything included in Pro'}
+            {isStudio ? 'Everything in Pro, plus Sona' : 'Core active job-search tools'}
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(isStudio ? STUDIO_EXTRAS : PRO_FEATURES).map((f, i) => (
-              <motion.div
+              <motion.li
                 key={f.title}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.22 + i * 0.04 }}
-                className="p-4 rounded-xl flex items-start gap-3"
-                style={{
-                  background: isLight ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'}`,
-                }}
+                className="flex min-w-0 items-start gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4"
               >
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${f.color}18`, color: f.color }}
+                  className="icon-shell-neutral flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border"
                 >
-                  <span className="material-symbols-rounded text-[18px]">{f.icon}</span>
+                  <span className="material-symbols-rounded text-[18px]" aria-hidden="true">{f.icon}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-0.5">{f.title}</h3>
                   <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{f.desc}</p>
                 </div>
-              </motion.div>
+              </motion.li>
             ))}
-          </div>
+          </ul>
         </motion.div>
 
         {/* Comparison Table */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} className="mb-6">
           <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">Plan comparison</h2>
-          <div className="rounded-xl overflow-hidden border"
-            style={{ borderColor: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)' }}>
-            <table className="w-full text-sm">
+          <div className="space-y-2 sm:hidden" aria-label="Plan comparison">
+            {COMPARISON.map(row => (
+              <section key={row.label} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">{row.label}</h3>
+                <dl className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="min-w-0">
+                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Free</dt>
+                    <dd className="mt-1 break-words text-[11px] leading-4 text-[var(--text-secondary)]">{row.free}</dd>
+                  </div>
+                  <div className="min-w-0 border-l border-[var(--border-subtle)] pl-2">
+                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: proIdentity.accent }}>Pro</dt>
+                    <dd className="mt-1 break-words text-[11px] font-semibold leading-4" style={{ color: proIdentity.accent }}>{row.pro}</dd>
+                  </div>
+                  <div className="min-w-0 border-l border-[var(--border-subtle)] pl-2">
+                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: maxIdentity.accent }}>Max</dt>
+                    <dd className="mt-1 break-words text-[11px] font-semibold leading-4" style={{ color: maxIdentity.accent }}>{row.studio}</dd>
+                  </div>
+                </dl>
+              </section>
+            ))}
+          </div>
+          <div
+            role="region"
+            aria-label="Plan comparison table"
+            tabIndex={0}
+            className="hidden max-w-full overflow-x-auto rounded-lg border border-[var(--border-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border)] sm:block"
+          >
+            <table className="w-full table-fixed text-sm">
               <thead>
                 <tr style={{ background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)' }}>
-                  <th className="text-left px-4 py-2.5 text-[var(--text-muted)] text-xs font-medium">Feature</th>
+                  <th className="w-[34%] px-4 py-2.5 text-left text-xs font-medium text-[var(--text-muted)]">Feature</th>
                   <th className="text-center px-3 py-2.5 text-[var(--text-muted)] text-xs font-medium">Free</th>
-                  <th className="text-center px-3 py-2.5 text-emerald-500 text-xs font-bold">Pro</th>
-                  <th className="text-center px-3 py-2.5 text-rose-400 text-xs font-bold">Max</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-bold" style={{ color: proIdentity.accent }}>Pro</th>
+                  <th className="text-center px-3 py-2.5 text-xs font-bold" style={{ color: maxIdentity.accent }}>Max</th>
                 </tr>
               </thead>
               <tbody>
                 {COMPARISON.map(row => (
                   <tr key={row.label} style={{ borderTop: `1px solid ${isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}` }}>
-                    <td className="px-4 py-2.5 text-[var(--text-primary)] text-xs">{row.label}</td>
-                    <td className="px-3 py-2.5 text-center text-[var(--text-muted)] text-xs">{row.free}</td>
-                    <td className="px-3 py-2.5 text-center text-emerald-500 text-xs font-semibold">{row.pro}</td>
-                    <td className="px-3 py-2.5 text-center text-rose-400 text-xs font-semibold">{row.studio}</td>
+                    <td className="break-words px-4 py-2.5 text-xs text-[var(--text-primary)]">{row.label}</td>
+                    <td className="break-words px-3 py-2.5 text-center text-xs text-[var(--text-muted)]">{row.free}</td>
+                    <td className="break-words px-3 py-2.5 text-center text-xs font-semibold" style={{ color: proIdentity.accent }}>{row.pro}</td>
+                    <td className="break-words px-3 py-2.5 text-center text-xs font-semibold" style={{ color: maxIdentity.accent }}>{row.studio}</td>
                   </tr>
                 ))}
               </tbody>
@@ -317,7 +499,7 @@ export default function UpgradePage() {
 
       {/* ───── RIGHT PANEL: Stripe Checkout ───── */}
       <div
-        className="w-full lg:w-[45%] px-6 sm:px-10 lg:px-12 py-10 lg:py-14 flex flex-col justify-start lg:sticky lg:top-0 lg:h-screen"
+        className="flex w-full flex-col justify-start px-4 py-4 sm:px-10 sm:py-8 min-[1360px]:sticky min-[1360px]:top-0 min-[1360px]:h-dvh min-[1360px]:w-[45%] min-[1360px]:px-12 min-[1360px]:py-14"
         style={{
           background: isLight ? '#FFFFFF' : '#0A0A0C',
           borderLeft: `1px solid ${isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'}`,
@@ -327,29 +509,31 @@ export default function UpgradePage() {
 
           {/* Plan summary card */}
           <div
-            className="p-5 rounded-2xl mb-6"
+            className="mb-6 rounded-lg p-5"
             style={{
-              background: isStudio ? 'rgba(244,63,94,0.05)' : 'rgba(16,185,129,0.05)',
-              border: `1px solid ${isStudio ? 'rgba(244,63,94,0.18)' : 'rgba(16,185,129,0.18)'}`,
+              background: selectedIdentity.surface,
+              border: `1px solid ${selectedIdentity.border}`,
             }}
           >
-            <div className="flex items-center justify-between mb-1.5">
-              <div>
+            <div className="mb-3 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <p className="text-xs text-[var(--text-secondary)] mb-0.5">You're getting</p>
                 <p className="text-base font-bold text-[var(--text-primary)]">
-                  Talent {isStudio ? 'Max' : 'Pro'}
+                  {selectedIdentity.displayName}
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-2xl font-black" style={{ color: isStudio ? '#f43f5e' : '#10b981' }}>
-                  {planCfg.price}
+              <div className="min-w-0 sm:text-right">
+                <p className="break-words text-2xl font-black leading-tight" style={{ color: selectedIdentity.accent }}>
+                  {planCfg.display}
                 </p>
-                <p className="text-[11px] text-[var(--text-muted)]">{planCfg.period}</p>
               </div>
             </div>
+            <p className="text-xs leading-5 text-[var(--text-secondary)]">
+              {PLAN_VALUE_COPY[selectedPlan].summary}
+            </p>
             <p className="text-xs text-[var(--text-secondary)] mt-2 border-t pt-2"
-              style={{ borderColor: isStudio ? 'rgba(244,63,94,0.15)' : 'rgba(16,185,129,0.15)' }}>
-              {planCfg.billed}
+              style={{ borderColor: `color-mix(in srgb, ${selectedIdentity.accent} 18%, var(--border-subtle))` }}>
+              {billingLine(planCfg)}
             </p>
           </div>
 
@@ -358,41 +542,139 @@ export default function UpgradePage() {
             <div className="flex flex-col items-center justify-center py-20">
               <div className="w-7 h-7 border-2 rounded-full animate-spin mb-4"
                 style={{
-                  borderColor: `${isStudio ? 'rgba(244,63,94,0.3)' : 'rgba(16,185,129,0.3)'}`,
-                  borderTopColor: isStudio ? '#f43f5e' : '#10b981',
+                  borderColor: `color-mix(in srgb, ${selectedIdentity.accent} 30%, transparent)`,
+                  borderTopColor: selectedIdentity.accent,
                 }}
               />
-              <p className="text-sm text-[var(--text-secondary)]">Preparing secure checkout...</p>
+              <p className="text-sm text-[var(--text-secondary)]">Opening secure checkout...</p>
             </div>
           )}
 
           {error && !loading && (
-            <div className="text-center py-12">
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-                <span className="material-symbols-rounded text-red-500">error</span>
+            <div className={`rounded-lg border p-5 ${checkoutConfirmationPending ? 'border-blue-500/20 bg-blue-500/[0.06]' : 'border-rose-500/20 bg-rose-500/[0.06]'}`}>
+              <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full ${checkoutConfirmationPending ? 'bg-blue-500/10' : 'bg-rose-500/10'}`}>
+                <span className={`material-symbols-rounded ${checkoutConfirmationPending ? 'text-blue-500' : 'text-rose-500'}`} aria-hidden="true">
+                  {checkoutConfirmationPending ? 'schedule' : 'error'}
+                </span>
               </div>
-              <p className="text-sm text-red-500 mb-4">{error}</p>
-              <button
-                onClick={() => createCheckoutSession(selectedPlan, interval)}
-                className="text-sm font-medium hover:underline"
-                style={{ color: isStudio ? '#f43f5e' : '#10b981' }}
-              >
-                Try again
-              </button>
+              <h2 className="text-center text-base font-bold text-[var(--text-primary)]">{recovery?.title || 'Checkout needs attention'}</h2>
+              <p className="mt-2 text-center text-sm leading-6 text-[var(--text-secondary)]">{error}</p>
+              <div className="mt-5 grid gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (recovery?.primaryAction === 'manage_billing') {
+                      router.push('/suite/settings?tab=subscription');
+                    } else if (recovery?.primaryAction === 'contact_support') {
+                      router.push('/suite/feedback?context=billing-account-review');
+                    } else if (recovery?.primaryAction === 'resume_checkout') {
+                      await resumeCheckout();
+                    } else if (recovery?.primaryAction === 'check_availability') {
+                      await checkCheckoutStatus();
+                    } else {
+                      createCheckoutSession(selectedPlan, interval);
+                    }
+                  }}
+                  disabled={Boolean(recoveryOperation) || (recovery?.primaryAction === 'retry' && !checkoutAvailable)}
+                  aria-busy={Boolean(recoveryOperation)}
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[13px] px-4 text-sm font-bold transition hover:brightness-105 disabled:cursor-wait disabled:opacity-80 disabled:hover:brightness-100"
+                  style={{
+                    background: recovery?.primaryAction === 'contact_support' || checkoutAvailable ? selectedIdentity.accent : 'var(--bg-elevated)',
+                    color: recovery?.primaryAction === 'contact_support' || checkoutAvailable ? selectedIdentity.buttonText : 'var(--text-muted)',
+                    cursor: recovery?.primaryAction === 'contact_support' || checkoutAvailable ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  <span className={`material-symbols-rounded text-[18px] ${recoveryOperation ? 'animate-spin' : ''}`} aria-hidden="true">
+                    {recoveryOperation
+                      ? 'progress_activity'
+                      : recovery?.primaryAction === 'manage_billing'
+                      ? 'account_balance_wallet'
+                      : recovery?.primaryAction === 'contact_support'
+                        ? 'support_agent'
+                        : recovery?.primaryAction === 'resume_checkout'
+                          ? 'play_circle'
+                        : 'refresh'}
+                  </span>
+                  {recoveryOperation === 'checking'
+                    ? 'Checking status...'
+                    : recoveryOperation === 'resuming'
+                      ? 'Resuming checkout...'
+                      : recovery?.primaryLabel || 'Retry checkout'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/suite/settings?tab=subscription')}
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+                >
+                  <span className="material-symbols-rounded text-[18px]" aria-hidden="true">settings</span>
+                  Billing settings
+                </button>
+              </div>
+              <p className="mt-4 text-center text-[11px] leading-5 text-[var(--text-muted)]">
+                In local development this can happen when Stripe keys or price ids are not configured.
+              </p>
             </div>
           )}
 
           {clientSecret && !loading && (
-            <EmbeddedCheckoutProvider stripe={stripePromise} options={{ clientSecret }}>
+            <EmbeddedCheckoutProvider key={clientSecret} stripe={stripePromise} options={{ clientSecret }}>
               <div style={{ colorScheme: isStudio ? 'dark' : (theme === 'light' ? 'light' : 'dark') }}>
                 <EmbeddedCheckout className="stripe-checkout-embed" />
               </div>
             </EmbeddedCheckoutProvider>
           )}
 
+          {checkoutUnavailable && !clientSecret && !loading && !error && (
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                <span className="material-symbols-rounded" aria-hidden="true">credit_card_off</span>
+              </div>
+              <h2 className="text-base font-bold text-[var(--text-primary)]">Checkout is temporarily unavailable</h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">This billing option is temporarily unavailable. Your current plan remains active.</p>
+              <button
+                type="button"
+                onClick={refreshBilling}
+                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 text-sm font-semibold text-[var(--text-primary)]"
+              >
+                <span className="material-symbols-rounded text-[18px]" aria-hidden="true">refresh</span>
+                Check again
+              </button>
+            </div>
+          )}
+
+          {!checkoutUnavailable && !clientSecret && !loading && !error && (
+            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+                style={{ background: `color-mix(in srgb, ${selectedIdentity.accent} 12%, transparent)`, color: selectedIdentity.accent }}>
+                <span className="material-symbols-rounded">lock</span>
+              </div>
+              <h2 className="text-center text-base font-bold text-[var(--text-primary)]">Ready when you are</h2>
+              <p className="mt-2 text-center text-sm leading-6 text-[var(--text-secondary)]">
+                Review the plan and billing interval first. Stripe checkout opens only after you start it.
+              </p>
+              <button
+                type="button"
+                onClick={() => createCheckoutSession(selectedPlan, interval)}
+                disabled={!checkoutAvailable}
+                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[13px] px-4 text-sm font-bold transition hover:brightness-105 disabled:hover:brightness-100"
+                style={{
+                  background: checkoutAvailable ? selectedIdentity.accent : 'var(--bg-elevated)',
+                  color: checkoutAvailable ? selectedIdentity.buttonText : 'var(--text-muted)',
+                  cursor: checkoutAvailable ? 'pointer' : 'not-allowed',
+                }}
+              >
+                <span className="material-symbols-rounded text-[18px]" aria-hidden="true">lock</span>
+                {checkoutAvailable ? 'Start secure checkout' : 'Checkout unavailable'}
+              </button>
+              <p className="mt-3 text-center text-[11px] leading-5 text-[var(--text-muted)]">
+                No payment is submitted until you confirm inside Stripe.
+              </p>
+            </div>
+          )}
+
           <p className="text-[11px] text-center text-[var(--text-muted)] mt-6 flex justify-center items-center gap-1.5">
             <span className="material-symbols-rounded text-[13px]">lock</span>
-            Secure · Powered by Stripe · Cancel anytime
+            Secure checkout by Stripe. Manage billing from Settings.
           </p>
         </div>
       </div>

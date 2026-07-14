@@ -1,170 +1,129 @@
-# 🧠 TalentConsulting.io - Interview Intelligence Platform
+# TalentConsulting.io
 
-A premium, cloud-powered HTML5 application for autonomous interview strategy, transcription, and candidate calibration with multi-user support.
+TalentConsulting.io is a mobile-first AI career workspace. Sona uses a job seeker's real resume, goals and saved career evidence to find stronger-fit roles, explain the match, prepare truthful application packets and keep every external action under the user's control.
 
-![Version](https://img.shields.io/badge/version-2.0.0-cyan)
-![Database](https://img.shields.io/badge/database-supabase-green)
-![Auth](https://img.shields.io/badge/auth-built--in-purple)
+The product is not a blind auto-apply service. It helps users choose better roles, prepare stronger work and review each next step.
 
-## ✨ Features
+## Company direction
 
-### 🤖 AI Assistant Chat (NEW!)
-- **Always-Available Help**: Beautiful floating chat assistant in bottom-right corner
-- **Powered by Groq GPT-OSS 120B ⚡**: Lightning-fast responses (<1 second)
-- **Context-Aware Conversations**: Remembers your chat history for intelligent follow-ups
-- **Career-Focused AI**: Specialized for interview prep, resume tips, and job search advice
-- **Liquid Glass Design**: Stunning UI with smooth Framer Motion animations
-- **Quick Prompts**: One-click starter questions to get help fast
-- **Privacy First**: Ephemeral conversations, no data stored
+Mission: help job seekers make better career moves with less wasted effort.
 
-### Phase 1: Pre-Interview Detective 🔍
-- **CV Intelligence Loader**: Drag-and-drop PDF parsing with PDF.js
-- **AI Battle-Plan Generation**: Groq GPT-OSS 120B analyzes CV vs JD to create customized interview questions
-- **Risk Factor Analysis**: Identifies gaps and potential concerns
-- **Trap Questions**: Expert-level validation questions for claimed expertise
+Vision: become the trusted career operating system for serious job seekers.
 
-### Phase 2: Live Co-Pilot 🎙️
-- **Real-time Transcription**: Web Speech API for live interview transcription
-- **Keyword Detection**: Automatic highlighting of technical terms
-- **AI Nudges**: Smart prompts when candidate responses are vague
-- **Audio Snippets**: Save key moments with MediaRecorder API
+Current objective: turn resume upload into a complete activation flow. Within 10 minutes, a user should receive at least 3 explainable job matches and open one review-ready application packet.
 
-### Phase 3: Calibration Engine ⚖️
-- **Hybrid Grading**: Human assessment sliders for soft skills
-- **AI Assessment**: Automated technical scoring from transcript
-- **Radar Visualization**: Chart.js overlay comparing human vs AI grades
-- **Auto-Summary**: AI-generated interview notes
+See [`PRODUCT.md`](./PRODUCT.md), [`docs/company-parity-goal.md`](./docs/company-parity-goal.md) and [`docs/revenue-generation-strategy.md`](./docs/revenue-generation-strategy.md) for the product strategy and measures.
 
-### Phase 4: Analytics Hub 📊
-- **Candidate Leaderboard**: Compare all interviewed candidates
-- **Score Comparison**: Bar charts for visual ranking
-- **PDF Export**: Professional reports with signature line
-- **Local Persistence**: All data stored in IndexedDB (never leaves your browser)
+## Core workflow
 
-## 🚀 Quick Start
+1. Upload or build a resume.
+2. Tell Sona the target role, salary, location and work mode.
+3. Review ranked job picks with fit reasons, source notes and risks.
+4. Ask Sona to prepare a truthful application packet.
+5. Review the resume, cover letter, screening notes and proof checks.
+6. Apply manually, track the outcome and improve future recommendations.
 
-### 1. Setup Supabase Database
-- Follow the detailed guide in [`SUPABASE_SETUP.md`](./SUPABASE_SETUP.md)
-- Create your free Supabase account
-- Run the SQL schema
-- Get your credentials
+## Product areas
 
-### 2. Open the Application
-- Simply double-click `index.html` or open it in Chrome/Edge
-- Or run a local server: `python -m http.server 8000`
+- Sona Agent: career context, job scouting, packet preparation and next actions
+- Resume Studio: resume import, editing, truth-locked morphing, templates and export
+- ATS Analyzer: parser checks, keyword fit and job-specific evidence
+- Job Search Workbench: safe-source search, recommendation scoring and packet entry
+- Applications Command Center: pipeline, follow-ups, outcomes and offer context
+- Agent Queue: review-first application packets and approval controls
+- Interview Studio: quick drills, mock interviews, whiteboard practice and debriefs
+- Story Bank: truthful STAR stories linked to interview questions
+- Writing Toolkit: cover letters, recruiter replies, LinkedIn copy and writing polish
+- Career Intelligence: Career Twin memory, goals, proof and active-search signals
 
-### 3. Configure Settings
-- Click ⚙️ Settings in the header
-- Enter your **Supabase URL** and **Anon Key**
-- Enter your [Groq API key](https://console.groq.com/keys)
-- Click Save Configuration
+## Technology
 
-### 4. Create Account & Login
-- Click **Sign Up** to create your account
-- Verify email (if enabled)
-- **Login** to access the platform
+| Area | Implementation |
+| --- | --- |
+| Web application | Next.js App Router, React and TypeScript |
+| Styling | Tailwind CSS and CSS custom properties |
+| Authentication and data | Firebase Auth, Firestore and Firebase Admin |
+| Billing | Stripe Embedded Checkout, webhooks and customer portal |
+| AI | Vercel AI SDK, Google Gemini, Groq and provider routing |
+| Documents | PDF parsing, React PDF, DOCX generation and Mammoth |
+| Email | Resend |
+| Rate limiting | Upstash Redis |
+| Browser verification | Playwright CLI |
 
-### 5. Start Interviewing
-- Upload a CV (PDF format)
-- Paste the Job Description
-- Generate your Interview Battle-Plan
-- Use Live Co-Pilot during the interview
-- Grade and save candidates to the cloud
+## Local setup
 
-## 🔐 Security & Privacy
+Requirements:
 
-- **User Authentication**: Secure account system with email/password
-- **Row Level Security**: Database-level isolation - users only see their own data
-- **Encrypted Storage**: All data encrypted at rest in Supabase
-- **Local Config**: API keys stored in browser localStorage
-- **HTTPS**: All communication encrypted in transit
-- **GDPR Ready**: Data ownership and deletion controls built-in
+- Node.js 22
+- npm 9 or later
+- a populated `.env.local`
 
-## 🛠️ Technology Stack
+Install and run:
 
-| Component | Technology |
-|-----------|------------|
-| UI Framework | Tailwind CSS |
-| PDF Parsing | PDF.js |
-| Charts | Chart.js |
-| Speech | Web Speech API |
-| Audio | MediaRecorder API |
-| Database | Supabase (PostgreSQL) |
-| Authentication | Supabase Auth |
-| Storage | Cloud + Local |
-| AI Engine | Groq GPT-OSS 120B ⚡ |
+```bash
+npm install
+npm run dev
+```
 
-## 🎨 Design Philosophy
+Open [http://localhost:3000](http://localhost:3000).
 
-- **2026 Silicon Valley Aesthetic**: Glassmorphism, dark mode, neon cyan accents
-- **Premium SaaS Feel**: Blurred glass cards, smooth animations
-- **Responsive**: Works on desktop and tablet
+Use [`env.example`](./env.example) as the variable checklist. Never commit `.env.local` or print secret values in logs.
 
-## ⚠️ Browser Requirements
+Important environment groups:
 
-- **Chrome** (recommended) - Full feature support
-- **Edge** - Full feature support  
-- **Firefox** - Limited speech recognition
-- **Safari** - Limited speech recognition
+- Firebase client and admin credentials
+- AI provider keys
+- Stripe publishable, secret, webhook and price identifiers
+- Resend email configuration
+- Turnstile and Upstash configuration
+- Ever Jobs service URL, API key and safe-source controls
+- cron authentication
 
-## 👥 Multi-User Features
+## Quality commands
 
-- **Personal Workspace**: Each user has their own private candidate database
-- **Cloud Sync**: Access your data from any device
-- **Secure Isolation**: Row Level Security ensures data privacy
-- **Team Ready**: Multiple users can use the same Supabase instance
-- **Export Anytime**: Generate PDF reports for any candidate
+```bash
+npm run type-check
+npm run test:sona-harness
+npm run test:career-twin
+npm run seo:audit:ci
+npm run security:cve:ci
+npm run build
+```
 
-## 📝 Usage Tips
+Use `git diff --check` before a release.
 
-1. **For best transcription**: Use a quality microphone and speak clearly
-2. **Battle Plan works best**: When both CV and JD are detailed
-3. **Save snippets**: During important candidate responses
-4. **Stay logged in**: Your data is securely stored in the cloud
-5. **Export reports**: Generate professional PDFs for stakeholders
-6. **Access anywhere**: Login from any device to view your candidates
+Substantial UI changes also require browser checks at 320px, 390px, 430px, 768px, 1024px and 1440px. Check the core result state, console errors and horizontal overflow.
 
-## 🔑 Getting Your Credentials
+## Product safety
 
-### Supabase Credentials
-1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
-2. Create a new project (or select existing)
-3. Go to Project Settings → API
-4. Copy your **Project URL** and **anon/public key**
-5. See [`SUPABASE_SETUP.md`](./SUPABASE_SETUP.md) for detailed database setup
+- Preserve schools, degrees, certifications, employers, job titles, dates, locations and contact details from the source resume.
+- Do not invent experience, skills, credentials or quantified achievements.
+- Treat ATS, salary, detector and fit scores as indicators, not proof.
+- Show source confidence, missing evidence and risk notes where relevant.
+- Require user review before any external application, message or notification.
+- Use explicit consent for email and text alerts.
+- Keep restricted-source scraping and blind auto-apply out of the default product.
 
-### Groq API Key
-1. Go to [Groq Console](https://console.groq.com/keys)
-2. Sign in with your account
-3. Click "Create API Key"
-4. Copy and paste into TalentConsulting.io settings
+## Mobile standard
 
-## 🐛 Troubleshooting
+Mobile is a complete product surface. The resume-to-job-to-packet flow must work at 320px without horizontal overflow, hidden actions or desktop side rails squeezed into the reading column.
 
-**Can't login or signup?**
-- Verify Supabase credentials in Settings
-- Check browser console for errors
-- Ensure database schema is created correctly
+Interactive controls should use at least a 44px touch target. Mobile inputs should use at least 16px text. Sticky workflow actions must respect safe areas and must not cover content.
 
-**Battle Plan not generating?**
-- Verify Groq API key is configured in `.env.local`
-- Check that CV and JD are both filled
-- Check browser console for API errors
+## Release and operations
 
-**Candidates not saving?**
-- Ensure you're logged in
-- Verify database permissions (RLS policies)
-- Check network connectivity
+The repository supports Firebase and Cloud Run deployment paths. Review these documents before deploying:
 
-**Transcription not working?**
-- Allow microphone permissions in browser
-- Use Chrome or Edge for best support
-- Check that microphone is working in system settings
+- [`docs/launch-readiness-runbook.md`](./docs/launch-readiness-runbook.md)
+- [`docs/launch-readiness-report.md`](./docs/launch-readiness-report.md)
+- [`docs/ui-ux-launch-checklist.md`](./docs/ui-ux-launch-checklist.md)
 
-For detailed setup help, see [`SUPABASE_SETUP.md`](./SUPABASE_SETUP.md)
+Common commands:
 
----
+```bash
+npm run deploy:preview
+npm run deploy
+npm run deploy:cloudrun
+```
 
-**Built for Team Leads & Hiring Managers** | Secure & Scalable | Cloud-Powered
-
-*TalentConsulting.io - Hire smarter with AI-powered interview intelligence*
+Do not deploy from an unreviewed dirty working tree. Confirm production environment variables, Stripe checkout, webhook delivery, billing portal access and one authenticated Sona workflow before release.

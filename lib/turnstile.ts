@@ -9,7 +9,7 @@ export async function verifyTurnstile(token: string, ip?: string): Promise<boole
   const secret = process.env.TURNSTILE_SECRET_KEY;
   if (!secret) {
     console.warn('[turnstile] TURNSTILE_SECRET_KEY not set — skipping verification');
-    return true; // Fail open in dev
+    return process.env.NODE_ENV !== 'production';
   }
 
   try {

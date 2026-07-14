@@ -82,7 +82,7 @@ async function sendToDiscord(severity: Severity, opts: AlertOptions): Promise<vo
     title: `${ICONS[severity]} ${opts.title}`,
     color: COLORS[severity],
     timestamp: new Date().toISOString(),
-    footer: { text: 'Talent Consulting Monitor' },
+    footer: { text: 'TalentConsulting.io Monitor' },
   };
 
   if (opts.details) embed.description = opts.details;

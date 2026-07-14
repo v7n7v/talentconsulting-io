@@ -84,11 +84,8 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
                             <div className="p-6">
                                 {/* Header */}
                                 <div className="flex items-center gap-3 mb-5">
-                                    <div
-                                        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                                        style={{ background: 'var(--accent-dim)' }}
-                                    >
-                                        <span className="material-symbols-rounded text-lg" style={{ color: 'var(--accent)' }}>domain</span>
+                                    <div className="icon-shell-neutral w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0">
+                                        <span className="material-symbols-rounded text-lg">domain</span>
                                     </div>
                                     <div>
                                         <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>Company Information</h2>

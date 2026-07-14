@@ -5,61 +5,11 @@
  * using the user's own STAR stories as source material.
  */
 
-import { getAdminDb } from '@/lib/firebase-admin';
 import { quickClean } from '@/lib/humanize-guard';
+import { CATEGORY_PATTERNS, coverageFromStories, listStoryBankStories } from '@/lib/story-bank';
+import { matchStoryQuestion } from '@/lib/story-intelligence';
 
 // ── Behavioral Question Categories ──
-
-const CATEGORY_PATTERNS: Record<string, RegExp[]> = {
-  leadership: [
-    /lead|led|leadership|manage|mentor|delegate|team.*lead|supervise|direct/i,
-    /took charge|stepped up|guided.*team/i,
-  ],
-  teamwork: [
-    /team|collaborat|group|together|cross-functional|partner|peer/i,
-    /worked with|coordinated with/i,
-  ],
-  'conflict resolution': [
-    /conflict|disagree|difficult.*person|tension|clash|dispute|argument/i,
-    /dealt with|handle.*disagreement|resolve/i,
-  ],
-  failure: [
-    /fail|mistake|wrong|went badly|didn't work|setback|screw.*up/i,
-    /learned from|biggest mistake|something.*wrong/i,
-  ],
-  initiative: [
-    /initiative|self-start|proactive|above.*beyond|without.*asked|volunteer/i,
-    /identified.*opportunity|saw.*gap|proposed/i,
-  ],
-  communication: [
-    /communicat|present|explain|convey|persuad|influenc|pitch/i,
-    /difficult.*conversation|convince|articulate/i,
-  ],
-  'problem solving': [
-    /problem.*solv|challenge|obstacle|complex.*issue|troubleshoot|debug/i,
-    /figure.*out|creative.*solution|overcome/i,
-  ],
-  'time management': [
-    /time.*manage|deadline|priorit|multiple.*task|workload|under.*pressure/i,
-    /tight.*timeline|fast.*paced|juggl/i,
-  ],
-  adaptability: [
-    /adapt|change|pivot|ambiguity|uncertain|new.*situation|flexibility/i,
-    /adjust|shift|evolv|unexpected/i,
-  ],
-  creativity: [
-    /creative|innovate|new.*approach|outside.*box|novel|unique.*idea/i,
-    /reimagine|redesign|invent/i,
-  ],
-  'work ethic': [
-    /work.*ethic|dedication|commitment|go.*extra|above.*beyond/i,
-    /long.*hours|perseveran|determination|grind/i,
-  ],
-  'customer focus': [
-    /customer|client|user|stakeholder.*satisf|feedback|serve/i,
-    /customer.*experience|user.*need|client.*relation/i,
-  ],
-};
 
 export interface QuestionMatch {
   category: string;
@@ -110,14 +60,7 @@ export async function findBestStory(
   uid: string,
   categories: string[]
 ): Promise<{ best: QuestionMatch['story']; alternateCount: number }> {
-  const db = getAdminDb();
-  const storiesSnap = await db.collection('users').doc(uid)
-    .collection('agent_stories')
-    .orderBy('createdAt', 'desc')
-    .limit(100)
-    .get();
-
-  const stories = storiesSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+  const { stories } = await listStoryBankStories(uid, { limit: 100 });
 
   if (stories.length === 0) {
     return { best: null, alternateCount: 0 };
@@ -232,24 +175,13 @@ export async function answerBehavioralQuestion(
   alternateStories: number;
   source: string;
 }> {
-  // Step 1: Classify
-  const categories = classifyQuestion(question);
-
-  // Step 2: Search
-  const { best, alternateCount } = await findBestStory(
-    uid,
-    categories.map(c => c.category)
-  );
-
-  // Step 3: Draft
-  const answer = draftAnswer(best, question);
-
+  const result = await matchStoryQuestion(uid, { question });
   return {
-    categories,
-    story: best,
-    answer,
-    alternateStories: alternateCount,
-    source: best ? `Story Bank: "${best.title}"` : 'No matching story',
+    categories: result.categories,
+    story: result.story,
+    answer: result.answer,
+    alternateStories: result.alternateStories,
+    source: result.source,
   };
 }
 
@@ -260,49 +192,6 @@ export async function getCoverageMap(uid: string): Promise<{
   totalStories: number;
   coveragePercent: number;
 }> {
-  const db = getAdminDb();
-  const storiesSnap = await db.collection('users').doc(uid)
-    .collection('agent_stories').get();
-
-  const stories = storiesSnap.docs.map(d => d.data());
-  const totalStories = stories.length;
-
-  const categoryCounts: Record<string, number> = {};
-
-  for (const category of Object.keys(CATEGORY_PATTERNS)) {
-    categoryCounts[category] = 0;
-  }
-
-  stories.forEach(story => {
-    const tags = (story.tags || []).map((t: string) => t.toLowerCase());
-    const fullText = `${story.situation || ''} ${story.task || ''} ${story.action || ''} ${story.result || ''}`.toLowerCase();
-
-    for (const [category, patterns] of Object.entries(CATEGORY_PATTERNS)) {
-      if (tags.some((t: string) => t.includes(category) || category.includes(t))) {
-        categoryCounts[category]++;
-        continue;
-      }
-      for (const pattern of patterns) {
-        if (pattern.test(fullText)) {
-          categoryCounts[category]++;
-          break;
-        }
-      }
-    }
-  });
-
-  const covered = Object.entries(categoryCounts)
-    .filter(([, count]) => count > 0)
-    .map(([category, storyCount]) => ({ category, storyCount }))
-    .sort((a, b) => b.storyCount - a.storyCount);
-
-  const uncovered = Object.entries(categoryCounts)
-    .filter(([, count]) => count === 0)
-    .map(([category]) => category);
-
-  const coveragePercent = Math.round(
-    (covered.length / Object.keys(CATEGORY_PATTERNS).length) * 100
-  );
-
-  return { covered, uncovered, totalStories, coveragePercent };
+  const { stories } = await listStoryBankStories(uid, { limit: 150 });
+  return coverageFromStories(stories);
 }

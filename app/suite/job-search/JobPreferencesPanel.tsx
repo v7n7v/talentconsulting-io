@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { analytics } from '@/lib/analytics';
+import { useUserTier } from '@/hooks/use-user-tier';
+import { resolveAlertConsentHandoff } from '@/lib/sona/alert-consent-handoff';
 
 interface JobPreferences {
   targetRoles: string[];
@@ -13,6 +15,15 @@ interface JobPreferences {
   salaryMin: number;
   industries: string[];
   emailNotifications: boolean;
+  agentEnabled?: boolean;
+  agentMaxPerNight?: number;
+  agentMinMatchScore?: number;
+  agentExcludeCompanies?: string[];
+  agentAutonomyLevel?: 'scout' | 'prepare' | 'review' | 'assist';
+  agentDigestEmailEnabled?: boolean;
+  agentDigestFrequency?: 'daily' | 'weekly';
+  jobAlertsEnabled?: boolean;
+  jobAlertsFrequency?: 'daily' | 'weekly' | 'biweekly';
 }
 
 const INDUSTRIES = [
@@ -51,16 +62,77 @@ const WORK_STYLES = [
   { value: 'onsite' as const, label: 'On-site', icon: 'apartment', desc: 'In office' },
 ];
 
+const SONA_PICK_CADENCES = [
+  { value: 'weekly' as const, label: 'Weekly', icon: 'calendar_month', desc: 'Curated Sona Picks arrive every Monday.' },
+  { value: 'daily' as const, label: 'Daily (weekdays)', icon: 'today', desc: 'Fresh Sona Picks arrive Monday through Friday.' },
+];
+
 interface Props {
   onPrefsLoaded: (prefs: JobPreferences | null) => void;
   onClose: () => void;
   visible: boolean;
+  suggestedTargetRole?: string;
 }
 
-export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }: Props) {
+type JobAlertDeliveryStatus = 'consent_required' | 'pending' | 'ready' | 'sending' | 'accepted' | 'delivered' | 'delayed' | 'failed';
+
+function formatJobAlertDeliveryTime(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+function PreferenceSwitch({
+  id,
+  checked,
+  label,
+  onChange,
+  isLight,
+  disabled = false,
+}: {
+  id?: string;
+  checked: boolean;
+  label: string;
+  onChange: () => void;
+  isLight: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onChange}
+      disabled={disabled}
+      className="relative grid h-11 min-w-[44px] w-12 shrink-0 place-items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-45"
+    >
+      <span
+        className="absolute h-6 w-11 rounded-full transition-colors duration-200"
+        style={{
+          background: checked
+            ? 'linear-gradient(135deg, #2563eb, #06b6d4)'
+            : isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)',
+        }}
+        aria-hidden="true"
+      />
+      <motion.span
+        className="absolute left-0 h-4 w-4 rounded-full bg-white shadow-sm"
+        animate={{ x: checked ? 28 : 4 }}
+        transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
+export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible, suggestedTargetRole }: Props) {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const user = useStore((s) => s.user);
+  const { tier } = useUserTier();
 
   const [targetRoles, setTargetRoles] = useState<string[]>([]);
   const [roleInput, setRoleInput] = useState('');
@@ -69,24 +141,65 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
   const [remotePref, setRemotePref] = useState<'remote' | 'hybrid' | 'onsite' | 'any'>('any');
   const [salaryMin, setSalaryMin] = useState(0);
   const [industries, setIndustries] = useState<string[]>([]);
-  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [emailNotifications, setEmailNotifications] = useState(false);
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [agentMaxPerNight, setAgentMaxPerNight] = useState(5);
+  const [agentMinMatchScore, setAgentMinMatchScore] = useState(70);
+  const [agentExcludeCompanies, setAgentExcludeCompanies] = useState<string[]>([]);
+  const [agentAutonomyLevel, setAgentAutonomyLevel] = useState<'scout' | 'prepare' | 'review' | 'assist'>('prepare');
+  const [agentDigestEmailEnabled, setAgentDigestEmailEnabled] = useState(false);
+  const [agentDigestFrequency, setAgentDigestFrequency] = useState<'daily' | 'weekly'>('daily');
+  const [excludeInput, setExcludeInput] = useState('');
+  const [jobAlertsEnabled, setJobAlertsEnabled] = useState(false);
+  const [jobAlertsFrequency, setJobAlertsFrequency] = useState<'daily' | 'weekly'>('weekly');
+  const [jobAlertDeliveryStatus, setJobAlertDeliveryStatus] = useState<JobAlertDeliveryStatus>('consent_required');
+  const [jobAlertDeliveryMessage, setJobAlertDeliveryMessage] = useState('Email delivery stays off until you enable Sona Picks.');
+  const [providerPauseAt, setProviderPauseAt] = useState<string | null>(null);
+  const [resumeProviderPausedEmail, setResumeProviderPausedEmail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [preferenceAccess, setPreferenceAccess] = useState<'loading' | 'ready' | 'sign_in' | 'unavailable'>('loading');
+  const [preferenceLoadAttempt, setPreferenceLoadAttempt] = useState(0);
+  const preferenceLoadRequestRef = useRef(0);
   const [focusedSection, setFocusedSection] = useState<string | null>(null);
   const roleRef = useRef<HTMLInputElement>(null);
   const cityRef = useRef<HTMLInputElement>(null);
 
+  const AGENT_TIER_LIMITS: Record<string, number> = { free: 0, pro: 0, studio: 5, god: 50 };
+  const isMaxPlan = tier === 'studio' || tier === 'god';
+  const alertConsentHandoff = resolveAlertConsentHandoff({
+    loaded,
+    canPersist: preferenceAccess === 'ready',
+    saving,
+    targetRoles,
+    roleInput,
+    suggestedTargetRole,
+  });
+
   // Load prefs from Firestore
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setPreferenceAccess('sign_in');
+      setLoaded(true);
+      return;
+    }
     const token = (user as any).accessToken || (user as any).stsTokenManager?.accessToken;
-    if (!token) return;
+    if (!token) {
+      setPreferenceAccess('sign_in');
+      setLoaded(true);
+      return;
+    }
+    const requestId = preferenceLoadRequestRef.current + 1;
+    preferenceLoadRequestRef.current = requestId;
+    setLoaded(false);
+    setPreferenceAccess('loading');
 
     fetch('/api/jobs/preferences', {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
       .then(data => {
+        if (requestId !== preferenceLoadRequestRef.current) return;
         if (data.success && data.preferences) {
           const p = data.preferences;
           setTargetRoles(p.targetRoles || []);
@@ -94,14 +207,66 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
           setRemotePref(p.remotePref || 'any');
           setSalaryMin(p.salaryMin || 0);
           setIndustries(p.industries || []);
-          setEmailNotifications(p.emailNotifications !== false);
+          setEmailNotifications(p.emailNotifications === true);
+          setAgentEnabled(p.agentEnabled || false);
+          setAgentMaxPerNight(p.agentMaxPerNight || 5);
+          setAgentMinMatchScore(p.agentMinMatchScore || 70);
+          setAgentExcludeCompanies(p.agentExcludeCompanies || []);
+          setAgentAutonomyLevel(p.agentAutonomyLevel || 'prepare');
+          setAgentDigestEmailEnabled(p.agentDigestEmailEnabled === true);
+          setAgentDigestFrequency(p.agentDigestFrequency || 'daily');
+          setJobAlertsEnabled(p.jobAlertsEnabled || false);
+          setJobAlertsFrequency(p.jobAlertsFrequency === 'daily' ? 'daily' : 'weekly');
+          const delivery = data.delivery;
+          const deliveryStatus = delivery?.status as JobAlertDeliveryStatus | undefined;
+          if (deliveryStatus) setJobAlertDeliveryStatus(deliveryStatus);
+          setProviderPauseAt(typeof delivery?.pausedAt === 'string' ? delivery.pausedAt : null);
+          setResumeProviderPausedEmail(false);
+          const lastAccepted = formatJobAlertDeliveryTime(delivery?.lastAcceptedAt || delivery?.lastSentAt);
+          const lastDelivered = formatJobAlertDeliveryTime(delivery?.lastDeliveredAt);
+          if (deliveryStatus === 'delivered' && lastDelivered) {
+            setJobAlertDeliveryMessage(`Delivered to your email server ${lastDelivered} with ${delivery?.lastJobCount || 0} picks.`);
+          } else if (deliveryStatus === 'accepted' && lastAccepted) {
+            setJobAlertDeliveryMessage(`Accepted by the email provider ${lastAccepted}. Delivery confirmation is pending.`);
+          } else if (deliveryStatus === 'delayed') {
+            setJobAlertDeliveryMessage('Your email provider reports a delay. Your recommendations remain in Talent Studio.');
+          } else if (deliveryStatus === 'failed') {
+            setJobAlertDeliveryMessage(delivery?.error || delivery?.pausedReason || 'The last digest failed. Your recommendations stayed in Talent Studio.');
+          } else if (deliveryStatus === 'ready') {
+            setJobAlertDeliveryMessage('Email consent is active. Sona will use the cadence you choose.');
+          } else if (deliveryStatus === 'sending') {
+            setJobAlertDeliveryMessage('A Sona Picks digest is being sent now.');
+          }
           setLoaded(true);
+          setPreferenceAccess('ready');
           if (!data.isNew) onPrefsLoaded(p);
           else onPrefsLoaded(null);
+        } else {
+          setPreferenceAccess('unavailable');
+          setJobAlertDeliveryMessage('Email controls could not be loaded. Nothing was changed or sent.');
+          setLoaded(true);
         }
       })
-      .catch(() => setLoaded(true));
-  }, [user]);
+      .catch(() => {
+        if (requestId !== preferenceLoadRequestRef.current) return;
+        setPreferenceAccess('unavailable');
+        setJobAlertDeliveryMessage('Email controls could not be loaded. Nothing was changed or sent.');
+        setLoaded(true);
+      });
+    return () => {
+      if (preferenceLoadRequestRef.current === requestId) preferenceLoadRequestRef.current += 1;
+    };
+  }, [preferenceLoadAttempt, user]);
+
+  useEffect(() => {
+    if (!isMaxPlan && jobAlertsFrequency !== 'weekly') {
+      setJobAlertsFrequency('weekly');
+    }
+  }, [isMaxPlan, jobAlertsFrequency]);
+
+  useEffect(() => {
+    if (alertConsentHandoff.suggestedRole) setRoleInput(alertConsentHandoff.suggestedRole);
+  }, [alertConsentHandoff.suggestedRole]);
 
   const addRole = () => {
     const v = roleInput.trim();
@@ -126,10 +291,6 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
   };
 
   const savePrefs = async () => {
-    if (!user) return;
-    const token = (user as any).accessToken || (user as any).stsTokenManager?.accessToken;
-    if (!token) return;
-
     setSaving(true);
     try {
       // Auto-commit any pending role/city input
@@ -147,20 +308,53 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
         setPreferredCities(cities);
         setCityInput('');
       }
-      const prefs: JobPreferences = { targetRoles: roles, preferredCities: cities, remotePref, salaryMin, industries, emailNotifications };
+      const prefs: JobPreferences = {
+        targetRoles: roles, preferredCities: cities, remotePref, salaryMin, industries, emailNotifications,
+        agentEnabled: isMaxPlan ? agentEnabled : false, agentMaxPerNight, agentMinMatchScore, agentExcludeCompanies,
+        agentAutonomyLevel, agentDigestEmailEnabled: isMaxPlan ? agentDigestEmailEnabled : false, agentDigestFrequency,
+        jobAlertsEnabled, jobAlertsFrequency: isMaxPlan ? jobAlertsFrequency : 'weekly',
+      };
+      const token = user ? ((user as any).accessToken || (user as any).stsTokenManager?.accessToken) : null;
+      if (!token) {
+        onPrefsLoaded(prefs);
+        onClose();
+        return;
+      }
       const res = await fetch('/api/jobs/preferences', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(prefs),
+        body: JSON.stringify({
+          ...prefs,
+          jobAlertsConsentAcknowledged: jobAlertsEnabled,
+          jobAlertsConsentSource: 'job_preferences',
+          agentDigestConsentAcknowledged: isMaxPlan && agentDigestEmailEnabled,
+          agentDigestConsentSource: 'job_preferences',
+          resumeAfterProviderPause: resumeProviderPausedEmail,
+          providerPauseAt,
+        }),
       });
       const data = await res.json();
       if (data.success) {
+        if (resumeProviderPausedEmail) {
+          setProviderPauseAt(null);
+          setResumeProviderPausedEmail(false);
+        }
         onPrefsLoaded(prefs);
-        analytics.preferencesSaved(targetRoles.length, preferredCities.length);
+        analytics.preferencesSaved(roles.length, cities.length);
         onClose();
+      } else if (data.code === 'EMAIL_CONSENT_REQUIRED'
+        || data.code === 'AGENT_DIGEST_CONSENT_REQUIRED'
+        || data.code === 'EMAIL_RESUME_CONFIRMATION_REQUIRED') {
+        setJobAlertDeliveryStatus('consent_required');
+        setJobAlertDeliveryMessage(data.error || 'Confirm email delivery before enabling Sona Picks.');
+      } else {
+        setJobAlertDeliveryStatus('failed');
+        setJobAlertDeliveryMessage(data.error || 'These controls could not be saved. Nothing was sent.');
       }
     } catch (e) {
       console.error('Failed to save preferences:', e);
+      setJobAlertDeliveryStatus('failed');
+      setJobAlertDeliveryMessage('These controls could not be saved. Nothing was sent.');
     } finally {
       setSaving(false);
     }
@@ -185,6 +379,23 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
     : salaryPct <= 0.60 ? { main: '#3b82f6', glow: 'rgba(59,130,246,0.4)', label: 'text-blue-500', bg: 'bg-blue-500' }
     : salaryPct <= 0.75 ? { main: '#6366f1', glow: 'rgba(99,102,241,0.4)', label: 'text-indigo-500', bg: 'bg-indigo-500' }
     : { main: '#f59e0b', glow: 'rgba(245,158,11,0.4)', label: 'text-amber-500', bg: 'bg-amber-500' };
+  const nearestSalaryStep = SALARY_STEPS.reduce((closest, step) =>
+    Math.abs(step.value - salaryMin) < Math.abs(closest.value - salaryMin) ? step : closest
+  , SALARY_STEPS[0]);
+  const salaryStepIndex = Math.max(0, SALARY_STEPS.findIndex(step => step.value === nearestSalaryStep.value));
+  const salaryProgress = salaryStepIndex / Math.max(1, SALARY_STEPS.length - 1);
+  const salaryPersona = salaryMin === 0
+    ? { label: 'Open to the right role', hint: 'Sona will rank fit before compensation.', icon: 'all_inclusive' }
+    : salaryMin <= 60
+      ? { label: 'Foundation range', hint: 'Good for early-career and growth searches.', icon: 'moving' }
+      : salaryMin <= 100
+        ? { label: 'Market-smart target', hint: 'Balanced for strong mid-level roles.', icon: 'query_stats' }
+        : salaryMin <= 150
+          ? { label: 'Senior compensation lane', hint: 'Prioritizes high-fit senior opportunities.', icon: 'workspace_premium' }
+          : { label: 'Executive stretch filter', hint: 'Sona will be selective about compensation quality.', icon: 'diamond' };
+  const salaryAnnualDisplay = salaryMin === 0 ? 'Open' : `$${salaryMin}k${salaryMin >= 200 ? '+' : '+'}`;
+  const salaryMonthlyDisplay = salaryMin === 0 ? 'No floor' : `$${Math.round(salaryMin * 1000 / 12).toLocaleString()}/mo`;
+  const salaryBiweeklyDisplay = salaryMin === 0 ? 'Flexible' : `$${Math.round(salaryMin * 1000 / 26).toLocaleString()}/paycheck`;
 
   const cardBg = isLight
     ? 'rgba(255,255,255,0.8)'
@@ -414,187 +625,122 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
               </div>
             </div>
 
-            {/* Row 3: Salary — Interactive Drag Slider + Money Counter */}
-            <div>
-              <div className="flex items-center gap-1.5 mb-3">
-                <span className="material-symbols-rounded text-[14px] text-emerald-500">payments</span>
-                <span className="text-xs font-semibold text-[var(--text-primary)]">Minimum Salary</span>
-              </div>
+            {/* Row 3: Salary — Compensation Target Console */}
+            <div
+              className="rounded-2xl p-3.5 overflow-hidden"
+              style={{
+                background: isLight
+                  ? 'linear-gradient(135deg, rgba(255,255,255,0.95), rgba(240,253,250,0.72))'
+                  : 'linear-gradient(135deg, rgba(15,23,42,0.9), rgba(6,30,42,0.74))',
+                border: `1px solid ${salaryMin > 0 ? 'rgba(16,185,129,0.24)' : sectionBorder}`,
+                boxShadow: salaryMin > 0 ? `0 14px 34px ${salaryColor.glow.replace('0.4', '0.12')}` : 'none',
+              }}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{
+                      background: salaryMin > 0 ? `${salaryColor.main}18` : 'rgba(16,185,129,0.1)',
+                      color: salaryMin > 0 ? salaryColor.main : '#10b981',
+                    }}
+                  >
+                    <span className="material-symbols-rounded text-[19px]">{salaryPersona.icon}</span>
+                  </div>
+                  <div>
+                    <span className="block text-xs font-semibold text-[var(--text-primary)]">Compensation Target</span>
+                    <span className="block text-[10px] text-[var(--text-tertiary)]">Tap a band. No dragging needed.</span>
+                  </div>
+                </div>
 
-              {/* Money Counter Display */}
-              <div className="flex items-center justify-center mb-4">
                 <AnimatePresence mode="wait">
-                  {salaryMin === 0 ? (
-                    <motion.div
-                      key="zero-state"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="flex flex-col items-center gap-1"
-                    >
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-black text-[var(--text-primary)] tabular-nums">$0</span>
-                      </div>
-                      <motion.p
-                        animate={{ opacity: [0.4, 0.8, 0.4] }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                        className="text-[11px] text-emerald-500 font-medium flex items-center gap-1"
-                      >
-                        <span className="material-symbols-rounded text-[14px]">swipe</span>
-                        Drag for your minimum salary
-                      </motion.p>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="value-state"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="flex flex-col items-center gap-0.5"
-                    >
-                      <div className="flex items-baseline gap-0.5">
-                        <span className="text-lg font-medium transition-colors duration-300" style={{ color: salaryColor.main }}>$</span>
-                        <div className="flex overflow-hidden">
-                          {/* Animated digits */}
-                          {String(salaryMin * 1000).split('').map((digit, i) => (
-                            <motion.span
-                              key={`${i}-${digit}`}
-                              initial={{ y: -20, opacity: 0 }}
-                              animate={{ y: 0, opacity: 1 }}
-                              transition={{ delay: i * 0.03, type: 'spring', bounce: 0.3 }}
-                              className="text-3xl font-black text-[var(--text-primary)] tabular-nums inline-block"
-                            >
-                              {digit}
-                            </motion.span>
-                          ))}
-                        </div>
-                        <motion.span
-                          initial={{ opacity: 0, x: -5 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="text-base font-bold ml-0.5 transition-colors duration-300"
-                          style={{ color: salaryColor.main }}
-                        >
-                          +/yr
-                        </motion.span>
-                      </div>
-                      <p className="text-[10px] text-[var(--text-tertiary)]">
-                        ${Math.round(salaryMin * 1000 / 12).toLocaleString()}/mo · ${Math.round(salaryMin * 1000 / 26).toLocaleString()}/biweekly
-                      </p>
-                    </motion.div>
-                  )}
+                  <motion.div
+                    key={salaryAnnualDisplay}
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 6 }}
+                    className="text-right"
+                  >
+                    <div className="text-[28px] leading-none font-semibold tracking-tight text-[var(--text-primary)] tabular-nums">
+                      {salaryAnnualDisplay}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--text-tertiary)] mt-1">
+                      minimum annual
+                    </div>
+                  </motion.div>
                 </AnimatePresence>
               </div>
 
-              {/* Slider Track with Visible Handle */}
-              <div className="relative mt-1 mb-1">
-                {/* Track container */}
-                <div className="relative h-[40px] flex items-center">
-                  {/* Background track */}
-                  <div className="absolute left-0 right-0 h-[6px] rounded-full" style={{
-                    background: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)',
-                  }} />
-
-                  {/* Fill gradient — color shifts with salary */}
-                  <motion.div
-                    className="absolute left-0 h-[6px] rounded-full transition-all duration-300"
-                    style={{ background: `linear-gradient(90deg, #10b981, ${salaryColor.main})` }}
-                    animate={{ width: `${(salaryMin / 200) * 100}%` }}
-                    transition={{ type: 'spring', bounce: 0.1, duration: 0.25 }}
-                  />
-
-                  {/* Styled range input — thumb color driven by CSS var */}
-                  <style jsx>{`
-                    .salary-slider {
-                      -webkit-appearance: none;
-                      appearance: none;
-                      width: 100%;
-                      height: 40px;
-                      background: transparent;
-                      cursor: pointer;
-                      position: relative;
-                      z-index: 10;
-                    }
-                    .salary-slider::-webkit-slider-runnable-track {
-                      height: 6px;
-                      background: transparent;
-                      border-radius: 999px;
-                    }
-                    .salary-slider::-webkit-slider-thumb {
-                      -webkit-appearance: none;
-                      width: 24px;
-                      height: 24px;
-                      border-radius: 50%;
-                      background: var(--salary-color, #10b981);
-                      border: 3px solid white;
-                      box-shadow: 0 2px 10px var(--salary-glow, rgba(16,185,129,0.4));
-                      margin-top: -9px;
-                      cursor: grab;
-                      transition: background 0.3s, box-shadow 0.3s, transform 0.15s;
-                    }
-                    .salary-slider::-webkit-slider-thumb:hover {
-                      transform: scale(1.15);
-                      box-shadow: 0 2px 16px var(--salary-glow, rgba(16,185,129,0.6)), 0 0 0 4px rgba(255,255,255,0.08);
-                    }
-                    .salary-slider::-webkit-slider-thumb:active {
-                      cursor: grabbing;
-                      transform: scale(1.1);
-                      box-shadow: 0 2px 20px var(--salary-glow, rgba(16,185,129,0.7)), 0 0 0 6px rgba(255,255,255,0.05);
-                    }
-                    .salary-slider::-moz-range-track {
-                      height: 6px;
-                      background: transparent;
-                      border-radius: 999px;
-                    }
-                    .salary-slider::-moz-range-thumb {
-                      width: 24px;
-                      height: 24px;
-                      border-radius: 50%;
-                      background: var(--salary-color, #10b981);
-                      border: 3px solid white;
-                      box-shadow: 0 2px 10px var(--salary-glow, rgba(16,185,129,0.4));
-                      cursor: grab;
-                    }
-                    .salary-slider.at-zero::-webkit-slider-thumb {
-                      background: #10b981;
-                      animation: heartbeat 1.3s ease-in-out infinite;
-                    }
-                    @keyframes heartbeat {
-                      0%, 100% { transform: scale(1); box-shadow: 0 2px 10px rgba(16,185,129,0.4), 0 0 0 0 rgba(16,185,129,0.4); }
-                      15% { transform: scale(1.2); box-shadow: 0 2px 16px rgba(16,185,129,0.6), 0 0 0 8px rgba(16,185,129,0.15); }
-                      30% { transform: scale(1); box-shadow: 0 2px 10px rgba(16,185,129,0.4), 0 0 0 0 rgba(16,185,129,0.1); }
-                      45% { transform: scale(1.15); box-shadow: 0 2px 14px rgba(16,185,129,0.5), 0 0 0 6px rgba(16,185,129,0.12); }
-                      60% { transform: scale(1); }
-                    }
-                  `}</style>
-                  <input
-                    type="range"
-                    min={0}
-                    max={200}
-                    step={5}
-                    value={salaryMin}
-                    onChange={e => setSalaryMin(parseInt(e.target.value))}
-                    className={`salary-slider ${salaryMin === 0 ? 'at-zero' : ''}`}
-                    style={{
-                      '--salary-color': salaryColor.main,
-                      '--salary-glow': salaryColor.glow,
-                    } as React.CSSProperties}
-                  />
+              <div
+                className="grid grid-cols-2 gap-2 mb-3"
+              >
+                <div
+                  className="rounded-xl px-3 py-2"
+                  style={{
+                    background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.045)',
+                    border: `1px solid ${isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.07)'}`,
+                  }}
+                >
+                  <span className="block text-[9px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Monthly</span>
+                  <span className="block text-[12px] font-semibold text-[var(--text-primary)] mt-0.5">{salaryMonthlyDisplay}</span>
                 </div>
+                <div
+                  className="rounded-xl px-3 py-2"
+                  style={{
+                    background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.045)',
+                    border: `1px solid ${isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.07)'}`,
+                  }}
+                >
+                  <span className="block text-[9px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">Biweekly</span>
+                  <span className="block text-[12px] font-semibold text-[var(--text-primary)] mt-0.5">{salaryBiweeklyDisplay}</span>
+                </div>
+              </div>
 
-                {/* Tick labels */}
-                <div className="flex justify-between px-0 -mt-1">
-                  {SALARY_STEPS.map(step => {
-                    const isAt = salaryMin === step.value;
-                    const isPast = salaryMin >= step.value;
+              <div className="relative mb-3 px-1.5">
+                <div
+                  className="absolute left-4 right-4 top-1/2 h-[2px] -translate-y-1/2 rounded-full"
+                  style={{ background: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.09)' }}
+                />
+                <motion.div
+                  className="absolute left-4 top-1/2 h-[2px] -translate-y-1/2 rounded-full"
+                  style={{ background: `linear-gradient(90deg, #10b981, ${salaryColor.main})` }}
+                  animate={{ width: `calc((100% - 2rem) * ${salaryProgress})` }}
+                  transition={{ type: 'spring', bounce: 0.16, duration: 0.45 }}
+                />
+                <div className="relative grid grid-cols-8 gap-1">
+                  {SALARY_STEPS.map((step, index) => {
+                    const isActive = nearestSalaryStep.value === step.value;
+                    const isPast = index <= salaryStepIndex;
                     return (
                       <button
                         key={step.value}
+                        type="button"
                         onClick={() => setSalaryMin(step.value)}
-                        className="relative"
-                        style={{ width: 0, display: 'flex', justifyContent: 'center' }}
+                        aria-pressed={isActive}
+                        className="group flex flex-col items-center gap-1 focus:outline-none"
                       >
-                        <span className={`text-[8px] font-bold whitespace-nowrap transition-all duration-200 ${
-                          isAt ? 'text-emerald-500 scale-110' : isPast ? 'text-[var(--text-secondary)]' : 'text-[var(--text-tertiary)]'
-                        } hover:text-[var(--text-primary)] cursor-pointer`}>
+                        <motion.span
+                          className="relative z-10 flex h-8 w-8 items-center justify-center rounded-xl text-[10px] font-semibold transition-colors"
+                          animate={{
+                            scale: isActive ? 1.06 : 1,
+                            backgroundColor: isActive
+                              ? salaryColor.main
+                              : isPast
+                                ? isLight ? 'rgba(16,185,129,0.13)' : 'rgba(16,185,129,0.16)'
+                                : isLight ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.06)',
+                            color: isActive ? '#ffffff' : isPast ? salaryColor.main : isLight ? '#6b7280' : '#94a3b8',
+                          }}
+                          transition={{ type: 'spring', bounce: 0.22, duration: 0.32 }}
+                          style={{
+                            border: `1px solid ${isActive ? salaryColor.main : isPast ? 'rgba(16,185,129,0.2)' : sectionBorder}`,
+                            boxShadow: isActive ? `0 8px 20px ${salaryColor.glow}` : 'none',
+                          }}
+                        >
+                          {step.value === 0 ? <span className="material-symbols-rounded text-[15px]">all_inclusive</span> : index}
+                        </motion.span>
+                        <span className={`text-[8px] font-semibold whitespace-nowrap transition-colors ${
+                          isActive ? salaryColor.label : 'text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]'
+                        }`}>
                           {step.label}
                         </span>
                       </button>
@@ -602,6 +748,25 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
                   })}
                 </div>
               </div>
+
+              <motion.div
+                key={salaryPersona.label}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-start gap-2 rounded-xl px-3 py-2"
+                style={{
+                  background: salaryMin > 0
+                    ? isLight ? `${salaryColor.main}0f` : `${salaryColor.main}14`
+                    : isLight ? 'rgba(16,185,129,0.08)' : 'rgba(16,185,129,0.1)',
+                  border: `1px solid ${salaryMin > 0 ? `${salaryColor.main}2e` : 'rgba(16,185,129,0.18)'}`,
+                }}
+              >
+                <span className="material-symbols-rounded text-[15px] mt-0.5" style={{ color: salaryColor.main }}>auto_awesome</span>
+                <div>
+                  <p className="text-[11px] font-semibold text-[var(--text-primary)]">{salaryPersona.label}</p>
+                  <p className="text-[10px] leading-relaxed text-[var(--text-tertiary)]">{salaryPersona.hint}</p>
+                </div>
+              </motion.div>
             </div>
 
             {/* Row 4: Industries */}
@@ -682,26 +847,407 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
                   <span className="material-symbols-rounded text-cyan-500 text-base">notifications_active</span>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-[var(--text-primary)]">Weekly Job Alerts</p>
-                  <p className="text-[10px] text-[var(--text-tertiary)]">Get curated picks in your inbox every Monday</p>
+                  <p className="text-xs font-semibold text-[var(--text-primary)]">Email Notifications</p>
+                  <p className="text-[10px] text-[var(--text-tertiary)]">Allow Sona Picks and digest emails to reach your inbox</p>
                 </div>
               </div>
-              <button
-                onClick={() => setEmailNotifications(!emailNotifications)}
-                className="relative w-11 h-6 rounded-full transition-all duration-300 shrink-0"
-                style={{
-                  background: emailNotifications
-                    ? 'linear-gradient(135deg, #06b6d4, #10b981)'
-                    : isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)',
-                  boxShadow: emailNotifications ? '0 2px 8px rgba(6,182,212,0.3)' : 'none',
+              <PreferenceSwitch
+                checked={emailNotifications}
+                label="Email notifications"
+                isLight={isLight}
+                disabled={alertConsentHandoff.controlsDisabled}
+                onChange={() => {
+                  const next = !emailNotifications;
+                  setEmailNotifications(next);
+                  if (!next && jobAlertsEnabled) {
+                    setResumeProviderPausedEmail(false);
+                    setJobAlertDeliveryStatus('consent_required');
+                    setJobAlertDeliveryMessage('Email delivery is paused. Your recommendations remain in Talent Studio.');
+                  } else if (next && jobAlertsEnabled) {
+                    setResumeProviderPausedEmail(Boolean(providerPauseAt));
+                    setJobAlertDeliveryStatus('pending');
+                    setJobAlertDeliveryMessage(providerPauseAt
+                      ? 'Email was paused by the provider. Saving will record a new consent before delivery resumes.'
+                      : 'Email delivery will resume when you save these controls.');
+                  }
                 }}
-              >
-                <motion.div
-                  className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm"
-                  animate={{ left: emailNotifications ? 24 : 4 }}
-                  transition={{ type: 'spring', bounce: 0.25, duration: 0.35 }}
+              />
+            </div>
+
+            {/* ── Sona Agent Section ── */}
+            <div
+              className="p-4 rounded-xl border"
+              style={{
+                background: agentEnabled
+                  ? (isLight ? 'rgba(6,182,212,0.04)' : 'rgba(6,182,212,0.06)')
+                  : (isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)'),
+                borderColor: agentEnabled
+                  ? (isLight ? 'rgba(6,182,212,0.2)' : 'rgba(6,182,212,0.15)')
+                  : (isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'),
+              }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{
+                    background: agentEnabled
+                      ? 'linear-gradient(135deg, rgba(6,182,212,0.2), rgba(16,185,129,0.2))'
+                      : (isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'),
+                  }}>
+                    <span className="material-symbols-rounded text-base" style={{ color: agentEnabled ? '#06b6d4' : 'var(--text-muted)' }}>smart_toy</span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--text-primary)]">Sona Agent</p>
+                    <p className="text-[10px] text-[var(--text-tertiary)]">
+                      {!isMaxPlan ? 'Talent Max enables proactive scouting' : `${AGENT_TIER_LIMITS[tier] || 5}/night · Max workflow`}
+                    </p>
+                  </div>
+                </div>
+                <PreferenceSwitch
+                  checked={isMaxPlan && agentEnabled}
+                  label="Sona Agent"
+                  isLight={isLight}
+                  onChange={() => setAgentEnabled(!agentEnabled)}
+                  disabled={!isMaxPlan}
                 />
-              </button>
+              </div>
+
+              {!isMaxPlan && (
+                <a
+                  href="/suite/upgrade?plan=studio"
+                  className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+                >
+                  <span className="material-symbols-rounded text-[16px]" aria-hidden="true">workspace_premium</span>
+                  Unlock proactive Sona
+                </a>
+              )}
+
+              <AnimatePresence>
+                {isMaxPlan && agentEnabled && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden space-y-3 pt-3 border-t" style={{ borderColor: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)' }}
+                  >
+                    {/* Max per night */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-[var(--text-secondary)]">Max per night</span>
+                      <div className="flex items-center gap-1">
+                        {[1, 3, 5].map(n => (
+                          <button
+                            key={n}
+                            onClick={() => setAgentMaxPerNight(n)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all"
+                            style={{
+                              background: agentMaxPerNight === n ? 'rgba(6,182,212,0.15)' : 'transparent',
+                              color: agentMaxPerNight === n ? '#06b6d4' : 'var(--text-muted)',
+                              border: agentMaxPerNight === n ? '1px solid rgba(6,182,212,0.25)' : '1px solid transparent',
+                            }}
+                          >{n}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Min match score */}
+	                    <div className="flex items-center justify-between">
+	                      <span className="text-[11px] text-[var(--text-secondary)]">Min match score</span>
+	                      <div className="flex items-center gap-1">
+                        {[60, 70, 80, 90].map(n => (
+                          <button
+                            key={n}
+                            onClick={() => setAgentMinMatchScore(n)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all"
+                            style={{
+                              background: agentMinMatchScore === n ? 'rgba(6,182,212,0.15)' : 'transparent',
+                              color: agentMinMatchScore === n ? '#06b6d4' : 'var(--text-muted)',
+                              border: agentMinMatchScore === n ? '1px solid rgba(6,182,212,0.25)' : '1px solid transparent',
+                            }}
+                          >{n}%</button>
+                        ))}
+	                      </div>
+	                    </div>
+
+	                    {/* Autonomy level */}
+	                    <div>
+	                      <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">Autonomy level</span>
+	                      <div className="grid grid-cols-2 gap-1.5">
+	                        {([
+	                          ['scout', 'Scout'],
+	                          ['prepare', 'Prepare'],
+	                          ['review', 'Review'],
+	                          ['assist', 'Assist apply'],
+	                        ] as const).map(([value, label]) => (
+	                          <button
+	                            key={value}
+	                            type="button"
+	                            onClick={() => setAgentAutonomyLevel(value)}
+	                            className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+	                            style={{
+	                              background: agentAutonomyLevel === value ? 'rgba(6,182,212,0.15)' : (isLight ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.035)'),
+	                              color: agentAutonomyLevel === value ? '#06b6d4' : 'var(--text-secondary)',
+	                              border: `1px solid ${agentAutonomyLevel === value ? 'rgba(6,182,212,0.25)' : (isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)')}`,
+	                            }}
+	                          >
+	                            {label}
+	                          </button>
+	                        ))}
+	                      </div>
+	                      <p className="mt-1.5 text-[10px] leading-4 text-[var(--text-tertiary)]">
+	                        Sona prepares work for review. She never submits applications or sends external email automatically.
+	                      </p>
+	                    </div>
+
+	                    {/* Digest email opt-in */}
+	                    <div
+	                      className="rounded-xl border p-3"
+	                      style={{
+	                        background: agentDigestEmailEnabled ? 'rgba(37,99,235,0.08)' : (isLight ? 'rgba(0,0,0,0.025)' : 'rgba(255,255,255,0.035)'),
+	                        borderColor: agentDigestEmailEnabled ? 'rgba(37,99,235,0.24)' : (isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'),
+	                      }}
+	                    >
+	                      <div className="flex items-center justify-between gap-3">
+	                        <div>
+	                          <span className="text-[11px] font-semibold text-[var(--text-primary)]">Sona digest email</span>
+	                          <p className="text-[10px] leading-4 text-[var(--text-tertiary)]">Get a structured review email when Sona prepares new packets.</p>
+	                        </div>
+		                        <PreferenceSwitch
+		                          checked={agentDigestEmailEnabled}
+		                          label="Sona agent digest email"
+		                          isLight={isLight}
+		                          onChange={() => {
+		                            const next = !agentDigestEmailEnabled;
+		                            setAgentDigestEmailEnabled(next);
+		                            if (next) setEmailNotifications(true);
+		                          }}
+		                        />
+	                      </div>
+	                      {agentDigestEmailEnabled && (
+	                        <div className="mt-3 flex gap-1.5">
+	                          {(['daily', 'weekly'] as const).map(freq => (
+	                            <button
+	                              key={freq}
+	                              type="button"
+	                              onClick={() => setAgentDigestFrequency(freq)}
+	                              className="px-2.5 py-1 rounded-lg text-[11px] font-medium capitalize transition-all"
+	                              style={{
+	                                background: agentDigestFrequency === freq ? 'rgba(37,99,235,0.15)' : 'transparent',
+	                                color: agentDigestFrequency === freq ? '#2563eb' : 'var(--text-muted)',
+	                                border: `1px solid ${agentDigestFrequency === freq ? 'rgba(37,99,235,0.25)' : 'transparent'}`,
+	                              }}
+	                            >
+	                              {freq}
+	                            </button>
+	                          ))}
+	                        </div>
+	                      )}
+	                    </div>
+
+	                    {/* Exclude companies */}
+	                    <div>
+                      <span className="text-[11px] text-[var(--text-secondary)] block mb-1.5">Exclude companies</span>
+                      <div className="flex gap-1.5 flex-wrap mb-2">
+                        {agentExcludeCompanies.map(c => (
+                          <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium" style={{
+                            background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)',
+                            color: 'var(--text-secondary)',
+                          }}>
+                            {c}
+                            <button onClick={() => setAgentExcludeCompanies(prev => prev.filter(x => x !== c))} className="hover:text-red-400 transition-colors">
+                              <span className="material-symbols-rounded text-[10px]">close</span>
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          value={excludeInput}
+                          onChange={e => setExcludeInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const v = excludeInput.trim();
+                              if (v && !agentExcludeCompanies.includes(v)) {
+                                setAgentExcludeCompanies(prev => [...prev, v]);
+                                setExcludeInput('');
+                              }
+                            }
+                          }}
+                          placeholder="Company name..."
+                          className="flex-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
+                          style={{
+                            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
+                            border: `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
+                            color: 'var(--text-primary)',
+                          }}
+                        />
+                        <button
+                          onClick={() => {
+                            const v = excludeInput.trim();
+                            if (v && !agentExcludeCompanies.includes(v)) {
+                              setAgentExcludeCompanies(prev => [...prev, v]);
+                              setExcludeInput('');
+                            }
+                          }}
+                          className="px-2 py-1.5 rounded-lg text-[11px] font-medium bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 transition-all"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Sona Picks */}
+            <div
+              id="sona-picks-controls"
+              tabIndex={-1}
+              aria-labelledby="sona-picks-title"
+              className="rounded-2xl p-4"
+              style={{
+                background: jobAlertsEnabled ? 'linear-gradient(135deg, rgba(6,182,212,0.08), rgba(16,185,129,0.08))' : sectionBg,
+                border: `1px solid ${jobAlertsEnabled ? 'rgba(6,182,212,0.22)' : sectionBorder}`,
+              }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-500">
+                    <span className="material-symbols-rounded text-[20px]">radar</span>
+                  </div>
+                  <div>
+                    <span id="sona-picks-title" className="text-sm font-semibold text-[var(--text-primary)]">Sona Picks</span>
+                    <p className="mt-1 text-[11px] leading-4 text-[var(--text-tertiary)]">
+                      Crafted job matches by email with fit reasons, salary signals, and application prep links.
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  <PreferenceSwitch
+                    id="sona-picks-email-toggle"
+                    checked={jobAlertsEnabled}
+                    label="Sona Picks email"
+                    isLight={isLight}
+                    disabled={alertConsentHandoff.controlsDisabled}
+                    onChange={() => {
+                      setJobAlertsEnabled(prev => {
+                        const next = !prev;
+                        if (next) {
+                          setEmailNotifications(true);
+                          setResumeProviderPausedEmail(Boolean(providerPauseAt));
+                          setJobAlertDeliveryStatus('pending');
+                          setJobAlertDeliveryMessage(providerPauseAt
+                            ? 'Email was paused by the provider. Saving will record a new consent before delivery resumes.'
+                            : 'Email consent will be recorded when you save these controls.');
+                        } else {
+                          setResumeProviderPausedEmail(false);
+                          setJobAlertDeliveryStatus('consent_required');
+                          setJobAlertDeliveryMessage('Sona Picks email delivery will stop when you save.');
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                </div>
+              </div>
+
+              {jobAlertsEnabled && (
+                <div className="mt-3">
+                  {isMaxPlan ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {SONA_PICK_CADENCES.map(option => {
+                        const selected = jobAlertsFrequency === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setJobAlertsFrequency(option.value)}
+                            aria-pressed={selected}
+                            className="rounded-xl border px-3 py-2 text-left transition-all"
+                            style={{
+                              background: selected
+                                ? 'rgba(6,182,212,0.12)'
+                                : isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.035)',
+                              borderColor: selected
+                                ? 'rgba(6,182,212,0.28)'
+                                : isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)',
+                            }}
+                          >
+                            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-primary)]">
+                              <span className="material-symbols-rounded text-[13px] text-cyan-500">{option.icon}</span>
+                              {option.label}
+                            </span>
+                            <span className="mt-0.5 block text-[10px] leading-4 text-[var(--text-tertiary)]">{option.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div
+                      className="rounded-xl border px-3 py-2"
+                      style={{
+                        background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.035)',
+                        borderColor: isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)',
+                      }}
+                    >
+                      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-primary)]">
+                        <span className="material-symbols-rounded text-[13px] text-cyan-500">calendar_month</span>
+                        Weekly
+                      </span>
+                      <span className="mt-0.5 block text-[10px] leading-4 text-[var(--text-tertiary)]">Curated Sona Picks arrive every Monday.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div
+                className={`mt-3 flex min-w-0 flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[10px] leading-4 ${
+                  jobAlertDeliveryStatus === 'failed'
+                    ? 'border-rose-500/25 bg-rose-500/5 text-rose-700 dark:text-rose-300'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                }`}
+                role="status"
+                aria-live="polite"
+              >
+                <span className="material-symbols-rounded mt-0.5 shrink-0 text-[14px]" aria-hidden="true">
+                  {!loaded
+                    ? 'schedule'
+                    : preferenceAccess === 'sign_in'
+                      ? 'login'
+                      : preferenceAccess === 'unavailable'
+                        ? 'error'
+                    : jobAlertDeliveryStatus === 'failed'
+                    ? 'error'
+                    : jobAlertDeliveryStatus === 'delivered'
+                      ? 'mark_email_read'
+                      : jobAlertDeliveryStatus === 'accepted'
+                        ? 'outgoing_mail'
+                        : jobAlertDeliveryStatus === 'delayed' || jobAlertDeliveryStatus === 'sending'
+                        ? 'schedule'
+                        : jobAlertDeliveryStatus === 'ready'
+                          ? 'notifications_active'
+                          : jobAlertDeliveryStatus === 'pending'
+                            ? 'save'
+                            : 'notifications_off'}
+                </span>
+                <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                  {!loaded
+                    ? 'Loading your email consent and delivery status...'
+                    : preferenceAccess === 'sign_in'
+                      ? 'Sign in to choose Sona Picks email delivery.'
+                      : jobAlertDeliveryMessage}
+                </span>
+                {preferenceAccess === 'unavailable' && (
+                  <button
+                    type="button"
+                    onClick={() => setPreferenceLoadAttempt(attempt => attempt + 1)}
+                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-xs font-semibold text-[var(--text-primary)]"
+                  >
+                    <span className="material-symbols-rounded text-[15px]" aria-hidden="true">refresh</span>
+                    Retry
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Save Button */}
@@ -709,7 +1255,7 @@ export default function JobPreferencesPanel({ onPrefsLoaded, onClose, visible }:
               whileHover={{ scale: 1.005 }}
               whileTap={{ scale: 0.995 }}
               onClick={savePrefs}
-              disabled={saving || (targetRoles.length === 0 && !roleInput.trim())}
+              disabled={alertConsentHandoff.saveDisabled}
               className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-white relative overflow-hidden group"
               style={{
                 background: 'linear-gradient(135deg, #06b6d4, #10b981)',

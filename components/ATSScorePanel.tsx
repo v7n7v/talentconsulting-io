@@ -5,7 +5,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { authFetch } from '@/lib/auth-fetch';
 import { showToast } from '@/components/Toast';
 import { useAuthGate } from '@/hooks/useAuthGate';
+import SonaThinkingTile from '@/components/SonaThinkingTile';
 import { getResumeVersions, type ResumeVersion } from '@/lib/database-suite';
+import { useApplicationKitContext } from '@/hooks/useApplicationKitContext';
+import { resumeSnapshotToText, resumeVersionToApplicationKitContext } from '@/lib/application-kit';
+import {
+  ProofEngineReport,
+  type ProofCheckTone,
+  type ProofEngineReportData,
+  type ProofRequirementStatus,
+} from '@/components/suite/ProofEngineReport';
 
 // ── Types ──
 
@@ -71,6 +80,138 @@ function getCategoryLabel(cat: KeywordMatch['category']) {
     case 'domain': return 'Domain';
     case 'action_verb': return 'Action Verb';
   }
+}
+
+function hasEmail(text: string) {
+  return /[^\s@]+@[^\s@]+\.[^\s@]+/.test(text);
+}
+
+function hasPhone(text: string) {
+  return /(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}/.test(text);
+}
+
+function hasDateEvidence(text: string) {
+  return /\b(19|20)\d{2}\b/.test(text) || /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}\b/i.test(text);
+}
+
+function hasMetricEvidence(text: string) {
+  return /\$[\d,.]+|\b\d+(?:\.\d+)?%|\b\d+(?:\.\d+)?\s?(?:x|hours?|days?|weeks?|months?|users?|customers?|clients?|projects?|people)\b/i.test(text);
+}
+
+function requirementStatus(status: KeywordMatch['status']): ProofRequirementStatus {
+  if (status === 'matched') return 'matched';
+  if (status === 'partial') return 'partial';
+  return 'missing';
+}
+
+function requirementEvidence(keyword: KeywordMatch) {
+  if (keyword.status === 'matched') return keyword.resumeContext || 'The resume contains this requirement.';
+  if (keyword.status === 'partial') return keyword.resumeContext || 'The resume has related language, but the evidence is not direct.';
+  return 'No direct evidence was found in the resume text.';
+}
+
+function buildPreservedFacts(resumeText: string, result: ATSScoreResult) {
+  return [
+    {
+      label: 'Source text locked',
+      detail: 'This report checks the pasted resume text and does not rewrite work history, dates, employers, or education.',
+      tone: 'success' as ProofCheckTone,
+    },
+    {
+      label: hasEmail(resumeText) || hasPhone(resumeText) ? 'Contact facts detected' : 'Contact facts need review',
+      detail: hasEmail(resumeText) || hasPhone(resumeText)
+        ? 'The resume includes contact evidence that should stay unchanged during tailoring.'
+        : 'Add standard contact details before using this resume in an application packet.',
+      tone: hasEmail(resumeText) || hasPhone(resumeText) ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+    },
+    {
+      label: hasDateEvidence(resumeText) ? 'Timeline evidence present' : 'Timeline evidence missing',
+      detail: hasDateEvidence(resumeText)
+        ? 'Dates or years appear in the resume, so future edits should preserve the timeline.'
+        : 'Add role dates before tailoring. Sona should not infer dates from the job description.',
+      tone: hasDateEvidence(resumeText) ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+    },
+    {
+      label: hasMetricEvidence(resumeText) ? 'Outcome proof present' : 'Outcome proof needed',
+      detail: hasMetricEvidence(resumeText)
+        ? 'The resume includes measurable proof that can support stronger role-specific bullets.'
+        : 'Add real numbers before claiming impact, such as time saved, revenue protected, users supported, or risk reduced.',
+      tone: hasMetricEvidence(resumeText) ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+    },
+    {
+      label: 'Keyword coverage counted',
+      detail: `${result.stats.matched} matched, ${result.stats.partial} partial, and ${result.stats.missing} missing JD requirements were checked.`,
+      tone: result.stats.missing > 0 ? 'warning' as ProofCheckTone : 'success' as ProofCheckTone,
+    },
+  ];
+}
+
+function buildProofEngineReport(result: ATSScoreResult, resumeText: string, jdText: string): ProofEngineReportData {
+  const sortedRequirements = [...result.keywords].sort((a, b) => {
+    const order = { missing: 0, partial: 1, matched: 2 };
+    return order[a.status] - order[b.status];
+  });
+  const missing = result.keywords.filter(keyword => keyword.status === 'missing');
+  const matched = result.keywords.filter(keyword => keyword.status === 'matched');
+  const certificationGaps = missing.filter(keyword => keyword.category === 'certification');
+  const blockedClaims = certificationGaps.length > 0
+    ? certificationGaps.slice(0, 4)
+    : missing.slice(0, 3);
+  const topChanges = missing.slice(0, 3);
+  const suggestions = result.suggestions.slice(0, 4);
+
+  return {
+    title: 'Proof report for this job description',
+    description: 'This report turns ATS scoring into review-first evidence: what matched, what is missing, what must stay true, and what Sona should not invent.',
+    score: result.overallScore,
+    scoreLabel: 'JD match',
+    sourceLabel: jdText.trim() ? 'Pasted job description' : 'Job description',
+    requirements: sortedRequirements.slice(0, 12).map(keyword => ({
+      label: keyword.keyword,
+      status: requirementStatus(keyword.status),
+      evidence: requirementEvidence(keyword),
+      source: getCategoryLabel(keyword.category),
+    })),
+    preservedFacts: buildPreservedFacts(resumeText, result),
+    rejectedClaims: blockedClaims.map(keyword => ({
+      claim: keyword.keyword,
+      reason: keyword.category === 'certification'
+        ? 'This looks like a certification requirement. Do not add it unless it is already true.'
+        : 'This requirement was not found in the resume text.',
+      decision: 'Block from generated drafts until the user provides proof',
+    })),
+    changes: topChanges.length > 0 ? topChanges.map(keyword => ({
+      before: `The resume does not show direct evidence for "${keyword.keyword}".`,
+      after: `Add "${keyword.keyword}" only by tying it to a real project, tool, credential, or result already in your background.`,
+      rationale: 'The Proof Engine can recommend where evidence is missing, but it should not create new experience.',
+    })) : matched.slice(0, 3).map(keyword => ({
+      before: `The resume already contains "${keyword.keyword}".`,
+      after: `Keep this fact and place it near the role-specific achievement it supports.`,
+      rationale: 'Strong matched evidence should be preserved and made easier for reviewers and ATS systems to find.',
+    })),
+    formattingChecks: [
+      {
+        label: 'Formatting score',
+        detail: `${result.breakdown.formattingScore}% ATS formatting score from the current resume text.`,
+        tone: result.breakdown.formattingScore >= 70 ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+      },
+      {
+        label: 'Experience relevance',
+        detail: `${result.breakdown.experienceRelevance}% experience relevance based on overlap with the job description.`,
+        tone: result.breakdown.experienceRelevance >= 70 ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+      },
+      {
+        label: 'Suggestion review',
+        detail: suggestions[0] || 'No formatting suggestions were returned by this scan.',
+        tone: suggestions.length > 0 ? 'warning' as ProofCheckTone : 'success' as ProofCheckTone,
+      },
+      {
+        label: 'No-invention guard',
+        detail: 'Missing keywords are treated as proof gaps. They are not facts until the user confirms evidence.',
+        tone: missing.length > 0 ? 'warning' as ProofCheckTone : 'success' as ProofCheckTone,
+      },
+    ],
+  };
 }
 
 // ── Score Ring ──
@@ -183,6 +324,7 @@ interface ATSScorePanelProps {
 
 export default function ATSScorePanel({ resumeText: initialResumeText, onClose }: ATSScorePanelProps) {
   const { handleApiError, renderAuthModal } = useAuthGate();
+  const { context: kitContext, updateContext } = useApplicationKitContext();
 
   const [resumeText, setResumeText] = useState(initialResumeText || '');
   const [jdText, setJdText] = useState('');
@@ -192,6 +334,13 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
 
   // Saved Resumes integration
   const [savedResumes, setSavedResumes] = useState<ResumeVersion[]>([]);
+
+  useEffect(() => {
+    if (!resumeText && kitContext.resumeText) setResumeText(kitContext.resumeText);
+    if (!resumeText && kitContext.resumeSnapshot) setResumeText(resumeSnapshotToText(kitContext.resumeSnapshot));
+    if (!jdText && kitContext.jobDescription) setJdText(kitContext.jobDescription);
+    if (!result && kitContext.atsResult?.data?.overallScore) setResult(kitContext.atsResult.data as ATSScoreResult);
+  }, [kitContext.updatedAt]);
 
   useEffect(() => {
     const loadSavedResumes = async () => {
@@ -206,24 +355,8 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
     const rv = savedResumes.find(r => r.id === resumeId);
     if (rv && rv.content) {
       const c = rv.content as any;
-      const parts: string[] = [];
-      if (c.name) parts.push(c.name);
-      if (c.title) parts.push(c.title);
-      if (c.summary) parts.push(c.summary);
-      if (c.skills?.length) parts.push(`Skills: ${(typeof c.skills[0] === 'string' ? c.skills : c.skills.flatMap((s: any) => s.items || [])).join(', ')}`);
-      if (c.experience?.length) {
-        parts.push('Experience:');
-        c.experience.forEach((e: any) => {
-          parts.push(`${e.role || e.title} at ${e.company} (${e.duration || e.date || ''})`);
-          if (e.achievements?.length) e.achievements.forEach((a: string) => parts.push(`• ${a}`));
-          if (e.description) parts.push(e.description);
-        });
-      }
-      if (c.education?.length) {
-        parts.push('Education:');
-        c.education.forEach((e: any) => parts.push(`${e.degree} from ${e.school || e.institution} (${e.date || e.year || ''})`));
-      }
-      setResumeText(parts.join('\n\n'));
+      setResumeText(resumeSnapshotToText(c));
+      updateContext(resumeVersionToApplicationKitContext(rv));
       showToast(`Loaded: ${rv.version_name || c.name || 'Resume'}`, 'check_circle');
     }
   };
@@ -233,6 +366,10 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
     if (activeFilter === 'all') return result.keywords;
     return result.keywords.filter(k => k.status === activeFilter);
   }, [result, activeFilter]);
+  const proofReport = useMemo(() => {
+    if (!result) return null;
+    return buildProofEngineReport(result, resumeText, jdText);
+  }, [result, resumeText, jdText]);
 
   const runAnalysis = async () => {
     if (!resumeText.trim() || !jdText.trim()) {
@@ -241,6 +378,11 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
     }
 
     setIsLoading(true);
+    updateContext({
+      resumeText,
+      jobDescription: jdText,
+      atsResult: { status: 'loading', updatedAt: new Date().toISOString() },
+    });
     try {
       const res = await authFetch('/api/resume/ats-score', {
         method: 'POST',
@@ -256,9 +398,17 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
 
       const data: ATSScoreResult = await res.json();
       setResult(data);
+      updateContext({
+        resumeText,
+        jobDescription: jdText,
+        atsResult: { status: 'success', data, updatedAt: new Date().toISOString() },
+      });
       showToast(`ATS Score: ${data.overallScore}/100`, 'analytics');
     } catch (error) {
       console.error('ATS Score error:', error);
+      updateContext({
+        atsResult: { status: 'error', error: error instanceof Error ? error.message : 'Analysis failed', updatedAt: new Date().toISOString() },
+      });
       showToast(error instanceof Error ? error.message : 'Analysis failed', 'cancel');
     } finally {
       setIsLoading(false);
@@ -297,7 +447,7 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
             </div>
             <textarea
               value={resumeText}
-              onChange={e => setResumeText(e.target.value)}
+              onChange={e => { setResumeText(e.target.value); updateContext({ resumeText: e.target.value }); }}
               placeholder="Paste your resume text here..."
               rows={6}
               className="w-full px-4 py-3 rounded-xl glass-card text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/30 resize-none font-mono"
@@ -315,7 +465,7 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
             </label>
             <textarea
               value={jdText}
-              onChange={e => setJdText(e.target.value)}
+              onChange={e => { setJdText(e.target.value); updateContext({ jobDescription: e.target.value }); }}
               placeholder="Paste the target job description here..."
               rows={6}
               className="w-full px-4 py-3 rounded-xl glass-card text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/30 resize-none font-mono"
@@ -340,6 +490,18 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
               </>
             )}
           </button>
+
+          {isLoading && (
+            <SonaThinkingTile
+              variant="jobs"
+              icon="analytics"
+              title="Sona is scoring ATS fit"
+              description="Parsing the resume, matching JD requirements, and building the fix list."
+              activeStage="analyzing"
+              stages={['Parse', 'Keywords', 'Coverage', 'Fix list']}
+              compact
+            />
+          )}
         </motion.div>
       )}
 
@@ -405,6 +567,8 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
                 <BreakdownBar label="Experience Relevance" score={result.breakdown.experienceRelevance} icon="trending_up" delay={0.5} />
               </div>
             </div>
+
+            {proofReport && <ProofEngineReport report={proofReport} />}
 
             {/* Keyword Gap Analysis */}
             <div className="rounded-2xl glass-card p-5">

@@ -1,16 +1,17 @@
 /**
  * Oracle Analyze API — Dual-AI Career Intelligence
  * Stage 1 (GPT): Extract resume skills, parse JD, identify matches/gaps, detect red flags
- * Stage 2 (Gemini): Cross-validate, refine fit score, add salary intel & hidden requirements
+ * Stage 2 (DeepSeek): Cross-validate, refine decision brief, salary confidence & hidden signals
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { groqJSONCompletion } from '@/lib/ai/groq-client';
-import { geminiJSONCompletion } from '@/lib/ai/gemini-client';
+import { openRouterJSONCompletion, WRITING_MODELS } from '@/lib/ai/openrouter-client';
 import { validateBody } from '@/lib/validate';
 import { OracleAnalyzeSchema } from '@/lib/schemas';
 import { sanitizeForAI } from '@/lib/sanitize';
 import { monitor } from '@/lib/monitor';
+import { buildOracleV2Report, type OracleBreakdown, type OracleDecision, type OraclePacketPlan } from '@/lib/oracle-v2';
 
 interface GPTAnalysis {
   resumeSkills: string[];
@@ -27,15 +28,31 @@ interface GPTAnalysis {
   marketTrends: { skill: string; growth: number }[];
 }
 
-interface GeminiValidation {
+interface OracleValidation {
   fitScore: number;
   fitVerdict: 'excellent' | 'strong' | 'moderate' | 'weak';
+  verdict?: OracleDecision['verdict'];
+  confidence?: OracleDecision['confidence'];
+  readinessScore?: number;
+  riskScore?: number;
+  recommendedNextAction?: string;
+  applyStrategy?: OracleDecision['applyStrategy'];
+  interviewYield?: OracleDecision['interviewYield'];
   salaryRefinement: { min: number; max: number; userPosition: number; withBridgeSkills: number };
   additionalRedFlags: { flag: string; severity: 'low' | 'medium' | 'high'; explanation: string }[];
   additionalHiddenReqs: { stated: string; actual: string }[];
   industryInsights: string[];
   competitiveEdge: string;
   overallAssessment: string;
+  coveredRequirements?: string[];
+  missingRequirements?: string[];
+  proofGaps?: string[];
+  resumeFixes?: string[];
+  coverLetterThemes?: string[];
+  linkedinKeywords?: string[];
+  interviewPrepPrompts?: string[];
+  hiddenScreenSignals?: OracleBreakdown['hiddenScreenSignals'];
+  readinessMoves?: OraclePacketPlan['readinessMoves'];
 }
 
 export async function POST(req: NextRequest) {
@@ -43,8 +60,8 @@ export async function POST(req: NextRequest) {
     const guard = await guardApiRoute(req, { rateLimit: 5, rateLimitWindow: 60_000 });
     if (guard.error) return guard.error;
 
-    // Pro-only feature
-    if (guard.user.tier !== 'pro') {
+    // Pro+ feature
+    if (guard.user.tier === 'free') {
       return NextResponse.json(
         { error: 'Oracle Analysis is a Pro feature. Upgrade to unlock full career intelligence.', upgrade: true },
         { status: 403 }
@@ -105,15 +122,24 @@ Analyze this resume ${jdText ? 'against this specific job description' : 'for th
       { temperature: 0.3, maxTokens: 3000 }
     );
 
-    // ═══ STAGE 2: Gemini — Validate & Enrich ═══
-    const geminiValidation = await geminiJSONCompletion<GeminiValidation>(
+    // ═══ STAGE 2: DeepSeek — Validate & Enrich ═══
+    let oracleValidation: OracleValidation | null = null;
+    try {
+      oracleValidation = await openRouterJSONCompletion<OracleValidation>(
       `You are an elite Career Data Scientist specializing in compensation benchmarking and market analysis.
-Your role is the "Editor" — you validate another AI's analysis and add deeper insights.
+Your role is the "Role Deal Desk" — you validate another AI's analysis and turn it into a practical job-search decision.
 
 You MUST return JSON with this structure:
 {
   "fitScore": 0-100 (your independent assessment),
   "fitVerdict": "excellent|strong|moderate|weak",
+  "verdict": "apply|prepare_first|watch|skip",
+  "confidence": "high|medium|low",
+  "readinessScore": 0-100,
+  "riskScore": 0-100,
+  "recommendedNextAction": "one concrete next action",
+  "applyStrategy": "direct_apply|referral_first|recruiter_outreach|portfolio_proof|skip",
+  "interviewYield": {"score": 0-100, "label": "high_yield|selective|uncertain|low_yield", "rationale": "short rationale"},
   "salaryRefinement": {
     "min": refined_min_salary,
     "max": refined_max_salary,
@@ -124,10 +150,20 @@ You MUST return JSON with this structure:
   "additionalHiddenReqs": [{"stated": "...", "actual": "..."}],
   "industryInsights": ["actionable insight 1", "insight 2", "insight 3"],
   "competitiveEdge": "What makes this candidate stand out (or not) for this role",
-  "overallAssessment": "2-3 sentence executive summary of fit"
+  "overallAssessment": "2-3 sentence executive summary of fit",
+  "coveredRequirements": ["requirement covered by resume evidence"],
+  "missingRequirements": ["important JD requirement not clearly covered"],
+  "proofGaps": ["specific proof the candidate should add before applying"],
+  "resumeFixes": ["specific resume edits"],
+  "coverLetterThemes": ["themes to use in cover letter"],
+  "linkedinKeywords": ["terms for recruiter search"],
+  "interviewPrepPrompts": ["interview prep question"],
+  "hiddenScreenSignals": [{"signal": "...", "confidence": "high|medium|low", "evidence": "..."}],
+  "readinessMoves": [{"action": "resume_edit|portfolio_proof|interview_prep|skill_bridge|networking_angle|prepare_packet", "title": "...", "reason": "...", "effort": "low|medium|high"}]
 }
 
-Be critical but fair. If GPT overestimated the fit score, correct it. If they missed red flags, add them.`,
+Be critical but fair. Do not reward keyword stuffing. Favor roles where the candidate has proof, not just terms.
+Return useful practical advice for a job seeker deciding whether this application is worth the effort.`,
 
       `GPT's analysis of this candidate:
 ${JSON.stringify(gptAnalysis, null, 2)}
@@ -138,48 +174,91 @@ ${sanitizeForAI(resumeText, 2000)}
 ${jdText ? `ORIGINAL JD (first 1500 chars):
 ${sanitizeForAI(jdText, 1500)}` : ''}
 
-Cross-validate GPT's analysis. Refine the salary estimates for ${location || 'US market'}. Add any red flags or hidden requirements GPT missed. Provide your independent fit score.`,
-      { temperature: 0.2, maxTokens: 2000 }
-    );
+Cross-validate GPT's analysis. Refine the salary estimates for ${location || 'US market'}. Add red flags, hidden screen signals, proof gaps, and a concrete apply strategy.`,
+        {
+          model: WRITING_MODELS.premiumFallback,
+          temperature: 0.2,
+          maxTokens: 2600,
+          title: 'TalentConsulting.io Market Oracle',
+          timeoutMs: 28_000,
+        }
+      );
+    } catch (validationError) {
+      console.warn('[api/oracle/analyze] DeepSeek validation unavailable, using deterministic Oracle V2 fallback:', validationError instanceof Error ? validationError.message : 'unknown');
+    }
 
     // ═══ MERGE — Combine both analyses ═══
-    const finalFitScore = Math.round((gptAnalysis.fitScoreEstimate + geminiValidation.fitScore) / 2);
+    const validationFitScore = oracleValidation?.fitScore ?? gptAnalysis.fitScoreEstimate;
+    const finalFitScore = Math.round((gptAnalysis.fitScoreEstimate + validationFitScore) / 2);
     const allRedFlags = [
       ...gptAnalysis.redFlags,
-      ...geminiValidation.additionalRedFlags,
+      ...(oracleValidation?.additionalRedFlags || []),
     ].slice(0, 8);
     const allHiddenReqs = [
       ...gptAnalysis.hiddenRequirements,
-      ...geminiValidation.additionalHiddenReqs,
+      ...(oracleValidation?.additionalHiddenReqs || []),
     ].slice(0, 6);
+    const legacyAnalysis = {
+      fitScore: finalFitScore,
+      fitVerdict: oracleValidation?.fitVerdict || (finalFitScore >= 80 ? 'excellent' : finalFitScore >= 65 ? 'strong' : finalFitScore >= 45 ? 'moderate' : 'weak'),
+      overallAssessment: oracleValidation?.overallAssessment || `This role scores ${finalFitScore}% based on resume/JD alignment. Review proof gaps before applying.`,
+      competitiveEdge: oracleValidation?.competitiveEdge || 'Use the strongest matching accomplishments as the lead story.',
+      resumeSkills: gptAnalysis.resumeSkills,
+      jdRequirements: gptAnalysis.jdRequirements,
+      matchedSkills: gptAnalysis.matchedSkills,
+      gapSkills: gptAnalysis.gapSkills,
+      keywordsToAdd: gptAnalysis.keywordsToAdd,
+      salaryIntel: {
+        min: oracleValidation?.salaryRefinement?.min || gptAnalysis.salaryRange.min,
+        max: oracleValidation?.salaryRefinement?.max || gptAnalysis.salaryRange.max,
+        userPosition: oracleValidation?.salaryRefinement?.userPosition || 50,
+        withBridgeSkills: oracleValidation?.salaryRefinement?.withBridgeSkills || gptAnalysis.salaryRange.max,
+        currency: gptAnalysis.salaryRange.currency || 'USD',
+      },
+      redFlags: allRedFlags,
+      hiddenRequirements: allHiddenReqs,
+      roleLevel: gptAnalysis.roleLevel,
+      bridgeSkills: gptAnalysis.bridgeSkills,
+      marketTrends: gptAnalysis.marketTrends,
+      industryInsights: oracleValidation?.industryInsights || [],
+    };
+    const oracleV2 = buildOracleV2Report({
+      session: {
+        resumeText,
+        jdText,
+        role: targetRole,
+        location,
+        source: 'manual',
+      },
+      legacy: legacyAnalysis,
+      modelDecision: oracleValidation ? {
+        verdict: oracleValidation.verdict,
+        confidence: oracleValidation.confidence,
+        fitScore: oracleValidation.fitScore,
+        readinessScore: oracleValidation.readinessScore,
+        riskScore: oracleValidation.riskScore,
+        recommendedNextAction: oracleValidation.recommendedNextAction,
+        applyStrategy: oracleValidation.applyStrategy,
+        interviewYield: oracleValidation.interviewYield,
+        summary: oracleValidation.overallAssessment,
+        proofGaps: oracleValidation.proofGaps,
+        coveredRequirements: oracleValidation.coveredRequirements,
+        missingRequirements: oracleValidation.missingRequirements,
+        coverLetterThemes: oracleValidation.coverLetterThemes,
+        resumeFixes: oracleValidation.resumeFixes,
+        interviewPrepPrompts: oracleValidation.interviewPrepPrompts,
+        linkedinKeywords: oracleValidation.linkedinKeywords,
+        hiddenScreenSignals: oracleValidation.hiddenScreenSignals,
+        readinessMoves: oracleValidation.readinessMoves,
+      } : undefined,
+      marketDataMode: 'analysis_only',
+    });
 
     return NextResponse.json({
       success: true,
-      analysis: {
-        fitScore: finalFitScore,
-        fitVerdict: geminiValidation.fitVerdict,
-        overallAssessment: geminiValidation.overallAssessment,
-        competitiveEdge: geminiValidation.competitiveEdge,
-        resumeSkills: gptAnalysis.resumeSkills,
-        jdRequirements: gptAnalysis.jdRequirements,
-        matchedSkills: gptAnalysis.matchedSkills,
-        gapSkills: gptAnalysis.gapSkills,
-        keywordsToAdd: gptAnalysis.keywordsToAdd,
-        salaryIntel: {
-          min: geminiValidation.salaryRefinement.min || gptAnalysis.salaryRange.min,
-          max: geminiValidation.salaryRefinement.max || gptAnalysis.salaryRange.max,
-          userPosition: geminiValidation.salaryRefinement.userPosition,
-          withBridgeSkills: geminiValidation.salaryRefinement.withBridgeSkills,
-          currency: gptAnalysis.salaryRange.currency || 'USD',
-        },
-        redFlags: allRedFlags,
-        hiddenRequirements: allHiddenReqs,
-        roleLevel: gptAnalysis.roleLevel,
-        bridgeSkills: gptAnalysis.bridgeSkills,
-        marketTrends: gptAnalysis.marketTrends,
-        industryInsights: geminiValidation.industryInsights,
-      },
-      pipeline: { stage1: 'GPT-OSS 120B', stage2: 'Gemini 3 Flash' },
+      analysis: legacyAnalysis,
+      oracleV2,
+      pipeline: { stage1: 'Sona fast structuring', stage2: oracleValidation ? 'Sona decision synthesis' : 'Sona deterministic fallback' },
     });
   } catch (error: unknown) {
     console.error('[api/oracle/analyze] Error:', error);

@@ -8,6 +8,11 @@ import Groq from "groq-sdk";
 
 const MODEL = "openai/gpt-oss-120b";
 
+export function isGroqConfigured() {
+  const apiKey = String(process.env.GROQ_API_KEY || '').trim();
+  return Boolean(apiKey) && apiKey !== 'gsk_your_api_key_here' && !apiKey.includes('your');
+}
+
 // Initialize Groq client
 const getGroqClient = () => {
   const apiKey = process.env.GROQ_API_KEY;
@@ -16,7 +21,7 @@ const getGroqClient = () => {
     throw new Error('GROQ_API_KEY not found in environment variables. Please check your .env.local file.');
   }
 
-  if (apiKey === 'gsk_your_api_key_here' || apiKey.includes('your')) {
+  if (!isGroqConfigured()) {
     throw new Error('Please set your actual Groq API key in .env.local file');
   }
 
@@ -140,11 +145,11 @@ export async function groqJSONCompletion<T = any>(
     try {
       return JSON.parse(content);
     } catch (error) {
-      console.error('Failed to parse JSON response:', content);
+      console.error('Failed to parse JSON response from Groq');
       throw new Error('AI response was not valid JSON');
     }
   } catch (error: any) {
-    console.error('Groq JSON API error:', error);
+    console.error('Groq JSON API error:', error?.message || error);
     throw error;
   }
 }

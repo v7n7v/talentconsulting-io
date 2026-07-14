@@ -7,7 +7,8 @@ import { useAuthGate } from '@/hooks/useAuthGate';
 import { saveJDTemplate, getJDTemplates, type JDTemplate } from '@/lib/database-suite';
 import { useStore } from '@/lib/store';
 import { showToast } from '@/components/Toast';
-import PageHelp from '@/components/PageHelp';
+import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import SonaThinkingTile from '@/components/SonaThinkingTile';
 import { downloadJDPDF } from '@/lib/pdf-templates';
 
 // JD Structure
@@ -289,44 +290,32 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
 
 
   return (
-    <div className="min-h-screen p-6 lg:p-8">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-        className="max-w-5xl mx-auto relative overflow-hidden rounded-2xl glass-card p-6 mb-6"
-      >
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/30 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/30 rounded-full blur-3xl" />
-        </div>
-        <div className="relative z-10 flex items-start justify-between">
-          <div>
-            <motion.div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 mb-4">
-              <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-xs font-medium text-white/80">Persona-JD Engine</span>
-            </motion.div>
-            <h1 className="text-2xl lg:text-3xl font-bold mb-2">
-              <span className="bg-gradient-to-r from-cyan-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                Mission Blueprint Generator
-              </span>
-            </h1>
-            <p className="text-silver text-sm max-w-2xl">
-              Create compelling job descriptions that attract exceptional talent with AI-powered bias detection
-            </p>
-          </div>
-          {step !== 'input' && (
-            <button onClick={() => { setStep('input'); setGeneratedJD(null); }}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
-            >← New JD</button>
-          )}
-          <PageHelp toolId="jd-generator" />
-        </div>
-      </motion.div>
+    <div className="mobile-app-content min-h-dvh px-4 py-3 md:p-6 lg:p-8">
+      <div className="mx-auto max-w-4xl">
+        <SuiteToolHeader
+          tool="jd-generator"
+          title="Mission Blueprint Generator"
+          subtitle="Create compelling job descriptions that attract exceptional talent with AI-powered bias detection."
+          eyebrow="Persona-JD Engine"
+          icon="assignment"
+          pageHelpId="jd-generator"
+          className="mb-4 md:mb-6"
+          actions={step !== 'input' ? (
+            <button
+              onClick={() => { setStep('input'); setGeneratedJD(null); }}
+              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+            >
+              New JD
+            </button>
+          ) : undefined}
+        />
+      </div>
 
       <AnimatePresence mode="wait">
         {/* INPUT STEP */}
         {step === 'input' && (
           <motion.div key="input" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-            className="max-w-5xl mx-auto"
+            className="max-w-4xl mx-auto"
           >
             <div className="grid lg:grid-cols-3 gap-6">
               {/* Main Form */}
@@ -414,10 +403,21 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
                 <button onClick={generateJD} disabled={isLoading || !roleTitle.trim()}
                   className="w-full flex items-center justify-center gap-2 py-5 rounded-2xl font-bold text-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-50"
                 >
-                  <span className="material-symbols-rounded">{isLoading ? 'psychology' : 'flare'}</span>
-                  {isLoading ? 'Generating Mission Blueprint...' : 'Generate Mission Blueprint'}
-                </button>
-              </div>
+	                  <span className="material-symbols-rounded">{isLoading ? 'psychology' : 'flare'}</span>
+	                  {isLoading ? 'Generating Mission Blueprint...' : 'Generate Mission Blueprint'}
+	                </button>
+	                {isLoading && (
+	                  <SonaThinkingTile
+	                    variant="jobs"
+	                    icon="clinical_notes"
+	                    title="Sona is drafting the mission blueprint"
+	                    description="Balancing role clarity, requirements, culture, and inclusive language."
+	                    activeStage="generating"
+	                    stages={['Role brief', 'Requirements', 'Bias check', 'Roadmap']}
+	                    compact
+	                  />
+	                )}
+	              </div>
 
               {/* Sidebar */}
               <div className="space-y-4">

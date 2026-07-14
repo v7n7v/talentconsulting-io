@@ -4,6 +4,18 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 
+const stableFraction = (value: number) => {
+    const result = Math.sin(value * 12.9898) * 43758.5453;
+    return result - Math.floor(result);
+};
+
+const STAR_FIELD = Array.from({ length: 50 }, (_, index) => ({
+    top: `${(stableFraction(index + 1) * 100).toFixed(3)}%`,
+    left: `${(stableFraction(index + 101) * 100).toFixed(3)}%`,
+    duration: stableFraction(index + 201) * 3 + 2,
+    delay: stableFraction(index + 301) * 2,
+}));
+
 export default function NotFound() {
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
@@ -19,7 +31,7 @@ export default function NotFound() {
     }, []);
 
     return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center relative overflow-hidden">
+        <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-slate-950">
             {/* Animated Background */}
             <div className="absolute inset-0">
                 {/* Floating orbs */}
@@ -41,20 +53,20 @@ export default function NotFound() {
                 />
 
                 {/* Stars */}
-                {[...Array(50)].map((_, i) => (
+                {STAR_FIELD.map((star, i) => (
                     <motion.div
                         key={i}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: [0.2, 1, 0.2] }}
                         transition={{
-                            duration: Math.random() * 3 + 2,
+                            duration: star.duration,
                             repeat: Infinity,
-                            delay: Math.random() * 2,
+                            delay: star.delay,
                         }}
                         className="absolute w-1 h-1 bg-white rounded-full"
                         style={{
-                            top: `${Math.random() * 100}%`,
-                            left: `${Math.random() * 100}%`,
+                            top: star.top,
+                            left: star.left,
                         }}
                     />
                 ))}

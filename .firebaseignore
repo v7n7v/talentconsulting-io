@@ -1,0 +1,29 @@
+# Firebase framework deploy should never upload local build caches.
+.next/cache/**
+.next/dev/**
+.next/diagnostics/**
+.next/**/*.pack
+
+# Generated deploy artifacts are rebuilt by Firebase.
+.firebase/**
+
+# Local-only and secret-bearing files.
+.env
+.env.local
+.env.*.local
+.env.cloudrun.yaml
+.env.production
+.DS_Store
+.npmrc
+
+# Development and report artifacts.
+.git/**
+.github/**
+.playwright-cli/**
+.security-cve/**
+.seo-audit/**
+coverage/**
+node_modules/**
+*.log
+*.tsbuildinfo
+

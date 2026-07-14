@@ -1,59 +1,42 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { useStore } from '@/lib/store';
-import { showToast } from '@/components/Toast';
-import { authFetch } from '@/lib/auth-fetch';
-import PageHelp from '@/components/PageHelp';
-import FileUploadDropzone from '@/components/FileUploadDropzone';
-import { calculateFitScore, type RealJob } from '@/lib/job-search-api';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { type ResumeVersion } from '@/lib/database-suite';
+import FileUploadDropzone from '@/components/FileUploadDropzone';
 import ResumeLibraryPicker from '@/components/ResumeLibraryPicker';
+import SonaThinkingTile from '@/components/SonaThinkingTile';
+import { showToast } from '@/components/Toast';
+import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
+import { authFetch } from '@/lib/auth-fetch';
+import { createJobApplication, type ResumeVersion } from '@/lib/database-suite';
+import { useStore } from '@/lib/store';
+import {
+  inferCompanyFromJobDescription,
+  inferRoleFromJobDescription,
+  loadApplicationKitContext,
+  mergeApplicationKitContext,
+  resumeSnapshotToText,
+  resumeVersionToApplicationKitContext,
+} from '@/lib/application-kit';
+import {
+  buildOracleV2Report,
+  extractOracleSkills,
+  type OracleV2Report,
+  type OracleVerdict,
+} from '@/lib/oracle-v2';
+import type { MarketAnalysis, JobStar } from './Scene';
 
-// Types
-interface JobStar {
-  id: string;
-  title: string;
-  company: string;
-  salary: number;
-  skills: string[];
-  fitScore: number;
-  position: [number, number, number];
-  color: string;
-  isConstellation: boolean;
-  // Real job fields
-  url?: string;
-  location?: string;
-  description?: string;
-  isReal?: boolean;
-  source?: string;
-}
+const OracleScene = dynamic(() => import('./Scene'), { ssr: false });
+const DynamicCanvas = dynamic(() => import('./CanvasWrapper').then(mod => mod.default), { ssr: false });
 
-interface BridgeSkill {
-  skill: string;
-  impact: number;
-  newPosition: [number, number, number];
-  salaryIncrease: number;
-  newFitScore: number;
-}
+type Step = 'ready' | 'analyzing' | 'report';
+type IntelTab = 'decode' | 'salary' | 'risks' | 'company' | 'packet' | 'map';
+type PacketStatus = 'idle' | 'preparing' | 'ready' | 'failed' | 'tracked';
+type ResumeInputMode = 'upload' | 'paste' | 'build';
 
-interface MarketAnalysis {
-  currentPosition: [number, number, number];
-  talentDensityPercentile: number;
-  topSkills: string[];
-  missingSkills: string[];
-  bridgeSkills: BridgeSkill[];
-  jobs: JobStar[];
-  marketTrends: { skill: string; growth: number }[];
-  industryInsights: string[];
-  jobDataSource: string;
-}
-
-// JD Decoder analysis from Dual-AI
-interface JDIntelligence {
+interface LegacyAnalysis {
   fitScore: number;
   fitVerdict: string;
   overallAssessment: string;
@@ -62,1153 +45,901 @@ interface JDIntelligence {
   gapSkills: string[];
   keywordsToAdd: string[];
   salaryIntel: { min: number; max: number; userPosition: number; withBridgeSkills: number; currency: string };
-  redFlags: { flag: string; severity: 'low' | 'medium' | 'high'; explanation: string }[];
-  hiddenRequirements: { stated: string; actual: string }[];
-  roleLevel: string;
-  bridgeSkills: { skill: string; impact: number; salaryIncrease: number }[];
-  marketTrends: { skill: string; growth: number }[];
+  redFlags: Array<{ flag: string; severity: 'low' | 'medium' | 'high'; explanation: string }>;
+  hiddenRequirements: Array<{ stated: string; actual: string }>;
+  bridgeSkills: Array<{ skill: string; impact: number; salaryIncrease: number }>;
+  marketTrends: Array<{ skill: string; growth: number }>;
   industryInsights: string[];
 }
 
-// Generate mock job data with data-driven spatial encoding
-// X = fit score (-6 to +6), Y = salary (normalized), Z = skill cluster distance
-const generateJobStars = (skills: string[], count: number = 50): JobStar[] => {
-  const companies = ['Google', 'Meta', 'Apple', 'Microsoft', 'Amazon', 'Netflix', 'Stripe', 'OpenAI', 'Anthropic', 'Tesla', 'SpaceX', 'Nvidia', 'Salesforce', 'Adobe', 'Uber'];
-  const titles = ['Senior Engineer', 'Staff Engineer', 'Tech Lead', 'Principal Engineer', 'Engineering Manager', 'ML Engineer', 'Data Scientist', 'DevOps Lead', 'Architect', 'VP Engineering'];
-  const minSalary = 90000;
-  const maxSalary = 400000;
+const ANALYSIS_STAGES = [
+  { label: 'Parsing JD', detail: 'Extracting role, seniority, compensation, and screen signals.', icon: 'content_paste' },
+  { label: 'Comparing Resume', detail: 'Checking proof strength against must-have requirements.', icon: 'difference' },
+  { label: 'Checking Market', detail: 'Looking for role context and source confidence.', icon: 'travel_explore' },
+  { label: 'Assessing Risk', detail: 'Separating role risk, posting risk, and candidate proof risk.', icon: 'shield' },
+  { label: 'Building Packet Plan', detail: 'Preparing next moves for resume, cover letter, LinkedIn, and tracker.', icon: 'fact_check' },
+];
 
-  return Array.from({ length: count }, (_, i) => {
-    const salary = minSalary + Math.random() * (maxSalary - minSalary);
-    const fitScore = 0.2 + Math.random() * 0.8;
-    const skillOverlap = Math.random();
-
-    // Spatial encoding: meaningful axes
-    const x = fitScore * 12 - 6 + (Math.random() - 0.5) * 1.5;
-    const y = ((salary - minSalary) / (maxSalary - minSalary)) * 12 - 6 + (Math.random() - 0.5) * 1;
-    const z = -((1 - skillOverlap) * 6) + (Math.random() - 0.5) * 1;
-
-    return {
-      id: `job-${i}`,
-      title: titles[Math.floor(Math.random() * titles.length)],
-      company: companies[Math.floor(Math.random() * companies.length)],
-      salary: Math.round(salary),
-      skills: skills.slice(0, 3 + Math.floor(Math.random() * 5)),
-      fitScore,
-      position: [x, y, z] as [number, number, number],
-      color: fitScore > 0.8 ? '#06d6a0' : fitScore > 0.6 ? '#0ea5e9' : fitScore > 0.4 ? '#f59e0b' : '#6b7280',
-      isConstellation: fitScore > 0.7,
-    };
-  });
+const verdictCopy: Record<OracleVerdict, { label: string; icon: string; color: string; bg: string }> = {
+  apply: { label: 'Apply', icon: 'verified', color: '#059669', bg: 'rgba(16,185,129,0.1)' },
+  prepare_first: { label: 'Prepare First', icon: 'auto_fix_high', color: '#0284c7', bg: 'rgba(14,165,233,0.1)' },
+  watch: { label: 'Watch', icon: 'visibility', color: '#d97706', bg: 'rgba(245,158,11,0.1)' },
+  skip: { label: 'Skip', icon: 'block', color: '#dc2626', bg: 'rgba(239,68,68,0.1)' },
 };
 
-const OracleScene = dynamic(() => import('./Scene'), { ssr: false });
+function scoreTone(score: number) {
+  if (score >= 78) return '#059669';
+  if (score >= 62) return '#0284c7';
+  if (score >= 45) return '#d97706';
+  return '#dc2626';
+}
 
-// Dynamic Canvas wrapper — R3F v9 requires a proper component boundary
-const DynamicCanvas = dynamic(
-  () => import('./CanvasWrapper').then((mod) => mod.default),
-  { ssr: false }
-);
+function displaySalary(min?: number, max?: number) {
+  if (!min && !max) return 'Unknown';
+  if (min && max) return `$${Math.round(min / 1000)}K - $${Math.round(max / 1000)}K`;
+  return `$${Math.round((min || max || 0) / 1000)}K`;
+}
 
-// Main Component
+function formatResumeToText(content: any) {
+  return resumeSnapshotToText(content);
+}
+
+function buildMapAnalysis(report: OracleV2Report | null, legacy: LegacyAnalysis | null, jobs: JobStar[]): MarketAnalysis & { jobDataSource: string } {
+  const fit = report?.decision.fitScore || legacy?.fitScore || 50;
+  const currentPosition: [number, number, number] = [0, 0, (fit / 100) * 6 - 3];
+  const bridgeSkills = (legacy?.bridgeSkills || report?.packetPlan.linkedinKeywords.slice(0, 3).map((skill, index) => ({
+    skill,
+    impact: 4 + index,
+    salaryIncrease: 5000 + index * 2500,
+  })) || []).slice(0, 3).map((skill, index) => ({
+    ...skill,
+    newPosition: [index * 1.8 - 1.8, 1 + index * 0.8, currentPosition[2] + 1.5 + index * 0.4] as [number, number, number],
+    newFitScore: Math.min(0.95, (fit + skill.impact * 3) / 100),
+  }));
+
+  return {
+    currentPosition,
+    talentDensityPercentile: fit,
+    topSkills: report?.breakdown.keywordMap.found || legacy?.matchedSkills || [],
+    missingSkills: report?.breakdown.keywordMap.missing || legacy?.gapSkills || [],
+    bridgeSkills,
+    jobs,
+    marketTrends: legacy?.marketTrends || [],
+    industryInsights: legacy?.industryInsights || [],
+    jobDataSource: jobs.length > 0 ? `${jobs.length} live roles` : 'Analysis map only',
+  };
+}
+
+function CommandMetric({ icon, label, value, tone = 'text-[var(--text-primary)]' }: { icon: string; label: string; value: string; tone?: string }) {
+  return (
+    <div className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3">
+      <div className="flex items-center gap-2">
+        <span className="material-symbols-rounded text-[18px] text-cyan-600 dark:text-cyan-300">{icon}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">{label}</span>
+      </div>
+      <p className={`mt-1 truncate text-sm font-semibold ${tone}`}>{value}</p>
+    </div>
+  );
+}
+
+function ScoreRing({ score, label, icon }: { score: number; label: string; icon: string }) {
+  const color = scoreTone(score);
+  return (
+    <div className="min-w-[150px] rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+      <div className="grid grid-cols-[minmax(0,1fr)_56px] items-center gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">{label}</p>
+          <p className="mt-2 whitespace-nowrap text-[2.15rem] font-semibold leading-none tracking-normal text-[var(--text-primary)] tabular-nums">{score}</p>
+        </div>
+        <div className="relative grid h-14 w-14 shrink-0 place-items-center">
+          <svg className="absolute inset-0 h-14 w-14 -rotate-90" viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" strokeWidth="6" className="text-[var(--border-subtle)]" />
+            <circle cx="32" cy="32" r="26" fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeDasharray={`${Math.max(0, Math.min(100, score)) * 1.63} 163`} />
+          </svg>
+          <span className="material-symbols-rounded text-[20px]" style={{ color }}>{icon}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FactorRow({ label, value }: { label: string; value: number }) {
+  const color = scoreTone(value);
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className="font-medium text-[var(--text-secondary)]">{label}</span>
+        <span className="font-semibold" style={{ color }}>{value}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-[var(--card-bg)]">
+        <div className="h-full rounded-full" style={{ width: `${value}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+function Pill({ children, tone = 'cyan' }: { children: React.ReactNode; tone?: 'cyan' | 'emerald' | 'amber' | 'red' | 'muted' }) {
+  const styles = {
+    cyan: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
+    emerald: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    amber: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    red: 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300',
+    muted: 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]',
+  }[tone];
+  return <span className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[11px] font-medium leading-5 ${styles}`}><span className="min-w-0 wrap-anywhere">{children}</span></span>;
+}
+
+function EmptyCard({ icon, title, body }: { icon: string; title: string; body: string }) {
+  return (
+    <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-8 text-center">
+      <span className="material-symbols-rounded text-4xl text-[var(--text-muted)]">{icon}</span>
+      <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{title}</p>
+      <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-[var(--text-secondary)]">{body}</p>
+    </div>
+  );
+}
+
 export default function MarketOraclePage() {
   const { user } = useStore();
   const router = useRouter();
-  const [step, setStep] = useState<'setup' | 'analyzing' | 'oracle'>('setup');
+  const prefersReducedMotion = useReducedMotion();
+  const [step, setStep] = useState<Step>('ready');
+  const [activeTab, setActiveTab] = useState<IntelTab>('decode');
+  const [stageIndex, setStageIndex] = useState(0);
   const [resumeText, setResumeText] = useState('');
   const [jdText, setJdText] = useState('');
   const [targetRole, setTargetRole] = useState('');
+  const [company, setCompany] = useState('');
   const [location, setLocation] = useState('');
-  const [analysis, setAnalysis] = useState<MarketAnalysis | null>(null);
-  const [jdIntel, setJdIntel] = useState<JDIntelligence | null>(null);
-  const [selectedJob, setSelectedJob] = useState<JobStar | null>(null);
-  const [showBridge, setShowBridge] = useState(false);
-  const [activeBridgeSkill, setActiveBridgeSkill] = useState<BridgeSkill | null>(null);
-  const [showJobCard, setShowJobCard] = useState(false);
-  const [analyzeStage, setAnalyzeStage] = useState(0);
-  const [showIntelPanel, setShowIntelPanel] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
-  const [visibleTiers, setVisibleTiers] = useState<Set<string>>(new Set(['elite', 'strong', 'decent', 'low']));
-  const [processingStage, setProcessingStage] = useState<'uploading' | 'extracting' | 'parsing' | null>(null);
-
-  // Saved Resumes integration
+  const [salaryTarget, setSalaryTarget] = useState(0);
+  const [jobUrl, setJobUrl] = useState('');
   const [selectedResumeId, setSelectedResumeId] = useState<string | null>(null);
   const [selectedResumeName, setSelectedResumeName] = useState('');
+  const [selectedResumeSnapshot, setSelectedResumeSnapshot] = useState<any>(null);
+  const [resumeInputMode, setResumeInputMode] = useState<ResumeInputMode>('upload');
+  const [isUploading, setIsUploading] = useState(false);
+  const [processingStage, setProcessingStage] = useState<'uploading' | 'extracting' | 'parsing' | null>(null);
+  const [legacyAnalysis, setLegacyAnalysis] = useState<LegacyAnalysis | null>(null);
+  const [oracleReport, setOracleReport] = useState<OracleV2Report | null>(null);
+  const [marketJobs, setMarketJobs] = useState<JobStar[]>([]);
+  const [packetStatus, setPacketStatus] = useState<PacketStatus>('idle');
+  const [packetStage, setPacketStage] = useState(0);
+  const [packetResult, setPacketResult] = useState<any>(null);
+  const [error, setError] = useState('');
 
-  const formatResumeToText = (content: any) => {
-    if (!content) return '';
-    const parts: string[] = [];
-    if (content.name) parts.push(content.name);
-    if (content.title) parts.push(content.title);
-    if (content.summary) parts.push(content.summary);
-    if (content.skills?.length) parts.push(`Skills: ${content.skills.join(', ')}`);
-    if (content.experience?.length) {
-      parts.push('Experience:');
-      content.experience.forEach((e: any) => {
-        parts.push(`${e.role || e.title} at ${e.company} (${e.duration || e.date || ''})`);
-        if (e.achievements?.length) e.achievements.forEach((a: string) => parts.push(`• ${a}`));
-        if (e.description) parts.push(e.description);
-      });
-    }
-    if (content.education?.length) {
-      parts.push('Education:');
-      content.education.forEach((e: any) => parts.push(`${e.degree} from ${e.school} (${e.date || ''})`));
-    }
-    return parts.join('\n\n');
-  };
+  const resumeSkills = useMemo(() => extractOracleSkills(resumeText), [resumeText]);
+  const inferredRole = useMemo(() => targetRole || inferRoleFromJobDescription(jdText), [targetRole, jdText]);
+  const inferredCompany = useMemo(() => company || inferCompanyFromJobDescription(jdText), [company, jdText]);
+  const mapAnalysis = useMemo(() => buildMapAnalysis(oracleReport, legacyAnalysis, marketJobs), [oracleReport, legacyAnalysis, marketJobs]);
+  const canAnalyze = resumeText.trim().length > 100 && (jdText.trim().length > 120 || targetRole.trim().length > 1);
+
+  useEffect(() => {
+    const kit = loadApplicationKitContext();
+    if (kit.resumeText) setResumeText(kit.resumeText);
+    if (kit.resumeVersionId) setSelectedResumeId(kit.resumeVersionId);
+    if (kit.resumeVersionName) setSelectedResumeName(kit.resumeVersionName);
+    if (kit.resumeSnapshot) setSelectedResumeSnapshot(kit.resumeSnapshot);
+    if (kit.jobDescription) setJdText(kit.jobDescription);
+    if (kit.company) setCompany(kit.company);
+    if (kit.jobTitle || kit.targetRole) setTargetRole(kit.jobTitle || kit.targetRole || '');
+  }, []);
+
+  const persistContext = useCallback((patch: Record<string, any> = {}) => {
+    mergeApplicationKitContext({
+      resumeVersionId: selectedResumeId,
+      resumeVersionName: selectedResumeName,
+      resumeSnapshot: selectedResumeSnapshot,
+      resumeText,
+      jobDescription: jdText,
+      company: inferredCompany,
+      jobTitle: inferredRole,
+      targetRole: inferredRole,
+      oracleResult: oracleReport ? { status: 'success', data: oracleReport, updatedAt: new Date().toISOString() } : { status: 'idle' },
+      ...patch,
+    });
+  }, [inferredCompany, inferredRole, jdText, oracleReport, resumeText, selectedResumeId, selectedResumeName, selectedResumeSnapshot]);
 
   const handleSelectResume = (rv: ResumeVersion) => {
     const text = formatResumeToText(rv.content);
     setResumeText(text);
     setSelectedResumeId(rv.id);
     setSelectedResumeName(rv.version_name);
+    setSelectedResumeSnapshot(rv.content);
+    setResumeInputMode('build');
+    mergeApplicationKitContext(resumeVersionToApplicationKitContext(rv));
   };
 
-
-  // Handle resume upload via FileUploadDropzone
-  const handleResumeUploaded = (text: string, _fileName: string) => {
+  const handleResumeUploaded = (text: string, fileName: string) => {
     setResumeText(text.trim());
+    setSelectedResumeName(fileName);
+    setSelectedResumeId(null);
+    setSelectedResumeSnapshot(null);
+    setResumeInputMode('build');
     setIsUploading(false);
     setProcessingStage(null);
-    showToast('Resume loaded!', 'check_circle');
+    showToast('Resume loaded into Oracle', 'check_circle');
   };
 
-  // Analyze market position with Dual-AI
-  const analyzeMarket = async () => {
-    if (!resumeText.trim()) {
-      showToast('Please upload your resume', 'cancel');
+  const searchMarketJobs = useCallback(async (report: OracleV2Report) => {
+    try {
+      const params = new URLSearchParams({
+        query: report.session.role || inferredRole || 'software engineer',
+        location,
+        country: 'us',
+        limit: '18',
+        sortBy: 'relevance',
+      });
+      if (salaryTarget > 0) params.set('salaryMin', String(salaryTarget));
+      if (resumeSkills.length > 0) params.set('userSkills', JSON.stringify(resumeSkills));
+      const res = await authFetch(`/api/jobs/search?${params}`);
+      const data = await res.json();
+      if (!res.ok || !data.success || !Array.isArray(data.jobs)) return [];
+      const salaries = data.jobs.map((job: any) => job.salary?.max || job.salary?.min || 120000);
+      const minSal = Math.min(...salaries);
+      const maxSal = Math.max(...salaries);
+      const range = Math.max(1, maxSal - minSal);
+      return data.jobs.slice(0, 18).map((job: any, index: number) => {
+        const fit = (job.fitScore?.overall || job.matchScore || report.decision.fitScore || 55) / 100;
+        const salary = job.salary?.max || job.salary?.min || 120000;
+        const x = fit * 12 - 6 + (index % 3) * 0.35;
+        const y = ((salary - minSal) / range) * 10 - 5;
+        const z = -((1 - fit) * 5) + (index % 4) * 0.25;
+        return {
+          id: job.id || `market-${index}`,
+          title: job.title,
+          company: job.company,
+          salary: Math.round(salary),
+          skills: job.skills || [],
+          fitScore: fit,
+          position: [x, y, z] as [number, number, number],
+          color: fit > 0.78 ? '#06d6a0' : fit > 0.62 ? '#0ea5e9' : fit > 0.45 ? '#f59e0b' : '#6b7280',
+          isConstellation: fit > 0.62,
+          url: job.url,
+          location: job.location,
+          description: job.description,
+          isReal: true,
+          source: job.sourceMeta?.sourceName || job.source,
+        } satisfies JobStar;
+      });
+    } catch {
+      return [];
+    }
+  }, [inferredRole, location, resumeSkills, salaryTarget]);
+
+  const analyzeOracle = async () => {
+    if (!canAnalyze) {
+      showToast('Add a resume and either a JD or target role first', 'info');
       return;
     }
-
     setStep('analyzing');
-    setAnalyzeStage(0);
-    setJdIntel(null);
+    setError('');
+    setLegacyAnalysis(null);
+    setOracleReport(null);
+    setMarketJobs([]);
+    setActiveTab('decode');
+    let interval: number | null = null;
+    setStageIndex(0);
+    if (!prefersReducedMotion) {
+      interval = window.setInterval(() => setStageIndex(prev => Math.min(prev + 1, ANALYSIS_STAGES.length - 1)), 1200);
+    }
 
     try {
-      // ═══ STAGE 1: Dual-AI JD Analysis (if JD provided) ═══
-      if (jdText.trim()) {
-        setAnalyzeStage(1);
-        try {
-          const intelRes = await authFetch('/api/oracle/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ resumeText, jdText, targetRole, location }),
-          });
-          const intelData = await intelRes.json();
-          if (intelData.success && intelData.analysis) {
-            setJdIntel(intelData.analysis);
-          }
-        } catch (intelError) {
-          console.warn('Dual-AI analysis unavailable, continuing with basic analysis:', intelError);
-        }
-      }
-
-      // ═══ STAGE 2: Job Market Scan ═══
-      setAnalyzeStage(2);
-
-      let jobs: JobStar[] = [];
-      let jobDataSource = 'Mock Data (Fallback)';
-
-      // Use JD intel skills if available, otherwise try to extract from JD text
-      const topSkillsFallback = ['JavaScript', 'Python', 'React', 'Node.js', 'SQL'];
-      const extractedSkills = jdIntel?.matchedSkills || topSkillsFallback;
-
-      try {
-        const searchQuery = targetRole || (jdText ? jdText.substring(0, 100) : extractedSkills.slice(0, 3).join(' '));
-        const jobResponse = await fetch(`/api/jobs/search?query=${encodeURIComponent(searchQuery)}&location=${encodeURIComponent(location || '')}`);
-        const jobData = await jobResponse.json();
-
-        if (jobData.success && jobData.jobs && jobData.jobs.length > 0) {
-          jobDataSource = `${jobData.source} (${jobData.jobs.length} real jobs)`;
-
-          // Calculate salary bounds for normalization
-          const salaries = jobData.jobs.map((j: any) => j.salary?.max || j.salary?.min || 120000);
-          const minSal = Math.min(...salaries);
-          const maxSal = Math.max(...salaries);
-          const salRange = Math.max(maxSal - minSal, 1);
-
-          jobs = jobData.jobs.map((job: any, index: number) => {
-            const fitScore = calculateFitScore(jdIntel?.matchedSkills || extractedSkills, job.skills || []);
-            const salary = job.salary?.max || job.salary?.min || (100000 + Math.random() * 150000);
-            const skillOverlap = fitScore; // use fit as proxy for skill distance
-
-            // Data-driven spatial encoding
-            const x = fitScore * 12 - 6 + (Math.random() - 0.5) * 1.2;
-            const y = ((salary - minSal) / salRange) * 12 - 6 + (Math.random() - 0.5) * 0.8;
-            const z = -((1 - skillOverlap) * 5) + (Math.random() - 0.5) * 1;
-
-            return {
-              id: job.id || `job-${index}`,
-              title: job.title,
-              company: job.company,
-              salary: Math.round(salary),
-              skills: job.skills || [],
-              fitScore,
-              position: [x, y, z] as [number, number, number],
-              color: fitScore > 0.7 ? '#06d6a0' : fitScore > 0.5 ? '#0ea5e9' : fitScore > 0.3 ? '#f59e0b' : '#6b7280',
-              isConstellation: fitScore > 0.6,
-              url: job.url,
-              location: job.location,
-              description: job.description?.substring(0, 500),
-              isReal: true,
-              source: job.source,
-            };
-          });
-
-          showToast(`Found ${jobs.length} real job matches!`, 'my_location');
-        }
-      } catch (jobError) {
-        console.error('Job search error, using fallback:', jobError);
-      }
-
-      if (jobs.length === 0) {
-        jobs = generateJobStars(jdIntel?.matchedSkills || extractedSkills, 60);
-        jobDataSource = 'Simulated Data';
-      }
-
-      // ═══ STAGE 3: Build Analysis ═══
-      setAnalyzeStage(3);
-
-      const percentile = jdIntel?.fitScore || 50;
-      const userZ = (percentile / 100) * 6 - 3;
-      const currentPosition: [number, number, number] = [0, 0, userZ];
-
-      const bridgeSkillsData = jdIntel?.bridgeSkills || [];
-      const bridgeSkills: BridgeSkill[] = bridgeSkillsData.slice(0, 3).map((bs, i) => ({
-        ...bs,
-        newPosition: [
-          currentPosition[0] + (Math.random() - 0.5) * 4,
-          currentPosition[1] + (Math.random() - 0.5) * 4,
-          currentPosition[2] + (bs.impact / 10) * 3,
-        ] as [number, number, number],
-        newFitScore: Math.min(0.95, 0.6 + bs.impact * 0.035),
-      }));
-
-      setAnalysis({
-        currentPosition,
-        talentDensityPercentile: percentile,
-        topSkills: jdIntel?.matchedSkills || extractedSkills,
-        missingSkills: jdIntel?.gapSkills || [],
-        bridgeSkills,
-        jobs,
-        marketTrends: jdIntel?.marketTrends || [],
-        industryInsights: jdIntel?.industryInsights || [],
-        jobDataSource,
+      const res = await authFetch('/api/oracle/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resumeText,
+          jdText,
+          targetRole: inferredRole,
+          location,
+          salaryTarget,
+        }),
       });
-
-      setStep('oracle');
-      showToast(jdText.trim() ? 'Dual-AI analysis complete!' : 'Market analysis complete!', 'check_circle');
-    } catch (error) {
-      console.error('Analysis error:', error);
-      showToast('Error analyzing market', 'cancel');
-      setStep('setup');
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Oracle analysis failed');
+      const legacy = data.analysis as LegacyAnalysis;
+      const report = (data.oracleV2 || buildOracleV2Report({
+        session: { resumeText, jdText, role: inferredRole, company: inferredCompany, location, salaryTarget, source: 'manual' },
+        legacy,
+      })) as OracleV2Report;
+      const jobs = await searchMarketJobs(report);
+      const marketDataMode: OracleV2Report['sourceQuality']['marketData'] = jobs.length >= 8 ? 'live_jobs' : 'limited_live_jobs';
+      const finalReport = jobs.length > 0
+        ? { ...report, sourceQuality: { ...report.sourceQuality, marketData: marketDataMode } }
+        : report;
+      setLegacyAnalysis(legacy);
+      setOracleReport(finalReport);
+      setMarketJobs(jobs);
+      mergeApplicationKitContext({
+        resumeVersionId: selectedResumeId,
+        resumeVersionName: selectedResumeName,
+        resumeSnapshot: selectedResumeSnapshot,
+        resumeText,
+        jobDescription: jdText,
+        company: inferredCompany || finalReport.session.company,
+        jobTitle: inferredRole || finalReport.session.role,
+        targetRole: inferredRole || finalReport.session.role,
+        oracleResult: { status: 'success', data: finalReport, updatedAt: new Date().toISOString() },
+      });
+      setStageIndex(ANALYSIS_STAGES.length - 1);
+      setStep('report');
+      showToast('Oracle decision brief ready', 'verified');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Oracle analysis failed';
+      setError(message);
+      setStep('ready');
+      showToast(message, 'cancel');
+    } finally {
+      if (interval) window.clearInterval(interval);
     }
   };
 
-  // Handle bridge skill toggle
-  const toggleBridgeSkill = (skill: BridgeSkill) => {
-    if (activeBridgeSkill?.skill === skill.skill) {
-      setActiveBridgeSkill(null);
-      setShowBridge(false);
+  const prepareApplication = async () => {
+    if (!oracleReport) return;
+    persistContext();
+    setPacketStatus('preparing');
+    setPacketStage(0);
+    const progress = window.setInterval(() => setPacketStage(prev => Math.min(prev + 1, 5)), 900);
+    try {
+      const res = await authFetch('/api/agent/apply-pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobTitle: oracleReport.session.role || inferredRole,
+          company: oracleReport.session.company || inferredCompany || 'Target company',
+          jobDescription: jdText,
+          jobUrl,
+          resumeVersionId: selectedResumeId,
+          fitScore: { overall: oracleReport.decision.fitScore },
+          prepareOnly: true,
+          sourceMeta: { sourceName: 'Market Oracle', sourceType: 'oracle', sourceConfidence: oracleReport.decision.confidence },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Packet preparation failed');
+      setPacketResult(data);
+      setPacketStage(6);
+      setPacketStatus('ready');
+      mergeApplicationKitContext({
+        oracleResult: { status: 'success', data: oracleReport, updatedAt: new Date().toISOString() },
+        atsResult: data.atsResult ? { status: 'success', data: data.atsResult, updatedAt: new Date().toISOString() } : undefined,
+        coverLetterResult: data.coverLetter ? { status: 'success', data: { coverLetter: data.coverLetter }, updatedAt: new Date().toISOString() } : undefined,
+        resumeVersionId: data.morphedVersionId || selectedResumeId,
+      });
+      showToast('Application packet ready for review', 'task_alt');
+    } catch (err) {
+      setPacketStatus('failed');
+      showToast(err instanceof Error ? err.message : 'Packet failed', 'cancel');
+    } finally {
+      window.clearInterval(progress);
+    }
+  };
+
+  const trackApplication = async () => {
+    if (!oracleReport) return;
+    persistContext();
+    const result = await createJobApplication({
+      companyName: oracleReport.session.company || inferredCompany || 'Target company',
+      jobTitle: oracleReport.session.role || inferredRole,
+      jobDescription: jdText,
+      resumeVersionId: packetResult?.morphedVersionId || selectedResumeId || undefined,
+      morphedResumeName: `${oracleReport.session.company || inferredCompany || 'Target company'} - ${oracleReport.session.role || inferredRole}`,
+      talentDensityScore: oracleReport.decision.fitScore,
+      gapAnalysis: oracleReport,
+      applicationLink: jobUrl,
+    });
+    if (result.success) {
+      setPacketStatus('tracked');
+      showToast('Tracker draft created', 'work');
     } else {
-      setActiveBridgeSkill(skill);
-      setShowBridge(true);
+      showToast(result.error || 'Sign in to save the tracker draft', 'info');
     }
   };
 
-  // Handle job selection
-  useEffect(() => {
-    if (selectedJob) {
-      setShowJobCard(true);
-    }
-  }, [selectedJob]);
+  const routeWithContext = (path: string) => {
+    persistContext();
+    router.push(path);
+  };
 
+  const readinessItems = [
+    { label: 'Resume evidence', ready: resumeText.trim().length > 100, detail: resumeText ? `${resumeText.length.toLocaleString()} characters ready` : 'Load a saved resume, upload, or paste context' },
+    { label: 'Role target', ready: Boolean(inferredRole), detail: inferredRole || 'Add a role or paste a JD to infer it' },
+    { label: 'Company context', ready: Boolean(inferredCompany), detail: inferredCompany || 'Optional, but useful for strategy' },
+    { label: 'Job description', ready: jdText.trim().length > 120, detail: jdText ? `${jdText.length.toLocaleString()} characters captured` : 'Paste the JD for proof gaps and screen signals' },
+  ];
 
   return (
-    <div className="min-h-screen">
-      <AnimatePresence mode="wait">
-        {/* SETUP STEP */}
-        {step === 'setup' && (
-          <motion.div
-            key="setup"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="p-6 lg:p-8"
-          >
-            {/* Header */}
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="max-w-4xl mx-auto relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900/90 via-indigo-900/30 to-cyan-900/30 border border-white/10 p-8 mb-8"
-            >
-              <div className="absolute inset-0">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-cyan-500/20 rounded-full blur-3xl" />
-                {/* Animated stars background */}
-                <div className="absolute inset-0 overflow-hidden">
-                  {[...Array(30)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      className="absolute w-1 h-1 bg-white rounded-full"
-                      style={{
-                        left: `${Math.random() * 100}%`,
-                        top: `${Math.random() * 100}%`,
-                      }}
-                      animate={{
-                        opacity: [0.2, 1, 0.2],
-                        scale: [1, 1.5, 1],
-                      }}
-                      transition={{
-                        duration: 2 + Math.random() * 2,
-                        repeat: Infinity,
-                        delay: Math.random() * 2,
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="relative z-10 flex items-start justify-between">
-                <div>
-                  <motion.div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 mb-4">
-                    <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-                    <span className="text-xs font-medium text-indigo-400">Career Intelligence Engine</span>
-                  </motion.div>
-                  <h1 className="text-2xl font-semibold mb-2 text-[var(--text-primary)]">
-                    Market Oracle
-                  </h1>
-                  <p className="text-silver text-sm max-w-2xl">
-                    Paste a job description + your resume → Dual-AI decodes your fit score, salary intel, red flags, and bridge skills in the 3D Starfield.
-                  </p>
-                </div>
-                <PageHelp toolId="market-oracle" />
-              </div>
-            </motion.div>
+    <SuiteToolShell variant="standard">
+        <SuiteToolHeader
+          tool="market-oracle"
+          subtitle="Decide whether a role is worth your time, how to position yourself, and what Sona should prepare before you apply."
+        />
 
-            <div className="max-w-4xl mx-auto space-y-6">
-              {/* Resume Upload */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-6"
-              >
-                <h3 className="font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                  <span className="text-xl"><span className="material-symbols-rounded align-middle">description</span></span> Your Resume
-                  <div className="ml-auto">
-                    <ResumeLibraryPicker
-                      onSelect={handleSelectResume}
-                      selectedId={selectedResumeId}
-                      selectedName={selectedResumeName}
-                      compact
-                    />
+        <section className="min-w-0 max-w-full rounded-[24px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm md:p-5">
+          <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Evidence Dock</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--text-primary)]">Choose the evidence Oracle should trust</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+                Resume context, role details, salary target, and job evidence in one calm decision surface.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ResumeLibraryPicker
+                onSelect={handleSelectResume}
+                selectedId={selectedResumeId}
+                selectedName={selectedResumeName}
+                presentation="modal"
+                triggerLabel="Use Saved Resume"
+                showSearch
+                showFilters
+              />
+              {(['upload', 'paste', 'build'] as ResumeInputMode[]).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setResumeInputMode(mode)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${resumeInputMode === mode ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                >
+                  <span className="material-symbols-rounded text-[16px]">{mode === 'upload' ? 'upload_file' : mode === 'paste' ? 'content_paste' : 'auto_fix_high'}</span>
+                  {mode === 'upload' ? 'Upload' : mode === 'paste' ? 'Paste' : 'Build Context'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-5 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <CommandMetric icon="description" label="Resume" value={selectedResumeName || (resumeText ? 'Pasted resume' : 'Not loaded')} />
+            <CommandMetric icon="work" label="Role" value={inferredRole || 'Awaiting JD'} />
+            <CommandMetric icon="apartment" label="Company" value={inferredCompany || 'Unknown'} />
+            <CommandMetric icon="payments" label="Salary Target" value={salaryTarget ? `$${Math.round(salaryTarget / 1000)}K+` : 'Open'} />
+            <CommandMetric icon="hub" label="Source" value={oracleReport?.sourceQuality.marketData?.replaceAll('_', ' ') || 'Ready'} />
+          </div>
+
+          <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <input value={targetRole} onChange={e => setTargetRole(e.target.value)} placeholder="Target role" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
+            <input value={company} onChange={e => setCompany(e.target.value)} placeholder="Company" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Location or remote" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
+            <input value={jobUrl} onChange={e => setJobUrl(e.target.value)} placeholder="Job URL optional" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
+          </div>
+
+          <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.35fr)]">
+            <div className="min-w-0 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+              <div className="flex min-w-0 items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Resume source</p>
+                  <h3 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{resumeText ? 'Resume context ready' : 'Add resume evidence'}</h3>
+                </div>
+                <Pill tone={resumeText ? 'emerald' : 'muted'}>{resumeText ? `${resumeSkills.length} skills` : 'Needed'}</Pill>
+              </div>
+
+              {resumeText ? (
+                <div className="mt-4 rounded-[16px] border border-emerald-500/20 bg-emerald-500/10 p-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="material-symbols-rounded shrink-0 text-emerald-700 dark:text-emerald-300">verified</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-semibold text-emerald-800 dark:text-emerald-200">{selectedResumeName || 'Pasted resume context'}</p>
+                      <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{resumeText.length.toLocaleString()} characters ready for Oracle analysis.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResumeText('');
+                        setSelectedResumeId(null);
+                        setSelectedResumeName('');
+                        setSelectedResumeSnapshot(null);
+                        setResumeInputMode('upload');
+                      }}
+                      className="shrink-0 text-xs font-semibold text-red-600 dark:text-red-300"
+                    >
+                      Clear
+                    </button>
                   </div>
-                </h3>
-                {!resumeText ? (
+                </div>
+              ) : resumeInputMode === 'paste' || resumeInputMode === 'build' ? (
+                <textarea
+                  value={resumeText}
+                  onChange={e => {
+                    setResumeText(e.target.value);
+                    setSelectedResumeId(null);
+                    setSelectedResumeSnapshot(null);
+                    setSelectedResumeName(e.target.value.trim() ? 'Pasted resume context' : '');
+                  }}
+                  rows={8}
+                  placeholder={resumeInputMode === 'build' ? 'Build a quick context: title, strongest skills, target experience, and proof points.' : 'Paste resume text here when a PDF is not cooperating.'}
+                  className="mt-4 w-full resize-none rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-3 text-sm leading-6 outline-none transition focus:border-cyan-500/40"
+                />
+              ) : (
+                <div className="mt-4">
                   <FileUploadDropzone
                     onUploadSuccess={handleResumeUploaded}
                     isUploading={isUploading}
                     setIsUploading={setIsUploading}
-                    variant="large"
+                    variant="compact"
                     processingStage={processingStage}
-                  />
-                ) : (
-                  <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30">
-                    <div className="flex items-center justify-between">
-                      <span className="text-green-400 font-medium">✓ Resume loaded ({resumeText.length.toLocaleString()} chars)</span>
-                      <button onClick={() => setResumeText('')} className="text-xs text-red-400 hover:text-red-300">Clear</button>
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-
-              {/* JD Decoder Input */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
-                className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-6 relative overflow-hidden"
-              >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl opacity-50 block dark:opacity-100" />
-                <div className="relative">
-                  <h3 className="font-bold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-                    <span className="text-xl"><span className="material-symbols-rounded">content_paste</span></span> Paste Job Description
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] border border-emerald-500/30 font-medium">JD DECODER</span>
-                  </h3>
-                  <p className="text-xs text-silver mb-4">Paste any JD to unlock Dual-AI fit analysis, red flags, salary intel, and hidden requirements.</p>
-                  <textarea
-                    value={jdText}
-                    onChange={(e) => setJdText(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-[var(--theme-bg-input)] border border-[var(--theme-border)] text-[var(--theme-text)] focus:outline-none focus:border-emerald-500/50 text-sm resize-none transition-colors"
-                    placeholder="Paste the full job description here...
-
-e.g., 'We're looking for a Senior Software Engineer to join our platform team...'"
+                    value={resumeText}
+                    onChange={setResumeText}
+                    placeholder="Drop resume or click to upload"
                     rows={5}
                   />
-                  {jdText.trim() && (
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-emerald-400">✓ JD loaded • Dual-AI analysis will activate</span>
-                      <button onClick={() => setJdText('')} className="text-xs text-red-400 hover:text-red-300">Clear</button>
-                    </div>
-                  )}
                 </div>
-              </motion.div>
+              )}
 
-              {/* Target Role & Location */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="grid md:grid-cols-2 gap-4"
-              >
-                <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-6">
-                  <h3 className="font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-                    <span className="text-xl"><span className="material-symbols-rounded">my_location</span></span> Target Role (Optional)
-                  </h3>
-                  <input
-                    type="text"
-                    value={targetRole}
-                    onChange={(e) => setTargetRole(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-[var(--theme-bg-input)] border border-[var(--theme-border)] text-[var(--theme-text)] focus:outline-none"
-                    placeholder="e.g., Senior ML Engineer"
-                  />
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--text-secondary)]">Salary target</span>
+                  <span className="text-xs font-semibold text-[var(--text-primary)]">{salaryTarget ? `$${Math.round(salaryTarget / 1000)}K+` : 'Open'}</span>
                 </div>
-                <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-6">
-                  <h3 className="font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-                    <span className="text-xl"><span className="material-symbols-rounded align-middle">pin_drop</span></span> Location (Optional)
-                  </h3>
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-[var(--theme-bg-input)] border border-[var(--theme-border)] text-[var(--theme-text)] focus:outline-none"
-                    placeholder="e.g., San Francisco, Remote"
-                  />
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[0, 80000, 120000, 160000].map(value => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setSalaryTarget(value)}
+                      className={`rounded-[12px] border px-2 py-2.5 text-xs font-semibold transition ${salaryTarget === value ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                    >
+                      {value ? `$${value / 1000}K` : 'Open'}
+                    </button>
+                  ))}
                 </div>
-              </motion.div>
+              </div>
+            </div>
 
-              {/* Launch Button */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="flex justify-center pt-4"
-              >
+            <div className="min-w-0 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Job Description</p>
+                  <h3 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Paste the role brief</h3>
+                </div>
+                <Pill tone={jdText.length > 1200 ? 'emerald' : jdText.length > 120 ? 'cyan' : 'muted'}>{jdText.length ? `${jdText.length.toLocaleString()} chars` : 'Needed'}</Pill>
+              </div>
+              <textarea
+                value={jdText}
+                onChange={e => {
+                  setJdText(e.target.value);
+                  if (!targetRole) setTargetRole(inferRoleFromJobDescription(e.target.value));
+                  if (!company) setCompany(inferCompanyFromJobDescription(e.target.value));
+                }}
+                rows={9}
+                placeholder="Paste the full job description. Oracle will separate real requirements, likely screen signals, compensation clarity, and proof gaps."
+                className="mt-4 w-full resize-none rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-3 text-sm leading-6 outline-none transition focus:border-cyan-500/40"
+              />
+              <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {readinessItems.map(item => (
+                    <span key={item.label} className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${item.ready ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'}`} title={item.detail}>
+                      <span className="material-symbols-rounded text-[14px]">{item.ready ? 'check_circle' : 'radio_button_unchecked'}</span>
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
                 <button
-                  onClick={analyzeMarket}
-                  disabled={!resumeText.trim()}
-                  className="group px-8 py-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 bg-indigo-500/10 border border-indigo-500/30 text-[var(--text-primary)] hover:border-indigo-500/50 shadow-indigo-500/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  type="button"
+                  onClick={analyzeOracle}
+                  disabled={!canAnalyze || step === 'analyzing'}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-[14px] bg-[var(--text-primary)] px-5 py-3 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <span className="text-xl"><span className="material-symbols-rounded">rocket_launch</span></span>
-                  {jdText.trim() ? 'Decode JD + Analyze Market' : 'Launch Market Oracle'}
+                  <span className="material-symbols-rounded text-base">query_stats</span>
+                  Run Oracle Analysis
                 </button>
-              </motion.div>
-
-              {/* Inline Feature Strip */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="flex items-center justify-center gap-6 pt-6 flex-wrap"
-              >
-                {[
-                  { icon: 'content_paste', label: 'JD Decoder' },
-                  { icon: 'payments', label: 'Salary Intel' },
-                  { icon: 'flag', label: 'Red Flags' },
-                  { icon: 'hub', label: '3D Starfield' },
-                  { icon: 'route', label: 'Bridge Skills' },
-                  { icon: 'my_location', label: 'Actions' },
-                ].map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 text-silver text-sm font-medium">
-                    <span className="text-lg material-symbols-rounded">{f.icon}</span>
-                    <span>{f.label}</span>
-                  </div>
-                ))}
-              </motion.div>
+              </div>
+              {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
             </div>
-          </motion.div>
-        )}
+          </div>
+        </section>
 
-        {/* ANALYZING STEP — Dual-AI Pipeline */}
-        {step === 'analyzing' && (
-          <motion.div
-            key="analyzing"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="min-h-screen flex items-center justify-center p-8"
-          >
-            <div className="text-center max-w-lg">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-                className="w-32 h-32 mx-auto mb-8 relative"
-              >
-                <div className="absolute inset-0 rounded-full border-4 border-indigo-500/20" />
-                <div className="absolute inset-0 rounded-full border-4 border-t-cyan-400 border-r-indigo-400 border-b-cyan-400 border-l-transparent animate-spin" />
-                <div className="absolute inset-4 rounded-full bg-gradient-to-br from-cyan-500/20 to-cyan-500/20 flex items-center justify-center text-cyan-400">
-                  <span className="material-symbols-rounded text-4xl">query_stats</span>
+        <AnimatePresence mode="wait">
+          {step === 'analyzing' && (
+            <motion.section
+              key="analyzing"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6"
+            >
+              <div className="mx-auto max-w-4xl">
+                <SonaThinkingTile
+                  variant="oracle"
+                  icon={ANALYSIS_STAGES[stageIndex].icon}
+                  label="Sona is analyzing"
+                  activeStage={ANALYSIS_STAGES[stageIndex].label}
+                  title={ANALYSIS_STAGES[stageIndex].label}
+                  description={ANALYSIS_STAGES[stageIndex].detail}
+                  stages={ANALYSIS_STAGES.map(stage => stage.label)}
+                  className="mb-6"
+                />
+                <div className="grid gap-3 md:grid-cols-5">
+                  {ANALYSIS_STAGES.map((stage, index) => {
+                    const active = index <= stageIndex;
+                    return (
+                      <div key={stage.label} className={`rounded-[16px] border p-4 transition ${active ? 'border-cyan-500/25 bg-cyan-500/10' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] opacity-60'}`}>
+                        <span className="material-symbols-rounded text-xl text-cyan-600 dark:text-cyan-300">{active && index < stageIndex ? 'check_circle' : stage.icon}</span>
+                        <p className="mt-3 text-xs font-semibold text-[var(--text-primary)]">{stage.label}</p>
+                      </div>
+                    );
+                  })}
                 </div>
-              </motion.div>
-              <h2 className="text-2xl font-bold text-white mb-6">
-                {jdText.trim() ? 'Dual-AI Decoding Your Fit' : 'Scanning the Market Universe'}
-              </h2>
-              {/* Pipeline Stages */}
-              <div className="space-y-3 mb-6">
-                {[
-                  { stage: 1, label: 'AI Processor', desc: 'Extracting skills, parsing JD, detecting red flags', icon: 'memory' },
-                  { stage: 2, label: 'AI Validator', desc: 'Cross-validating, scoring fit, refining salary intel', icon: 'auto_awesome' },
-                  { stage: 3, label: 'Market Scan', desc: 'Mapping job opportunities in 3D space', icon: 'scatter_plot' },
-                ].map((s) => (
-                  <motion.div
-                    key={s.stage}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: s.stage * 0.3 }}
-                    className={`flex items-center gap-4 p-4 rounded-xl border transition-all ${
-                      analyzeStage >= s.stage
-                        ? 'bg-emerald-500/10 border-emerald-500/30'
-                        : analyzeStage === s.stage - 1
-                        ? 'bg-cyan-500/10 border-cyan-500/30 animate-pulse'
-                        : 'bg-[var(--theme-bg-elevated)] border-white/10 opacity-40'
-                    }`}
-                  >
-                    <span className="material-symbols-rounded text-2xl">{analyzeStage > s.stage ? 'check_circle' : s.icon}</span>
-                    <div className="text-left flex-1">
-                      <p className="text-sm font-semibold text-white">{s.label}</p>
-                      <p className="text-xs text-silver">{s.desc}</p>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        <div className="grid min-w-0 max-w-full gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,430px)]">
+          <main className="min-w-0 space-y-5">
+            {!oracleReport ? (
+              <section className="rounded-[24px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm sm:p-5 lg:p-6">
+                <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(460px,1fr)_minmax(300px,380px)]">
+                  <div className="min-w-0">
+                    <span className="inline-grid h-12 w-12 place-items-center rounded-[16px] border border-cyan-500/20 bg-cyan-500/10 text-cyan-600 dark:text-cyan-300">
+                      <span className="material-symbols-rounded">radar</span>
+                    </span>
+                    <p className="mt-5 text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Decision brief awaits</p>
+                    <h2 className="premium-heading-wrap mt-2 text-[clamp(1.35rem,2.1vw,1.85rem)] font-semibold leading-[1.16] text-[var(--text-primary)]">
+                      Oracle will answer the job-search question that matters.
+                    </h2>
+                    <p className="premium-copy-wrap mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                      Load resume evidence and a JD to get an apply verdict, proof gaps, salary confidence, risks, and the exact packet Sona should prepare.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <Pill tone={resumeText ? 'emerald' : 'muted'}>{resumeText ? 'resume ready' : 'resume needed'}</Pill>
+                      <Pill tone={jdText.length > 120 ? 'emerald' : 'muted'}>{jdText.length > 120 ? 'JD ready' : 'JD needed'}</Pill>
+                      <span className="min-w-0 max-w-full">
+                        <Pill tone={inferredRole ? 'cyan' : 'muted'}>{inferredRole || 'role pending'}</Pill>
+                      </span>
                     </div>
-                    {analyzeStage === s.stage && (
-                      <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                    )}
-                  </motion.div>
+                  </div>
+                  <div className="min-w-0 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Readiness checklist</p>
+                    <div className="mt-3 space-y-2">
+                      {readinessItems.map(item => (
+                        <div key={item.label} className="flex min-w-0 items-start gap-3 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                          <span className={`material-symbols-rounded shrink-0 text-[18px] ${item.ready ? 'text-emerald-600 dark:text-emerald-300' : 'text-[var(--text-muted)]'}`}>{item.ready ? 'check_circle' : 'radio_button_unchecked'}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-[var(--text-primary)]">{item.label}</p>
+                            <p className="mt-0.5 wrap-anywhere text-[11px] leading-5 text-[var(--text-secondary)]">{item.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <>
+                <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+                  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: `${verdictCopy[oracleReport.decision.verdict].color}33`, background: verdictCopy[oracleReport.decision.verdict].bg, color: verdictCopy[oracleReport.decision.verdict].color }}>
+                          <span className="material-symbols-rounded text-[15px]">{verdictCopy[oracleReport.decision.verdict].icon}</span>
+                          {verdictCopy[oracleReport.decision.verdict].label}
+                        </span>
+                        <Pill tone="muted">{oracleReport.decision.confidence} confidence</Pill>
+                        <Pill tone={oracleReport.sourceQuality.salary === 'listed' ? 'emerald' : oracleReport.sourceQuality.salary === 'unknown' ? 'amber' : 'cyan'}>
+                          salary {oracleReport.sourceQuality.salary.replaceAll('_', ' ')}
+                        </Pill>
+                      </div>
+                      <h2 className="premium-heading-wrap mt-4 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold leading-[1.16] text-[var(--text-primary)]">{oracleReport.session.role || inferredRole}</h2>
+                      <p className="mt-1 wrap-natural text-sm font-medium leading-6 text-cyan-700 dark:text-cyan-300">{oracleReport.session.company || inferredCompany || 'Target company'}</p>
+                      <p className="premium-copy-wrap mt-4 text-sm leading-6 text-[var(--text-secondary)]">{oracleReport.decision.summary}</p>
+                    </div>
+                    <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-3 xl:w-[560px] xl:shrink-0">
+                      <ScoreRing score={oracleReport.decision.fitScore} label="Fit" icon="verified" />
+                      <ScoreRing score={oracleReport.decision.readinessScore} label="Ready" icon="fact_check" />
+                      <ScoreRing score={100 - oracleReport.decision.riskScore} label="Risk" icon="shield" />
+                    </div>
+                  </div>
+                  <div className="mt-5 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Recommended next action</p>
+                    <div className="mt-2 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(170px,220px)] xl:items-start">
+                      <p className="min-w-0 wrap-natural text-sm font-medium leading-6 text-[var(--text-primary)]">{oracleReport.decision.recommendedNextAction}</p>
+                      <div className="flex min-w-0 flex-wrap gap-2 xl:flex-col">
+                        <button onClick={prepareApplication} className="rounded-[12px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)]">Prepare Application</button>
+                        <button onClick={() => routeWithContext('/suite/resume')} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)]">Resume Studio</button>
+                        <button onClick={trackApplication} className="rounded-[12px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Track</button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Interview Yield Lens</p>
+                    <p className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">{oracleReport.decision.interviewYield.score}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{oracleReport.decision.interviewYield.rationale}</p>
+                  </div>
+                  <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Proof Gap Detector</p>
+                    <div className="mt-3 space-y-2">
+                      {oracleReport.breakdown.proofGaps.slice(0, 3).map(gap => <p key={gap} className="rounded-[12px] border border-amber-500/15 bg-amber-500/5 px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">{gap}</p>)}
+                    </div>
+                  </div>
+                  <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Apply Strategy</p>
+                    <p className="mt-2 text-xl font-semibold capitalize text-[var(--text-primary)]">{oracleReport.decision.applyStrategy.replaceAll('_', ' ')}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Strategy is based on fit, proof strength, posting risk, and packet readiness.</p>
+                  </div>
+                </section>
+
+                <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Why this score?</p>
+                      <h3 className="mt-1 text-base font-semibold text-[var(--text-primary)]">Factor-weighted fit</h3>
+                    </div>
+                    <Pill tone="cyan">Sona analyzed this role</Pill>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {Object.entries(oracleReport.breakdown.factorScores).map(([key, value]) => (
+                      <FactorRow key={key} label={key.replace(/([A-Z])/g, ' $1')} value={value} />
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+          </main>
+
+          <aside className="min-w-0 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
+            <div className="border-b border-[var(--border-subtle)] p-4">
+              <div className="grid grid-cols-3 gap-1 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-1">
+                {([
+                  ['decode', 'JD'],
+                  ['salary', 'Salary'],
+                  ['risks', 'Risks'],
+                  ['company', 'Company'],
+                  ['packet', 'Packet'],
+                  ['map', 'Map'],
+                ] as Array<[IntelTab, string]>).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`rounded-[10px] px-2 py-2 text-xs font-semibold transition ${activeTab === tab ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
             </div>
-          </motion.div>
-        )}
-
-        {/* ORACLE STEP - 3D Visualization */}
-        {step === 'oracle' && analysis && (
-          <motion.div
-            key="oracle"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="relative h-[100dvh] lg:h-screen flex flex-col overflow-hidden"
-          >
-            {/* HUD Top Bar */}
-            <div className="absolute top-0 left-0 right-0 z-50 p-2 sm:p-4 pointer-events-none">
-              <div className="flex items-start justify-between gap-2 sm:gap-4 pointer-events-auto">
-                {/* Left HUD - Talent Density */}
-                <motion.div
-                  initial={{ x: -50, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  className="oracle-panel oracle-panel--emerald p-2 sm:p-4 max-w-[140px] sm:max-w-xs"
-                >
-                  <div className="flex items-center gap-2 sm:gap-4">
-                    <div className="relative w-12 h-12 sm:w-20 sm:h-20">
-                      <svg className="w-12 h-12 sm:w-20 sm:h-20 -rotate-90">
-                        <circle cx="50%" cy="50%" r="40%" stroke="rgba(255,255,255,0.1)" strokeWidth="6" fill="none" />
-                        <circle
-                          cx="40" cy="40" r="35"
-                          stroke="url(#densityGradient)"
-                          strokeWidth="6"
-                          fill="none"
-                          strokeLinecap="round"
-                          strokeDasharray={`${analysis.talentDensityPercentile * 2.2} 220`}
-                        />
-                        <defs>
-                          <linearGradient id="densityGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stopColor="#06d6a0" />
-                            <stop offset="100%" stopColor="#0ea5e9" />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-sm sm:text-xl font-bold text-emerald-400">{analysis.talentDensityPercentile}%</span>
-                      </div>
-                    </div>
-                    <div className="hidden sm:block">
-                      <p className="text-xs text-silver uppercase tracking-wider">Talent Density</p>
-                      <p className="text-lg font-bold text-white">Top {100 - analysis.talentDensityPercentile}%</p>
-                      <p className="text-xs text-emerald-400">
-                        {analysis.talentDensityPercentile > 80 ? 'Unicorn Status' :
-                          analysis.talentDensityPercentile > 60 ? 'High Demand' :
-                            analysis.talentDensityPercentile > 40 ? 'Competitive' : 'Growth Opportunity'}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Center HUD - Bridge Skills */}
-                <motion.div
-                  initial={{ y: -50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className="oracle-panel oracle-panel--emerald p-2 sm:p-4 hidden sm:block"
-                >
-                  <p className="text-[10px] text-emerald-400 uppercase tracking-widest mb-2.5 text-center flex justify-center items-center gap-1.5 font-semibold">
-                    <span className="material-symbols-rounded text-[14px]">route</span> Bridge Skills
-                    <span className="text-[9px] text-slate-500 normal-case tracking-normal font-normal ml-1">— learn to unlock new jobs</span>
-                  </p>
-                  <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                    {analysis.bridgeSkills.map((skill, i) => (
-                      <button
-                        key={skill.skill}
-                        onClick={() => toggleBridgeSkill(skill)}
-                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeBridgeSkill?.skill === skill.skill
-                          ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/25'
-                          : 'bg-white/10 text-white hover:bg-white/20'
-                          }`}
-                      >
-                        <span className="block">{skill.skill}</span>
-                        <span className="text-xs text-green-400">+${(skill.salaryIncrease / 1000).toFixed(0)}K</span>
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-
-                {/* Right HUD - Actions & Data Source */}
-                <motion.div
-                  initial={{ x: 50, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                  className="flex flex-col gap-2 items-end shrink-0"
-                >
-                  {/* Data Source Badge */}
-                  <div className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-medium backdrop-blur-xl ${analysis.jobDataSource.includes('real') || analysis.jobDataSource.includes('API')
-                      ? 'bg-green-900/50 text-green-400 border border-green-500/30'
-                      : 'bg-orange-900/50 text-orange-400 border border-orange-500/30'
-                    }`}>
-                    {analysis.jobDataSource.includes('real') || analysis.jobDataSource.includes('API') ? <span className="material-symbols-rounded text-[12px] align-middle">public</span> : <span className="text-[12px] inline-block -mb-0.5"><span className="material-symbols-rounded">bolt</span></span>} {analysis.jobDataSource}
-                  </div>
-                  <button
-                    onClick={() => setStep('setup')}
-                    className="oracle-panel px-4 py-2 text-white text-sm font-medium hover:bg-white/15 transition-all"
-                  >
-                    ← New Scan
-                  </button>
-                </motion.div>
-              </div>
-            </div>
-
-            {/* 3D Canvas */}
-            <div className="flex-1 relative w-full h-full overflow-hidden">
-              <DynamicCanvas className="w-full h-full" camera={{ position: [0, 5, 60], fov: 55 }}>
-                <Suspense fallback={null}>
-                  <OracleScene
-                    analysis={analysis}
-                    selectedJob={selectedJob}
-                    setSelectedJob={setSelectedJob}
-                    showBridge={showBridge}
-                    activeBridgeSkill={activeBridgeSkill}
-                    visibleTiers={visibleTiers}
-                  />
-                </Suspense>
-              </DynamicCanvas>
-            </div>
-
-            {/* Bottom HUD — Visual Legend + Context */}
-            <div className="absolute bottom-0 left-0 right-0 z-50 p-2 sm:p-4 pointer-events-none">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 sm:gap-3 pointer-events-auto">
-
-                {/* Galaxy Legend */}
-                <motion.div
-                  initial={{ y: 50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.3 }}
-                  className="oracle-panel p-2 sm:p-4 w-full sm:max-w-[360px]"
-                >
-                  <p className="text-[10px] text-emerald-400 uppercase tracking-widest mb-3 flex items-center gap-1.5 font-semibold">
-                    <span className="material-symbols-rounded text-[14px]">map</span> Galaxy Legend
-                  </p>
-                  {/* Axes */}
-                  <div className="grid grid-cols-3 gap-1 sm:gap-2 mb-2 sm:mb-3">
-                    <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white/5">
-                      <span className="text-emerald-400 text-[10px] font-bold">X →</span>
-                      <span className="text-[10px] text-slate-400">Fit Score</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white/5">
-                      <span className="text-green-400 text-[10px] font-bold">Y ↑</span>
-                      <span className="text-[10px] text-slate-400">Salary</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white/5">
-                      <span className="text-cyan-400 text-[10px] font-bold">Z ●</span>
-                      <span className="text-[10px] text-slate-400">Skill Match</span>
-                    </div>
-                  </div>
-                  {/* Star Tiers — Clickable Filters */}
-                  <div className="flex items-center gap-1 sm:gap-2 text-[10px] overflow-x-auto scrollbar-hide">
-                    {[
-                      { tier: 'elite', label: '80%+', color: 'bg-emerald-400', shadow: 'shadow-[0_0_6px_rgba(6,214,160,0.6)]', size: 'w-2.5 h-2.5' },
-                      { tier: 'strong', label: '60%+', color: 'bg-cyan-400', shadow: 'shadow-[0_0_4px_rgba(14,165,233,0.5)]', size: 'w-2 h-2' },
-                      { tier: 'decent', label: '40%+', color: 'bg-amber-400', shadow: '', size: 'w-1.5 h-1.5' },
-                      { tier: 'low', label: '<40%', color: 'bg-gray-500', shadow: '', size: 'w-1 h-1' },
-                    ].map(({ tier, label, color, shadow, size }) => {
-                      const active = visibleTiers.has(tier);
-                      const count = analysis.jobs.filter(j => {
-                        if (tier === 'elite') return j.fitScore >= 0.8;
-                        if (tier === 'strong') return j.fitScore >= 0.6 && j.fitScore < 0.8;
-                        if (tier === 'decent') return j.fitScore >= 0.4 && j.fitScore < 0.6;
-                        return j.fitScore < 0.4;
-                      }).length;
-                      return (
-                        <button
-                          key={tier}
-                          onClick={() => {
-                            setVisibleTiers(prev => {
-                              const next = new Set(prev);
-                              if (next.has(tier)) {
-                                if (next.size > 1) next.delete(tier);
-                              } else {
-                                next.add(tier);
-                              }
-                              return next;
-                            });
-                          }}
-                          className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
-                            active ? 'bg-white/5 hover:bg-white/10' : 'opacity-30 hover:opacity-50'
-                          }`}
-                          title={`${active ? 'Hide' : 'Show'} ${label} fit jobs`}
-                        >
-                          <span className={`${size} rounded-full ${color} ${shadow} ${!active ? 'opacity-40' : ''}`} />
-                          <span className="text-slate-400">{label}</span>
-                          <span className={`text-[9px] ${active ? 'text-white/60' : 'text-white/30'}`}>({count})</span>
-                        </button>
-                      );
-                    })}
-                    <div className="flex items-center gap-1 ml-1 pl-2 border-l border-white/10">
-                      <span className="w-2 h-2 rounded-sm bg-emerald-400 rotate-45" />
-                      <span className="text-slate-400">You</span>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Skills Panel — Dark themed */}
-                <motion.div
-                  initial={{ y: 50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="oracle-panel p-2 sm:p-4 w-full sm:max-w-sm"
-                >
-                  <p className="text-[10px] text-emerald-400 uppercase tracking-widest mb-2 flex items-center gap-1.5 font-semibold">
-                    <span className="material-symbols-rounded text-[14px]">psychology</span> Your Skills
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {analysis.topSkills.map((skill) => (
-                      <span key={skill} className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] border border-emerald-500/25">
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                  {analysis.missingSkills.length > 0 && (
-                    <>
-                      <p className="text-[10px] text-red-400/70 uppercase tracking-widest mb-1.5 font-medium">Gaps</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {analysis.missingSkills.slice(0, 5).map((skill) => (
-                          <span key={skill} className="px-2 py-0.5 rounded-full bg-red-500/10 text-red-400/80 text-[10px] border border-red-500/20">
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </motion.div>
-
-                {/* How to Navigate */}
-                <motion.div
-                  initial={{ y: 50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                  className="oracle-panel p-3 sm:p-4 hidden sm:block"
-                >
-                  <p className="text-[10px] text-emerald-400 uppercase tracking-widest mb-2.5 flex items-center gap-1.5 font-semibold">
-                    <span className="material-symbols-rounded text-[14px]">gamepad</span> Controls
-                  </p>
-                  <div className="space-y-1.5 text-[10px]">
-                    <div className="flex items-center gap-2 text-slate-400">
-                      <span className="material-symbols-rounded text-[12px] text-white/50">mouse</span>
-                      <span>Drag to orbit</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-400">
-                      <span className="material-symbols-rounded text-[12px] text-white/50">unfold_more</span>
-                      <span>Scroll to zoom</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-slate-400">
-                      <span className="material-symbols-rounded text-[12px] text-white/50">ads_click</span>
-                      <span>Click star for details</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-emerald-400/70">
-                      <span className="material-symbols-rounded text-[12px]">arrow_right_alt</span>
-                      <span>Right = better fit for you</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-green-400/70">
-                      <span className="material-symbols-rounded text-[12px]">arrow_upward</span>
-                      <span>Up = higher salary</span>
-                    </div>
-                  </div>
-                </motion.div>
-
-              </div>
-            </div>
-
-            {/* Job Detail Dock — Slide in from right */}
-            <AnimatePresence>
-              {showJobCard && selectedJob && (
-                <motion.div
-                  initial={{ opacity: 0, x: 80 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 80 }}
-                  className="fixed sm:absolute inset-x-0 bottom-0 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-20 z-[60] sm:z-20 w-full sm:w-[340px] max-h-[75vh] sm:max-h-[calc(100vh-160px)] rounded-t-2xl sm:rounded-t-none"
-                >
-                  <div className="oracle-panel oracle-panel--emerald p-4 sm:p-5 overflow-y-auto max-h-[75vh] sm:max-h-[calc(100vh-160px)]" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.2) transparent' }}>
-                    {/* Mobile handle */}
-                    <div className="sm:hidden w-10 h-1 rounded-full bg-white/20 mx-auto mb-3" />
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-xl font-bold text-white">{selectedJob.title}</h3>
-                          {selectedJob.isReal && (
-                            <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-[10px] border border-green-500/30">
-                              REAL JOB
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-cyan-400">{selectedJob.company}</p>
-                        {selectedJob.location && (
-                          <p className="text-silver text-sm flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded align-middle">pin_drop</span></span> {selectedJob.location}</p>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => { setShowJobCard(false); setSelectedJob(null); }}
-                        className="p-2 rounded-lg hover:bg-white/10"
-                      >
-                        <svg className="w-5 h-5 text-silver" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-
+            <div className="max-h-[calc(100dvh-120px)] overflow-y-auto p-4">
+              {!oracleReport ? (
+                <EmptyCard icon="fact_check" title="Intelligence panel" body="Run Oracle to unlock JD decode, salary confidence, risks, packet plan, and Market Map." />
+              ) : (
+                <>
+                  {activeTab === 'decode' && (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-green-500/10 border border-green-500/30">
-                        <span className="text-sm text-silver">Salary</span>
-                        <span className="text-xl font-bold text-green-400">${selectedJob.salary.toLocaleString()}</span>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-[var(--theme-bg-input)] border border-[var(--theme-border)]">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-silver">Match Score</span>
-                          <span className={`text-lg font-bold ${selectedJob.fitScore > 0.8 ? 'text-emerald-400' :
-                            selectedJob.fitScore > 0.6 ? 'text-green-400' : 'text-yellow-400'
-                            }`}>{Math.round(selectedJob.fitScore * 100)}%</span>
-                        </div>
-                        <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-full"
-                            style={{ width: `${selectedJob.fitScore * 100}%` }}
-                          />
-                        </div>
-                      </div>
-
                       <div>
-                        <p className="text-xs text-silver uppercase tracking-wider mb-2">Required Skills</p>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedJob.skills.map((skill) => (
-                            <span
-                              key={skill}
-                              className={`px-2 py-1 rounded-full text-xs ${analysis.topSkills.includes(skill)
-                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                                : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                                }`}
-                            >
-                              {skill}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-                        <p className="text-xs text-emerald-400 uppercase tracking-wider mb-1 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded align-middle">lightbulb</span></span> Why You'll Win</p>
-                        <p className="text-sm text-silver">
-                          {selectedJob.fitScore > 0.8
-                            ? "Your skills are a near-perfect match. You're a top candidate for this role."
-                            : selectedJob.fitScore > 0.6
-                              ? "Strong alignment with 2-3 skill gaps that are learnable in 3-6 months."
-                              : "Consider upskilling in the missing areas to become competitive."}
-                        </p>
-                      </div>
-
-                      {/* Apply Button for Real Jobs */}
-                      {selectedJob.isReal && selectedJob.url && (
-                        <a
-                          href={selectedJob.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-center font-bold hover:shadow-lg hover:shadow-emerald-500/25 transition-all"
-                        >
-                          Apply Now →
-                        </a>
-                      )}
-
-                      {/* Source indicator */}
-                      <div className="pt-2 border-t border-white/10">
-                        <p className="text-xs text-center text-silver">
-                          {selectedJob.isReal ? (
-                            <span className="flex items-center justify-center gap-1"><span className="material-symbols-rounded text-[14px] align-middle">public</span> Source: <span className="text-emerald-400">{selectedJob.source || 'Job Board'}</span></span>
-                          ) : (
-                            <span className="flex items-center justify-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">bolt</span></span> Simulated job based on market data</span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* ═══ JD INTELLIGENCE PANEL ═══ */}
-            <AnimatePresence>
-              {jdIntel && showIntelPanel && (
-                <motion.div
-                  initial={{ opacity: 0, x: -60 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -60 }}
-                  className="absolute left-4 top-20 bottom-20 z-20 w-[380px] overflow-y-auto"
-                  style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.2) transparent' }}
-                >
-                  <div className="oracle-panel oracle-panel--emerald overflow-hidden">
-                    {/* Header */}
-                    <div className="p-4 border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl"><span className="material-symbols-rounded">content_paste</span></span>
-                          <div>
-                            <h3 className="text-sm font-bold text-white">JD Intelligence Report</h3>
-                            <p className="text-[10px] text-silver">Dual-AI Analysis</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => setShowIntelPanel(false)}
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-silver"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="p-4 space-y-4">
-                      {/* Fit Score */}
-                      <div className="text-center p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20">
-                        <div className="relative w-24 h-24 mx-auto mb-3">
-                          <svg className="w-24 h-24 -rotate-90">
-                            <circle cx="48" cy="48" r="40" stroke="rgba(255,255,255,0.1)" strokeWidth="8" fill="none" />
-                            <circle
-                              cx="48" cy="48" r="40"
-                              stroke={jdIntel.fitScore > 75 ? '#22c55e' : jdIntel.fitScore > 50 ? '#f59e0b' : '#ef4444'}
-                              strokeWidth="8"
-                              fill="none"
-                              strokeLinecap="round"
-                              strokeDasharray={`${jdIntel.fitScore * 2.51} 251`}
-                            />
-                          </svg>
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <span className={`text-2xl font-bold ${jdIntel.fitScore > 75 ? 'text-emerald-400' : jdIntel.fitScore > 50 ? 'text-amber-400' : 'text-red-400'}`}>
-                              {jdIntel.fitScore}%
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-xs font-semibold text-white mb-1 flex items-center justify-center gap-1">
-                          {jdIntel.fitVerdict === 'excellent' ? <><span className="text-[14px]"><span className="material-symbols-rounded align-middle">star</span></span> Excellent Match</> :
-                           jdIntel.fitVerdict === 'strong' ? <><span className="text-[14px]"><span className="material-symbols-rounded align-middle">fitness_center</span></span> Strong Match</> :
-                           jdIntel.fitVerdict === 'moderate' ? <><span className="text-[14px]"><span className="material-symbols-rounded">bar_chart</span></span> Moderate Match</> : <><span className="text-[14px]"><span className="material-symbols-rounded">my_location</span></span> Growth Opportunity</>}
-                        </p>
-                        <p className="text-[11px] text-silver">{jdIntel.overallAssessment}</p>
-                      </div>
-
-                      {/* Matched vs Gap Skills */}
-                      <div>
-                        <p className="text-xs text-silver uppercase tracking-wider mb-2 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">check_circle</span></span> Matched Skills</p>
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          {jdIntel.matchedSkills.slice(0, 8).map(s => (
-                            <span key={s} className="px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] border border-emerald-500/30">{s}</span>
-                          ))}
-                        </div>
-                        <p className="text-xs text-silver uppercase tracking-wider mb-2 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">cancel</span></span> Gap Skills</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {jdIntel.gapSkills.slice(0, 6).map(s => (
-                            <span key={s} className="px-2 py-1 rounded-full bg-red-500/20 text-red-400 text-[10px] border border-red-500/30">{s}</span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Keywords to Add */}
-                      {jdIntel.keywordsToAdd?.length > 0 && (
-                        <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-                          <p className="text-xs text-cyan-400 font-semibold mb-2 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">key</span></span> Keywords to Add to Resume</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {jdIntel.keywordsToAdd.slice(0, 8).map(k => (
-                              <span key={k} className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px]">{k}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Salary Intel */}
-                      <div className="p-3 rounded-xl bg-[var(--theme-bg-input)] border border-[var(--theme-border)]">
-                        <p className="text-xs text-silver uppercase tracking-wider mb-3 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">payments</span></span> Salary Intelligence</p>
+                        <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">Covered requirements</p>
                         <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-silver">Range</span>
-                            <span className="text-sm font-bold text-green-400">
-                              ${(jdIntel.salaryIntel.min / 1000).toFixed(0)}K — ${(jdIntel.salaryIntel.max / 1000).toFixed(0)}K
-                            </span>
-                          </div>
-                          <div className="h-2 bg-white/10 rounded-full overflow-hidden relative">
-                            <div className="h-full bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500 rounded-full" />
-                            <div
-                              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 border-cyan-400 shadow-lg"
-                              style={{ left: `${Math.max(5, Math.min(95, jdIntel.salaryIntel.userPosition))}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-[10px] text-silver">
-                            <span>Your position: top {100 - jdIntel.salaryIntel.userPosition}%</span>
-                            <span className="text-emerald-400">+bridge: ${(jdIntel.salaryIntel.withBridgeSkills / 1000).toFixed(0)}K</span>
-                          </div>
+                          {oracleReport.breakdown.coveredRequirements.slice(0, 6).map(item => <p key={item} className="rounded-[12px] border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">{item}</p>)}
                         </div>
-                      </div>
-
-                      {/* Red Flags */}
-                      {jdIntel.redFlags?.length > 0 && (
-                        <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/20">
-                          <p className="text-xs text-red-400 font-semibold mb-2 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded align-middle">flag</span></span> Red Flags Detected</p>
-                          <div className="space-y-2">
-                            {jdIntel.redFlags.slice(0, 4).map((rf, i) => (
-                              <div key={i} className="flex gap-2">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${
-                                  rf.severity === 'high' ? 'bg-red-500/20 text-red-400' :
-                                  rf.severity === 'medium' ? 'bg-amber-500/20 text-amber-400' :
-                                  'bg-slate-500/20 text-slate-400'
-                                }`}>{rf.severity.toUpperCase()}</span>
-                                <div>
-                                  <p className="text-xs text-white font-medium">{rf.flag}</p>
-                                  <p className="text-[10px] text-silver">{rf.explanation}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Hidden Requirements */}
-                      {jdIntel.hiddenRequirements?.length > 0 && (
-                        <div className="p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/20">
-                          <p className="text-xs text-indigo-400 font-semibold mb-2 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">psychology</span></span> Hidden Requirements</p>
-                          <div className="space-y-2">
-                            {jdIntel.hiddenRequirements.slice(0, 4).map((hr, i) => (
-                              <div key={i} className="text-xs">
-                                <p className="text-silver line-through">{hr.stated}</p>
-                                <p className="text-white font-medium">→ {hr.actual}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Competitive Edge */}
-                      {jdIntel.competitiveEdge && (
-                        <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
-                          <p className="text-xs text-emerald-400 font-semibold mb-1 flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">bolt</span></span> Your Competitive Edge</p>
-                          <p className="text-xs text-silver">{jdIntel.competitiveEdge}</p>
-                        </div>
-                      )}
-
-                      {/* Action Buttons */}
-                      <div className="space-y-2 pt-2 border-t border-white/10">
-                        <p className="text-xs text-silver uppercase tracking-wider flex items-center gap-1"><span className="text-[14px]"><span className="material-symbols-rounded">my_location</span></span> Take Action</p>
-                        <button
-                          onClick={() => router.push('/suite/resume')}
-                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-sm font-semibold hover:shadow-lg hover:shadow-emerald-500/25 transition-all"
-                        >
-                          <span className="flex items-center justify-center gap-2"><span className="text-[18px]"><span className="material-symbols-rounded align-middle">sync</span></span> Morph Resume for This JD</span>
-                        </button>
-                        <button
-                          onClick={() => router.push('/suite/resume')}
-                          className="w-full py-2.5 rounded-xl bg-white/10 text-white text-sm font-medium hover:bg-white/20 border border-white/10 transition-all"
-                        >
-                          <span className="flex items-center justify-center gap-2"><span className="text-[18px]"><span className="material-symbols-rounded align-middle">mail</span></span> Generate Cover Letter</span>
-                        </button>
-                        <button
-                          onClick={() => router.push('/suite/flashcards')}
-                          className="w-full py-2.5 rounded-xl bg-white/10 text-white text-sm font-medium hover:bg-white/20 border border-white/10 transition-all"
-                        >
-                          <span className="flex items-center justify-center gap-2"><span className="text-[18px]"><span className="material-symbols-rounded align-middle">school</span></span> Practice Interview for This Role</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Toggle Intel Panel button (when hidden) */}
-            {jdIntel && !showIntelPanel && (
-              <motion.button
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                onClick={() => setShowIntelPanel(true)}
-                className="absolute left-4 top-20 z-20 px-4 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition-all backdrop-blur-xl"
-              >
-                <span className="flex items-center gap-2"><span className="text-[18px]"><span className="material-symbols-rounded">content_paste</span></span> Show JD Intelligence</span>
-              </motion.button>
-            )}
-
-            {/* Bridge Skill Impact Panel */}
-            <AnimatePresence>
-              {activeBridgeSkill && (
-                <motion.div
-                  initial={{ opacity: 0, x: 50 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 50 }}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 z-10"
-                >
-                  <div className="oracle-panel oracle-panel--emerald p-6 w-80">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-                        <span className="text-2xl text-white"><span className="material-symbols-rounded align-middle">route</span></span>
                       </div>
                       <div>
-                        <p className="text-xs text-silver uppercase">Bridge Skill</p>
-                        <h4 className="text-lg font-bold text-white">{activeBridgeSkill.skill}</h4>
+                        <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">Missing requirements</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {oracleReport.breakdown.keywordMap.missing.map(item => <Pill key={item} tone="amber">{item}</Pill>)}
+                        </div>
+                      </div>
+                      {oracleReport.breakdown.hiddenScreenSignals.length > 0 && (
+                        <div className="rounded-[15px] border border-cyan-500/15 bg-cyan-500/5 p-4">
+                          <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Likely screen signals</p>
+                          <div className="mt-3 space-y-3">
+                            {oracleReport.breakdown.hiddenScreenSignals.map(signal => (
+                              <div key={signal.signal}>
+                                <p className="text-xs font-semibold text-[var(--text-primary)]">{signal.signal}</p>
+                                <p className="text-[11px] leading-5 text-[var(--text-secondary)]">{signal.evidence}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'salary' && (
+                    <div className="space-y-4">
+                      <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Compensation read</p>
+                        <p className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">{displaySalary(legacyAnalysis?.salaryIntel?.min, legacyAnalysis?.salaryIntel?.max)}</p>
+                        <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Confidence: {oracleReport.sourceQuality.salary.replaceAll('_', ' ')}.</p>
+                      </div>
+                      <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                        <p className="text-xs font-semibold text-[var(--text-primary)]">Bridge upside</p>
+                        <div className="mt-3 space-y-2">
+                          {(legacyAnalysis?.bridgeSkills || []).slice(0, 4).map(skill => (
+                            <div key={skill.skill} className="flex items-center justify-between rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
+                              <span className="text-xs text-[var(--text-secondary)]">{skill.skill}</span>
+                              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">+${Math.round(skill.salaryIncrease / 1000)}K</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
+                  )}
 
+                  {activeTab === 'risks' && (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-green-500/10">
-                        <span className="text-sm text-silver">Salary Increase</span>
-                        <span className="text-lg font-bold text-green-400">+${activeBridgeSkill.salaryIncrease.toLocaleString()}</span>
-                      </div>
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-cyan-500/10">
-                        <span className="text-sm text-silver">New Fit Score</span>
-                        <span className="text-lg font-bold text-cyan-400">{Math.round(activeBridgeSkill.newFitScore * 100)}%</span>
-                      </div>
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-cyan-500/10">
-                        <span className="text-sm text-silver">Impact Rating</span>
-                        <span className="text-lg font-bold text-cyan-400">{activeBridgeSkill.impact}/10</span>
-                      </div>
+                      {oracleReport.breakdown.risks.length === 0 ? (
+                        <EmptyCard icon="shield" title="No major risks found" body="Oracle did not detect obvious role, posting, company, or candidate risk signals." />
+                      ) : oracleReport.breakdown.risks.map(risk => (
+                        <div key={`${risk.category}-${risk.title}`} className={`rounded-[15px] border p-4 ${risk.severity === 'high' ? 'border-red-500/20 bg-red-500/5' : risk.severity === 'medium' ? 'border-amber-500/20 bg-amber-500/5' : 'border-[var(--border-subtle)] bg-[var(--card-bg)]'}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-[var(--text-primary)]">{risk.title}</p>
+                            <Pill tone={risk.severity === 'high' ? 'red' : risk.severity === 'medium' ? 'amber' : 'muted'}>{risk.severity}</Pill>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{risk.explanation}</p>
+                        </div>
+                      ))}
                     </div>
+                  )}
 
-                    <p className="text-xs text-silver mt-4 text-center flex items-center justify-center gap-1">
-                      <span className="material-symbols-rounded text-[14px] align-middle">radio_button_checked</span> Purple marker shows your projected position
-                    </p>
-                  </div>
-                </motion.div>
+                  {activeTab === 'company' && (
+                    <div className="space-y-4">
+                      <EmptyCard icon="apartment" title={oracleReport.session.company || 'Company unknown'} body="Company intelligence will become richer when this role is opened from Job Search or a job URL with source metadata." />
+                      {legacyAnalysis?.industryInsights?.map(insight => <p key={insight} className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3 text-sm leading-6 text-[var(--text-secondary)]">{insight}</p>)}
+                    </div>
+                  )}
+
+                  {activeTab === 'packet' && (
+                    <div className="space-y-4">
+                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                        <p className="text-xs font-semibold text-[var(--text-primary)]">Readiness moves</p>
+                        <div className="mt-3 space-y-2">
+                          {oracleReport.packetPlan.readinessMoves.map(move => (
+                            <div key={move.title} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-xs font-semibold text-[var(--text-primary)]">{move.title}</p>
+                                <Pill tone="muted">{move.effort}</Pill>
+                              </div>
+                              <p className="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">{move.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button onClick={prepareApplication} className="rounded-[13px] bg-[var(--text-primary)] px-3 py-2.5 text-xs font-semibold text-[var(--bg-deep)]">Prepare</button>
+                        <button onClick={() => routeWithContext('/suite/cover-letter')} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)]">Cover Letter</button>
+                        <button onClick={() => routeWithContext('/suite/linkedin')} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)]">LinkedIn</button>
+                        <button onClick={() => routeWithContext('/suite/interview-sim')} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)]">Interview</button>
+                      </div>
+                      {packetStatus !== 'idle' && (
+                        <div className="rounded-[16px] border border-cyan-500/20 bg-cyan-500/5 p-4">
+                          <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                            {packetStatus === 'preparing' ? `Preparing packet - stage ${packetStage + 1}/7` : packetStatus === 'ready' ? 'Packet ready for review' : packetStatus === 'tracked' ? 'Tracker draft saved' : 'Packet failed'}
+                          </p>
+                          {packetResult?.atsResult && <p className="mt-2 text-xs text-[var(--text-secondary)]">ATS score: {packetResult.atsResult.overallScore || packetResult.matchScore || '--'}</p>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'map' && (
+                    <div className="space-y-3">
+                      <p className="text-xs leading-5 text-[var(--text-secondary)]">Market Map is optional and uses live roles when available. It never blocks the decision brief.</p>
+                      {prefersReducedMotion ? (
+                        <EmptyCard icon="motion_photos_off" title="Map paused for reduced motion" body="The decision console remains fully available without 3D motion." />
+                      ) : (
+                        <div className="h-[420px] overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-slate-950">
+                          <DynamicCanvas className="h-full w-full" camera={{ position: [0, 5, 45], fov: 55 }}>
+                            <Suspense fallback={null}>
+                              <OracleScene
+                                analysis={mapAnalysis}
+                                selectedJob={null}
+                                setSelectedJob={() => {}}
+                                showBridge={false}
+                                activeBridgeSkill={null}
+                                visibleTiers={new Set(['elite', 'strong', 'decent', 'low'])}
+                              />
+                            </Suspense>
+                          </DynamicCanvas>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+            </div>
+          </aside>
+        </div>
+    </SuiteToolShell>
   );
 }

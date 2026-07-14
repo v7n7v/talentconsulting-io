@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       tier: guard.user.tier,
       usage,
-      caps: guard.user.tier === 'pro' ? null : FREE_CAPS,
+      caps: guard.user.tier === 'free' ? FREE_CAPS : null,
     });
   } catch (error: any) {
     console.error('Usage API error:', error);

@@ -1,13 +1,16 @@
 'use client';
 
 /**
- * ProGate — Blocks free-tier users from accessing Pro-only pages/features.
- * Shows a premium upgrade wall with benefit highlights and a CTA to /suite/upgrade.
- * Usage: wrap any Pro-only page content with <ProGate feature="Skill Bridge">...</ProGate>
+ * ProGate — Explains the paid workflow for Pro tools.
+ * Shows an upgrade wall with benefit highlights and a CTA to /suite/upgrade.
+ * Usage: wrap paid workflow content with <ProGate feature="Skill Bridge">...</ProGate>
  */
 import { useRouter } from 'next/navigation';
 import { useUserTier } from '@/hooks/use-user-tier';
 import { motion } from 'framer-motion';
+import { UPGRADE_COPY } from '@/lib/product-copy';
+import { getPlanIdentity } from '@/lib/plan-identity';
+import { PlanBadge, PlanFeatureList } from '@/components/plan/PlanIdentity';
 
 interface ProGateProps {
   feature: string;
@@ -15,17 +18,10 @@ interface ProGateProps {
   children: React.ReactNode;
 }
 
-const GATE_BENEFITS = [
-  { icon: 'bolt', color: '#f59e0b', text: '3× AI volume on every tool' },
-  { icon: 'all_inclusive', color: '#10b981', text: 'Unlimited uses — no lifetime caps' },
-  { icon: 'mic', color: '#a855f7', text: 'Voice features included' },
-  { icon: 'trending_up', color: '#3b82f6', text: 'Priority AI queue' },
-  { icon: 'verified_user', color: '#06b6d4', text: 'Priority support' },
-];
-
 export default function ProGate({ feature, description, children }: ProGateProps) {
   const { isPro, loading } = useUserTier();
   const router = useRouter();
+  const proPlan = getPlanIdentity('pro');
 
   // Still loading tier — render nothing to avoid flash
   if (loading) return null;
@@ -44,47 +40,35 @@ export default function ProGate({ feature, description, children }: ProGateProps
       >
         {/* Lock icon */}
         <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6"
-          style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 8px 32px rgba(16,185,129,0.3)' }}
+          className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
+          style={{ color: proPlan.accent, boxShadow: `0 8px 32px color-mix(in srgb, ${proPlan.accent} 16%, transparent)` }}
         >
-          <span className="material-symbols-rounded text-white text-[32px]">lock</span>
+          <span className="material-symbols-rounded text-[32px]">lock</span>
         </div>
 
         {/* Headline */}
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold mb-4"
-          style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px solid rgba(16,185,129,0.2)' }}>
-          <span className="material-symbols-rounded text-[12px]">bolt</span>
-          PRO FEATURE
-        </div>
+        <PlanBadge tier="pro" active size="md" className="mb-4" />
 
         <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
-          {feature} is Pro only
+          Unlock {feature}
         </h2>
         <p className="text-[var(--text-secondary)] text-sm mb-8 leading-relaxed">
-          {description || `Upgrade to Talent Pro to unlock ${feature} and every other AI-powered tool with no limits.`}
+          {description || `${feature} joins your resume, role, and application context in Talent Pro.`}
         </p>
 
         {/* Benefits */}
-        <div className="space-y-3 mb-8 text-left">
-          {GATE_BENEFITS.map((b) => (
-            <div key={b.text} className="flex items-center gap-3">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: `${b.color}18`, color: b.color }}>
-                <span className="material-symbols-rounded text-[16px]">{b.icon}</span>
-              </div>
-              <span className="text-sm text-[var(--text-primary)]">{b.text}</span>
-            </div>
-          ))}
+        <div className="mb-8 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-left">
+          <PlanFeatureList tier="pro" />
         </div>
 
         {/* CTA */}
         <button
           onClick={() => router.push('/suite/upgrade')}
-          className="w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-opacity hover:opacity-90 flex items-center justify-center gap-2"
-          style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 16px rgba(16,185,129,0.3)' }}
+          className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-opacity hover:opacity-90"
+          style={{ background: proPlan.accent, color: proPlan.buttonText, boxShadow: `0 4px 16px color-mix(in srgb, ${proPlan.accent} 20%, transparent)` }}
         >
           <span className="material-symbols-rounded text-[18px]">bolt</span>
-          Upgrade to Pro — $9.99/mo
+          {UPGRADE_COPY.primaryCta}
         </button>
 
         <p className="text-[11px] text-[var(--text-muted)] mt-3">

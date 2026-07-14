@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import { TalentConsultingWordmark } from '@/components/BrandLogo';
 import { useTheme } from '@/components/ThemeProvider';
 import { BLOG_POSTS } from './posts';
 import type { BlogPost } from './posts';
@@ -11,17 +12,17 @@ export default function BlogIndex() {
   const isLight = theme === 'light';
 
   return (
-    <div className={`min-h-screen ${isLight ? 'bg-gray-50' : 'bg-[#0a0a0b]'}`}>
+    <div className={`min-h-dvh ${isLight ? 'bg-gray-50' : 'bg-[#0a0a0b]'}`}>
       {/* Nav */}
       <nav className={`sticky top-0 z-50 backdrop-blur-xl border-b ${isLight ? 'bg-white/80 border-gray-200' : 'bg-[#0a0a0b]/80 border-white/[0.04]'}`}>
         <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className={`text-sm font-bold tracking-tight ${isLight ? 'text-gray-900' : 'text-white/90'}`}>
-            TalentConsulting<span className={isLight ? 'text-gray-400' : 'text-white/30'}>.io</span>
+          <Link href="/" aria-label="TalentConsulting.io home" className="inline-flex min-w-0 items-center">
+            <TalentConsultingWordmark className="w-[min(210px,48vw)]" />
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/templates" className={`text-xs ${isLight ? 'text-gray-500 hover:text-gray-900' : 'text-white/30 hover:text-white/60'} transition-colors`}>Templates</Link>
             <Link href="/tools/ai-detector" className={`text-xs ${isLight ? 'text-gray-500 hover:text-gray-900' : 'text-white/30 hover:text-white/60'} transition-colors`}>AI Detector</Link>
-            <Link href="/suite/resume" className="text-xs font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-1.5 rounded-lg">
+            <Link href="/tools/resume-builder" className="text-xs font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-1.5 rounded-lg">
               Get Started
             </Link>
           </div>
@@ -74,6 +75,35 @@ export default function BlogIndex() {
               </Link>
             </motion.div>
           ))}
+        </div>
+
+        <div className={`mt-8 rounded-2xl border p-6 ${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+          <h2 className={`text-lg font-bold mb-4 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>Popular job seeker guides</h2>
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              { href: '/resume-examples/software-engineer', title: 'Resume examples' },
+              { href: '/resume-keywords/software-engineering', title: 'Resume keywords' },
+              { href: '/interview-questions/product-manager', title: 'Interview questions' },
+            ].map((guide) => (
+              <Link
+                key={guide.href}
+                href={guide.href}
+                className={`rounded-xl border px-4 py-3 text-sm font-medium transition ${isLight ? 'border-gray-200 text-gray-700 hover:bg-gray-50' : 'border-white/[0.06] text-white/50 hover:bg-white/[0.04]'}`}
+              >
+                {guide.title}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <div className={`mt-6 rounded-2xl border p-5 ${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+          <h2 className={`text-base font-bold mb-2 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>Source context</h2>
+          <p className={`text-sm leading-6 ${isLight ? 'text-gray-500' : 'text-white/30'}`}>
+            For labor market and occupation context, compare this guidance with the{' '}
+            <a href="https://www.bls.gov/ooh/" rel="noopener noreferrer" target="_blank" className="text-emerald-500 hover:underline">
+              Bureau of Labor Statistics Occupational Outlook Handbook
+            </a>.
+          </p>
         </div>
 
         {/* Newsletter CTA */}

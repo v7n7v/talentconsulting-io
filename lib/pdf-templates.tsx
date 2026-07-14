@@ -17,7 +17,7 @@ import {
 } from '@react-pdf/renderer';
 import { saveAs } from 'file-saver';
 import type { CanonicalResume } from '@/lib/resume-normalizer';
-import { normalizeResume } from '@/lib/resume-normalizer';
+import { cleanResumeText, normalizeResume } from '@/lib/resume-normalizer';
 
 // ============================================================
 // FONT REGISTRATION — physical files for ATS compatibility
@@ -43,6 +43,68 @@ interface TemplateColors {
 interface PDFTemplateProps {
   resume: CanonicalResume;
   colors: TemplateColors;
+}
+
+type PDFHeaderDensity = 'hero' | 'standard' | 'compact';
+type PDFHeaderLayout = 'authority' | 'band' | 'centered' | 'compact' | 'technical' | 'traditional' | 'creative' | 'product' | 'editorial' | 'systems';
+
+interface PDFHeaderPreset {
+  layout: PDFHeaderLayout;
+  density: PDFHeaderDensity;
+  eyebrow?: string;
+  separator?: string;
+}
+
+function getPDFHeaderPreset(templateId: string): PDFHeaderPreset {
+  const presets: Record<string, PDFHeaderPreset> = {
+    executive: { layout: 'authority', density: 'hero', eyebrow: 'Executive Resume', separator: '•' },
+    compact: { layout: 'compact', density: 'compact', eyebrow: 'Compact Resume', separator: '' },
+    boardroom: { layout: 'authority', density: 'hero', eyebrow: 'Board Brief', separator: '•' },
+    'finance-ledger': { layout: 'compact', density: 'standard', eyebrow: 'Finance Ledger', separator: '•' },
+    modern: { layout: 'band', density: 'standard', eyebrow: 'Modern Profile', separator: '•' },
+    infographic: { layout: 'band', density: 'standard', eyebrow: 'Metro Profile', separator: '•' },
+    startup: { layout: 'editorial', density: 'hero', eyebrow: 'Builder Profile', separator: '/' },
+    venture: { layout: 'editorial', density: 'hero', eyebrow: 'Venture-Ready Resume', separator: '/' },
+    minimal: { layout: 'centered', density: 'standard', separator: '•' },
+    nordic: { layout: 'centered', density: 'standard', eyebrow: 'Nordic Profile', separator: '' },
+    elegant: { layout: 'centered', density: 'standard', eyebrow: 'Professional Profile', separator: '•' },
+    technical: { layout: 'technical', density: 'compact', eyebrow: 'system.profile', separator: '|' },
+    'data-signal': { layout: 'technical', density: 'compact', eyebrow: 'signal.profile', separator: '/' },
+    operator: { layout: 'systems', density: 'compact', eyebrow: 'Operating System', separator: '•' },
+    harvard: { layout: 'traditional', density: 'standard', separator: '|' },
+    academic: { layout: 'traditional', density: 'standard', eyebrow: 'Academic Profile', separator: '|' },
+    'ats-optimized': { layout: 'traditional', density: 'compact', eyebrow: 'ATS Resume', separator: '•' },
+    federal: { layout: 'traditional', density: 'compact', eyebrow: 'Federal Resume', separator: '•' },
+    creative: { layout: 'creative', density: 'standard', eyebrow: 'Creative Profile', separator: '•' },
+    cascade: { layout: 'creative', density: 'compact', eyebrow: 'Career Flow', separator: '•' },
+    'product-brief': { layout: 'product', density: 'standard', eyebrow: 'Product Narrative', separator: '•' },
+    'double-column': { layout: 'product', density: 'compact', eyebrow: 'Competency Brief', separator: '•' },
+    deloitte: { layout: 'authority', density: 'standard', eyebrow: 'Consultant Profile', separator: '•' },
+    faang: { layout: 'systems', density: 'compact', eyebrow: 'Big Tech Profile', separator: '•' },
+    storyline: { layout: 'editorial', density: 'standard', eyebrow: 'Career Story', separator: '•' },
+  };
+  return presets[templateId] || presets.executive;
+}
+
+function getPDFHeaderScale(name = '', title = '', density: PDFHeaderDensity = 'standard') {
+  const longestNameToken = name.split(/\s+/).reduce((max, token) => Math.max(max, token.length), 0);
+  const pressure = name.length + title.length * 0.35 + Math.max(0, longestNameToken - 12) * 1.4;
+  if (density === 'hero') {
+    if (pressure > 42) return { nameSize: 20, titleSize: 10.5 };
+    if (pressure > 32) return { nameSize: 22, titleSize: 11 };
+    return { nameSize: 25, titleSize: 12.5 };
+  }
+  if (density === 'compact') {
+    if (pressure > 38) return { nameSize: 16, titleSize: 9 };
+    return { nameSize: 18, titleSize: 9.5 };
+  }
+  if (pressure > 40) return { nameSize: 18, titleSize: 9.5 };
+  if (pressure > 30) return { nameSize: 20, titleSize: 10 };
+  return { nameSize: 22, titleSize: 11 };
+}
+
+function pdfInitials(name = '') {
+  return name.split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase();
 }
 
 // ============================================================
@@ -118,13 +180,161 @@ function PDFSectionTitle({ children, color, borderColor, align, font }: {
   );
 }
 
-function PDFContactRow({ resume, separator = '|' }: { resume: CanonicalResume; separator?: string }) {
+function PDFContactRow({
+  resume,
+  separator = '|',
+  color = '#555555',
+  align = 'left',
+}: {
+  resume: CanonicalResume;
+  separator?: string;
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+}) {
   const items = [resume.email, resume.phone, resume.location, resume.linkedin, resume.website].filter(Boolean);
   return (
-    <View style={{ flexDirection: 'row', gap: 8, fontSize: 9, color: '#555555', flexWrap: 'wrap' }}>
+    <View style={{ flexDirection: 'row', gap: 8, fontSize: 9, flexWrap: 'wrap', justifyContent: align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start' }}>
       {items.map((item, i) => (
-        <Text key={i}>{i > 0 ? `${separator}  ` : ''}{item}</Text>
+        <Text key={i} style={{ color }}>{i > 0 && separator ? `${separator}  ` : ''}{item}</Text>
       ))}
+    </View>
+  );
+}
+
+function PDFHeaderText({
+  resume,
+  colors,
+  preset,
+  inverse = false,
+  uppercaseName = false,
+  align = 'left',
+}: {
+  resume: CanonicalResume;
+  colors: TemplateColors;
+  preset: PDFHeaderPreset;
+  inverse?: boolean;
+  uppercaseName?: boolean;
+  align?: 'left' | 'center' | 'right';
+}) {
+  const name = cleanResumeText(resume.name) || 'Your Name';
+  const title = cleanResumeText(resume.title);
+  const scale = getPDFHeaderScale(name, title, preset.density);
+  const textAlign = align;
+
+  return (
+    <View>
+      {preset.eyebrow && (
+        <Text style={{ fontSize: 7.5, textTransform: 'uppercase', letterSpacing: 1.5, color: inverse ? '#dbe4ef' : '#666666', marginBottom: 5, textAlign }}>
+          {preset.eyebrow}
+        </Text>
+      )}
+      <Text style={{ fontSize: scale.nameSize, fontWeight: 'bold', color: inverse ? '#f8fafc' : colors.primary, lineHeight: 1.12, textAlign }}>
+        {uppercaseName ? name.toUpperCase() : name}
+      </Text>
+      {title && (
+        <Text style={{ fontSize: scale.titleSize, color: inverse ? '#dbe4ef' : colors.accent, marginTop: 4, lineHeight: 1.25, textAlign }}>
+          {uppercaseName ? title.toUpperCase() : title}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function PDFResumeHeader({ resume, colors, templateId }: PDFTemplateProps & { templateId: string }) {
+  const preset = getPDFHeaderPreset(templateId);
+  const separator = preset.separator;
+
+  if (preset.layout === 'band') {
+    return (
+      <View style={{ marginBottom: 16, backgroundColor: colors.primary, padding: 18 }}>
+        <PDFHeaderText resume={resume} colors={colors} preset={preset} inverse />
+        <View style={{ marginTop: 8 }}>
+          <PDFContactRow resume={resume} separator={separator} color="#dbe4ef" />
+        </View>
+      </View>
+    );
+  }
+
+  if (preset.layout === 'centered') {
+    return (
+      <View style={{ marginBottom: 18, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: `${colors.accent}55`, paddingBottom: 12 }}>
+        <PDFHeaderText resume={resume} colors={colors} preset={preset} align="center" uppercaseName={templateId === 'elegant'} />
+        <View style={{ marginTop: 8 }}>
+          <PDFContactRow resume={resume} separator={separator} align="center" color="#666666" />
+        </View>
+      </View>
+    );
+  }
+
+  if (preset.layout === 'compact' || preset.layout === 'systems') {
+    return (
+      <View style={{ marginBottom: 14, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 10, flexDirection: 'row', justifyContent: 'space-between', gap: 14 }}>
+        <View style={{ flex: 1 }}>
+          <PDFHeaderText resume={resume} colors={colors} preset={preset} />
+        </View>
+        <View style={{ width: 145, paddingTop: 2 }}>
+          <PDFContactRow resume={resume} separator="" align="right" color="#666666" />
+        </View>
+      </View>
+    );
+  }
+
+  if (preset.layout === 'technical' || preset.layout === 'product') {
+    return (
+      <View style={{ marginBottom: 16, borderWidth: 1, borderColor: `${colors.primary}40`, padding: 14, backgroundColor: preset.layout === 'product' ? '#f8fafc' : '#ffffff' }}>
+        <PDFHeaderText resume={resume} colors={colors} preset={preset} />
+        <View style={{ marginTop: 8 }}>
+          <PDFContactRow resume={resume} separator={separator} color="#666666" />
+        </View>
+      </View>
+    );
+  }
+
+  if (preset.layout === 'traditional') {
+    return (
+      <View style={{ marginBottom: 16, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 12, alignItems: 'center' }}>
+        <PDFHeaderText resume={resume} colors={colors} preset={preset} align="center" />
+        <View style={{ marginTop: 8 }}>
+          <PDFContactRow resume={resume} separator={separator} align="center" color="#555555" />
+        </View>
+      </View>
+    );
+  }
+
+  if (preset.layout === 'creative') {
+    return (
+      <View style={{ marginBottom: 18, flexDirection: 'row', gap: 14 }}>
+        <View style={{ width: 44, height: 44, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold' }}>{pdfInitials(resume.name)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <PDFHeaderText resume={resume} colors={colors} preset={preset} />
+          <View style={{ marginTop: 7 }}>
+            <PDFContactRow resume={resume} separator={separator} color="#666666" />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (preset.layout === 'editorial') {
+    return (
+      <View style={{ marginBottom: 17 }}>
+        <PDFHeaderText resume={resume} colors={colors} preset={preset} />
+        <View style={{ marginTop: 8 }}>
+          <PDFContactRow resume={resume} separator={separator} color="#666666" />
+        </View>
+        <View style={{ marginTop: 9, height: 2, width: 58, backgroundColor: colors.accent }} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ marginBottom: 16, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 12 }}>
+      <PDFHeaderText resume={resume} colors={colors} preset={preset} />
+      <View style={{ marginTop: 8 }}>
+        <PDFContactRow resume={resume} separator={separator} color="#555555" />
+      </View>
     </View>
   );
 }
@@ -156,21 +366,22 @@ function PDFExperience({ entries, colors, companyFirst }: { entries: CanonicalRe
 
 function PDFEducation({ entries, colors, companyFirst }: { entries: CanonicalResume['education']; colors: TemplateColors; companyFirst?: boolean }) {
   return (
-    <View>{entries.map((edu, i) => (
-      <View key={i} style={{ marginBottom: 6 }}>
-        {companyFirst ? (
-          <>
-            <Text style={{ fontSize: 10, fontWeight: 'bold' }}>{edu.institution}</Text>
-            <Text style={{ fontSize: 9, fontStyle: 'italic', color: '#555555' }}>{edu.degree}</Text>
-          </>
-        ) : (
-          <>
-            <Text style={{ fontSize: 10, fontWeight: 'bold' }}>{edu.degree}  —  {edu.institution}</Text>
-          </>
-        )}
-        <Text style={{ fontSize: 9, color: '#555555' }}>{edu.year}{edu.details ? ` | ${edu.details}` : ''}</Text>
-      </View>
-    ))}</View>
+    <View>{entries.map((edu, i) => {
+      const degree = cleanResumeText(edu.degree);
+      const institution = cleanResumeText(edu.institution);
+      const year = cleanResumeText(edu.year);
+      const details = cleanResumeText(edu.details);
+      const primaryLine = companyFirst ? (institution || degree) : [degree, institution].filter(Boolean).join('  —  ');
+      const secondaryLine = companyFirst && institution ? degree : '';
+      const metaLine = [year, details].filter(Boolean).join(' | ');
+      return (
+        <View key={i} style={{ marginBottom: 6 }}>
+          {primaryLine && <Text style={{ fontSize: 10, fontWeight: 'bold' }}>{primaryLine}</Text>}
+          {secondaryLine && <Text style={{ fontSize: 9, fontStyle: 'italic', color: '#555555' }}>{secondaryLine}</Text>}
+          {metaLine && <Text style={{ fontSize: 9, color: '#555555' }}>{metaLine}</Text>}
+        </View>
+      );
+    })}</View>
   );
 }
 
@@ -215,11 +426,7 @@ function PDFCertifications({ certs, colors }: { certs: string[]; colors: Templat
 function ExecutivePDF({ resume, colors }: PDFTemplateProps) {
   return (
     <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
-      <View style={{ marginBottom: 16, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.primary, marginBottom: 2 }}>{resume.name}</Text>
-        <Text style={{ fontSize: 12, color: colors.accent, marginBottom: 6 }}>{resume.title}</Text>
-        <PDFContactRow resume={resume} />
-      </View>
+      <PDFResumeHeader resume={resume} colors={colors} templateId="executive" />
       {resume.summary && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Professional Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
       {resume.education.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} /></View>}
@@ -233,11 +440,7 @@ function ExecutivePDF({ resume, colors }: PDFTemplateProps) {
 function MinimalPDF({ resume, colors }: PDFTemplateProps) {
   return (
     <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
-      <View style={{ marginBottom: 16, alignItems: 'center' }}>
-        <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.text, marginBottom: 2 }}>{resume.name}</Text>
-        <Text style={{ fontSize: 11, color: '#666666', marginBottom: 6 }}>{resume.title}</Text>
-        <PDFContactRow resume={resume} separator="•" />
-      </View>
+      <PDFResumeHeader resume={resume} colors={colors} templateId="minimal" />
       {resume.summary && <View style={{ borderTopWidth: 1, borderTopColor: '#e0e0e0', paddingTop: 10 }}><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#555555', textAlign: 'center' }}>{resume.summary}</Text></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color="#999999">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
       {resume.education.length > 0 && <View><PDFSectionTitle color="#999999">Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} /></View>}
@@ -250,10 +453,7 @@ function MinimalPDF({ resume, colors }: PDFTemplateProps) {
 function CompactPDF({ resume, colors }: PDFTemplateProps) {
   return (
     <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 9, color: colors.text, padding: '30 40', lineHeight: 1.4 }}>
-      <View style={{ marginBottom: 10, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between' }}>
-        <View><Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.primary }}>{resume.name}</Text><Text style={{ fontSize: 10, color: '#666666' }}>{resume.title}</Text></View>
-        <View style={{ alignItems: 'flex-end', fontSize: 8, color: '#666666' }}>{resume.email && <Text>{resume.email}</Text>}{resume.phone && <Text>{resume.phone}</Text>}{resume.location && <Text>{resume.location}</Text>}</View>
-      </View>
+      <PDFResumeHeader resume={resume} colors={colors} templateId="compact" />
       {resume.summary && <View style={{ marginBottom: 8, backgroundColor: `${colors.primary}08`, padding: 8, borderRadius: 4 }}><Text style={{ fontSize: 9, color: '#444444', lineHeight: 1.5 }}>{resume.summary}</Text></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Core Competencies</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} layout="inline" /></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Professional Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
@@ -267,11 +467,7 @@ function CompactPDF({ resume, colors }: PDFTemplateProps) {
 function TechnicalPDF({ resume, colors }: PDFTemplateProps) {
   return (
     <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
-      <View style={{ marginBottom: 16, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 12 }}>
-        <Text style={{ fontSize: 20, fontWeight: 'bold', color: colors.primary }}>{resume.name}</Text>
-        <Text style={{ fontSize: 12, color: colors.accent, marginBottom: 6 }}>{resume.title}</Text>
-        <PDFContactRow resume={resume} separator="|" />
-      </View>
+      <PDFResumeHeader resume={resume} colors={colors} templateId="technical" />
       {resume.summary && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Technical Skills</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} /></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
@@ -284,10 +480,7 @@ function TechnicalPDF({ resume, colors }: PDFTemplateProps) {
 function HarvardPDF({ resume, colors }: PDFTemplateProps) {
   return (
     <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
-      <View style={{ marginBottom: 16, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 12, alignItems: 'center' }}>
-        <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.primary, marginBottom: 4 }}>{resume.name}</Text>
-        <PDFContactRow resume={resume} separator="|" />
-      </View>
+      <PDFResumeHeader resume={resume} colors={colors} templateId="harvard" />
       {resume.education.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} companyFirst /></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} companyFirst /></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Skills and Interests</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} layout="inline" /></View>}
@@ -297,7 +490,7 @@ function HarvardPDF({ resume, colors }: PDFTemplateProps) {
 }
 
 // Generic single-column PDF for: Elegant, Nordic, Modern, Creative, Cascade, Columnist, Metro, Consultant, Startup, ATS Ultra, FAANG, Federal, Academic
-function GenericSingleColumnPDF({ resume, colors, sectionOrder }: PDFTemplateProps & { sectionOrder?: string[] }) {
+function GenericSingleColumnPDF({ resume, colors, sectionOrder, templateId = 'executive' }: PDFTemplateProps & { sectionOrder?: string[]; templateId?: string }) {
   const order = sectionOrder || ['summary', 'experience', 'skills', 'education', 'certifications'];
   const sections: Record<string, JSX.Element | null> = {
     summary: resume.summary ? <View key="summary"><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Professional Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View> : null,
@@ -308,11 +501,7 @@ function GenericSingleColumnPDF({ resume, colors, sectionOrder }: PDFTemplatePro
   };
   return (
     <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
-      <View style={{ marginBottom: 16, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingBottom: 12 }}>
-        <Text style={{ fontSize: 22, fontWeight: 'bold', color: colors.primary, marginBottom: 2 }}>{resume.name}</Text>
-        <Text style={{ fontSize: 12, color: colors.accent, marginBottom: 6 }}>{resume.title}</Text>
-        <PDFContactRow resume={resume} />
-      </View>
+      <PDFResumeHeader resume={resume} colors={colors} templateId={templateId} />
       {order.map(s => sections[s]).filter(Boolean)}
     </Page>
   );
@@ -326,21 +515,28 @@ const PDF_TEMPLATE_MAP: Record<string, React.FC<PDFTemplateProps>> = {
   'minimal': MinimalPDF,
   'compact': CompactPDF,
   'technical': TechnicalPDF,
+  'boardroom': (p) => <GenericSingleColumnPDF {...p} templateId="boardroom" sectionOrder={['summary', 'experience', 'skills', 'education', 'certifications']} />,
+  'product-brief': (p) => <GenericSingleColumnPDF {...p} templateId="product-brief" sectionOrder={['summary', 'skills', 'experience', 'education', 'certifications']} />,
   'harvard': HarvardPDF,
   // These use the generic single-column with different section orders:
-  'elegant': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'education', 'skills']} />,
-  'nordic': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'education', 'skills']} />,
-  'modern': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'skills', 'education']} />,
-  'creative': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'education', 'skills']} />,
-  'cascade': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'skills', 'education']} />,
-  'double-column': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['skills', 'summary', 'experience', 'education']} />,
-  'infographic': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'skills', 'education']} />,
-  'deloitte': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'skills', 'experience', 'education', 'certifications']} />,
-  'ats-optimized': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'skills', 'experience', 'education', 'certifications']} />,
-  'faang': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'skills', 'education']} />,
-  'startup': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'skills', 'education']} />,
-  'federal': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'experience', 'skills', 'education', 'certifications']} />,
-  'academic': (p) => <GenericSingleColumnPDF {...p} sectionOrder={['summary', 'education', 'experience', 'skills', 'certifications']} />,
+  'elegant': (p) => <GenericSingleColumnPDF {...p} templateId="elegant" sectionOrder={['summary', 'experience', 'education', 'skills']} />,
+  'nordic': (p) => <GenericSingleColumnPDF {...p} templateId="nordic" sectionOrder={['summary', 'experience', 'education', 'skills']} />,
+  'modern': (p) => <GenericSingleColumnPDF {...p} templateId="modern" sectionOrder={['summary', 'experience', 'skills', 'education']} />,
+  'creative': (p) => <GenericSingleColumnPDF {...p} templateId="creative" sectionOrder={['summary', 'experience', 'education', 'skills']} />,
+  'cascade': (p) => <GenericSingleColumnPDF {...p} templateId="cascade" sectionOrder={['summary', 'experience', 'skills', 'education']} />,
+  'double-column': (p) => <GenericSingleColumnPDF {...p} templateId="double-column" sectionOrder={['skills', 'summary', 'experience', 'education']} />,
+  'infographic': (p) => <GenericSingleColumnPDF {...p} templateId="infographic" sectionOrder={['summary', 'experience', 'skills', 'education']} />,
+  'deloitte': (p) => <GenericSingleColumnPDF {...p} templateId="deloitte" sectionOrder={['summary', 'skills', 'experience', 'education', 'certifications']} />,
+  'ats-optimized': (p) => <GenericSingleColumnPDF {...p} templateId="ats-optimized" sectionOrder={['summary', 'skills', 'experience', 'education', 'certifications']} />,
+  'faang': (p) => <GenericSingleColumnPDF {...p} templateId="faang" sectionOrder={['summary', 'experience', 'skills', 'education']} />,
+  'startup': (p) => <GenericSingleColumnPDF {...p} templateId="startup" sectionOrder={['summary', 'experience', 'skills', 'education']} />,
+  'federal': (p) => <GenericSingleColumnPDF {...p} templateId="federal" sectionOrder={['summary', 'experience', 'skills', 'education', 'certifications']} />,
+  'academic': (p) => <GenericSingleColumnPDF {...p} templateId="academic" sectionOrder={['summary', 'education', 'experience', 'skills', 'certifications']} />,
+  'operator': (p) => <GenericSingleColumnPDF {...p} templateId="operator" sectionOrder={['summary', 'skills', 'experience', 'education', 'certifications']} />,
+  'data-signal': (p) => <GenericSingleColumnPDF {...p} templateId="data-signal" sectionOrder={['skills', 'summary', 'experience', 'education', 'certifications']} />,
+  'finance-ledger': (p) => <GenericSingleColumnPDF {...p} templateId="finance-ledger" sectionOrder={['summary', 'experience', 'skills', 'education', 'certifications']} />,
+  'storyline': (p) => <GenericSingleColumnPDF {...p} templateId="storyline" sectionOrder={['summary', 'experience', 'skills', 'education', 'certifications']} />,
+  'venture': (p) => <GenericSingleColumnPDF {...p} templateId="venture" sectionOrder={['summary', 'experience', 'skills', 'education', 'certifications']} />,
 };
 
 // ============================================================

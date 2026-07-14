@@ -123,8 +123,8 @@ export default function PromoPopup() {
               {/* Content */}
               <div className="relative z-10">
                 {/* Sparkle icon */}
-                <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center mx-auto mb-5">
-                  <span className="material-symbols-rounded text-3xl text-emerald-400">local_offer</span>
+                <div className="icon-shell-neutral w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto mb-5">
+                  <span className="material-symbols-rounded text-3xl">local_offer</span>
                 </div>
 
                 <h3 className="text-xl font-bold text-white mb-2">
@@ -167,7 +167,7 @@ export default function PromoPopup() {
                   </Link>
 
                   <p className="text-[11px] text-gray-500">
-                    7-day free trial included · Cancel anytime
+                    Eligible new subscribers get a 7-day trial · Cancel anytime
                   </p>
                 </div>
               </div>

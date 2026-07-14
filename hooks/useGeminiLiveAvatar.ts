@@ -13,6 +13,11 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { authFetch } from '@/lib/auth-fetch';
+import {
+  AUDIO_LEVEL_PUBLISH_INTERVAL_MS,
+  normalizeFloatRms,
+  smoothAudioLevel,
+} from '@/lib/audio-level';
 
 interface AvatarLiveConfig {
   persona?: string;
@@ -32,6 +37,8 @@ interface AvatarLiveState {
   error: string | null;
   questionCount: number;
   elapsedSeconds: number;
+  inputLevel: number;
+  outputLevel: number;
 }
 
 type AudioChunkCallback = (base64Pcm: string) => void;
@@ -51,14 +58,21 @@ export function useGeminiLiveAvatar() {
     error: null,
     questionCount: 0,
     elapsedSeconds: 0,
+    inputLevel: 0,
+    outputLevel: 0,
   });
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const playbackCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const nextPlayTimeRef = useRef(0);
+  const inputLevelRef = useRef(0);
+  const outputLevelRef = useRef(0);
+  const lastLevelPublishRef = useRef({ inputLevel: 0, outputLevel: 0 });
 
   // Mic gating — prevents echo feedback loop where AI hears its own audio
   const isSpeakingRef = useRef(false);
@@ -81,12 +95,25 @@ export function useGeminiLiveAvatar() {
     onTurnCompleteRef.current = cb;
   }, []);
 
+  const publishAudioLevel = useCallback((kind: 'inputLevel' | 'outputLevel', rawLevel: number) => {
+    const now = performance.now();
+    if (now - lastLevelPublishRef.current[kind] < AUDIO_LEVEL_PUBLISH_INTERVAL_MS) return;
+
+    const levelRef = kind === 'inputLevel' ? inputLevelRef : outputLevelRef;
+    const nextLevel = smoothAudioLevel(levelRef.current, rawLevel);
+    levelRef.current = nextLevel;
+    lastLevelPublishRef.current[kind] = now;
+    setState(current => ({ ...current, [kind]: nextLevel }));
+  }, []);
+
   useEffect(() => {
     return () => { cleanup(); };
   }, []);
 
   const connect = useCallback(async (config: AvatarLiveConfig) => {
-    setState(s => ({ ...s, isConnecting: true, error: null }));
+    inputLevelRef.current = 0;
+    outputLevelRef.current = 0;
+    setState(s => ({ ...s, isConnecting: true, error: null, inputLevel: 0, outputLevel: 0 }));
 
     try {
       const tokenRes = await authFetch('/api/voice/live-token', {
@@ -188,6 +215,40 @@ export function useGeminiLiveAvatar() {
     });
   }, []);
 
+  const playAudioChunk = useCallback((base64Data: string) => {
+    const binaryStr = atob(base64Data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    const int16 = new Int16Array(bytes.buffer);
+    const float32 = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+      float32[i] = int16[i] / 32768.0;
+    }
+
+    if (!playbackCtxRef.current || playbackCtxRef.current.state === 'closed') {
+      playbackCtxRef.current = new AudioContext({ sampleRate: 24000 });
+      nextPlayTimeRef.current = 0;
+    }
+
+    const playCtx = playbackCtxRef.current;
+    if (playCtx.state === 'suspended') playCtx.resume();
+
+    const buffer = playCtx.createBuffer(1, float32.length, 24000);
+    buffer.getChannelData(0).set(float32);
+
+    const source = playCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(playCtx.destination);
+
+    const now = playCtx.currentTime;
+    const startAt = Math.max(now, nextPlayTimeRef.current);
+    source.start(startAt);
+    nextPlayTimeRef.current = startAt + buffer.duration;
+  }, []);
+
   const handleServerMessage = useCallback((msg: any) => {
     if (msg.setupComplete) {
       setState(s => ({ ...s, isConnected: true, isConnecting: false }));
@@ -206,21 +267,30 @@ export function useGeminiLiveAvatar() {
       if (sc.modelTurn?.parts) {
         for (const part of sc.modelTurn.parts) {
           if (part.inlineData?.data) {
-            setState(s => ({ ...s, isSpeaking: true }));
+            publishAudioLevel('outputLevel', getBase64PcmLevel(part.inlineData.data));
+            inputLevelRef.current = 0;
+            setState(s => ({ ...s, isSpeaking: true, inputLevel: 0 }));
             // Immediately mute mic to prevent echo feedback
             isSpeakingRef.current = true;
             if (speakingDebounceRef.current) {
               clearTimeout(speakingDebounceRef.current);
               speakingDebounceRef.current = null;
             }
-            // Forward to avatar for lip-synced playback
-            onAudioChunkRef.current?.(part.inlineData.data);
+            // Forward to avatar for lip-synced playback when available.
+            // If no avatar audio consumer is registered, play directly so Avatar Live
+            // gracefully falls back to a reliable Sona audio room.
+            if (onAudioChunkRef.current) {
+              onAudioChunkRef.current(part.inlineData.data);
+            } else {
+              playAudioChunk(part.inlineData.data);
+            }
           }
         }
       }
 
       if (sc.turnComplete) {
-        setState(s => ({ ...s, isSpeaking: false }));
+        outputLevelRef.current = 0;
+        setState(s => ({ ...s, isSpeaking: false, outputLevel: 0 }));
         // Debounce 500ms before re-enabling mic — catches speaker echo tail
         speakingDebounceRef.current = setTimeout(() => {
           isSpeakingRef.current = false;
@@ -242,7 +312,8 @@ export function useGeminiLiveAvatar() {
       }
 
       if (sc.interrupted) {
-        setState(s => ({ ...s, isSpeaking: false }));
+        outputLevelRef.current = 0;
+        setState(s => ({ ...s, isSpeaking: false, outputLevel: 0 }));
         // AI was interrupted — re-enable mic immediately (user is talking)
         isSpeakingRef.current = false;
         if (speakingDebounceRef.current) {
@@ -253,7 +324,7 @@ export function useGeminiLiveAvatar() {
         lastTranscriptRoleRef.current = null;
       }
     }
-  }, [appendTranscript]);
+  }, [appendTranscript, playAudioChunk, publishAudioLevel]);
 
   const startMicCapture = useCallback(async () => {
     try {
@@ -283,6 +354,7 @@ export function useGeminiLiveAvatar() {
         // Mic gating: don't send audio while AI is speaking (prevents echo loop)
         if (isSpeakingRef.current) return;
         const input = e.inputBuffer.getChannelData(0);
+        publishAudioLevel('inputLevel', normalizeFloatRms(input));
         const pcm16 = float32ToInt16(input);
         const base64 = arrayBufferToBase64(pcm16.buffer as ArrayBuffer);
 
@@ -301,9 +373,10 @@ export function useGeminiLiveAvatar() {
 
       setState(s => ({ ...s, isListening: true }));
     } catch {
-      setState(s => ({ ...s, error: 'Microphone access denied' }));
+      inputLevelRef.current = 0;
+      setState(s => ({ ...s, error: 'Microphone access denied', inputLevel: 0 }));
     }
-  }, []);
+  }, [publishAudioLevel]);
 
   const disconnect = useCallback(() => {
     cleanup();
@@ -320,6 +393,8 @@ export function useGeminiLiveAvatar() {
       error: null,
       questionCount: 0,
       elapsedSeconds: 0,
+      inputLevel: 0,
+      outputLevel: 0,
     });
     return transcript;
   }, [state.fullTranscript]);
@@ -334,6 +409,9 @@ export function useGeminiLiveAvatar() {
       speakingDebounceRef.current = null;
     }
     isSpeakingRef.current = false;
+    inputLevelRef.current = 0;
+    outputLevelRef.current = 0;
+    lastLevelPublishRef.current = { inputLevel: 0, outputLevel: 0 };
     lastTranscriptRoleRef.current = null;
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -359,6 +437,11 @@ export function useGeminiLiveAvatar() {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
+    if (playbackCtxRef.current && playbackCtxRef.current.state !== 'closed') {
+      playbackCtxRef.current.close();
+      playbackCtxRef.current = null;
+    }
+    nextPlayTimeRef.current = 0;
   }, []);
 
   const sendText = useCallback((text: string) => {
@@ -403,3 +486,20 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+function getBase64PcmLevel(base64Data: string): number {
+  const binary = atob(base64Data);
+  const sampleCount = Math.floor(binary.length / 2);
+  if (sampleCount === 0) return 0;
+
+  let sumSquares = 0;
+  for (let index = 0; index < sampleCount; index += 1) {
+    const low = binary.charCodeAt(index * 2);
+    const high = binary.charCodeAt(index * 2 + 1);
+    const unsigned = low | (high << 8);
+    const signed = unsigned >= 0x8000 ? unsigned - 0x10000 : unsigned;
+    const sample = signed / 32768;
+    sumSquares += sample * sample;
+  }
+
+  return Math.min(1, Math.sqrt(sumSquares / sampleCount) * 3.4);
+}

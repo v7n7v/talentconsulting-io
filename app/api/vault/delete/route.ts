@@ -28,6 +28,6 @@ export async function DELETE(req: NextRequest) {
   } catch (error: unknown) {
     console.error('[api/vault/delete] Error:', error);
     monitor.critical('Tool: vault/delete', String(error));
-    return NextResponse.json({ error: 'Failed to delete note' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to delete memory item' }, { status: 500 });
   }
 }

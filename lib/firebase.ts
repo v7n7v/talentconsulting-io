@@ -8,11 +8,12 @@ import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
-  updateEmail as firebaseUpdateEmail,
+  verifyBeforeUpdateEmail,
   updatePassword as firebaseUpdatePassword,
   updateProfile,
   onAuthStateChanged,
@@ -41,6 +42,8 @@ import {
   serverTimestamp,
   type Timestamp,
 } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getDemoAuthUser, isDemoModeEnabled } from './demo-mode';
 
 // Firebase config from environment variables
 const firebaseConfig = {
@@ -56,9 +59,29 @@ const firebaseConfig = {
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Google OAuth provider
 const googleProvider = new GoogleAuthProvider();
+
+async function ensureUserProfile(user: User) {
+  try {
+    const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
+    const profileSnap = await getDoc(profileRef);
+    if (!profileSnap.exists()) {
+      await setDoc(profileRef, {
+        full_name: user.displayName || '',
+        email: user.email || '',
+        skills: [],
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+    }
+  } catch (firestoreErr) {
+    // Do not block login if Firestore profile bootstrap is unavailable.
+    console.warn('Firestore profile check skipped:', firestoreErr);
+  }
+}
 
 // Auth helpers (drop-in replacement for Supabase authHelpers)
 export const authHelpers = {
@@ -94,48 +117,34 @@ export const authHelpers = {
     }
   },
 
-  async signInWithGoogle() {
+  async signInWithGoogle(): Promise<{
+    data: { user: User } | null;
+    error: any;
+    redirectStarted: boolean;
+  }> {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      // Create user profile if first sign-in (non-blocking)
-      try {
-        const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
-        const profileSnap = await getDoc(profileRef);
-        if (!profileSnap.exists()) {
-          await setDoc(profileRef, {
-            full_name: user.displayName || '',
-            email: user.email || '',
-            skills: [],
-            created_at: serverTimestamp(),
-            updated_at: serverTimestamp(),
-          });
-        }
-      } catch (firestoreErr) {
-        // Don't block login if Firestore profile check fails
-        console.warn('Firestore profile check skipped:', firestoreErr);
-      }
-      return { data: { user }, error: null };
+      await signInWithRedirect(auth, googleProvider);
+      return { data: null, error: null, redirectStarted: true };
     } catch (error: any) {
-      // User closed the popup — not an error, just silently return
-      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
-        return { data: null, error: null };
-      }
-      // Popup blocked — fall back to redirect flow
-      if (error.code === 'auth/popup-blocked') {
-        try {
-          const { signInWithRedirect } = await import('firebase/auth');
-          await signInWithRedirect(auth, googleProvider);
-          return { data: null, error: null }; // Page will redirect
-        } catch (redirectErr: any) {
-          return { data: null, error: redirectErr };
-        }
-      }
+      return { data: null, error, redirectStarted: false };
+    }
+  },
+
+  async completeGoogleRedirect() {
+    try {
+      const result = await getRedirectResult(auth);
+      if (!result?.user) return { data: null, error: null };
+
+      await ensureUserProfile(result.user);
+      return { data: { user: result.user }, error: null };
+    } catch (error: any) {
       return { data: null, error };
     }
   },
 
   async signOut() {
+    if (isDemoModeEnabled()) return { error: null };
+
     try {
       await firebaseSignOut(auth);
       return { error: null };
@@ -145,6 +154,10 @@ export const authHelpers = {
   },
 
   async getSession() {
+    if (isDemoModeEnabled()) {
+      return { session: { user: getDemoAuthUser() }, error: null };
+    }
+
     // Wait for Firebase Auth to initialize (auth.currentUser is null on cold start)
     return new Promise<{ session: { user: User } | null; error: null }>((resolve) => {
       // If auth already has a user, return immediately
@@ -161,6 +174,7 @@ export const authHelpers = {
   },
 
   async getUser() {
+    if (isDemoModeEnabled()) return { user: getDemoAuthUser(), error: null };
     return { user: auth.currentUser, error: null };
   },
 
@@ -176,7 +190,13 @@ export const authHelpers = {
   async updateEmail(newEmail: string) {
     try {
       if (!auth.currentUser) throw new Error('Not authenticated');
-      await firebaseUpdateEmail(auth.currentUser, newEmail);
+      const actionCodeSettings = typeof window !== 'undefined'
+        ? {
+            url: `${window.location.origin}/suite/settings?tab=security&email=verified`,
+            handleCodeInApp: false,
+          }
+        : undefined;
+      await verifyBeforeUpdateEmail(auth.currentUser, newEmail, actionCodeSettings);
       return { data: {}, error: null };
     } catch (error: any) {
       return { data: null, error };
@@ -216,6 +236,11 @@ export const authHelpers = {
 
   // Listen for auth state changes
   onAuthStateChanged(callback: (user: User | null) => void) {
+    if (isDemoModeEnabled()) {
+      queueMicrotask(() => callback(getDemoAuthUser()));
+      return () => {};
+    }
+
     return onAuthStateChanged(auth, callback);
   },
 
@@ -327,7 +352,7 @@ export const authHelpers = {
 };
 
 // Export Firebase instances
-export { app, auth, db };
+export { app, auth, db, storage };
 export { serverTimestamp };
 export type { User };
 

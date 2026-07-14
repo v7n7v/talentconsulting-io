@@ -16,8 +16,10 @@ import { NextRequest } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { monitor } from '@/lib/monitor';
+import { getOrComputeTwin } from '@/lib/career-twin';
+import { buildSonaBrief } from '@/lib/sona-context';
 
-type InsightType = 'stale_application' | 'skill_gap' | 'queue_reminder' | 'market_alert';
+type InsightType = 'sona_brief' | 'stale_application' | 'skill_gap' | 'queue_reminder' | 'market_alert';
 
 interface Insight {
   id?: string;
@@ -45,7 +47,7 @@ export async function GET(req: NextRequest) {
     return new Response(JSON.stringify({
       insights: [],
       gated: true,
-      message: 'Proactive insights are a Max feature. Upgrade for $19.99/mo.',
+      message: 'Proactive insights are a Max feature. Upgrade to unlock them.',
     }), { headers: { 'Content-Type': 'application/json' } });
   }
 
@@ -112,6 +114,36 @@ export async function POST(req: NextRequest) {
   try {
     const newInsights: Insight[] = [];
 
+    // ── 0. Sona Brief: one best next move from Career Twin ──
+    if (newInsights.length < remaining) {
+      const today = new Date().toISOString().slice(0, 10);
+      const existingBriefSnap = await db
+        .collection('users').doc(uid)
+        .collection('agent').doc('insights')
+        .collection('items')
+        .where('type', '==', 'sona_brief')
+        .orderBy('createdAt', 'desc')
+        .limit(1)
+        .get();
+
+      const lastBrief = existingBriefSnap.docs[0]?.data()?.createdAt || '';
+      if (!lastBrief.startsWith(today)) {
+        const twin = await getOrComputeTwin(uid);
+        const brief = buildSonaBrief(twin);
+        newInsights.push({
+          type: 'sona_brief',
+          title: brief.title,
+          body: brief.body,
+          icon: 'auto_awesome',
+          priority: brief.priority,
+          actionLabel: brief.actionLabel,
+          actionUrl: brief.actionUrl,
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
     // ── 1. Stale Application Detection ──
     if (newInsights.length < remaining) {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -155,17 +187,17 @@ export async function POST(req: NextRequest) {
     if (newInsights.length < remaining) {
       const queueSnap = await db
         .collection('users').doc(uid)
-        .collection('applicationQueue')
-        .where('status', '==', 'queued')
+        .collection('agent_queue')
+        .where('status', 'in', ['pending', 'approved'])
         .get();
 
       if (queueSnap.size > 0) {
         const oldest = queueSnap.docs
-          .map(d => d.data())
-          .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))[0];
+            .map(d => d.data())
+            .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))[0];
 
         const daysSinceQueued = Math.floor(
-          (Date.now() - new Date(oldest?.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24)
+          (Date.now() - new Date(oldest?.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24)
         );
 
         newInsights.push({
@@ -175,7 +207,7 @@ export async function POST(req: NextRequest) {
           icon: 'send',
           priority: queueSnap.size >= 3 ? 'high' : 'medium',
           actionLabel: 'Review Queue',
-          actionUrl: '/suite/agent',
+          actionUrl: '/suite/agent/queue',
           read: false,
           createdAt: new Date().toISOString(),
         });

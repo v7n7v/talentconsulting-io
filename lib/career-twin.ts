@@ -37,11 +37,66 @@ export interface CareerTwin extends CareerProfile {
     missing: string[];          // Fields that need filling
   };
 
+  // v2 memory spine for Sona Omni-Agent
+  memory: CareerTwinMemory;
+
   exportable: boolean;
 }
 
+export interface CareerTwinMemory {
+  identity: {
+    name: string;
+    currentTitle: string;
+    seniority: string;
+    careerFields: string[];
+    locationPreference: string;
+  };
+  goals: {
+    targetRoles: string[];
+    industries: string[];
+    jobSearchStatus: string;
+    salaryMin: number | null;
+    remotePreference: string;
+  };
+  constraints: {
+    preferredCities: string[];
+    excludedCompanies: string[];
+    autonomyLevel: string;
+    requiresReviewBeforeExternalAction: boolean;
+  };
+  confirmedFacts: {
+    skills: string[];
+    education: string[];
+    resumeVersionCount: number;
+    hasResume: boolean;
+    topCompanies: string[];
+  };
+  writingVoice: {
+    tone: string;
+    bannedClaims: string[];
+    evidenceStyle: string;
+  };
+  activeSearch: {
+    totalApplications: number;
+    responseRate: number;
+    velocity: number;
+    queuedApplications: number;
+    staleApplications: number;
+    skillGaps: string[];
+  };
+  nextBestActions: CareerTwinAction[];
+}
+
+export interface CareerTwinAction {
+  id: string;
+  label: string;
+  reason: string;
+  path: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+}
+
 const TWIN_DOC_PATH = 'career_twin';
-const TWIN_VERSION = 1;
+const TWIN_VERSION = 2;
 
 // Standard behavioral question categories
 const BEHAVIORAL_CATEGORIES = [
@@ -49,6 +104,22 @@ const BEHAVIORAL_CATEGORIES = [
   'initiative', 'communication', 'problem solving', 'time management',
   'adaptability', 'creativity', 'work ethic', 'customer focus',
 ];
+
+function hasCurrentTwinShape(data: Partial<CareerTwin> | undefined): data is CareerTwin {
+  return Boolean(
+    data &&
+    data.version === TWIN_VERSION &&
+    data.background &&
+    data.behavioralBank &&
+    data.completeness &&
+    data.memory?.goals &&
+    data.memory?.activeSearch &&
+    data.memory?.confirmedFacts &&
+    data.memory?.constraints &&
+    data.memory?.writingVoice &&
+    Array.isArray(data.memory.nextBestActions)
+  );
+}
 
 // ── Core API ──
 
@@ -62,8 +133,8 @@ export async function getTwin(uid: string): Promise<CareerTwin | null> {
 
   const data = doc.data() as CareerTwin;
 
-  // Check if stale (marked by invalidation)
-  if (data.stale) return null;
+  // Check if stale or from an older schema; recompute instead of serving partial memory.
+  if (data.stale || !hasCurrentTwinShape(data)) return null;
 
   return data;
 }
@@ -82,6 +153,8 @@ export async function computeAndPersistTwin(uid: string): Promise<CareerTwin> {
   // Compute completeness
   const completeness = computeCompleteness(profile, background, behavioralBank);
 
+  const memory = await buildMemory(uid, db, profile, background, behavioralBank, completeness);
+
   const twin: CareerTwin = {
     ...profile,
     version: TWIN_VERSION,
@@ -89,6 +162,7 @@ export async function computeAndPersistTwin(uid: string): Promise<CareerTwin> {
     background,
     behavioralBank,
     completeness,
+    memory,
     exportable: completeness.score >= 60,
   };
 
@@ -145,6 +219,7 @@ export function exportTwinJSON(twin: CareerTwin): object {
       strongAreas: twin.interviews.strongCategories.map(c => c.category),
     },
     behavioralCoverage: twin.behavioralBank,
+    memory: twin.memory,
     morale: {
       current: twin.morale.current,
       trend: twin.morale.trend,
@@ -156,6 +231,63 @@ export function exportTwinJSON(twin: CareerTwin): object {
       completeness: twin.completeness.score,
     },
   };
+}
+
+/** Compact, prompt-safe Sona memory. Keeps facts short and avoids dumping full private records. */
+export function getTwinPromptSummary(twin: CareerTwin): string {
+  const memory = twin.memory || ({} as Partial<CareerTwinMemory>);
+  const identity = memory.identity || {};
+  const goals = memory.goals || {
+    targetRoles: twin.background?.targetRoles || [],
+    industries: twin.background?.industries || [],
+    jobSearchStatus: '',
+    salaryMin: null,
+    remotePreference: '',
+  };
+  const activeSearch = memory.activeSearch || {
+    totalApplications: 0,
+    responseRate: 0,
+    velocity: 0,
+    queuedApplications: 0,
+    staleApplications: 0,
+    skillGaps: [],
+  };
+  const confirmedFacts = memory.confirmedFacts || {
+    skills: [],
+    education: [],
+    resumeVersionCount: 0,
+    hasResume: false,
+    topCompanies: [],
+  };
+  const constraints = memory.constraints || {
+    preferredCities: [],
+    excludedCompanies: [],
+    autonomyLevel: 'review-first',
+    requiresReviewBeforeExternalAction: true,
+  };
+  const nextBestActions = memory.nextBestActions || [];
+  const lines = [
+    '## Sona Career Twin Memory',
+    `Identity: ${compactList([identity.name, identity.currentTitle, identity.seniority]) || 'not fully known'}`,
+    `Targets: ${compactList(goals.targetRoles) || 'not set'}${goals.remotePreference ? ` (${goals.remotePreference})` : ''}`,
+    `Search: ${activeSearch.totalApplications} apps, ${activeSearch.velocity}/week, ${activeSearch.responseRate}% response rate, ${activeSearch.queuedApplications} queued`,
+    `Skills: ${compactList(confirmedFacts.skills, 12) || 'not confirmed yet'}`,
+    `Gaps: ${compactList(activeSearch.skillGaps, 8) || 'none detected yet'}`,
+    `Story coverage: ${twin.behavioralBank.coverageScore}% across ${twin.behavioralBank.totalStories} stories`,
+    `Constraints: external actions require user review; autonomy=${constraints.autonomyLevel || 'review-first'}`,
+  ];
+
+  if (goals.salaryMin) {
+    lines.push(`Salary floor: $${Math.round(goals.salaryMin / 1000)}k`);
+  }
+  if (nextBestActions.length > 0) {
+    lines.push('Next best actions:');
+    nextBestActions.slice(0, 3).forEach(action => {
+      lines.push(`- [${action.priority}] ${action.label}: ${action.reason} (${action.path})`);
+    });
+  }
+
+  return lines.join('\n');
 }
 
 // ── Internal Helpers ──
@@ -192,12 +324,20 @@ async function extractBackground(uid: string, db: FirebaseFirestore.Firestore) {
 
     // Get job search preferences for target roles
     const prefsDoc = await db.collection('users').doc(uid)
-      .collection('preferences').doc('job_search').get();
+      .collection('settings').doc('jobPreferences').get();
 
     if (prefsDoc.exists) {
       const prefs = prefsDoc.data()!;
       if (prefs.targetRoles) background.targetRoles = prefs.targetRoles;
       if (prefs.industries) background.industries = prefs.industries;
+    } else {
+      const legacyPrefsDoc = await db.collection('users').doc(uid)
+        .collection('preferences').doc('job_search').get();
+      if (legacyPrefsDoc.exists) {
+        const prefs = legacyPrefsDoc.data()!;
+        if (prefs.targetRoles) background.targetRoles = prefs.targetRoles;
+        if (prefs.industries) background.industries = prefs.industries;
+      }
     }
   } catch {
     // Non-critical — return partial background
@@ -252,4 +392,131 @@ function computeCompleteness(
   const missing = checks.filter(c => !c.met).map(c => c.label);
 
   return { score, missing };
+}
+
+async function buildMemory(
+  uid: string,
+  db: FirebaseFirestore.Firestore,
+  profile: CareerProfile,
+  background: { currentTitle: string; targetRoles: string[]; industries: string[]; education: string[] },
+  behavioral: { coverageScore: number; totalStories: number },
+  completeness: { score: number; missing: string[] }
+): Promise<CareerTwinMemory> {
+  const [profileSnap, prefsSnap, queueSnap, appsSnap] = await Promise.all([
+    db.collection('users').doc(uid).collection('profile').doc('main').get().catch(() => null),
+    db.collection('users').doc(uid).collection('settings').doc('jobPreferences').get().catch(() => null),
+    db.collection('users').doc(uid).collection('agent_queue').where('status', 'in', ['pending', 'approved']).limit(20).get().catch(() => null),
+    db.collection('users').doc(uid).collection('applications').limit(50).get().catch(() => null),
+  ]);
+
+  const onboarding = profileSnap?.exists ? profileSnap.data() || {} : {};
+  const prefs = prefsSnap?.exists ? prefsSnap.data() || {} : {};
+  const staleApplications = (appsSnap?.docs || []).filter(doc => {
+    const app = doc.data();
+    const status = String(app.status || '').toLowerCase();
+    if (status !== 'applied') return false;
+    const updatedAt = app.updatedAt || app.last_updated || app.createdAt || app.created_at;
+    if (!updatedAt) return false;
+    return Date.now() - new Date(updatedAt).getTime() > 7 * 24 * 60 * 60 * 1000;
+  }).length;
+
+  const targetRoles = cleanStrings([
+    ...(background.targetRoles || []),
+    ...(Array.isArray(onboarding.target_roles) ? onboarding.target_roles : []),
+    ...(Array.isArray(prefs.targetRoles) ? prefs.targetRoles : []),
+  ], 10);
+
+  const industries = cleanStrings([
+    ...(background.industries || []),
+    ...(Array.isArray(onboarding.career_fields) ? onboarding.career_fields : []),
+    ...(Array.isArray(prefs.industries) ? prefs.industries : []),
+  ], 10);
+
+  return {
+    identity: {
+      name: String(onboarding.full_name || onboarding.fullName || '').trim(),
+      currentTitle: background.currentTitle || '',
+      seniority: String(onboarding.seniority_level || onboarding.seniorityLevel || '').trim(),
+      careerFields: cleanStrings(Array.isArray(onboarding.career_fields) ? onboarding.career_fields : [], 8),
+      locationPreference: String(onboarding.location_preference || prefs.remotePref || '').trim(),
+    },
+    goals: {
+      targetRoles,
+      industries,
+      jobSearchStatus: String(onboarding.job_search_status || onboarding.jobSearchStatus || '').trim(),
+      salaryMin: numberOrNull(prefs.salaryMin ?? onboarding.salary_range?.min),
+      remotePreference: String(prefs.remotePref || onboarding.location_preference || 'any'),
+    },
+    constraints: {
+      preferredCities: cleanStrings(Array.isArray(prefs.preferredCities) ? prefs.preferredCities : [], 10),
+      excludedCompanies: cleanStrings(Array.isArray(prefs.agentExcludeCompanies) ? prefs.agentExcludeCompanies : [], 20),
+      autonomyLevel: String(prefs.agentAutonomyLevel || 'prepare'),
+      requiresReviewBeforeExternalAction: true,
+    },
+    confirmedFacts: {
+      skills: cleanStrings(profile.skills.confirmed, 30),
+      education: cleanStrings(background.education, 6),
+      resumeVersionCount: profile.resumeVersionCount,
+      hasResume: profile.hasResume,
+      topCompanies: cleanStrings(profile.pipeline.topCompanies, 5),
+    },
+    writingVoice: {
+      tone: 'clear, specific, confident, and human',
+      bannedClaims: ['invented credentials', 'invented employers', 'invented metrics', 'unverified certifications'],
+      evidenceStyle: 'prefer measurable proof from saved resume, applications, and Story Bank',
+    },
+    activeSearch: {
+      totalApplications: profile.pipeline.totalApps,
+      responseRate: profile.pipeline.responseRate,
+      velocity: profile.pipeline.velocity,
+      queuedApplications: queueSnap?.size || 0,
+      staleApplications,
+      skillGaps: cleanStrings(profile.skills.gap, 10),
+    },
+    nextBestActions: buildNextBestActions(profile, behavioral, completeness, queueSnap?.size || 0, staleApplications),
+  };
+}
+
+function buildNextBestActions(
+  profile: CareerProfile,
+  behavioral: { coverageScore: number; totalStories: number },
+  completeness: { score: number; missing: string[] },
+  queuedApplications: number,
+  staleApplications: number
+): CareerTwinAction[] {
+  const actions: CareerTwinAction[] = [];
+
+  if (!profile.hasResume) {
+    actions.push({ id: 'upload-resume', label: 'Upload a resume', reason: 'Sona needs a verified source of truth before preparing applications.', path: '/suite/resume', priority: 'critical' });
+  }
+  if (queuedApplications > 0) {
+    actions.push({ id: 'review-queue', label: `Review ${queuedApplications} queued application${queuedApplications === 1 ? '' : 's'}`, reason: 'Prepared packets lose value if they sit too long.', path: '/suite/agent/queue', priority: 'high' });
+  }
+  if (staleApplications > 0) {
+    actions.push({ id: 'follow-up', label: `Follow up on ${staleApplications} stale application${staleApplications === 1 ? '' : 's'}`, reason: 'A timely follow-up can revive silent applications or clarify status.', path: '/suite/applications', priority: 'high' });
+  }
+  if (profile.skills.gap.length >= 3) {
+    actions.push({ id: 'prove-skill-gap', label: `Prove ${profile.skills.gap[0]}`, reason: 'This gap appears in target roles but is missing from confirmed resume evidence.', path: '/suite/skill-bridge', priority: 'medium' });
+  }
+  if (behavioral.totalStories < 3 || behavioral.coverageScore < 25) {
+    actions.push({ id: 'story-bank', label: 'Build Story Bank coverage', reason: 'More verified stories make interview answers and screening questions stronger.', path: '/suite/agent/stories', priority: 'medium' });
+  }
+  if (completeness.score < 60 && actions.length < 5) {
+    actions.push({ id: 'complete-profile', label: 'Complete Career Twin memory', reason: `Missing: ${completeness.missing.slice(0, 3).join(', ')}`, path: '/suite/intelligence', priority: 'medium' });
+  }
+
+  return actions.slice(0, 5);
+}
+
+function cleanStrings(values: unknown[], limit: number): string[] {
+  return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))].slice(0, limit);
+}
+
+function compactList(values: unknown[], limit = 5): string {
+  return cleanStrings(values, limit).join(', ');
+}
+
+function numberOrNull(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }

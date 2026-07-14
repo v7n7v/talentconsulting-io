@@ -1,0 +1,24 @@
+{
+  "siteUrl": "https://talentconsulting.io",
+  "thinContentWordThreshold": 250,
+  "minInternalLinks": 3,
+  "minInboundLinksForPriorityPages": 2,
+  "priorityMappings": [
+    {
+      "query": "free AI resume builder",
+      "targetPath": "/tools/resume-builder"
+    },
+    {
+      "query": "free ATS analyzer",
+      "targetPath": "/tools/ats-analyzer"
+    },
+    {
+      "query": "AI interview practice",
+      "targetPath": "/tools/interview-prep"
+    },
+    {
+      "query": "software engineer resume example",
+      "targetPath": "/resume-examples/software-engineer"
+    }
+  ]
+}

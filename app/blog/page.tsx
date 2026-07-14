@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import BlogIndex from './BlogIndex';
 
 export const metadata: Metadata = {
-  title: 'Career Intelligence Blog — AI Resume Tips, Interview Prep & Job Search 2026',
+  title: 'Career intelligence blog',
   description: 'Expert guides on AI resume building, interview preparation, ATS optimization, and job search strategies. Practical advice from career intelligence professionals.',
   keywords: [
     'resume tips 2026',

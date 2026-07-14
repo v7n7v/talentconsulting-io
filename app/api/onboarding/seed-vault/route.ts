@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
       resume,
       parsed: resume,
       source: 'onboarding',
+      provenance: {
+        verified: true,
+        origin: 'onboarding_upload',
+        recordedAt: now,
+      },
       createdAt: now,
       updatedAt: now,
     });

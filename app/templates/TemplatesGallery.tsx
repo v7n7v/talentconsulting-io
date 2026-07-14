@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { TalentConsultingWordmark } from '@/components/BrandLogo';
 import { useTheme } from '@/components/ThemeProvider';
+import SeoTrackedLink from '@/components/seo/SeoTrackedLink';
 
 const TEMPLATES = [
   {
@@ -126,12 +128,13 @@ function TemplateCard({ template, isLight }: { template: typeof TEMPLATES[0]; is
         </div>
         {/* Hover CTA */}
         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <Link
+          <SeoTrackedLink
             href="/suite/resume"
+            eventName="seo_template_click"
             className="px-5 py-2.5 bg-white text-gray-900 rounded-xl text-sm font-semibold hover:bg-gray-100 transition-colors"
           >
             Use This Template →
-          </Link>
+          </SeoTrackedLink>
         </div>
       </div>
 
@@ -166,18 +169,18 @@ export default function TemplatesGallery() {
   const filtered = filter === 'All' ? TEMPLATES : TEMPLATES.filter(t => t.category === filter);
 
   return (
-    <div className={`min-h-screen ${isLight ? 'bg-gray-50' : 'bg-[#0a0a0b]'}`}>
+    <div className={`min-h-dvh ${isLight ? 'bg-gray-50' : 'bg-[#0a0a0b]'}`}>
       {/* Nav */}
       <nav className={`sticky top-0 z-50 backdrop-blur-xl border-b ${isLight ? 'bg-white/80 border-gray-200' : 'bg-[#0a0a0b]/80 border-white/[0.04]'}`}>
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className={`text-sm font-bold tracking-tight ${isLight ? 'text-gray-900' : 'text-white/90'}`}>
-            TalentConsulting<span className={isLight ? 'text-gray-400' : 'text-white/30'}>.io</span>
+          <Link href="/" aria-label="TalentConsulting.io home" className="inline-flex min-w-0 items-center">
+            <TalentConsultingWordmark className="w-[min(210px,48vw)]" />
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/#pricing-section" className={`text-xs ${isLight ? 'text-gray-500 hover:text-gray-900' : 'text-white/30 hover:text-white/60'} transition-colors`}>Pricing</Link>
-            <Link href="/suite/resume" className="text-xs font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-1.5 rounded-lg hover:from-emerald-300 hover:to-teal-300 transition-all">
+            <SeoTrackedLink href="/suite/resume" eventName="seo_template_click" className="text-xs font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-400 px-4 py-1.5 rounded-lg hover:from-emerald-300 hover:to-teal-300 transition-all">
               Build Resume
-            </Link>
+            </SeoTrackedLink>
           </div>
         </div>
       </nav>
@@ -228,9 +231,26 @@ export default function TemplatesGallery() {
         <p className={`text-sm mb-6 max-w-md mx-auto ${isLight ? 'text-gray-500' : 'text-white/25'}`}>
           Our AI morphs your resume to match any job description. ATS-optimized, recruiter-approved. Free to start.
         </p>
-        <Link href="/suite/resume" className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-black text-sm font-semibold rounded-xl hover:from-emerald-400 hover:to-teal-400 transition-all">
+        <SeoTrackedLink href="/suite/resume" eventName="seo_template_click" className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-black text-sm font-semibold rounded-xl hover:from-emerald-400 hover:to-teal-400 transition-all">
           Start Building Free →
-        </Link>
+        </SeoTrackedLink>
+
+        <div className="mx-auto mt-12 grid max-w-4xl gap-4 text-left md:grid-cols-3">
+          {[
+            { href: '/resume-examples/project-manager', title: 'Project Manager Example', desc: 'Use metrics, scope, and delivery language.' },
+            { href: '/resume-keywords/marketing', title: 'Marketing Keywords', desc: 'Match acquisition, lifecycle, and analytics terms.' },
+            { href: '/tools/ats-analyzer', title: 'ATS Analyzer', desc: 'Check keyword fit before applying.' },
+          ].map((guide) => (
+            <Link
+              key={guide.href}
+              href={guide.href}
+              className={`rounded-xl border p-4 transition-all ${isLight ? 'bg-gray-50 border-gray-200 hover:bg-white' : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'}`}
+            >
+              <h3 className={`text-sm font-semibold ${isLight ? 'text-gray-900' : 'text-white/70'}`}>{guide.title}</h3>
+              <p className={`mt-2 text-xs leading-relaxed ${isLight ? 'text-gray-500' : 'text-white/30'}`}>{guide.desc}</p>
+            </Link>
+          ))}
+        </div>
 
         {/* FAQ Schema content */}
         <div className={`max-w-2xl mx-auto mt-16 text-left space-y-4 ${isLight ? 'text-gray-600' : 'text-white/30'}`}>

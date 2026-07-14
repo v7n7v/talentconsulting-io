@@ -9,6 +9,9 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getAuth } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
+import { UPGRADE_COPY } from '@/lib/product-copy';
+import { getPlanIdentity } from '@/lib/plan-identity';
+import { PlanFeatureList, PlanStatusStrip } from '@/components/plan/PlanIdentity';
 
 interface UpgradeBannerProps {
   currentTier?: 'free' | 'pro' | 'studio' | 'god';
@@ -19,6 +22,8 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const currentPlan = getPlanIdentity(currentTier);
+  const proPlan = getPlanIdentity('pro');
 
   const handleUpgrade = () => {
     router.push('/suite/upgrade');
@@ -45,27 +50,28 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
         window.location.href = data.url;
       }
     } catch {
-      setError('Failed to open subscription portal');
+      setError('Could not open billing. Try again in a moment.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Pro user — show status + manage link
-  if (currentTier === 'pro' || currentTier === 'god') {
+  // Paid user — show status + manage link
+  if (currentPlan.id !== 'free') {
     return (
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-3">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-xs font-medium text-emerald-400">Pro Plan Active</span>
-        </div>
-        <p className="text-[11px] text-[var(--theme-text-tertiary)] mb-2">3x rate limits • Priority support</p>
+      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3">
+        <PlanStatusStrip
+          tier={currentTier}
+          title={`${currentPlan.displayName} active`}
+          caption="Manage billing, invoices, and cancellation in Stripe."
+          compact
+        />
         <button
           onClick={handleManage}
           disabled={loading}
-          className="text-[11px] text-[var(--theme-text-tertiary)] hover:text-[var(--theme-text-secondary)] transition-colors underline underline-offset-2"
+          className="mt-2 text-[11px] font-semibold text-[var(--theme-text-tertiary)] underline underline-offset-2 transition-colors hover:text-[var(--theme-text-secondary)]"
         >
-          {loading ? 'Opening...' : 'Manage Subscription'}
+          {loading ? 'Opening...' : 'Manage billing'}
         </button>
       </div>
     );
@@ -76,9 +82,10 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
     return (
       <button
         onClick={handleUpgrade}
-        className="w-full text-[11px] font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 px-3 py-1.5 rounded-lg transition-all"
+        className="w-full rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all hover:brightness-105"
+        style={{ background: proPlan.accent, color: proPlan.buttonText }}
       >
-        <span className="material-symbols-rounded align-middle mr-1">bolt</span> Upgrade to Pro — $2.99/mo
+        <span className="material-symbols-rounded align-middle mr-1">bolt</span> {UPGRADE_COPY.primaryCta}
       </button>
     );
   }
@@ -86,26 +93,26 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
   return (
     <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-4">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm"><span className="material-symbols-rounded">bolt</span></span>
-        <span className="text-xs font-semibold">Upgrade to Pro</span>
+        <span className="icon-shell-neutral flex h-8 w-8 items-center justify-center rounded-[11px] border">
+          <span className="material-symbols-rounded text-[17px]">bolt</span>
+        </span>
+        <span className="text-xs font-semibold text-[var(--text-primary)]">Choose your career workflow</span>
       </div>
 
-      <ul className="space-y-1 mb-3">
-        {['3x rate limits on all tools', 'Priority AI processing', 'Advanced analytics'].map(f => (
-          <li key={f} className="flex items-center gap-1.5 text-[11px] text-[var(--theme-text-tertiary)]">
-            <svg className="w-3 h-3 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            {f}
-          </li>
-        ))}
-      </ul>
+      <p className="mb-3 text-xs leading-5 text-[var(--text-secondary)]">
+        {UPGRADE_COPY.planChoice}
+      </p>
+
+      <div className="mb-3">
+        <PlanFeatureList tier="pro" compact limit={3} />
+      </div>
 
       <button
         onClick={handleUpgrade}
-        className="w-full text-xs font-medium text-black bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 px-4 py-2 rounded-lg transition-all flex items-center justify-center gap-1"
+        className="flex w-full items-center justify-center gap-1 rounded-lg px-4 py-2 text-xs font-semibold transition-all hover:brightness-105"
+        style={{ background: proPlan.accent, color: proPlan.buttonText }}
       >
-        Get Pro — $2.99/mo
+        {UPGRADE_COPY.primaryCta}
       </button>
 
       <AnimatePresence>
@@ -122,7 +129,7 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
       </AnimatePresence>
 
       <p className="text-[10px] text-[var(--theme-text-tertiary)] text-center mt-2">
-        Cancel anytime • Powered by Stripe
+        Secure billing by Stripe. Cancel anytime.
       </p>
     </div>
   );

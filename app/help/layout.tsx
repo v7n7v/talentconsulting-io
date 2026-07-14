@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Help Center — Talent Studio Guides & Documentation',
+  title: 'Help Center - Talent Studio Guides',
   description:
-    'Learn how to use Talent Studio: AI resume morphing, interview simulation, market intelligence, application tracking, and all career tools. Step-by-step guides.',
+    'Learn how to use Talent Studio resume tools, ATS checks, interview practice, application tracking, billing, and account settings.',
   openGraph: {
     title: 'Help Center — Talent Studio',
     description: 'Comprehensive guides for every Talent Studio tool.',

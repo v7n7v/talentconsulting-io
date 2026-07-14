@@ -8,6 +8,7 @@ import { useStore } from '@/lib/store';
 import UpgradeBanner from '@/components/UpgradeBanner';
 import UsageCounter from '@/components/UsageCounter';
 import { useUserTier } from '@/hooks/use-user-tier';
+import { TalentConsultingMark, TalentConsultingWordmark } from '@/components/BrandLogo';
 
 interface NavigationItem {
   id: string;
@@ -24,8 +25,7 @@ const navigationSections = [
     items: [
       { id: 'resume', label: 'Resume Builder', icon: 'description', description: 'Liquid Resume', path: '/suite/resume' },
       { id: 'jd-generator', label: 'JD Generator', icon: 'work', description: 'Persona-JD Engine', path: '/suite/jd-generator' },
-      { id: 'flashcards', label: 'The Gauntlet', icon: '⚔️', description: 'Interview Simulator', path: '/suite/flashcards' },
-      { id: 'vault', label: 'Study Vault', icon: 'menu_book', description: 'Saved Practice Notes', path: '/suite/vault' },
+      { id: 'interview-studio', label: 'Interview Studio', icon: 'interpreter_mode', description: 'Mock + Cards + Debrief', path: '/suite/interview-sim' },
       { id: 'skill-bridge', label: 'Skill Bridge', icon: '🌉', description: 'From Resume to Ready', path: '/suite/skill-bridge', badge: 'PRO' },
       { id: 'oracle', label: 'Market Oracle', icon: '🔮', description: 'Career Intelligence', path: '/suite/market-oracle' },
     ],
@@ -76,7 +76,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
         backdropFilter: 'blur(40px)',
         WebkitBackdropFilter: 'blur(40px)',
         height: 'fit-content',
-        maxHeight: '100vh',
+        maxHeight: '100dvh',
       }}
     >
       <LayoutGroup>
@@ -90,13 +90,9 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
                 style={{ width: isCollapsed ? 0 : 'auto', opacity: isCollapsed ? 0 : 1 }}
                 transition={{ duration: 0.15 }}
               >
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center pulse-glow flex-shrink-0">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                </div>
+                <TalentConsultingMark className="h-8 w-8 rounded-xl border border-cyan-400/15 shadow-[0_0_18px_rgba(6,182,212,0.18)]" />
                 <div className="min-w-0">
-                  <h1 className="text-base font-bold text-gradient whitespace-nowrap">TalentConsulting.io</h1>
+                  <TalentConsultingWordmark className="w-40" />
                   <p className="text-[10px] text-slate-500 whitespace-nowrap">Your AI Career Co-Pilot</p>
                 </div>
               </motion.div>

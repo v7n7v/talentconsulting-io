@@ -65,15 +65,27 @@ cp env.example .env.local
 
 Edit `.env.local` with your credentials:
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
-NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_key_here
+FIREBASE_SERVICE_ACCOUNT_JSON={"project_id":"..."}
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_web_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+GEMINI_API_KEY=your_gemini_key_here
+GROQ_API_KEY=your_groq_key_here
+RESEND_API_KEY=your_resend_key_here
+CRON_SECRET=replace_with_a_long_random_secret
+ADZUNA_APP_ID=your_adzuna_app_id
+ADZUNA_API_KEY=your_adzuna_api_key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 **Where to get credentials:**
-- **Supabase**: https://app.supabase.com → Your Project → Settings → API
+- **Firebase**: Firebase Console → Project settings → Service accounts and Web app config
 - **Gemini**: https://aistudio.google.com/app/apikey
+- **Groq**: https://console.groq.com/keys
+- **Resend**: https://resend.com/api-keys
+- **Adzuna**: https://developer.adzuna.com/
+
+Sona Picks uses Adzuna first and automatically falls back to Remotive when Adzuna is unavailable. Configure Cloud Scheduler to call `/api/cron/weekly-suggestions` on weekdays at 9am ET with `Authorization: Bearer <CRON_SECRET>`. Weekly users are gated to Monday sends; Max users can choose weekday delivery.
 
 ### Step 3: Database Setup
 Run the SQL schema in your Supabase project:

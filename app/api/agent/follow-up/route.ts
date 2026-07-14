@@ -10,6 +10,7 @@ import { groqJSONCompletion } from '@/lib/ai/groq-client';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { quickClean } from '@/lib/humanize-guard';
 import { monitor } from '@/lib/monitor';
+import { DEMO_USER_ID, getDemoJobApplications, isDemoModeEnabled } from '@/lib/demo-mode';
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,6 +31,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'applicationId is required' }, { status: 400 });
     }
 
+    if (isDemoModeEnabled() && guard.user.uid === DEMO_USER_ID) {
+      const app = getDemoJobApplications().find((item: any) => item.id === applicationId);
+      if (!app) return NextResponse.json({ error: 'Application not found' }, { status: 404 });
+      if (app.status === 'not_applied') {
+        return NextResponse.json(
+          { error: 'Submit manually and mark the application applied before drafting a follow-up.' },
+          { status: 409 }
+        );
+      }
+      if (app.status !== 'applied') {
+        return NextResponse.json(
+          { error: 'Follow-up drafts are only available for active applied applications.' },
+          { status: 409 }
+        );
+      }
+
+      const appliedDate = app.applied_at || app.created_at;
+      const daysSince = Math.floor((Date.now() - new Date(appliedDate).getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSince < 5) {
+        return NextResponse.json(
+          { error: 'Follow-up timing is early. Wait until at least 5 days after applying.' },
+          { status: 409 }
+        );
+      }
+      const role = app.job_title || 'the role';
+      return NextResponse.json({
+        success: true,
+        subject: `${role} follow-up`,
+        body: quickClean([
+          `Hi ${app.company_name} team,`,
+          '',
+          `I applied for the ${role} role ${daysSince} days ago and wanted to share one extra note on fit.`,
+          'My recent work has focused on review-first AI workflows, proof-backed career artifacts, and product systems that keep users in control.',
+          'If the team is still reviewing candidates, I would welcome the chance to connect and compare notes on the role.',
+        ].join('\n')),
+        timing: daysSince < 5 ? 'early' : daysSince < 14 ? 'good' : 'late',
+        daysSinceApplied: daysSince,
+        company: app.company_name,
+        jobTitle: app.job_title,
+      });
+    }
+
     const userId = guard.user.uid;
     const db = getAdminDb();
 
@@ -44,8 +87,27 @@ export async function POST(req: NextRequest) {
     }
 
     const app = appDoc.data()!;
+    if (app.status === 'not_applied') {
+      return NextResponse.json(
+        { error: 'Submit manually and mark the application applied before drafting a follow-up.' },
+        { status: 409 }
+      );
+    }
+    if (app.status !== 'applied') {
+      return NextResponse.json(
+        { error: 'Follow-up drafts are only available for active applied applications.' },
+        { status: 409 }
+      );
+    }
+
     const appliedDate = app.applied_at || app.created_at;
     const daysSince = Math.floor((Date.now() - new Date(appliedDate).getTime()) / (1000 * 60 * 60 * 24));
+    if (daysSince < 5) {
+      return NextResponse.json(
+        { error: 'Follow-up timing is early. Wait until at least 5 days after applying.' },
+        { status: 409 }
+      );
+    }
 
     // Fetch user's resume for context
     let resumeContext = '';

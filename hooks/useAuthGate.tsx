@@ -2,8 +2,15 @@
 
 import { useState, useCallback } from 'react';
 import AuthModal from '@/components/modals/AuthModal';
+import UsageLimitGate from '@/components/UsageLimitGate';
 
 type AuthModalMode = 'login' | 'signup' | null;
+type UsageLimitState = {
+  feature?: string | null;
+  used?: number | null;
+  cap?: number | null;
+  upgradeUrl?: string;
+} | null;
 
 /**
  * Reusable auth gate hook for suite pages.
@@ -24,14 +31,24 @@ type AuthModalMode = 'login' | 'signup' | null;
  */
 export function useAuthGate() {
   const [authModal, setAuthModal] = useState<AuthModalMode>(null);
+  const [usageLimit, setUsageLimit] = useState<UsageLimitState>(null);
 
   /**
    * Check an API error response for auth/cap signals.
    * Returns true if the modal was opened (caller should stop processing).
    */
   const handleApiError = useCallback((errorBody: Record<string, unknown>): boolean => {
-    if (errorBody?.requiresAuth || errorBody?.limitReached) {
+    if (errorBody?.requiresAuth) {
       setAuthModal('signup');
+      return true;
+    }
+    if (errorBody?.limitReached) {
+      setUsageLimit({
+        feature: typeof errorBody.feature === 'string' ? errorBody.feature : null,
+        used: typeof errorBody.used === 'number' ? errorBody.used : null,
+        cap: typeof errorBody.cap === 'number' ? errorBody.cap : null,
+        upgradeUrl: typeof errorBody.upgradeUrl === 'string' ? errorBody.upgradeUrl : '/suite/upgrade',
+      });
       return true;
     }
     if (errorBody?.upgrade) {
@@ -46,19 +63,35 @@ export function useAuthGate() {
    * Render the AuthModal if active. Drop this in your page JSX.
    */
   const renderAuthModal = useCallback(() => {
-    if (!authModal) return null;
+    if (!authModal && !usageLimit) return null;
     return (
-      <AuthModal
-        mode={authModal}
-        onClose={() => setAuthModal(null)}
-        onSwitchMode={() => setAuthModal(authModal === 'login' ? 'signup' : 'login')}
-      />
+      <>
+        {usageLimit && (
+          <UsageLimitGate
+            feature={usageLimit.feature}
+            used={usageLimit.used}
+            cap={usageLimit.cap}
+            upgradeUrl={usageLimit.upgradeUrl}
+            onKeepEditing={() => setUsageLimit(null)}
+            className="my-4"
+          />
+        )}
+        {authModal && (
+          <AuthModal
+            mode={authModal}
+            onClose={() => setAuthModal(null)}
+            onSwitchMode={() => setAuthModal(authModal === 'login' ? 'signup' : 'login')}
+          />
+        )}
+      </>
     );
-  }, [authModal]);
+  }, [authModal, usageLimit]);
 
   return {
     authModal,
+    usageLimit,
     setAuthModal,
+    setUsageLimit,
     handleApiError,
     renderAuthModal,
   };

@@ -44,6 +44,33 @@ export interface CanonicalResume {
   certifications: string[];
 }
 
+const MISSING_TEXT_VALUES = new Set([
+  'undefined',
+  'null',
+  'none',
+  'n/a',
+  'na',
+  'unknown',
+  'unidentified',
+  'not specified',
+  'not provided',
+  'not listed',
+  'tbd',
+  'to be added',
+]);
+
+export function cleanResumeText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  const text = String(value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (MISSING_TEXT_VALUES.has(text.toLowerCase())) return '';
+  return text;
+}
+
+export function isResumeTextMissing(value: unknown): boolean {
+  return cleanResumeText(value) === '';
+}
+
 // ============================================================
 // SKILL NORMALIZER
 // Handles every format the AI might return:
@@ -59,7 +86,7 @@ function normalizeSkills(raw: any, fallback?: any[]): CanonicalSkillGroup[] {
 
   // String → split into items
   if (typeof raw === 'string') {
-    const items = raw.split(/[,;]/).map((s: string) => s.trim()).filter(Boolean);
+    const items = raw.split(/[,;]/).map((s: string) => cleanResumeText(s)).filter(Boolean);
     return items.length > 0 ? [{ category: 'Skills', items }] : [];
   }
 
@@ -70,20 +97,20 @@ function normalizeSkills(raw: any, fallback?: any[]): CanonicalSkillGroup[] {
   // Already structured: [{category: "Technical", items: ["Python"]}]
   if (typeof first === 'object' && first !== null && Array.isArray(first.items)) {
     return raw.map((s: any) => ({
-      category: String(s.category || s.name || 'Skills'),
-      items: (s.items || []).map((i: any) => String(i)).filter(Boolean),
+      category: cleanResumeText(s.category || s.name) || 'Skills',
+      items: (s.items || []).map((i: any) => cleanResumeText(i)).filter(Boolean),
     })).filter((s: CanonicalSkillGroup) => s.items.length > 0);
   }
 
   // Flat strings: ["Python", "Java"]
   if (typeof first === 'string') {
-    const items = raw.map((s: any) => String(s).trim()).filter(Boolean);
+    const items = raw.map((s: any) => cleanResumeText(s)).filter(Boolean);
     return items.length > 0 ? [{ category: 'Skills', items }] : [];
   }
 
   // Object with name/level: [{name: "Python", level: 5}]
   if (typeof first === 'object' && first !== null && (first.name || first.skill)) {
-    const items = raw.map((s: any) => String(s.name || s.skill || '')).filter(Boolean);
+    const items = raw.map((s: any) => cleanResumeText(s.name || s.skill)).filter(Boolean);
     return items.length > 0 ? [{ category: 'Skills', items }] : [];
   }
 
@@ -97,9 +124,9 @@ function normalizeSkills(raw: any, fallback?: any[]): CanonicalSkillGroup[] {
 function normalizeExperience(raw: any): CanonicalExperience[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((exp: any) => ({
-    company: String(exp.company || exp.organization || ''),
-    role: String(exp.role || exp.title || exp.position || ''),
-    duration: String(exp.duration || exp.dates || exp.period || ''),
+    company: cleanResumeText(exp.company || exp.organization),
+    role: cleanResumeText(exp.role || exp.title || exp.position),
+    duration: cleanResumeText(exp.duration || exp.dates || exp.period),
     achievements: normalizeStringArray(exp.achievements || exp.bullets || exp.highlights || []),
   })).filter((e: CanonicalExperience) => e.company || e.role);
 }
@@ -111,11 +138,11 @@ function normalizeExperience(raw: any): CanonicalExperience[] {
 function normalizeEducation(raw: any): CanonicalEducation[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((edu: any) => ({
-    degree: String(edu.degree || edu.program || ''),
-    institution: String(edu.institution || edu.school || edu.university || ''),
-    year: String(edu.year || edu.graduation || edu.date || ''),
-    details: edu.details ? String(edu.details) : undefined,
-  })).filter((e: CanonicalEducation) => e.degree || e.institution);
+    degree: cleanResumeText(edu.degree || edu.program),
+    institution: cleanResumeText(edu.institution || edu.school || edu.university),
+    year: cleanResumeText(edu.year || edu.graduation || edu.date),
+    details: cleanResumeText(edu.details) || undefined,
+  })).filter((e: CanonicalEducation) => e.degree || e.institution || e.year || e.details);
 }
 
 // ============================================================
@@ -123,11 +150,11 @@ function normalizeEducation(raw: any): CanonicalEducation[] {
 // ============================================================
 function normalizeCertifications(raw: any): string[] {
   if (!raw) return [];
-  if (typeof raw === 'string') return [raw];
+  if (typeof raw === 'string') return cleanResumeText(raw) ? [cleanResumeText(raw)] : [];
   if (Array.isArray(raw)) {
     return raw.map((c: any) => {
-      if (typeof c === 'string') return c;
-      if (typeof c === 'object' && c !== null) return String(c.name || c.title || c.cert || '');
+      if (typeof c === 'string') return cleanResumeText(c);
+      if (typeof c === 'object' && c !== null) return cleanResumeText(c.name || c.title || c.cert);
       return '';
     }).filter(Boolean);
   }
@@ -139,8 +166,8 @@ function normalizeCertifications(raw: any): string[] {
 // ============================================================
 function normalizeStringArray(raw: any): string[] {
   if (!raw) return [];
-  if (typeof raw === 'string') return [raw];
-  if (Array.isArray(raw)) return raw.map((s: any) => String(s)).filter(Boolean);
+  if (typeof raw === 'string') return cleanResumeText(raw) ? [cleanResumeText(raw)] : [];
+  if (Array.isArray(raw)) return raw.map((s: any) => cleanResumeText(s)).filter(Boolean);
   return [];
 }
 
@@ -156,14 +183,14 @@ export function normalizeResume(raw: any, original?: any): CanonicalResume {
   }
 
   return {
-    name: String(raw.name || ''),
-    title: String(raw.title || raw.role || raw.position || ''),
-    email: String(raw.email || ''),
-    phone: String(raw.phone || raw.tel || ''),
-    location: String(raw.location || raw.address || raw.city || ''),
-    linkedin: raw.linkedin ? String(raw.linkedin) : undefined,
-    website: raw.website ? String(raw.website) : undefined,
-    summary: String(raw.summary || raw.objective || raw.about || ''),
+    name: cleanResumeText(raw.name),
+    title: cleanResumeText(raw.title || raw.role || raw.position),
+    email: cleanResumeText(raw.email),
+    phone: cleanResumeText(raw.phone || raw.tel),
+    location: cleanResumeText(raw.location || raw.address || raw.city),
+    linkedin: cleanResumeText(raw.linkedin) || undefined,
+    website: cleanResumeText(raw.website) || undefined,
+    summary: cleanResumeText(raw.summary || raw.objective || raw.about),
     experience: normalizeExperience(raw.experience),
     education: normalizeEducation(raw.education),
     skills: normalizeSkills(raw.skills, original?.skills),
@@ -191,7 +218,12 @@ export function serializeResumeToText(resume: CanonicalResume): string {
   }
 
   for (const edu of resume.education) {
-    sections.push(`${edu.degree} from ${edu.institution}${edu.year ? ` (${edu.year})` : ''}`);
+    const educationLine = [
+      edu.degree,
+      edu.institution ? `from ${edu.institution}` : '',
+      edu.year ? `(${edu.year})` : '',
+    ].filter(Boolean).join(' ');
+    if (educationLine) sections.push(educationLine);
   }
 
   const skillText = resume.skills

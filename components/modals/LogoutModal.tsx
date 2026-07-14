@@ -42,7 +42,7 @@ export default function LogoutModal({ isOpen, onClose, onConfirm }: LogoutModalP
                   className="w-11 h-11 rounded-xl flex items-center justify-center mx-auto mb-4"
                   style={{ background: 'rgba(239,68,68,0.1)' }}
                 >
-                  <span className="material-symbols-rounded text-red-500 text-[22px]">logout</span>
+                  <span className="material-symbols-rounded icon-status-danger text-[22px]">logout</span>
                 </div>
 
                 <h2 className="text-base font-bold text-[var(--text-primary)] mb-1.5">

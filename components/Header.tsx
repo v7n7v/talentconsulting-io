@@ -2,6 +2,7 @@
 
 import { authHelpers } from '@/lib/firebase';
 import { useStore } from '@/lib/store';
+import { TalentConsultingMark, TalentConsultingWordmark } from '@/components/BrandLogo';
 
 interface HeaderProps {
   onShowLogin: () => void;
@@ -22,13 +23,9 @@ export default function Header({ onShowLogin, onShowSignup }: HeaderProps) {
     <header className="glass sticky top-0 z-50 border-b border-cyan-500/10">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-cyan-500 flex items-center justify-center neon-glow">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-          </div>
+          <TalentConsultingMark className="h-10 w-10 rounded-xl border border-cyan-500/15 shadow-[0_0_24px_rgba(6,182,212,0.22)]" />
           <div>
-            <h1 className="text-xl font-bold gradient-text">TalentConsulting.io</h1>
+            <TalentConsultingWordmark className="w-56" />
             <p className="text-xs text-slate-400">Interview Intelligence Platform</p>
           </div>
         </div>

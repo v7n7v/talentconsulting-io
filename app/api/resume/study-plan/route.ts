@@ -5,6 +5,7 @@ import { getAdminDb } from '@/lib/firebase-admin';
 import { validateBody } from '@/lib/validate';
 import { StudyPlanSchema } from '@/lib/schemas';
 import { monitor } from '@/lib/monitor';
+import { normalizePrepMemoryItem } from '@/lib/prep-memory';
 
 interface StudyDay {
   day: number;
@@ -45,21 +46,25 @@ export async function POST(req: NextRequest) {
       durationLabel = `${days}-day`;
     }
 
-    // Fetch Study Vault Insights
-    let vaultContext = '';
+    // Fetch compact Skill Bridge Memory context without loading full note bodies into the prompt.
+    let memoryContext = '';
     if (guard.user?.uid) {
       try {
         const snapshot = await getAdminDb()
           .collection('study_vault')
           .where('userId', '==', guard.user.uid)
-          .orderBy('createdAt', 'desc')
-          .limit(3)
+          .limit(12)
           .get();
         if (!snapshot.empty) {
-          vaultContext = snapshot.docs.map(doc => doc.data().summary).join('\n\n');
+          memoryContext = snapshot.docs
+            .map(doc => normalizePrepMemoryItem(doc.id, doc.data(), { includeContent: false }))
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 4)
+            .map(item => `- ${item.title}: ${item.excerpt}`)
+            .join('\n');
         }
       } catch (e) {
-        console.error('Failed to fetch vault context for skill bridge:', e);
+        console.error('Failed to fetch memory context for skill bridge:', e);
         monitor.critical('Tool: resume/study-plan', String(e));
       }
     }
@@ -109,7 +114,7 @@ Return JSON:
 
 ${userContext ? `User context: ${userContext}` : 'Professional getting interview-ready.'}
 
-${vaultContext ? `STUDY VAULT WEAKNESSES (target these):\n${vaultContext}\n` : ''}
+${memoryContext ? `RECENT SKILL BRIDGE MEMORY (target these patterns):\n${memoryContext}\n` : ''}
 
 Keep it short, practical, interview-focused.`;
 
@@ -134,4 +139,3 @@ Keep it short, practical, interview-focused.`;
     );
   }
 }
-

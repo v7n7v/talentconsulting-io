@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ...data,
       shareUrl,
-      shareText: `Get 50% off 3 months of Talent Consulting Pro! Use my referral code: ${data.code} — ${shareUrl}`,
+      shareText: `Get 50% off 3 months of TalentConsulting.io Pro! Use my referral code: ${data.code} — ${shareUrl}`,
     });
   } catch (err) {
     console.error('[referral] GET error:', err);
