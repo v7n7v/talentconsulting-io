@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { isMasterAccount } from '@/lib/pricing-tiers';
 import { getAdminAuth, getAdminDb } from '@/lib/firebase-admin';
+import { calculateVerifiedMrr } from '@/lib/billing-metrics';
 
 export async function GET(req: NextRequest) {
   try {
@@ -81,8 +82,10 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    // MRR estimate from Firestore counts
-    const mrr = (tierCounts.pro * 9.99) + (tierCounts.studio * 19.99);
+    // MRR is derived only from recurring subscription evidence.
+    const subscriptionSnapshot = await db.collectionGroup('subscription').get();
+    const verifiedRevenue = calculateVerifiedMrr(subscriptionSnapshot.docs.map(doc => doc.data()));
+    const mrr = verifiedRevenue.mrrUsd;
 
     // Signup trend — last 14 days
     const now = new Date();
@@ -140,6 +143,7 @@ export async function GET(req: NextRequest) {
       totalUsers: allUsers.length,
       tierCounts,
       mrr: Math.round(mrr * 100) / 100,
+      verifiedRevenue,
       signupTrend,
       activeWeek,
       activeToday,
