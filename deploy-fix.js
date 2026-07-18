@@ -11,8 +11,16 @@ function envKey(line) {
   return match?.[1] || null;
 }
 
+function isFirebaseReservedEnvKey(key) {
+  return /^(?:X_GOOGLE_|FIREBASE_|EXT_)/.test(key);
+}
+
 function buildFirebaseRuntimeEnv(baseContent, privateContent) {
-  const privateLines = privateContent.replace(/^\uFEFF/, '').split(/\r?\n/);
+  const privateLines = privateContent.replace(/^\uFEFF/, '').split(/\r?\n/)
+    .filter(line => {
+      const key = envKey(line);
+      return !key || !isFirebaseReservedEnvKey(key);
+    });
   const privateKeys = new Set(privateLines.map(envKey).filter(Boolean));
   const retainedBaseLines = baseContent.replace(/^\uFEFF/, '').split(/\r?\n/)
     .filter(line => {
