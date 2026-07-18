@@ -136,6 +136,7 @@ test('Firebase deployment preserves the original config and limits fallback to a
   assert.equal(isExpectedHostingConflict({ status: 1, stdout: '', stderr: 'permission denied' }), false);
   const source = fs.readFileSync(path.join(repoRoot, 'deploy-fix.js'), 'utf8');
   assert.match(source, /production-deploy-preflight\.js', 'firebase/);
+  assert.match(source, /run\(\['deploy', '--only', 'hosting'\]\)/);
   assert.match(source, /finally\s*\{[\s\S]*writeFileSync\(firebaseJsonPath, originalContent\)/);
 });
 
@@ -153,9 +154,11 @@ test('Firebase deployment restores bytes after fallback failure and never runs a
     runPreflight: () => {},
     runFirebase: args => {
       calls += 1;
-      if (args.length === 1) {
+      if (calls === 1) {
+        assert.deepEqual(args, ['deploy', '--only', 'hosting']);
         return { status: 1, stdout: '', stderr: 'Firebase Hosting version finalization failed: 409 ALREADY_EXISTS' };
       }
+      assert.deepEqual(args, ['deploy', '--only', 'hosting']);
       return { status: 2, stdout: '', stderr: 'fallback failed' };
     },
   }), /fallback failed with exit status 2/);

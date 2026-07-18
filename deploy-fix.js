@@ -76,7 +76,10 @@ function deployFirebase(dependencies = {}) {
 
   try {
     fileSystem.writeFileSync(firebaseJsonPath, `${JSON.stringify(buildFrameworksConfig(original), null, 2)}\n`);
-    const initial = run(['deploy']);
+    // Deploying the Hosting target also deploys its generated SSR backend. Keep
+    // Firestore and Storage rules out of this release so an unrelated product
+    // setup cannot block or broaden an application deployment.
+    const initial = run(['deploy', '--only', 'hosting']);
     if (initial.status === 0) {
       console.log('Firebase production deployment completed.');
       return;
