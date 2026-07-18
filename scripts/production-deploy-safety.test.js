@@ -13,11 +13,23 @@ const {
   validateProductionDeploy,
 } = require('./production-deploy-preflight');
 const {
+  buildFirebaseRuntimeEnv,
   buildFrameworksConfig,
   buildStaticFallbackConfig,
   deployFirebase,
   isExpectedHostingConflict,
 } = require('../deploy-fix');
+
+test('Firebase runtime packaging overlays private values without evaluating content', () => {
+  const base = 'SHARED=old\nBASE_ONLY=base\n';
+  const privateRuntime = 'SHARED=new\nPRIVATE_VALUE=$(do-not-run)\nQUOTED="literal value"\n';
+  const merged = buildFirebaseRuntimeEnv(base, privateRuntime);
+  assert.doesNotMatch(merged, /^SHARED=old$/m);
+  assert.match(merged, /^SHARED=new$/m);
+  assert.match(merged, /^BASE_ONLY=base$/m);
+  assert.match(merged, /^PRIVATE_VALUE=\$\(do-not-run\)$/m);
+  assert.match(merged, /^QUOTED="literal value"$/m);
+});
 
 const publicEnv = Object.fromEntries(PUBLIC_BUILD_KEYS.map(key => [key, `${key.toLowerCase()}_approved_value`]));
 publicEnv.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_live_approved_public_key';

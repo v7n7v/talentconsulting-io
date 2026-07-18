@@ -3,6 +3,24 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
 const firebaseJsonPath = './firebase.json';
+const firebaseRuntimeEnvPath = './.env';
+const privateRuntimeEnvPath = './.env.local';
+
+function envKey(line) {
+  const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/);
+  return match?.[1] || null;
+}
+
+function buildFirebaseRuntimeEnv(baseContent, privateContent) {
+  const privateLines = privateContent.replace(/^\uFEFF/, '').split(/\r?\n/);
+  const privateKeys = new Set(privateLines.map(envKey).filter(Boolean));
+  const retainedBaseLines = baseContent.replace(/^\uFEFF/, '').split(/\r?\n/)
+    .filter(line => {
+      const key = envKey(line);
+      return !key || !privateKeys.has(key);
+    });
+  return `${retainedBaseLines.join('\n').trimEnd()}\n${privateLines.join('\n').trim()}\n`;
+}
 
 function buildFrameworksConfig(original) {
   return {
@@ -72,9 +90,15 @@ function deployFirebase(dependencies = {}) {
   runPreflight();
 
   const originalContent = fileSystem.readFileSync(firebaseJsonPath, 'utf8');
+  const originalRuntimeEnvContent = fileSystem.readFileSync(firebaseRuntimeEnvPath, 'utf8');
+  const privateRuntimeEnvContent = fileSystem.readFileSync(privateRuntimeEnvPath, 'utf8');
   const original = JSON.parse(originalContent);
 
   try {
+    fileSystem.writeFileSync(
+      firebaseRuntimeEnvPath,
+      buildFirebaseRuntimeEnv(originalRuntimeEnvContent, privateRuntimeEnvContent),
+    );
     fileSystem.writeFileSync(firebaseJsonPath, `${JSON.stringify(buildFrameworksConfig(original), null, 2)}\n`);
     // Deploying the Hosting target also deploys its generated SSR backend. Keep
     // Firestore and Storage rules out of this release so an unrelated product
@@ -97,6 +121,7 @@ function deployFirebase(dependencies = {}) {
     assertSucceeded(run(['deploy', '--only', 'hosting']), 'Firebase Hosting fallback');
     console.log('Firebase production deployment completed through the hosting fallback.');
   } finally {
+    fileSystem.writeFileSync(firebaseRuntimeEnvPath, originalRuntimeEnvContent);
     fileSystem.writeFileSync(firebaseJsonPath, originalContent);
   }
 }
@@ -115,6 +140,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildFirebaseRuntimeEnv,
   buildFrameworksConfig,
   buildStaticFallbackConfig,
   deployFirebase,
