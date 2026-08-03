@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: SITE_URL, priority: 1.0, changeFrequency: 'weekly' as const, lastModified: SEO_LAST_MODIFIED },
     { url: `${SITE_URL}/templates`, priority: 0.9, changeFrequency: 'weekly' as const, lastModified: SEO_LAST_MODIFIED },
     { url: `${SITE_URL}/tools`, priority: 0.9, changeFrequency: 'weekly' as const, lastModified: SEO_LAST_MODIFIED },
+    { url: `${SITE_URL}/pricing`, priority: 0.9, changeFrequency: 'weekly' as const, lastModified: SEO_LAST_MODIFIED },
     { url: `${SITE_URL}/tools/ai-detector`, priority: 0.9, changeFrequency: 'weekly' as const, lastModified: SEO_LAST_MODIFIED },
     { url: `${SITE_URL}/tools/resume-builder`, priority: 0.9, changeFrequency: 'weekly' as const, lastModified: SEO_LAST_MODIFIED },
     { url: `${SITE_URL}/tools/ai-humanizer`, priority: 0.9, changeFrequency: 'weekly' as const, lastModified: SEO_LAST_MODIFIED },

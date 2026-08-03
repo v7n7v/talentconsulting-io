@@ -178,7 +178,10 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
             <div className="nd-pop">
               <a href="#check"><b>Free</b><span>Career Check, Detector and the basic tools, no account</span></a>
               <a href="/pricing"><b>Standard</b><span>Saved workflows and larger writing limits</span></a>
-              <a href="/pricing"><b>Studio</b><span>Taco's context, job tracking, exports</span></a>
+              {/* "Max", not "Studio". `studio` is the code tier; lib/plan-identity.ts
+                  gives it displayName "Talent Max" and shortName "Max", which is what
+                  every other customer-facing surface shows. */}
+              <a href="/pricing"><b>Max</b><span>Taco's context, job tracking, exports</span></a>
               <a className="nd-all" href="/pricing"><b>Compare the three →</b></a>
             </div></details>
         </nav>

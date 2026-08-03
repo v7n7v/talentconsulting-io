@@ -71,7 +71,13 @@ test('paid lifecycle messages explain the work that became available', () => {
 test('outcome-led packaging keeps quota and billing transparency', () => {
   const upgrade = read('app/suite/upgrade/page.tsx');
   const usageGate = read('components/UsageLimitGate.tsx');
-  assert.match(upgrade, /Daily Taco workloads/);
+  // The plan copy moved to lib/pricing-content.ts so the public /pricing page
+  // and this one cannot drift apart. The guarantee is unchanged - the upgrade
+  // page still renders every COMPARISON row - so the assertion follows the copy
+  // rather than being dropped.
+  const planCopy = read('lib/pricing-content.ts');
+  assert.match(planCopy, /Daily Taco workloads/);
+  assert.match(upgrade, /COMPARISON\.map/);
   assert.match(upgrade, /Plan comparison/);
   assert.match(upgrade, /Billed annually/);
   assert.match(usageGate, /\{used\}\/\{cap\}/);

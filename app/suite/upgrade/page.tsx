@@ -12,7 +12,8 @@ import { useBillingPrices } from '@/hooks/use-billing-prices';
 import { type PublicBillingPrice } from '@/lib/billing-price-types';
 import { getPlanIdentity } from '@/lib/plan-identity';
 import { PlanBadge } from '@/components/plan/PlanIdentity';
-import { getSonaDailyWorkloadBudget, resolveSonaWorkloadEntitlement } from '@/lib/assistant/workload-policy';
+/* Plan copy is shared with the public /pricing page so the two cannot drift. */
+import { COMPARISON, PRO_FEATURES, STUDIO_EXTRAS } from '@/lib/pricing-content';
 import {
   resolveStripeCheckoutRecovery,
   type StripeCheckoutRecovery,
@@ -31,12 +32,6 @@ const stripePromise = stripePublishableKey
 
 type BillingInterval = 'month' | 'year';
 type PlanOption = 'pro' | 'studio';
-
-const FREE_SONA_OUTCOME = resolveSonaWorkloadEntitlement('free');
-const PRO_SONA_OUTCOME = resolveSonaWorkloadEntitlement('pro');
-const MAX_SONA_OUTCOME = resolveSonaWorkloadEntitlement('studio');
-const PRO_SONA_DAILY = getSonaDailyWorkloadBudget('pro');
-const MAX_SONA_DAILY = getSonaDailyWorkloadBudget('studio');
 
 function parsePlanParam(value: string | null): PlanOption {
   return value === 'studio' || value === 'pro' ? value : 'pro';
@@ -86,37 +81,6 @@ function billingLine(plan: PlanOption, price: PublicBillingPrice) {
   }
   return 'Billed monthly. Manage or cancel from Settings.';
 }
-
-const PRO_FEATURES = [
-  { icon: 'troubleshoot', title: 'Job fit and market insight', desc: 'Review role fit, salary signals, skill gaps, and red flags before you apply.' },
-  { icon: 'description', title: 'Resume tools for active roles', desc: 'Shape each resume around the job while keeping your experience clear and accurate.' },
-  { icon: 'mic', title: 'Interview practice', desc: 'Rehearse role-specific interviews with voice and focused feedback.' },
-  { icon: 'route', title: 'Skill gap plans', desc: 'Turn missing skills into a focused learning path for the roles you want.' },
-  { icon: 'work_history', title: 'Application workspace', desc: 'Keep target roles, next steps, and preparation together.' },
-  { icon: 'inventory_2', title: 'Saved career evidence', desc: 'Reuse coaching notes, proof, and interview feedback across your search.' },
-  { icon: 'edit_note', title: 'Application writing tools', desc: 'Create cover letters, recruiter replies, and LinkedIn updates in one workflow.' },
-  { icon: 'support_agent', title: 'Priority support', desc: 'Get faster help when something blocks your search.' },
-];
-
-const STUDIO_EXTRAS = [
-  { icon: 'travel_explore', title: 'Proactive Taco scouting', desc: MAX_SONA_OUTCOME.outcomeDescription },
-  { icon: 'sort', title: 'Ranked job picks', desc: 'See the strongest matches first, with clear reasons for every recommendation.' },
-  { icon: 'verified_user', title: 'Truth-locked resume tailoring', desc: 'Tailor against each role without inventing experience, skills, or credentials.' },
-  { icon: 'inventory', title: 'Review-ready application packets', desc: 'Bring the resume, cover letter, role context, and next steps together before you apply.' },
-  { icon: 'notifications_active', title: 'User-controlled alerts', desc: 'Choose what Taco watches and when you hear about new matches.' },
-];
-
-const COMPARISON = [
-  { label: 'Job fit and market insight', free: 'Starter access', pro: 'Full access', studio: 'Full access' },
-  { label: 'Resume tools', free: 'Starter access', pro: 'Full access', studio: 'Truth-locked' },
-  { label: 'Interview practice', free: 'Starter access', pro: 'Full access', studio: 'Full access' },
-  { label: 'Skill gap plans', free: 'Starter access', pro: 'Full access', studio: 'Full access' },
-  { label: 'Taco workflow', free: 'One preview', pro: 'On demand', studio: 'Proactive + prep' },
-  { label: 'Ranked job picks', free: `${FREE_SONA_OUTCOME.maxRankedRoles} once`, pro: `${PRO_SONA_OUTCOME.maxRankedRoles} per run`, studio: `${MAX_SONA_OUTCOME.maxPreparedPackets} prepared` },
-  { label: 'Daily Taco workloads', free: 'One lifetime', pro: `${PRO_SONA_DAILY.runsMax} manual`, studio: `${MAX_SONA_DAILY.runsMax} incl. proactive` },
-  { label: 'Application packets', free: 'Not included', pro: 'Prepare manually', studio: 'Taco prepares' },
-  { label: 'Email controls', free: 'Opt-in picks', pro: 'Opt-in picks', studio: 'Proactive digest' },
-];
 
 export default function UpgradePage() {
   const { theme } = useTheme();
