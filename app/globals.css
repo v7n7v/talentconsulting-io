@@ -721,6 +721,458 @@ input[type="range"].slider-enhanced::-webkit-slider-thumb {
   transform: none;
 }
 
+/* ============================================
+   FILE UPLOAD — the download-style card
+   components/upload/*, driven by lib/upload
+
+   Named classes rather than utilities, for two reasons. The first is that
+   scripts/design-audit.js counts a className carrying px-/py-/rounded as a
+   hand-rolled button and rounded-* + border as a hand-rolled card, so
+   assembling this out of arbitrary utilities would fail --ci on a metric
+   that is measuring exactly the right thing. The second is that a card with
+   nine states is not readable as a utility string.
+
+   Elevation is the surface step plus a border. No shadow, no lift on
+   drag-over. Radii are 8px, 12px and the pill.
+   ============================================ */
+
+.upload-card {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+}
+
+/* The card is a focus target of last resort — controller.containerProps puts
+   tabIndex="-1" on it so cancel(), reset() and retry() have somewhere to land
+   on a surface that mounts no trigger. It is never a tab stop, so this only
+   ever paints after a keyboard action moved focus here deliberately. */
+.upload-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.upload-card--inline {
+  gap: 8px;
+  padding: 8px;
+}
+
+/* Phone widths take the inline card's spacing. Measured, not chosen: at 320px
+   the chrome (40px glyph + two 44px controls + gaps + padding) left the text
+   column 96px, and "1.1 MB of 2.3 MB transferred" is 156px of deliberately
+   unbreakable text — it clipped. Dropping gap and padding to 8px returns 16px
+   to the column, which clears both the byte pair and the cancelled line at
+   every required phone width. Both values are on the 4/8/16 scale. */
+@media (max-width: 480px) {
+  .upload-card {
+    gap: 8px;
+    padding: 8px;
+  }
+}
+
+/* Cancelled is the missing-evidence treatment: dashed outline, muted ink.
+   Nothing was measured to completion, and the card should not imply it was. */
+.upload-card--cancelled {
+  border-style: dashed;
+}
+
+.upload-card--error {
+  border-color: var(--danger);
+}
+
+.upload-glyph {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.upload-glyph .material-symbols-rounded {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.upload-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Filenames are one of the three sanctioned wrap-anywhere cases. At desktop
+   width a single ellipsised line plus a title attribute; on a phone two
+   clamped lines, because a 70-character filename has nowhere else to go.
+
+   The breakpoint is 480px, not 420px: the required phone widths are 320, 390
+   and 430, and a 420px cut-off left 430 on the single-line ellipsis path where
+   nothing had been checked. 480 covers all three and still leaves 768 and up
+   on the ellipsis, which is right — at 768 the column is wide enough that one
+   line plus the title attribute reads better than two. */
+.upload-name {
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .upload-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
+/* Centred, not baseline-aligned: the status segment is an inline-flex box
+   whose baseline is taken from the 16px status icon, not from its 12px label,
+   so baseline alignment would drop the rest of the row by a pixel or two. */
+.upload-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.upload-meta__sep {
+  color: var(--text-muted);
+}
+
+/* The byte pair and the percentage never split across lines — a wrapped
+   number reads as two numbers. */
+.upload-bytes,
+.upload-percent {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Status ships as icon + label, never as a hue on its own: the icon is what
+   carries the meaning for a reader who cannot separate the three tints.
+   references/tokens.md, "Status - reserved, never reused". */
+.upload-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.upload-status__icon {
+  flex: none;
+}
+
+.upload-status__icon.material-symbols-rounded {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.upload-status--error {
+  color: var(--danger);
+}
+
+.upload-status--muted {
+  color: var(--text-muted);
+}
+
+.upload-status--success {
+  color: var(--success);
+}
+
+/* "No progress available for this step." and the worker deadline. */
+.upload-note {
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  overflow-wrap: break-word;
+}
+
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.upload-action {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.upload-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.upload-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.upload-action .material-symbols-rounded {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Below 1024px globals.css forces `min-height: 44px` on every button, so the
+   32px declared above silently became 32x44: a non-square control, under the
+   44px touch standard scripts/ui-verify.js enforces on width, and taller than
+   the 40px glyph beside it. Matched rather than fought — on touch it is a real
+   44x44 target, and the row is capped at two buttons (pause only co-exists with
+   cancel on a signed-in resumable upload), which leaves the text column room at
+   320px. Measured, not assumed. */
+@media (max-width: 1023px) {
+  .upload-action {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* ── the bar ───────────────────────────────────────────────────────────
+   Two geometries, because they are two different claims. A determinate
+   fill grows from the left. The indeterminate segment traverses, so it
+   does not read as a stalled version of the same thing. */
+
+/* The track carries information too: a fill you can see against a track you
+   cannot is a length with no denominator. --bg-hover reads 1.09:1 (dark) and
+   1.03:1 (light) against the card's --bg-elevated, i.e. invisible — so the
+   extent is drawn with a ring instead. `outline` rather than `border` because
+   an outline sits outside the box and does not eat 2 of the 6 pixels.
+   --border-hover measures 4.59:1 dark / 4.36:1 light on --bg-elevated and
+   4.85:1 / 4.57:1 on --bg-surface; --border misses at 2.95:1 in light. */
+.upload-bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  outline: 1px solid var(--border-hover);
+  outline-offset: 0;
+  overflow: hidden;
+}
+
+/* accent on --bg-hover: 7.28:1 dark, 4.56:1 light. */
+.upload-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+/* The length of this fill IS the information — how much moved before the
+   pause — so it is a graphical object under WCAG 1.4.11 and needs 3:1 against
+   the track. --border gave 2.89:1 dark / 2.87:1 light and missed. --text-muted
+   is 4.14:1 / 4.75:1, and is already the ink this system uses for "recorded,
+   but not currently advancing". */
+.upload-bar--paused .upload-bar__fill {
+  background: var(--text-muted);
+  transition: none;
+}
+
+.upload-bar--indeterminate .upload-bar__fill {
+  width: 32%;
+  transition: none;
+  animation: upload-bar-traverse 1400ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes upload-bar-traverse {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.upload-recovery {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+/* ── the surfaces ───────────────────────────────────────────────────── */
+
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 24px 16px;
+  text-align: center;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.1s ease, background-color 0.1s ease;
+}
+
+.upload-dropzone--inline {
+  flex-direction: row;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.upload-dropzone:hover:not(:disabled),
+.upload-dropzone--dragover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.upload-dropzone:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.upload-dropzone:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.upload-dropzone__icon {
+  color: var(--text-muted);
+}
+
+.upload-dropzone__icon.material-symbols-rounded {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.upload-dropzone__title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.upload-dropzone__hint {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* The border is the whole affordance here.
+   Recovery buttons render on .upload-card, which is also --bg-elevated, so no
+   fill can separate them from their parent: every surface token measures
+   1.03-1.09:1 against it. --border-subtle as a boundary is 1.18:1 dark /
+   1.13:1 light — the buttons read as plain text. --border-hover is 4.59:1 /
+   4.36:1 on the card and 4.85:1 / 4.57:1 on a bare panel, and is the only
+   defined step that clears 3:1 in BOTH themes (--border is 2.95:1 in light). */
+.upload-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.upload-trigger:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.upload-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.upload-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.upload-trigger--dragover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.upload-trigger--icon {
+  padding: 8px;
+}
+
+/* The primary recovery action — "Try again", "Sign in and continue".
+   The accent carries the BORDER, not the ink: accent text on --accent-dim
+   composited over --bg-elevated measures 4.34:1 in light, under the 4.5:1 AA
+   floor for 14px/500, and the accent family decision is still open so
+   darkening the token is not available. --text-primary on the card is 15.60:1
+   dark / 16.94:1 light, and --accent as a border is 7.97:1 / 4.69:1 — well
+   past the 3:1 a boundary needs. Weight does the rest of the emphasis. */
+.upload-trigger--accent {
+  border-color: var(--accent);
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.upload-trigger--accent:hover:not(:disabled) {
+  border-color: var(--accent-active);
+  background: var(--accent-dim);
+}
+
+.upload-trigger .material-symbols-rounded {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* The real <input type="file">. Kept in the accessibility tree but out of the
+   tab order — the visible button is the affordance. */
+.upload-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
 .neural-feed {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -2848,4 +3300,63 @@ select:focus {
 [data-theme] .help-dark-page .placeholder-silver\/50::placeholder,
 .help-dark-page .placeholder-silver\/50::placeholder {
   color: var(--help-text-muted) !important;
+}
+
+/* ============================================
+   REDUCED MOTION — the indeterminate upload bar
+
+   This block is mandatory, and it is last in the file on purpose.
+
+   The global accessibility rule above sets `animation-duration: 0.01ms
+   !important` on every element. Applied to the traversing segment that means
+   the animation runs once, instantly, and the segment settles at its
+   un-animated position: a 32%-wide accent block parked at the left edge of
+   the track. A reader sees a bar reporting roughly a third — a number nothing
+   measured, which is the exact failure mode this whole rebuild exists to
+   remove — or, if the fill happened to land off-track, an empty groove that
+   reads as broken.
+
+   So the reduced-motion presentation is defined explicitly rather than
+   inherited: the fill goes full-width in solid accent. The `!important` is
+   needed to outrank the global rule, which is also `!important`.
+
+   Two things this got wrong before, both measured with the audit's own
+   contrast functions:
+
+   1. The fill was --accent-dim on a transparent track, which composites to
+      1.14:1 (dark) and 1.08:1 (light) against the card. The rule existed and
+      still delivered the empty groove it was written to prevent. Solid
+      --accent is 7.28:1 / 4.56:1 on the track — actually visible, which was
+      the entire point.
+   2. The track was a 1px dashed --border, 2.95:1 in light and eating 2 of the
+      6 pixels through border-box. The solid track and the --border-hover ring
+      inherited from .upload-bar do the job at full strength.
+
+   Full width is NOT self-evidently unambiguous, and the comment that used to
+   sit here claimed it was. It said the determinate bar is never drawn at 100%
+   because `succeed` sets barVisible:false. That is false: a final progress
+   event with transferred === total lands while the phase is still
+   'transferring' and the bar is still visible — drive
+   select -> transfer-start -> bar-eligible -> progress(n/n) and you get
+   { phase:'transferring', percent:100, barVisible:true, indeterminate:false }.
+   scripts/file-upload-state.test.js asserts exactly that. So under reduced
+   motion this fill is pixel-identical to the determinate frame that can
+   immediately precede it.
+
+   What actually disambiguates it is not the pixels:
+     - the note directly beneath the bar says the step reports no progress;
+     - the meta row carries no percentage at all during the parse (`parse-start`
+       sets percent:null, so the `upload-percent` chip is not rendered);
+     - the bar drops aria-valuenow/min/max entirely, which is the ARIA signal
+       for indeterminate, and is described by that note.
+   A reader gets the distinction from the text and the ARIA, and a sighted
+   reduced-motion user gets it from the absent percentage beside the bar.
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  .upload-bar--indeterminate .upload-bar__fill {
+    width: 100%;
+    transform: none !important;
+    animation: none !important;
+    background: var(--accent);
+  }
 }

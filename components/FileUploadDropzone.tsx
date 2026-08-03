@@ -113,13 +113,17 @@ export default function FileUploadDropzone({
 
     setIsUploading(true);
     try {
-      const { text, fileName, sourceType, storagePath, characterCount, detectedType, storagePathDeleted } = await uploadAndParseResume(file);
+      // No `storagePath`: the parse route deletes the Storage object as part of
+      // a successful parse, so a path handed on here would name an object that
+      // no longer exists — and page.tsx persists it into an immutable
+      // resume_versions record. `storagePathDeleted` is the honest provenance.
+      const { text, fileName, sourceType, characterCount, detectedType, storagePathDeleted } = await uploadAndParseResume(file);
 
       if (!text || text.trim().length < 20) {
         throw new Error('Could not extract meaningful text from this file. Try pasting your text instead.');
       }
 
-      onUploadSuccess(text, fileName, { sourceType, storagePath, characterCount, detectedType, storagePathDeleted });
+      onUploadSuccess(text, fileName, { sourceType, characterCount, detectedType, storagePathDeleted });
       // Don't setIsUploading(false) here — parent keeps loading state
       // through AI parsing. Parent will reset when fully done.
     } catch (error: any) {

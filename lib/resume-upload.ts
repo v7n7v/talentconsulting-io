@@ -1,106 +1,76 @@
 'use client';
 
-import { ref, uploadBytes } from 'firebase/storage';
-import { auth, storage } from '@/lib/firebase';
-import { authFetch } from '@/lib/auth-fetch';
+/**
+ * Resume upload — the compatibility surface over lib/upload.
+ *
+ * Every symbol this module ever exported still exports from here with the same
+ * shape, so the existing call sites and `instanceof ResumeUploadError` keep
+ * working while they migrate to `useFileUpload` one at a time.
+ *
+ * What changed underneath: `uploadBytes` (non-resumable, no byte events) is
+ * gone. Transfers now emit real progress, and the resumable path can actually
+ * pause. See lib/upload/upload-transport.ts.
+ */
+
+import {
+  AUTHENTICATED_MAX_BYTES,
+  DIRECT_UPLOAD_MAX_BYTES,
+  EXTRACTED_TEXT_CHAR_LIMIT,
+  FileUploadError,
+  RESUME_ACCEPT,
+  checkFileAgainstAccept,
+} from '@/lib/upload/file-upload-types';
+import { startResumeUpload } from '@/lib/upload/upload-transport';
+import type { ResumeUploadResult } from '@/lib/upload/upload-transport';
 
 export const RESUME_UPLOAD_LIMITS = {
-  directBytes: 4 * 1024 * 1024,
-  authenticatedBytes: 10 * 1024 * 1024,
-  extractedTextChars: 50_000,
+  directBytes: DIRECT_UPLOAD_MAX_BYTES,
+  authenticatedBytes: AUTHENTICATED_MAX_BYTES,
+  extractedTextChars: EXTRACTED_TEXT_CHAR_LIMIT,
 };
 
-const VALID_RESUME_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt'];
+/**
+ * Widened from the original six codes: RATE_LIMITED and NETWORK were being
+ * flattened into PARSE_FAILED, which is how "you uploaded too fast" reached
+ * the user as "we could not read your resume".
+ */
+export type { UploadErrorCode as ResumeUploadErrorCode } from '@/lib/upload/file-upload-types';
 
-export type ResumeUploadErrorCode =
-  | 'FILE_TOO_LARGE'
-  | 'UNSUPPORTED_TYPE'
-  | 'AUTH_REQUIRED'
-  | 'SCANNED_PDF'
-  | 'PARSE_EMPTY'
-  | 'PARSE_FAILED';
+/**
+ * Same class object as FileUploadError, exported under its original name so
+ * `error instanceof ResumeUploadError` at the existing call sites still holds.
+ */
+export { FileUploadError as ResumeUploadError } from '@/lib/upload/file-upload-types';
 
-export class ResumeUploadError extends Error {
-  code: ResumeUploadErrorCode;
+export type { ResumeUploadResult } from '@/lib/upload/upload-transport';
+export type {
+  ResumeUploadHandle,
+  StartResumeUploadOptions,
+} from '@/lib/upload/upload-transport';
+export { startResumeUpload } from '@/lib/upload/upload-transport';
 
-  constructor(code: ResumeUploadErrorCode, message: string) {
-    super(message);
-    this.name = 'ResumeUploadError';
-    this.code = code;
-  }
-}
-
-export interface ResumeUploadResult {
-  text: string;
-  fileName: string;
-  sourceType: 'direct' | 'storage';
-  storagePath?: string;
-  characterCount?: number;
-  detectedType?: 'pdf' | 'docx' | 'doc' | 'txt';
-  storagePathDeleted?: boolean;
-}
-
+/** Synchronous extension + size check. Throws, as it always did. */
 export function validateResumeFile(file: File) {
-  const lowerName = file.name.toLowerCase();
-  const ext = VALID_RESUME_EXTENSIONS.find(e => lowerName.endsWith(e));
-  if (!ext) {
-    throw new ResumeUploadError('UNSUPPORTED_TYPE', 'Please upload a PDF, Word, or TXT resume.');
-  }
-  if (file.size > RESUME_UPLOAD_LIMITS.authenticatedBytes) {
-    throw new ResumeUploadError('FILE_TOO_LARGE', 'File is too large. Upload a resume under 10MB.');
-  }
-  return ext;
-}
-
-function safeFileName(fileName: string) {
-  return fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-140);
-}
-
-async function parseResumeRequest(body: BodyInit, headers?: HeadersInit): Promise<ResumeUploadResult> {
-  const res = await authFetch('/api/gauntlet/parse-resume', {
-    method: 'POST',
-    headers,
-    body,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.error) {
-    throw new ResumeUploadError(data.code || 'PARSE_FAILED', data.message || data.error || 'Failed to parse resume.');
-  }
-  if (!data.text || data.text.trim().length < 20) {
-    throw new ResumeUploadError('PARSE_EMPTY', 'Could not extract meaningful text from this resume.');
-  }
-  return data;
-}
-
-export async function uploadAndParseResume(file: File): Promise<ResumeUploadResult> {
-  validateResumeFile(file);
-
-  if (file.size <= RESUME_UPLOAD_LIMITS.directBytes) {
-    const formData = new FormData();
-    formData.append('file', file);
-    return parseResumeRequest(formData);
-  }
-
-  const user = auth.currentUser;
-  if (!user) {
-    throw new ResumeUploadError(
-      'AUTH_REQUIRED',
-      'Sign in to upload resumes larger than 4MB, or use a smaller PDF/Word file.'
+  const check = checkFileAgainstAccept(file, RESUME_ACCEPT, RESUME_UPLOAD_LIMITS.authenticatedBytes);
+  if (!check.ok) {
+    throw new FileUploadError(
+      check.code,
+      check.code === 'UNSUPPORTED_TYPE'
+        ? 'Please upload a PDF, Word, or TXT resume.'
+        : check.message,
     );
   }
+  return check.extension;
+}
 
-  const storagePath = `resume_uploads/${user.uid}/${Date.now()}_${safeFileName(file.name)}`;
-  await uploadBytes(ref(storage, storagePath), file, {
-    contentType: file.type || 'application/octet-stream',
-    customMetadata: {
-      originalName: file.name,
-      uploadedBy: user.uid,
-      purpose: 'resume_parse',
-    },
-  });
-
-  return parseResumeRequest(
-    JSON.stringify({ storagePath, fileName: file.name }),
-    { 'Content-Type': 'application/json' }
-  );
+/**
+ * Preserved wrapper: upload, parse, resolve with the text.
+ *
+ * Callers that want progress, pause or cancel should use `useFileUpload` (or
+ * `startResumeUpload` outside React) — a promise has nowhere to put a byte
+ * count, which is how the fabricated progress bar happened in the first place.
+ */
+export async function uploadAndParseResume(file: File): Promise<ResumeUploadResult> {
+  validateResumeFile(file);
+  return startResumeUpload(file).promise;
 }

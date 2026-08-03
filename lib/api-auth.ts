@@ -78,11 +78,24 @@ export async function authenticateRequest(req: NextRequest): Promise<Omit<AuthRe
  * 3. Free users: lifetime 3-use cap per tool (Firestore-persisted, never resets)
  * 4. Pro/GOD: per-minute rate limits only
  * 5. All unauthenticated requests: speed-throttled per IP
+ *
+ * The identity is surfaced on the rejection branch too.
+ *
+ * Without it a caller that needs to know who was rejected — /api/gauntlet/parse-resume
+ * has to find and delete the Storage object a throttled request already
+ * uploaded — has no choice but to call authenticateRequest a second time, which
+ * means a second verifyIdToken on every rejected request. That is exactly the
+ * unthrottled amplification the rate limiter is there to prevent, reintroduced
+ * by the code that runs right after it. `identity` is null when the caller
+ * presented no valid credential at all.
  */
 export async function guardApiRoute(
   req: NextRequest,
   options?: { rateLimit?: number; rateLimitWindow?: number; feature?: UsageFeature; allowAnonymous?: boolean; skipUsageCap?: boolean }
-): Promise<{ user: AuthResult; error?: never } | { user?: never; error: NextResponse }> {
+): Promise<
+  | { user: AuthResult; error?: never }
+  | { user?: never; error: NextResponse; identity: Omit<AuthResult, 'tier'> | null }
+> {
 
   const ip = getClientIp(req);
   const pathname = new URL(req.url).pathname;
@@ -99,6 +112,7 @@ export async function guardApiRoute(
         { name: 'Limit', value: String(anonLimit) + '/min' },
       ]);
       return {
+        identity: authUser,
         error: NextResponse.json(
           { error: 'Too many requests. Create a free account to continue.', requiresAuth: true },
           { status: 429, headers: { 'Retry-After': '60' } }
@@ -123,6 +137,7 @@ export async function guardApiRoute(
             { name: 'Path', value: pathname },
           ]);
           return {
+            identity: authUser,
             error: NextResponse.json(
               {
                 error: `You've used your free trial. Create an account to unlock ${FREE_CAPS[feature]} free uses and keep your progress.`,
@@ -143,6 +158,7 @@ export async function guardApiRoute(
     }
 
     return {
+      identity: authUser,
       error: NextResponse.json(
         { error: 'Account required. Sign in to use this feature.', requiresAuth: true },
         { status: 401 }
@@ -174,6 +190,7 @@ export async function guardApiRoute(
       { name: 'Tier', value: tier },
     ]);
     return {
+      identity: authUser,
       error: NextResponse.json(
         {
           error: 'Rate limit reached. Please wait a moment before trying again.',
@@ -204,6 +221,7 @@ export async function guardApiRoute(
           { name: 'Used', value: `${usage.used}/${usage.cap}` },
         ]);
         return {
+          identity: authUser,
           error: NextResponse.json(
             {
               error: limitReachedBody(feature),

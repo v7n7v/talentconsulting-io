@@ -18,6 +18,18 @@ interface AuthModalProps {
   onSwitchMode: () => void;
   postAuthRedirect?: string | null;
   returnFocusSelector?: string;
+  /**
+   * A sign-in or sign-up really completed. Fired once, immediately before the
+   * modal closes, on every success path — email, MFA and Google.
+   *
+   * This is what the dead `[data-sona-resume-upload-trigger="true"]` selector
+   * was badly approximating. The upload flow's biggest single win is
+   * AUTH_REQUIRED → sign in → `controller.retry()` on the same in-memory File,
+   * with no second pick and no re-upload; a host on that path passes this and
+   * leaves `postAuthRedirect` null, because a navigation would throw the File
+   * away.
+   */
+  onAuthSuccess?: () => void;
 }
 
 /* ── Shared modal shell (defined outside component to preserve identity across renders) ── */
@@ -141,6 +153,7 @@ export default function AuthModal({
   onSwitchMode,
   postAuthRedirect,
   returnFocusSelector: requestedReturnFocusSelector,
+  onAuthSuccess,
 }: AuthModalProps) {
   const { setUser } = useStore();
   const [loading, setLoading] = useState(false);
@@ -164,8 +177,11 @@ export default function AuthModal({
   const modalSubtitle = mode === 'login'
     ? hasPendingResume ? 'Taco will save this resume, then open your target brief.' : isSonaUploadIntent ? 'Taco will use your saved resume context to scout job picks.' : 'Sign in to your account'
     : hasPendingResume ? 'Taco will save this resume, then open your target brief.' : isSonaUploadIntent ? 'Taco saves your resume context before scouting review-ready job picks.' : 'Get started with TalentConsulting.io';
-  const returnFocusSelector = requestedReturnFocusSelector
-    || (hasPendingResume ? '[data-sona-resume-upload-trigger="true"]' : undefined);
+  /* The '[data-sona-resume-upload-trigger="true"]' fallback that used to live here only ever
+     matched components/dashboard/UnifiedDashboard.tsx, which had no importers and is deleted.
+     Focus return is now purely the caller's to specify: with no fallback, a caller that passes
+     no selector gets ModalShell's own restore to whatever had focus when the modal opened. */
+  const returnFocusSelector = requestedReturnFocusSelector;
 
   useEffect(() => {
     if (!hasPendingResume || authPresentationTrackedRef.current) return;
@@ -181,10 +197,15 @@ export default function AuthModal({
     onClose();
   }, [hasPendingResume, loading, mode, oauthLoading, onClose]);
 
+  // The single choke point for every success path — email, MFA, Google — which
+  // is why onAuthSuccess is fired here rather than at four call sites. It runs
+  // before onClose so a host can restart an upload it is still holding in
+  // memory while the modal is on its way out.
   const completeAndClose = useCallback(() => {
     authCompletedRef.current = true;
+    onAuthSuccess?.();
     onClose();
-  }, [onClose]);
+  }, [onAuthSuccess, onClose]);
 
   // MFA Challenge State (TOTP — Google Authenticator)
   const [showMFAChallenge, setShowMFAChallenge] = useState(false);
