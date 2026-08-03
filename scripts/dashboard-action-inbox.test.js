@@ -192,7 +192,6 @@ test('debrief actions fail closed when debrief history is unavailable', () => {
 test('dashboard UI is mobile-first, named and replaces duplicate queue widgets', () => {
   const component = fs.readFileSync(path.join(repoRoot, 'components/dashboard/DashboardActionInbox.tsx'), 'utf8');
   const dashboard = fs.readFileSync(path.join(repoRoot, 'app/suite/page.tsx'), 'utf8');
-  const unifiedDashboard = fs.readFileSync(path.join(repoRoot, 'components/dashboard/UnifiedDashboard.tsx'), 'utf8');
   const applications = fs.readFileSync(path.join(repoRoot, 'app/suite/applications/page.tsx'), 'utf8');
   const interview = fs.readFileSync(path.join(repoRoot, 'app/suite/interview-sim/page.tsx'), 'utf8');
   const debriefRoute = fs.readFileSync(path.join(repoRoot, 'app/api/agent/debriefs/route.ts'), 'utf8');
@@ -210,9 +209,8 @@ test('dashboard UI is mobile-first, named and replaces duplicate queue widgets',
   assert.match(dashboard, /<DashboardActionInbox key=\{user\.uid\} \/>/);
   assert.doesNotMatch(dashboard, /<OutcomeCheckWidget \/>/);
   assert.doesNotMatch(dashboard, /<AgentQueueWidget \/>/);
-  assert.match(unifiedDashboard, /<DashboardActionInbox key=\{user\.uid\} \/>/);
-  assert.doesNotMatch(unifiedDashboard, /<OutcomeCheckWidget \/>/);
-  assert.doesNotMatch(unifiedDashboard, /<AgentQueueWidget \/>/);
+  /* The parallel assertions against components/dashboard/UnifiedDashboard.tsx were dropped
+     with that file - it had no importers, so it could not have rendered a duplicate widget. */
   assert.match(applications, /params\.get\('application'\)/);
   assert.match(applications, /params\.get\('action'\)/);
   assert.match(applications, /openDrawer\(targetApp\)/);

@@ -176,8 +176,13 @@ test('anonymous binary and decompressed document budgets fail closed', async () 
   );
 });
 
+/* The staging half of this handoff lived in components/dashboard/UnifiedDashboard.tsx,
+   which had no importers and was deleted. app/page.tsx renders TalentLanding, which has
+   no upload UI, so nothing stages a resume today - the assertions against `landing` were
+   covering a component that never rendered. The consuming half below is still live and
+   still worth asserting. Restore the staging assertions when the new landing gains an
+   upload entry point. */
 test('landing and Taco integration preserve the selected resume across authentication', () => {
-  const landing = fs.readFileSync(path.join(repoRoot, 'components/dashboard/UnifiedDashboard.tsx'), 'utf8');
   const agent = fs.readFileSync(path.join(repoRoot, 'app/suite/agent/page.tsx'), 'utf8');
   const authModal = fs.readFileSync(path.join(repoRoot, 'components/modals/AuthModal.tsx'), 'utf8');
   const parser = fs.readFileSync(path.join(repoRoot, 'app/api/gauntlet/parse-resume/route.ts'), 'utf8');
@@ -189,12 +194,6 @@ test('landing and Taco integration preserve the selected resume across authentic
   const binaryWorker = fs.readFileSync(path.join(repoRoot, 'lib/resume-binary-parser-worker.ts'), 'utf8');
   const stagingCompose = fs.readFileSync(path.join(repoRoot, 'deploy/staging/docker-compose.yml'), 'utf8');
 
-  assert.match(landing, /landingResumeInputRef\.current\?\.click\(\)/);
-  assert.match(landing, /uploadAndParseResume\(file\)/);
-  assert.match(landing, /await stagePendingSonaResume/);
-  assert.match(landing, /assistantResumeHandoffStaged/);
-  assert.match(landing, /pendingResume=1/);
-  assert.match(landing, /file\.size > RESUME_UPLOAD_LIMITS\.directBytes/);
   assert.match(agent, /readPendingSonaResume\(\)/);
   assert.match(agent, /clearPendingSonaResume\(\)/);
   assert.match(agent, /Retry saved resume/);
