@@ -305,8 +305,12 @@ function SidebarUtilityRows({
     <NavigationRailRow
       key="billing"
       icon={loading && user ? 'hourglass_top' : isPro ? plan.icon : 'diamond'}
-      label={loading && user ? 'Loading plan' : isPro ? 'Subscription' : 'Upgrade'}
-      description={isPro ? `${plan.displayName} · Manage billing` : 'Plans, billing & limits'}
+      /* Paid: the plan name is the label, so it can't truncate the way
+         "Talent Max · Manage billing" did on one line. Free keeps the second
+         line - that copy is the offer, not a restatement of the label. */
+      label={loading && user ? 'Loading plan' : isPro ? plan.displayName : 'Upgrade'}
+      description={isPro ? undefined : 'Plans, billing & limits'}
+      density={isPro ? 'compact' : 'default'}
       trailing={!isCollapsed ? <PlanBadge tier={isPro ? plan.id : 'free'} size="xs" active={isPro} /> : undefined}
       active={upgradeRouteOwner === 'upgrade' && upgradeRouteActive}
       compact={isCollapsed}
@@ -323,7 +327,7 @@ function SidebarUtilityRows({
             key="explore-max"
             icon="auto_awesome"
             label="Explore Max"
-            description="Taco automation & preparation"
+            density="compact"
             active={upgradeRouteOwner === 'explore-max' && upgradeRouteActive}
             compact={isCollapsed}
             onClick={() => onUpgrade('/suite/upgrade?plan=studio')}
@@ -370,7 +374,7 @@ function SidebarUtilityRows({
             key="admin"
             icon="shield"
             label="Admin"
-            description="Accounts & operations"
+            density="compact"
             active={isActive('/suite/admin')}
             compact={isCollapsed}
             onClick={() => handleNav('/suite/admin')}
@@ -384,7 +388,15 @@ function SidebarUtilityRows({
       key="appearance"
       icon={theme === 'light' ? 'light_mode' : 'dark_mode'}
       label="Appearance"
-      description={`${theme === 'light' ? 'Light' : 'Dark'} mode`}
+      density="compact"
+      /* The mode moves to the trailing slot so the row stays one line and the
+         current state is still readable without relying on the icon alone. */
+      /* Inherit the row's ink - the sidebar is a theme-invariant dark surface,
+         so re-specifying var(--text-secondary) here resolves to the light-theme
+         value and lands at 1.69:1 on the navy. Opacity keeps the hierarchy. */
+      trailing={!isCollapsed
+        ? <span className="text-xs opacity-70">{theme === 'light' ? 'Light' : 'Dark'}</span>
+        : undefined}
       compact={isCollapsed}
       onClick={toggleTheme}
       ariaPressed={theme === 'light'}
@@ -394,7 +406,7 @@ function SidebarUtilityRows({
       key="settings"
       icon="settings"
       label="Settings"
-      description="Account & preferences"
+      density="compact"
       active={isActive('/suite/settings')}
       compact={isCollapsed}
       onClick={() => handleNav('/suite/settings')}

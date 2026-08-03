@@ -31,7 +31,12 @@ test('main navigation and account settings share the same reference row', () => 
   assert.match(row, /h-6 w-6/);
   assert.match(row, /text-sm font-medium leading-5/);
   assert.match(row, /text-xs leading-4 text-\[var\(--text-secondary\)\]/);
-  assert.match(row, /h-8 w-1\.5[\s\S]*bg-emerald-500/);
+  // The active marker is one shape and one token across both surfaces. It used
+  // to be pinned to bg-emerald-500, which CLAUDE.md §6 names as "the stray
+  // emerald" on its way out; --accent is what references/tokens.md reserves for
+  // active navigation, and it follows whichever accent family lands.
+  assert.match(row, /h-8 w-1\.5[\s\S]*bg-\[color:var\(--accent\)\]/);
+  assert.doesNotMatch(row, /bg-emerald-500/);
 });
 
 test('sidebar is one continuous settings-style sheet without nested navigation cards', () => {

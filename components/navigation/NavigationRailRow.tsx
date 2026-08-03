@@ -11,6 +11,12 @@ export interface NavigationRailRowProps {
     active?: boolean;
     trailing?: ReactNode;
     compact?: boolean;
+    /**
+     * Row height. 'default' is the two-line tool row. 'compact' is a single-line
+     * utility row - the description is dropped rather than truncated, so put any
+     * state worth showing in `trailing`.
+     */
+    density?: 'default' | 'compact';
     href?: string;
     onClick?: MouseEventHandler<HTMLButtonElement | HTMLAnchorElement>;
     className?: string;
@@ -35,11 +41,11 @@ const inactiveClasses = [
     'border-transparent',
 ].join(' ');
 
+/* Elevation is a border here, not a shadow - shadow-* is banned in this product. */
 const activeClasses = [
     'bg-[var(--theme-surface-active)]',
     'text-[var(--text-primary)]',
     'border-[var(--theme-border)]',
-    'shadow-lg',
 ].join(' ');
 
 function NavigationRailRowContent({
@@ -49,6 +55,7 @@ function NavigationRailRowContent({
     active,
     trailing,
     compact,
+    density = 'default',
     iconClassName,
     markerLayoutId,
 }: Pick<
@@ -59,10 +66,12 @@ function NavigationRailRowContent({
     | 'active'
     | 'trailing'
     | 'compact'
+    | 'density'
     | 'iconClassName'
     | 'markerLayoutId'
 >) {
     const materialSymbol = typeof icon === 'string';
+    const showDescription = Boolean(description) && density !== 'compact';
 
     return (
         <>
@@ -88,7 +97,7 @@ function NavigationRailRowContent({
                     >
                         {label}
                     </span>
-                    {description && (
+                    {showDescription && (
                         <span className="block truncate text-xs leading-4 text-[var(--text-secondary)]">
                             {description}
                         </span>
@@ -102,7 +111,15 @@ function NavigationRailRowContent({
                 <motion.span
                     layoutId={markerLayoutId}
                     aria-hidden="true"
-                    className="h-8 w-1.5 shrink-0 rounded-full bg-emerald-500"
+                    /* h-5 on compact rows: an h-8 marker is taller than the
+                       single-line content box and pushes the row past 44px. */
+                    /* --accent, not emerald: CLAUDE.md §6 names the stray
+                       emerald as leaving, and active navigation is one of the
+                       four things references/tokens.md reserves accent for. */
+                    className={[
+                        'w-1.5 shrink-0 rounded-full bg-[color:var(--accent)]',
+                        density === 'compact' ? 'h-5' : 'h-8',
+                    ].join(' ')}
                 />
             )}
 
@@ -110,7 +127,7 @@ function NavigationRailRowContent({
                 <motion.span
                     layoutId={markerLayoutId}
                     aria-hidden="true"
-                    className="absolute right-1 h-8 w-1.5 rounded-full bg-emerald-500"
+                    className="absolute right-1 h-8 w-1.5 rounded-full bg-[color:var(--accent)]"
                 />
             )}
         </>
@@ -124,6 +141,7 @@ export function NavigationRailRow({
     active = false,
     trailing,
     compact = false,
+    density = 'default',
     href,
     onClick,
     className = '',
@@ -146,7 +164,9 @@ export function NavigationRailRow({
         'focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-bg-card)]',
         compact
             ? 'flex min-h-11 items-center justify-center gap-0 rounded-xl px-2 py-2'
-            : 'flex min-h-[62px] items-center gap-3 rounded-xl px-4 py-3',
+            : density === 'compact'
+                ? 'flex min-h-11 items-center gap-3 rounded-xl px-3 py-2'
+                : 'flex min-h-[62px] items-center gap-3 rounded-xl px-4 py-3',
         active ? activeClasses : inactiveClasses,
         disabled ? 'cursor-not-allowed opacity-50' : '',
         className,
@@ -160,6 +180,7 @@ export function NavigationRailRow({
             active={active}
             trailing={trailing}
             compact={compact}
+            density={density}
             iconClassName={iconClassName}
             markerLayoutId={markerLayoutId}
         />
