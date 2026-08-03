@@ -18,6 +18,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/blog`, priority: 0.8, changeFrequency: 'daily' as const, lastModified: SEO_LAST_MODIFIED },
     { url: `${SITE_URL}/for-teams`, priority: 0.7, changeFrequency: 'monthly' as const, lastModified: SEO_LAST_MODIFIED },
     { url: `${SITE_URL}/help`, priority: 0.6, changeFrequency: 'monthly' as const, lastModified: SEO_LAST_MODIFIED },
+    { url: `${SITE_URL}/contact`, priority: 0.6, changeFrequency: 'monthly' as const, lastModified: SEO_LAST_MODIFIED },
   ];
 
   const seoPages = [
