@@ -552,9 +552,73 @@ export function deleteDemoCoverLetter(id: string) {
 
 export function getDemoIntelligenceResponse() {
   const profile = {
-    healthScore: 78,
+    /*
+     * 11 + 33 + 11 + 14 = 69 earned over 30 + 35 + 20 + 15 = 100 available.
+     *
+     * Every item below is the real formula from computeHealthBands applied to
+     * THIS profile's own stats, and each one carries its arithmetic. The block
+     * used to be free-hand: `volume: 6` implies 30 applications and rendered
+     * directly above Quick Stats reading "Apps 4". A demo that contradicts
+     * itself on screen is the same defect as a product that does.
+     */
+    healthScore: 69,
+    // Mirrors the shape computeHealthBands emits so the demo account renders
+    // the same breakdown a real one does, rather than an empty panel.
+    healthBands: [
+      {
+        // round(0.8 + 0.6 + 5 + 5) = 11
+        key: 'activity', label: 'Activity', earned: 11, available: 30, max: 30,
+        items: [
+          // velocity * 2, and velocity is 3 sent over ceil(45d / 7) = 7 weeks.
+          { key: 'velocity', label: 'Applications per week', score: 0.8, max: 10, measured: true },
+          // appliedApps / 5 — sent, not tracked. 3 sent, not 4 records.
+          { key: 'volume', label: 'Applications sent', score: 0.6, max: 10, measured: true },
+          { key: 'debriefs', label: 'Interview debriefs logged', score: 5, max: 5, measured: true },
+          { key: 'resume', label: 'Resume on file', score: 5, max: 5, measured: true },
+        ],
+      },
+      {
+        // round(10 + 10 + 10 + 2.5) = 33
+        key: 'performance', label: 'Performance', earned: 33, available: 35, max: 35,
+        items: [
+          // responseRate 67 / 3 = 22.3, clamped to the 10 max.
+          { key: 'responseRate', label: 'Response rate', score: 10, max: 10, measured: true },
+          // interviewConversion 50 / 5 = 10.
+          { key: 'interviewConversion', label: 'Response → interview', score: 10, max: 10, measured: true },
+          // avgConfidence 80 / 8 = 10.
+          { key: 'confidence', label: 'Interview confidence', score: 10, max: 10, measured: true },
+          // passRate 50 / 20 = 2.5 — 1 of the 2 resolved debriefs passed.
+          { key: 'passRate', label: 'Interview pass rate', score: 2.5, max: 5, measured: true },
+        ],
+      },
+      {
+        // round(1.5 + 3 + 2.5 + 4) = 11
+        key: 'preparedness', label: 'Preparedness', earned: 11, available: 20, max: 20,
+        items: [
+          // confirmed.length 6 / 4 = 1.5.
+          { key: 'skills', label: 'Skills on your resume', score: 1.5, max: 5, measured: true },
+          // 5 - gap.length, and this demo profile carries two gaps.
+          { key: 'gaps', label: 'Skill gaps against analyzed roles', score: 3, max: 5, measured: true },
+          // strongCategories.length 1 * 2.5 = 2.5.
+          { key: 'strongAreas', label: 'Strong interview categories', score: 2.5, max: 5, measured: true },
+          // 5 - weak.length, and this demo profile carries one weak category.
+          { key: 'weakAreas', label: 'Weak interview categories', score: 4, max: 5, measured: true },
+        ],
+      },
+      {
+        // 4 + 5 + 5 = 14
+        key: 'wellbeing', label: 'Wellbeing', earned: 14, available: 15, max: 15,
+        items: [
+          // morale.current 4 * 1.
+          { key: 'morale', label: 'Latest morale check-in', score: 4, max: 5, measured: true },
+          // trend 'improving' scores 5. [3,3] then [4,4] over four check-ins.
+          { key: 'moraleTrend', label: 'Morale trend', score: 5, max: 5, measured: true },
+          // burnoutRisk 'low' scores 5. Latest 4, run-of-three mean 3.7.
+          { key: 'burnout', label: 'Burnout risk', score: 5, max: 5, measured: true },
+        ],
+      },
+    ],
     daysActive: 45,
-    estimatedWeeksToOffer: 3,
     hasResume: true,
     resumeVersionCount: demoResumeVersions.length,
     skills: {
@@ -563,26 +627,49 @@ export function getDemoIntelligenceResponse() {
       weak: ['paid acquisition budget ownership'],
       marketHot: ['agentic workflows', 'AI product engineering', 'trust and safety UX'],
       gap: ['model evaluation depth', 'enterprise security narratives'],
+      fitAnalysisCount: 3,
+      // Two categories carry the two answers `weak` needs to be derivable;
+      // one of them came in under 50 and is the single entry in `weak`.
+      weakEvidenceCategories: 2,
     },
+    // Counts and rates have to agree: 3 sent, 2 answered (67%), 1 of those 2
+    // reached interview (50%), 0 of 1 interview became an offer (0%).
     pipeline: {
       totalApps: demoApplications.length,
+      appliedApps: 3,
       thisWeekApps: 1,
-      velocity: 4,
+      // 3 sent over ceil(45 days / 7) = 7 weeks. `4` was not reachable from
+      // any pair of numbers this profile declares.
+      velocity: 0.4,
+      responded: 2,
+      interviews: 1,
+      offers: 0,
       responseRate: 67,
-      interviewConversion: 33,
-      offerConversion: 33,
-      ghostRate: 0,
+      interviewConversion: 50,
+      offerConversion: 0,
+      ghostRate: 33,
       topCompanies: demoApplications.map(app => app.company_name).slice(0, 4),
     },
+    /*
+     * Question confidence is 0-100 in InterviewIntelligence (weak is < 55,
+     * strong is >= 70) and overallFeeling is the 1-5 self-report. This block
+     * carried 8, 7, 5 and 9 — a 1-10 scale nothing in the real code uses, so
+     * the demo's own "strong category" would not have cleared the strong
+     * threshold. `confidenceTrend: 'up'` is not a member of the union either;
+     * it type-checked only because this function has no return annotation.
+     */
     interviews: {
       totalDebriefs: 2,
-      passRate: 75,
-      avgConfidence: 8,
-      avgFeeling: 7,
-      confidenceTrend: 'up',
-      weakCategories: [{ category: 'model evaluation', avgConfidence: 5, count: 1 }],
-      strongCategories: [{ category: 'product strategy', avgConfidence: 9, count: 2 }],
-      roundTypeBreakdown: [{ type: 'product sense', count: 1, avgConf: 9 }, { type: 'systems', count: 1, avgConf: 7 }],
+      // 1 of the 2 resolved debriefs passed. 75 is not reachable from 2.
+      passRate: 50,
+      resolvedOutcomeCount: 2,
+      questionCount: 6,
+      avgConfidence: 80,
+      avgFeeling: 4,
+      confidenceTrend: 'improving',
+      weakCategories: [{ category: 'model evaluation', avgConfidence: 45, count: 2 }],
+      strongCategories: [{ category: 'product strategy', avgConfidence: 90, count: 4 }],
+      roundTypeBreakdown: [{ type: 'product sense', count: 1, avgConf: 90 }, { type: 'systems', count: 1, avgConf: 70 }],
       companiesInterviewed: ['Aurora Labs'],
     },
     stories: {
@@ -590,14 +677,19 @@ export function getDemoIntelligenceResponse() {
       tagDistribution: [{ tag: 'leadership', count: 3 }, { tag: 'problem solving', count: 3 }, { tag: 'startup execution', count: 2 }],
       coverageGaps: ['conflict resolution', 'failure'],
     },
+    // Morale is a 1-5 self-report (see MoraleIntelligence). This block used to
+    // carry 62/68/74 on that scale and a `trend` value the union does not have.
+    // Four entries, because computeMoraleIntelligence will not claim a trend
+    // from fewer — two disjoint windows of two: [3,3] then [4,4] = improving.
     morale: {
-      current: 74,
-      trend: 'steady',
+      current: 4,
+      trend: 'improving',
       burnoutRisk: 'low',
       history: [
-        { week: 'Week 1', score: 62 },
-        { week: 'Week 2', score: 68 },
-        { week: 'Week 3', score: 74 },
+        { week: 'Week 1', score: 3 },
+        { week: 'Week 2', score: 3 },
+        { week: 'Week 3', score: 4 },
+        { week: 'Week 4', score: 4 },
       ],
     },
     computedAt: now(),
@@ -655,11 +747,13 @@ export function getDemoIntelligenceResponse() {
       },
       activeSearch: {
         totalApplications: demoApplications.length,
+        sentApplications: 3,
         responseRate: 67,
-        velocity: 4,
+        velocity: 0.4,
         queuedApplications: demoQueueItems.length,
         staleApplications: 1,
         skillGaps: ['model evaluation depth', 'enterprise security narratives'],
+        fitAnalysisCount: 3,
       },
       nextBestActions: [
         {

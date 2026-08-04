@@ -1377,22 +1377,35 @@ CRITICAL: Only use facts from the provided resume data. If you don't have enough
           })),
           keyMetrics: {
             totalApps: twin.pipeline.totalApps,
+            // Records tracked vs applications actually sent. A record created
+            // by a resume morph has never been in front of an employer, so it
+            // cannot be the denominator of a response rate.
+            sentApps: twin.pipeline.appliedApps,
             velocity: twin.pipeline.velocity,
+            // null when nothing has been sent — not 0%.
             responseRate: twin.pipeline.responseRate,
-            interviews: twin.interviews.totalDebriefs,
-            passRate: twin.interviews.passRate,
-            avgConfidence: twin.interviews.avgConfidence,
-            confidenceTrend: twin.interviews.confidenceTrend,
+            respondedCount: twin.pipeline.responded,
+            offerCount: twin.pipeline.offers,
+            debriefs: twin.interviews.totalDebriefs,
+            // null, not 0. A debrief defaults to outcome 'pending' and may
+            // carry no questions, so neither of these is measured just because
+            // a debrief exists — and the model quotes whatever it is handed.
+            passRate: twin.interviews.resolvedOutcomeCount > 0 ? twin.interviews.passRate : null,
+            resolvedDebriefs: twin.interviews.resolvedOutcomeCount,
+            avgConfidence: twin.interviews.questionCount > 0 ? twin.interviews.avgConfidence : null,
+            confidenceTrend: twin.interviews.questionCount > 0 ? twin.interviews.confidenceTrend : null,
             skillGaps: twin.skills.gap,
+            fitAnalysisCount: twin.skills.fitAnalysisCount,
+            // null means the user has never checked in — not a neutral 3.
             morale: twin.morale.current,
             burnoutRisk: twin.morale.burnoutRisk,
-            estimatedWeeksToOffer: twin.estimatedWeeksToOffer,
+            moraleCheckIns: twin.morale.history.length,
           },
           twinMeta: {
             completeness: twin.completeness,
             behavioralCoverage: twin.behavioralBank,
           },
-          instruction: 'Use this data to give specific, data-driven career advice. Reference actual numbers. Be encouraging but honest. Suggest specific tools (Resume Studio, Interview Simulator, Skill Bridge, etc.) based on the recommendations.',
+          instruction: 'Use this data to give specific, data-driven career advice. Reference actual numbers. Be encouraging but honest. Suggest specific tools (Resume Studio, Interview Simulator, Skill Bridge, etc.) based on the recommendations. A null value means it has never been measured: say so, and never substitute a default, an average or a guess for it. If moraleCheckIns is 0 you do not know how they feel — ask, do not assert. If fitAnalysisCount is 0, an empty skillGaps list means no role has been analyzed, not that they have no gaps.',
         });
       } catch (e: any) {
         return JSON.stringify({ error: e.message });

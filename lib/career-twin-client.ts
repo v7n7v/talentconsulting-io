@@ -1,5 +1,85 @@
 export type CareerTwinPriority = 'critical' | 'high' | 'medium' | 'low';
 
+/** One health band as `computeHealthBands` in lib/career-graph.ts emits it. */
+export interface HealthScoreBand {
+  key: string;
+  label: string;
+  /** Points earned across measured items. */
+  earned: number;
+  /** Points available from measured items only. 0 = nothing here is known. */
+  available: number;
+  /** Points this band would be worth if everything in it were measured. */
+  max: number;
+  items: { key: string; label: string; score: number; max: number; measured: boolean }[];
+}
+
+export interface HealthScoreBasis {
+  earned: number;
+  available: number;
+  max: number;
+  measuredBands: number;
+  totalBands: number;
+  /** available / max, 0-1. How much of the score was ever on the table. */
+  coverage: number;
+  /** Enough basis to attach a word — "Strong", "Watch" — to the number? */
+  ratingIsSupported: boolean;
+}
+
+/** A rating word needs measured items spanning at least this many bands. */
+export const HEALTH_RATING_MIN_BANDS = 3;
+/** ...and covering at least this share of the points that exist. */
+export const HEALTH_RATING_MIN_COVERAGE = 0.6;
+
+/**
+ * What the health score is actually standing on.
+ *
+ * `healthScore` is earned/available across MEASURED items, so it answers "of
+ * what we could see, how are you doing" — not "how far through a job search
+ * are you". Those read the same on screen and they are not the same claim: a
+ * user measured on one band alone can score 100 without the product knowing
+ * anything about their search.
+ *
+ * Every consumer that turns the number into a word has to agree on when that
+ * is honest, so the test lives here and not in each page. It needs breadth
+ * (most of the bands) and depth (most of the points).
+ */
+export function healthScoreBasis(bands: HealthScoreBand[] | null | undefined): HealthScoreBasis {
+  const list = Array.isArray(bands) ? bands : [];
+  const earned = list.reduce((total, b) => total + (Number(b?.earned) || 0), 0);
+  const available = list.reduce((total, b) => total + (Number(b?.available) || 0), 0);
+  const max = list.reduce((total, b) => total + (Number(b?.max) || 0), 0);
+  const measuredBands = list.filter(b => (Number(b?.available) || 0) > 0).length;
+  const coverage = max > 0 ? available / max : 0;
+  return {
+    earned,
+    available,
+    max,
+    measuredBands,
+    totalBands: list.length,
+    coverage,
+    ratingIsSupported: list.length > 0
+      && measuredBands >= HEALTH_RATING_MIN_BANDS
+      && coverage >= HEALTH_RATING_MIN_COVERAGE,
+  };
+}
+
+/** 0-100 from a set of bands, or 0 when nothing is measured. */
+export function healthScoreFromBands(bands: HealthScoreBand[] | null | undefined): number {
+  const { earned, available } = healthScoreBasis(bands);
+  if (available <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((earned / available) * 100)));
+}
+
+/**
+ * A percentage, or an em dash when the value is unknown.
+ *
+ * `${value || 0}%` is the bug this exists to stop: it turns "we have no
+ * denominator" into "we measured, and the answer is zero".
+ */
+export function percentOrDash(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value}%` : '—';
+}
+
 export interface CareerTwinAction {
   id: string;
   label: string;
@@ -43,11 +123,26 @@ export interface CareerTwinMemory {
   };
   activeSearch: {
     totalApplications: number;
-    responseRate: number;
+    /** Of `totalApplications`, the ones actually marked as sent. */
+    sentApplications: number;
+    /**
+     * Null until there is a sent application to divide by.
+     *
+     * `numberValue(..., 0)` used to run over this, which destroyed the
+     * server's null before any UI could honour it: the Career Twin Memory
+     * panel printed a measured 0 for a rate the funnel one card away calls
+     * "Not measurable".
+     */
+    responseRate: number | null;
     velocity: number;
     queuedApplications: number;
     staleApplications: number;
     skillGaps: string[];
+    /**
+     * How many fit analyses `skillGaps` was derived from. 0 means "no role has
+     * been analyzed", which is not the same fact as "no gaps".
+     */
+    fitAnalysisCount: number;
   };
   nextBestActions: CareerTwinAction[];
 }
@@ -165,11 +260,15 @@ export function normalizeCareerTwinMemory(
     },
     activeSearch: {
       totalApplications: numberValue(activeSearch.totalApplications),
-      responseRate: numberValue(activeSearch.responseRate),
+      sentApplications: numberValue(activeSearch.sentApplications),
+      // nullableNumberValue, not numberValue: a null response rate means there
+      // is no denominator, and coercing it to 0 republishes it as a measurement.
+      responseRate: nullableNumberValue(activeSearch.responseRate),
       velocity: numberValue(activeSearch.velocity),
       queuedApplications: numberValue(activeSearch.queuedApplications),
       staleApplications: numberValue(activeSearch.staleApplications),
       skillGaps: stringArrayValue(activeSearch.skillGaps),
+      fitAnalysisCount: numberValue(activeSearch.fitAnalysisCount),
     },
     nextBestActions,
   };
@@ -261,11 +360,13 @@ export function normalizeCareerTwinSummary(twin: unknown): CareerTwinSummary | n
       },
       activeSearch: {
         totalApplications: numberValue(activeSearch.totalApplications),
-        responseRate: numberValue(activeSearch.responseRate),
+        sentApplications: numberValue(activeSearch.sentApplications),
+        responseRate: nullableNumberValue(activeSearch.responseRate),
         velocity: numberValue(activeSearch.velocity),
         queuedApplications: numberValue(activeSearch.queuedApplications),
         staleApplications: numberValue(activeSearch.staleApplications),
         skillGaps: stringArrayValue(activeSearch.skillGaps),
+        fitAnalysisCount: numberValue(activeSearch.fitAnalysisCount),
       },
       nextBestActions,
     },
@@ -293,8 +394,16 @@ export function formatSalaryFloor(value: number | null | undefined) {
   }).format(value);
 }
 
+/**
+ * A metric, or an em dash when it is unknown.
+ *
+ * This returned the literal '0' for null — and dropped the suffix while doing
+ * it, so a null response rate rendered as a bare "0" rather than even an
+ * honest-looking "0%". Either way it was a measurement the product did not
+ * have. Counts are never null, so nothing that reads a count changes.
+ */
 export function metricValue(value: number | null | undefined, suffix = '') {
-  if (value === null || value === undefined || Number.isNaN(value)) return '0';
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
   return `${value}${suffix}`;
 }
 

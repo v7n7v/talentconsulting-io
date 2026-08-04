@@ -6,28 +6,29 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
-import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import { SuiteToolHeader, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 
 interface PulseData {
   // Pipeline
   totalApps: number;
+  /** Records actually marked as sent. The denominator for every rate here. */
+  appliedApps: number;
   thisWeekApps: number;
   responded: number;
   interviews: number;
   offers: number;
   rejected: number;
   ghosted: number;
-  // Velocity
+  // Velocity — applications sent per week, one decimal.
   weeklyRate: number;
-  estimatedWeeksToOffer: number | null;
   // Actions
   staleApps: { company: string; role: string; daysAgo: number }[];
   upcomingInterviews: { company: string; role: string; date: string }[];
   followUps: { company: string; role: string; daysSinceApply: number }[];
   // Morale
   moraleHistory: { week: string; score: number }[];
-  // Smart Apply (computed client-side if needed)
-  smartApplyRate?: number;
+  /** Null until there is at least one application to divide by. */
+  smartApplyRate?: number | null;
   morphedCount?: number;
   fitAnalyzedCount?: number;
 }
@@ -76,30 +77,30 @@ export function PulseContent() {
   const cardBg = isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)';
   const cardBorder = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
 
-  const getHealthColor = () => {
-    if (!pulse) return '#6b7280';
-    if (pulse.weeklyRate >= 5 && pulse.responded > 0) return '#22c55e';
-    if (pulse.weeklyRate >= 3) return '#f59e0b';
-    return '#ef4444';
-  };
-
-  const getHealthLabel = () => {
-    if (!pulse) return 'Loading...';
-    if (pulse.weeklyRate >= 5 && pulse.responded > 0) return 'On Track';
-    if (pulse.weeklyRate >= 3) return 'Keep Pushing';
-    return 'Needs Attention';
-  };
+  /*
+   * There is no health verdict here any more.
+   *
+   * It was `weeklyRate >= 5 ? 'On Track' : weeklyRate >= 3 ? 'Keep Pushing' :
+   * 'Needs Attention'`, with a red broken-heart icon on the last branch. The 5
+   * and the 3 were the "5-10 apps/week for active searchers" claim printed a
+   * few lines below — step 6 deleted the citation and left the verdict it was
+   * supposed to justify, so a user on day one was told their search needed
+   * attention. There is no threshold in this product that the product can
+   * source, so there is no badge.
+   */
 
   const data = pulse || {
-    totalApps: 0, thisWeekApps: 0, responded: 0, interviews: 0,
+    totalApps: 0, appliedApps: 0, thisWeekApps: 0, responded: 0, interviews: 0,
     offers: 0, rejected: 0, ghosted: 0, weeklyRate: 0,
-    estimatedWeeksToOffer: null, staleApps: [], upcomingInterviews: [],
+    staleApps: [], upcomingInterviews: [],
     followUps: [], moraleHistory: [],
   };
 
-  const responseRate = data.totalApps > 0 ? Math.round(data.responded / data.totalApps * 100) : 0;
+  // Rates divide by applications actually sent, and are null without one.
+  const appliedApps = data.appliedApps ?? 0;
+  const responseRate = appliedApps > 0 ? Math.round(data.responded / appliedApps * 100) : null;
   const funnelStages = [
-    { label: 'Applied', value: data.totalApps, color: '#3b82f6', icon: 'send' },
+    { label: 'Applied', value: appliedApps, color: '#3b82f6', icon: 'send' },
     { label: 'Responded', value: data.responded, color: '#06b6d4', icon: 'mark_email_read' },
     { label: 'Interviews', value: data.interviews, color: '#8b5cf6', icon: 'groups' },
     { label: 'Offers', value: data.offers, color: '#22c55e', icon: 'emoji_events' },
@@ -134,41 +135,34 @@ export function PulseContent() {
         </div>
       )}
 
-      {/* Health Badge */}
+      {/* This week, stated. No ring scaled by a bare 15 (which quietly made
+          6.67 apps/week the implied 100%), no red heart, no verdict. */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between p-5 rounded-xl"
-        style={{ background: `${getHealthColor()}08`, border: `1px solid ${getHealthColor()}20` }}
+        className="flex min-w-0 flex-wrap items-center justify-between gap-4 p-5 rounded-xl"
+        style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
       >
-        <div className="flex items-center gap-4">
-          <div className="relative w-14 h-14">
-            <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
-              <circle cx="18" cy="18" r="15.5" fill="none" strokeWidth="3" stroke={isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'} />
-              <motion.circle
-                cx="18" cy="18" r="15.5" fill="none" strokeWidth="3" strokeLinecap="round"
-                stroke={getHealthColor()}
-                initial={{ strokeDasharray: '0 100' }}
-                animate={{ strokeDasharray: `${Math.min(data.weeklyRate * 15, 100)} ${100 - Math.min(data.weeklyRate * 15, 100)}` }}
-                transition={{ duration: 1 }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="material-symbols-rounded text-lg" style={{ color: getHealthColor() }}>
-                {data.weeklyRate >= 5 ? 'favorite' : data.weeklyRate >= 3 ? 'heart_check' : 'heart_broken'}
-              </span>
-            </div>
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full"
+            style={{ background: 'var(--bg-elevated)', border: `1px solid ${cardBorder}` }}>
+            <span className="material-symbols-rounded text-lg text-[var(--text-muted)]">monitor_heart</span>
           </div>
-          <div>
-            <p className="text-lg font-bold" style={{ color: getHealthColor() }}>{getHealthLabel()}</p>
-            <p className="text-xs text-[var(--text-muted)]">
-              {data.weeklyRate} apps/week • {responseRate}% response rate
-              {data.estimatedWeeksToOffer ? ` • ~${data.estimatedWeeksToOffer} weeks to offer` : ''}
+          <div className="min-w-0">
+            <p className="whitespace-nowrap text-lg font-bold tabular-nums text-[var(--text-primary)]">
+              {appliedApps > 0
+                ? `${data.weeklyRate} sent / week`
+                : 'Nothing sent yet'}
+            </p>
+            <p className="premium-copy-wrap text-xs text-[var(--text-muted)]">
+              {appliedApps > 0
+                ? `${data.responded} of ${appliedApps} answered${responseRate === null ? '' : ` — ${responseRate}%`}`
+                : 'Mark an application as sent and this starts counting.'}
             </p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-bold text-[var(--text-primary)]">{data.thisWeekApps}</p>
+        <div className="shrink-0 text-right">
+          <p className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">{data.thisWeekApps}</p>
           <p className="text-[10px] text-[var(--text-muted)]">this week</p>
         </div>
       </motion.div>
@@ -204,7 +198,7 @@ export function PulseContent() {
         {[
           { label: 'Rejected', value: data.rejected, color: '#ef4444', icon: 'cancel' },
           { label: 'Ghosted', value: data.ghosted, color: '#6b7280', icon: 'visibility_off' },
-          { label: 'Pending', value: data.totalApps - data.responded, color: '#f59e0b', icon: 'hourglass_top' },
+          { label: 'Awaiting reply', value: Math.max(0, appliedApps - data.responded), color: '#f59e0b', icon: 'hourglass_top' },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -238,8 +232,17 @@ export function PulseContent() {
         <p className="text-[11px] text-[var(--text-muted)] mb-3">
           % of applications that used the full intelligence pipeline (morphed resume + fit analysis). Quality over volume.
         </p>
-        {(() => {
-          const smartRate = data.smartApplyRate ?? (data.totalApps > 0 ? Math.round((data.morphedCount ?? 0) / data.totalApps * 100) : 0);
+        {/* Gated on having applications. Without them the `??` fallback never
+            fired (the route already returned a hard 0), so a new account was
+            shown "0%" in red, "0/0 apps used full pipeline", and the
+            "Spray & Pray" tier highlighted as their verdict. */}
+        {data.totalApps === 0 ? (
+          <SuiteUnmeasured
+            label="No applications to measure"
+            reason="This is the share of your applications that went through a resume morph. You have not tracked any applications yet, so there is no share to compute — not a share of zero."
+          />
+        ) : (() => {
+          const smartRate = data.smartApplyRate ?? Math.round((data.morphedCount ?? 0) / data.totalApps * 100);
           const barColor = smartRate >= 70 ? '#22c55e' : smartRate >= 40 ? '#f59e0b' : '#ef4444';
           return (
             <div>
@@ -254,7 +257,7 @@ export function PulseContent() {
                   className="h-full rounded-full"
                   style={{ background: barColor }}
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.max(2, smartRate)}%` }}
+                  animate={{ width: `${Math.min(100, Math.max(0, smartRate))}%` }}
                   transition={{ duration: 1 }}
                 />
               </div>
@@ -348,18 +351,38 @@ export function PulseContent() {
           <span className="material-symbols-rounded text-base text-blue-500">speed</span>
           Application Velocity
         </h3>
-        <div className="flex items-center gap-6">
-          <div>
-            <p className="text-3xl font-bold text-[var(--text-primary)]">{data.weeklyRate}</p>
-            <p className="text-[10px] text-[var(--text-muted)]">apps / week</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-6">
+          <div className="min-w-0">
+            <p className="whitespace-nowrap text-3xl font-bold tabular-nums text-[var(--text-primary)]">{data.weeklyRate}</p>
+            <p className="text-[10px] text-[var(--text-muted)]">sent / week</p>
           </div>
-          <div className="flex-1 text-xs text-[var(--text-secondary)] space-y-1.5">
-            <p className="flex items-center gap-1.5"><span className="material-symbols-rounded text-[14px]" style={{ color: '#6b7280' }}>bar_chart</span> <strong>Industry median:</strong> 5-10 apps/week for active searchers</p>
-            <p className="flex items-center gap-1.5"><span className="material-symbols-rounded text-[14px]" style={{ color: '#6b7280' }}>target</span> <strong>Typical conversion:</strong> ~40 applications → 8 responses → 3 interviews → 1 offer</p>
-            {data.estimatedWeeksToOffer ? (
-              <p className="flex items-center gap-1.5"><span className="material-symbols-rounded text-[14px]" style={{ color: '#6b7280' }}>schedule</span> <strong>Your pace:</strong> At {data.weeklyRate} apps/week, estimated ~{data.estimatedWeeksToOffer} weeks to an offer</p>
+          <div className="min-w-0 flex-1 space-y-1.5 text-xs text-[var(--text-secondary)]">
+            {data.totalApps > 0 ? (
+              <>
+                <p className="flex min-w-0 items-start gap-1.5">
+                  <span className="material-symbols-rounded shrink-0 text-[14px] text-[var(--text-muted)]">inventory_2</span>
+                  <span className="min-w-0">
+                    <strong className="tabular-nums">{data.totalApps}</strong> tracked,{' '}
+                    <strong className="tabular-nums">{appliedApps}</strong> marked as sent,{' '}
+                    <strong className="tabular-nums">{data.thisWeekApps}</strong> in the last 7 days
+                  </span>
+                </p>
+                <p className="flex min-w-0 items-start gap-1.5">
+                  <span className="material-symbols-rounded shrink-0 text-[14px] text-[var(--text-muted)]">mark_email_read</span>
+                  <span className="min-w-0">
+                    {responseRate === null
+                      ? 'No response rate yet — a rate needs an application marked as sent.'
+                      : <>
+                          <strong className="tabular-nums">{responseRate}%</strong> response rate across{' '}
+                          {appliedApps} sent {appliedApps === 1 ? 'application' : 'applications'}
+                        </>}
+                  </span>
+                </p>
+              </>
             ) : (
-              <p className="flex items-center gap-1.5"><span className="material-symbols-rounded text-[14px]" style={{ color: '#6b7280' }}>schedule</span> Start applying to build your velocity data</p>
+              <p className="min-w-0 text-[var(--text-muted)]">
+                Velocity is counted from the applications you track here. Nothing logged yet.
+              </p>
             )}
           </div>
         </div>

@@ -12,14 +12,16 @@ import {
   clampScore,
   compactList,
   formatSalaryFloor,
+  healthScoreBasis,
   metricValue,
   normalizeCareerTwinMemory,
   normalizeCareerTwinSummary,
+  percentOrDash,
   priorityClass,
   titleCase,
   type CareerTwinSummary,
 } from '@/lib/career-twin-client';
-import { SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
+import { SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import dynamic from 'next/dynamic';
 
 const PulseTab = dynamic(() => import('@/app/suite/pulse/PulseContent').then(m => ({ default: m.PulseContent })), {
@@ -32,20 +34,40 @@ const AnalyticsTab = dynamic(() => import('@/app/suite/analytics/AnalyticsConten
 
 type IntelTab = 'overview' | 'pulse' | 'analytics' | 'outcomes';
 
+interface HealthBand {
+  key: string;
+  label: string;
+  /** Points earned across measured items. */
+  earned: number;
+  /** Points available from measured items only. 0 = nothing here is known. */
+  available: number;
+  max: number;
+  items: { key: string; label: string; score: number; max: number; measured: boolean }[];
+}
+
 interface CareerProfile {
   healthScore: number;
+  /** The real bands behind healthScore. Never re-derive these from the total. */
+  healthBands: HealthBand[];
   daysActive: number;
-  estimatedWeeksToOffer: number | null;
   hasResume: boolean;
   resumeVersionCount: number;
   skills: {
     confirmed: string[]; growing: string[]; weak: string[];
     marketHot: string[]; gap: string[];
+    /** How many fit analyses `gap` was derived from. 0 means "never analyzed", not "no gaps". */
+    fitAnalysisCount: number;
   };
   pipeline: {
-    totalApps: number; thisWeekApps: number; velocity: number;
-    responseRate: number; interviewConversion: number; offerConversion: number;
-    ghostRate: number; topCompanies: string[];
+    /** Every record. `appliedApps` is the subset actually sent — the denominator. */
+    totalApps: number; appliedApps: number; thisWeekApps: number;
+    /** Applications sent per week, one decimal. */
+    velocity: number;
+    /** Counted, not derived from a rate. */
+    responded: number; interviews: number; offers: number;
+    /** Null when there is no denominator. Never render null as 0%. */
+    responseRate: number | null; interviewConversion: number | null; offerConversion: number | null;
+    ghostRate: number | null; topCompanies: string[];
   };
   interviews: {
     totalDebriefs: number; passRate: number; avgConfidence: number; avgFeeling: number;
@@ -61,7 +83,8 @@ interface CareerProfile {
     coverageGaps: string[];
   };
   morale: {
-    current: number; trend: string; burnoutRisk: string;
+    /** Null until the user checks in on the Weekly Pulse tab. Never defaulted. */
+    current: number | null; trend: string | null; burnoutRisk: string | null;
     history: { week: string; score: number }[];
   };
 }
@@ -71,6 +94,28 @@ interface Recommendation {
   description: string; action: string; actionPath: string; color: string;
   category: string;
 }
+
+/**
+ * Why a health band has nothing measured. Keyed by the band keys emitted by
+ * `computeHealthBands` in lib/career-graph.ts. Activity is never in here — its
+ * items are always measured, because zero applications is a real observation.
+ */
+const HEALTH_BAND_REASON: Record<string, string> = {
+  // Each item in this band has its own precondition — a sent application, an
+  // employer reply, a debrief question, a resolved debrief outcome — so the
+  // band goes quiet only when none of them are met.
+  performance: 'Rates here need something to divide by: applications sent, replies received, and debriefs with answers and a known outcome. None yet.',
+  preparedness: 'Drawn from your resume, the roles you have analyzed, and interview debriefs. None are on record yet.',
+  wellbeing: 'Morale is self-reported on the Weekly Pulse tab. You have not checked in yet.',
+};
+
+/**
+ * A percentage, or an em dash when the API sent null.
+ *
+ * Re-exported from career-twin-client under the local name this file already
+ * uses, so the main dashboard and this page share one definition.
+ */
+const pctOrDash = percentOrDash;
 
 function Icon({ name, className = '' }: { name: string; className?: string }) {
   return <span className={`material-symbols-rounded ${className}`} aria-hidden="true">{name}</span>;
@@ -208,13 +253,18 @@ function CareerTwinMemoryPanel({
     industries: normalizedTwin.background.industries || [],
     salaryMin: null,
   };
+  // `responseRate: null`, not 0 — this fallback only runs when there is no
+  // memory to read, which is the definition of not measured. `normalizeCareerTwinMemory`
+  // always returns an activeSearch, so it is belt and braces either way.
   const activeSearch = memory.activeSearch || {
     totalApplications: 0,
-    responseRate: 0,
+    sentApplications: 0,
+    responseRate: null,
     velocity: 0,
     queuedApplications: 0,
     staleApplications: 0,
     skillGaps: [],
+    fitAnalysisCount: 0,
   };
   const completeness = clampScore(normalizedTwin.completeness.score);
   const coverage = clampScore(normalizedTwin.behavioralBank.coverageScore);
@@ -298,16 +348,25 @@ function CareerTwinMemoryPanel({
                 <Icon name="query_stats" className="icon-neutral text-[22px]" />
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <MemoryFact label="Response rate" value={metricValue(activeSearch.responseRate, '%')} icon="reply" />
+                {/* pctOrDash, not metricValue: the funnel one card down calls
+                    this same quantity "Not measurable", and a bare 0 here
+                    contradicted it on one screen. */}
+                <MemoryFact label="Response rate" value={pctOrDash(activeSearch.responseRate)} icon="reply" />
                 <MemoryFact label="Velocity" value={`${metricValue(activeSearch.velocity)}/week`} icon="speed" />
                 <MemoryFact label="Stale apps" value={metricValue(activeSearch.staleApplications)} icon="schedule" />
                 <MemoryFact label="Resume versions" value={metricValue(memory.confirmedFacts.resumeVersionCount)} icon="description" />
               </div>
               <div className="mt-4">
+                {/* "No skill gaps detected yet" is an assertion of absence, and
+                    it is only true once a role has been analyzed. With no fit
+                    analysis on record the honest statement is that nothing has
+                    been compared. */}
                 <MemoryChipList
                   label="Skill gaps"
                   values={activeSearch.skillGaps}
-                  empty="No skill gaps detected yet."
+                  empty={activeSearch.fitAnalysisCount > 0
+                    ? 'No gaps found against the roles you have analyzed.'
+                    : 'No role analyzed yet, so nothing has been compared.'}
                   limit={6}
                 />
               </div>
@@ -438,6 +497,14 @@ export default function IntelligencePage() {
   const [activeTab, setActiveTab] = useState<IntelTab>('overview');
   const [outcomeStats, setOutcomeStats] = useState<any>(null);
   const [outcomeLoading, setOutcomeLoading] = useState(false);
+  /*
+   * A swallowed fetch failure and a genuinely empty account both leave
+   * `outcomeStats` null, and the empty state then asserts "None are marked
+   * yet" — a positive claim about the user's data, made after failing to read
+   * it. A 401 on an expired token, a 429 from the route's rate limit and a 500
+   * all land here.
+   */
+  const [outcomeFailed, setOutcomeFailed] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -514,12 +581,17 @@ export default function IntelligencePage() {
   useEffect(() => {
     if (activeTab === 'outcomes' && !outcomeStats && user) {
       setOutcomeLoading(true);
+      setOutcomeFailed(false);
       authFetch('/api/applications/outcome')
-        .then(r => r.json())
+        .then(async r => {
+          if (!r.ok) throw new Error(`outcome fetch failed: ${r.status}`);
+          return r.json();
+        })
         .then(data => {
           if (data.stats) setOutcomeStats(data.stats);
+          else setOutcomeFailed(true);
         })
-        .catch(() => {})
+        .catch(() => setOutcomeFailed(true))
         .finally(() => setOutcomeLoading(false));
     }
   }, [activeTab, user]);
@@ -543,9 +615,48 @@ export default function IntelligencePage() {
 
   // Moved loading/error into main render return
 
-  const scoreColor = getScoreColor(profile?.healthScore ?? 0);
   const scoreCircumference = 2 * Math.PI * 54;
   const scoreOffset = scoreCircumference - ((profile?.healthScore ?? 0) / 100) * scoreCircumference;
+
+  // The real bands from computeHealthBands. `?? []` covers a twin persisted
+  // before the band breakdown existed — we render nothing rather than invent it.
+  const healthBands = profile?.healthBands ?? [];
+  // A rating derived from one measured group out of four is not a rating, and
+  // neither is one derived from four groups that are mostly unmeasured. The
+  // test is shared with the main dashboard so the two screens cannot disagree
+  // about whether this user's score means anything — see career-twin-client.
+  const { measuredBands: measuredBandCount, ratingIsSupported: basisSupportsRating } = healthScoreBasis(healthBands);
+  // And a verdict on a job search needs a job search. Same two conditions as
+  // the main dashboard, so the two screens cannot rate one account differently.
+  const searchHasStarted = (profile?.pipeline?.appliedApps ?? 0) > 0;
+  const ratingIsSupported = basisSupportsRating && searchHasStarted;
+  /*
+   * Red/amber/green is a verdict. Withholding the rating word while painting
+   * the same number red says the quiet part anyway — a brand-new account, the
+   * exact case this pass exists for, was getting a large red 0. When the rating
+   * is not supported the ring is neutral ink and carries no judgement.
+   */
+  /*
+   * The Outcomes insight card used to take its colour and its tone from
+   * `responseRate >= 20`. Response rate counts rejections — an employer
+   * writing back to say no is still an employer writing back — so it measures
+   * contact, not success, and a wall of rejections would have been painted
+   * green with a trending-up arrow. Tone comes from outcomes that actually
+   * moved forward; the rate keeps its own tile and states itself plainly.
+   */
+  const outcomesMovedForward = (outcomeStats?.callbackCount || 0)
+    + (outcomeStats?.interviewCount || 0)
+    + (outcomeStats?.offerCount || 0);
+  const outcomeInsightColor = outcomesMovedForward > 0 ? '#22c55e' : '#f59e0b';
+
+  const ratedColor = getScoreColor(profile?.healthScore ?? 0);
+  const scoreColor = ratingIsSupported ? ratedColor : 'var(--text-secondary)';
+  const scoreHeroBg = ratingIsSupported
+    ? `linear-gradient(135deg, ${ratedColor}06, ${cardBg})`
+    : cardBg;
+  const scoreHeroBorder = ratingIsSupported ? `${ratedColor}20` : 'var(--border-subtle)';
+  const scorePillBg = ratingIsSupported ? `${ratedColor}15` : 'var(--bg-elevated)';
+  const scorePillBorder = ratingIsSupported ? `${ratedColor}25` : 'var(--border-subtle)';
 
   return (
     <SuiteToolShell variant="standard">
@@ -591,16 +702,18 @@ export default function IntelligencePage() {
                 <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />
               ))}
             </div>
-          ) : outcomeStats ? (
+          ) : outcomeStats && outcomeStats.totalApplied > 0 ? (
             <>
-              {/* KPI Cards */}
+              {/* KPI Cards. Every rate here is null until it has a denominator;
+                  `?? 0` would print four undefined ratios as measured zeros,
+                  which is what this tab used to do on a brand-new account. */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
-                  { label: 'Response Rate', value: `${outcomeStats.responseRate || 0}%`, icon: 'reply', color: '#06b6d4', desc: 'Apps that got a reply' },
-                  { label: 'Ghost Rate', value: `${outcomeStats.ghostRate || 0}%`, icon: 'visibility_off', color: '#6b7280', desc: 'No response after 14+ days' },
+                  { label: 'Response Rate', value: pctOrDash(outcomeStats.responseRate), icon: 'reply', color: '#06b6d4', desc: `Of ${outcomeStats.totalApplied} sent` },
+                  { label: 'Ghost Rate', value: pctOrDash(outcomeStats.ghostRate), icon: 'visibility_off', color: '#6b7280', desc: `Of ${outcomeStats.totalReported} reported` },
                   { label: 'Avg Response', value: outcomeStats.avgDaysToResponse ? `${outcomeStats.avgDaysToResponse}d` : '—', icon: 'schedule', color: '#f59e0b', desc: 'Days until first response' },
-                  { label: 'Interview Rate', value: `${outcomeStats.interviewRate || 0}%`, icon: 'groups', color: '#8b5cf6', desc: 'Apps that led to interviews' },
-                  { label: 'Offer Rate', value: `${outcomeStats.offerRate || 0}%`, icon: 'celebration', color: '#22c55e', desc: 'Apps that resulted in offers' },
+                  { label: 'Interview Rate', value: pctOrDash(outcomeStats.interviewRate), icon: 'groups', color: '#8b5cf6', desc: `Of ${outcomeStats.totalApplied} sent` },
+                  { label: 'Offer Rate', value: pctOrDash(outcomeStats.offerRate), icon: 'celebration', color: '#22c55e', desc: `Of ${outcomeStats.totalApplied} sent` },
                 ].map((kpi, i) => (
                   <motion.div
                     key={kpi.label}
@@ -690,29 +803,27 @@ export default function IntelligencePage() {
                   transition={{ delay: 0.5 }}
                   className="rounded-2xl p-4 flex items-start gap-3"
                   style={{
-                    background: `${(outcomeStats.responseRate || 0) >= 20 ? '#22c55e' : '#f59e0b'}08`,
-                    border: `1px solid ${(outcomeStats.responseRate || 0) >= 20 ? '#22c55e' : '#f59e0b'}20`,
+                    background: `${outcomeInsightColor}08`,
+                    border: `1px solid ${outcomeInsightColor}20`,
                   }}
                 >
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{
-                    background: `${(outcomeStats.responseRate || 0) >= 20 ? '#22c55e' : '#f59e0b'}15`,
+                    background: `${outcomeInsightColor}15`,
                   }}>
-                    <span className="material-symbols-rounded text-lg" style={{
-                      color: (outcomeStats.responseRate || 0) >= 20 ? '#22c55e' : '#f59e0b',
-                    }}>
-                      {(outcomeStats.responseRate || 0) >= 20 ? 'trending_up' : 'lightbulb'}
+                    <span className="material-symbols-rounded text-lg" style={{ color: outcomeInsightColor }}>
+                      {outcomesMovedForward > 0 ? 'trending_up' : 'lightbulb'}
                     </span>
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{
-                      color: (outcomeStats.responseRate || 0) >= 20 ? '#22c55e' : '#f59e0b',
-                    }}>Outcome Insight</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: outcomeInsightColor }}>
+                      Outcome Insight
+                    </p>
                     <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                      {(outcomeStats.responseRate || 0) >= 20
-                        ? `Your ${outcomeStats.responseRate}% response rate is across ${outcomeStats.totalReported} reported outcomes.`
+                      {outcomesMovedForward > 0
+                        ? `${outcomesMovedForward} of ${outcomeStats.totalReported} reported outcome${outcomeStats.totalReported === 1 ? '' : 's'} moved forward — a callback, an interview or an offer.`
                         : (outcomeStats.ghostRate || 0) > 60
                           ? `${outcomeStats.ghostRate}% of your applications went silent. Consider following up 7-10 days after applying, and use ATS Preview to optimize keyword matching.`
-                          : `You've reported ${outcomeStats.totalReported} outcomes. Keep tracking to unlock deeper conversion insights and refine your strategy.`
+                          : `You've reported ${outcomeStats.totalReported} outcome${outcomeStats.totalReported === 1 ? '' : 's'}. None have moved forward yet.`
                       }
                     </p>
                   </div>
@@ -725,17 +836,28 @@ export default function IntelligencePage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-emerald-500/5" />
                 <div className="relative">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-                    <span className="material-symbols-rounded text-3xl text-cyan-500">fact_check</span>
+                    <span className="material-symbols-rounded text-3xl text-cyan-500">
+                      {outcomeFailed ? 'cloud_off' : 'fact_check'}
+                    </span>
                   </div>
-                  <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">No Outcome Data</h3>
-                  <p className="text-sm text-[var(--text-tertiary)] mb-5">Report outcomes on your applications to see conversion metrics here.</p>
+                  {/* Two different facts, two different sentences. The failure
+                      branch must not claim anything about the user's data —
+                      the request that would have told us did not come back. */}
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">
+                    {outcomeFailed ? 'Outcomes could not be loaded' : 'No Outcome Data'}
+                  </h3>
+                  <p className="text-sm text-[var(--text-tertiary)] mb-5">
+                    {outcomeFailed
+                      ? 'This tab could not read your outcomes just now, so nothing here is a statement about your applications. Try again in a moment.'
+                      : 'Conversion rates are counted from applications you have marked as sent. None are marked yet, so there is no rate to show — not a rate of zero.'}
+                  </p>
                   <button
-                    onClick={() => router.push('/suite/applications')}
+                    onClick={() => (outcomeFailed ? window.location.reload() : router.push('/suite/applications'))}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
                     style={{ background: 'linear-gradient(135deg, #06b6d4, #10b981)', boxShadow: '0 4px 16px rgba(6,182,212,0.3)' }}
                   >
-                    <span className="material-symbols-rounded text-sm">open_in_new</span>
-                    Go to Applications
+                    <span className="material-symbols-rounded text-sm">{outcomeFailed ? 'refresh' : 'open_in_new'}</span>
+                    {outcomeFailed ? 'Retry' : 'Go to Applications'}
                   </button>
                 </div>
               </div>
@@ -796,8 +918,8 @@ export default function IntelligencePage() {
         animate={{ opacity: 1, y: 0 }}
         className="rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-8"
         style={{
-          background: `linear-gradient(135deg, ${scoreColor}06, ${cardBg})`,
-          border: `1px solid ${scoreColor}20`,
+          background: scoreHeroBg,
+          border: `1px solid ${scoreHeroBorder}`,
         }}
       >
         {/* Animated Ring */}
@@ -826,48 +948,37 @@ export default function IntelligencePage() {
           </div>
         </div>
 
-        {/* Score Context */}
-        <div className="flex-1 min-w-[200px]">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-lg font-bold" style={{ color: scoreColor }}>{getScoreLabel(profile.healthScore)}</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold"
-              style={{ background: `${scoreColor}15`, color: scoreColor, border: `1px solid ${scoreColor}25` }}>
+        {/* Score Context. The rating word is only shown when at least three of
+            the four bands are measured — a label derived from one group out of
+            four describes that group, not the search. */}
+        <div className="min-w-0 flex-1 sm:min-w-[200px]">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 mb-2">
+            {ratingIsSupported && (
+              <span className="text-lg font-bold" style={{ color: scoreColor }}>{getScoreLabel(profile.healthScore)}</span>
+            )}
+            <span className="whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums"
+              style={{ background: scorePillBg, color: scoreColor, border: `1px solid ${scorePillBorder}` }}>
               {profile.daysActive}d active
             </span>
           </div>
-          <p className="text-xs text-[var(--text-secondary)] mb-3">
-            {profile.healthScore >= 70
-              ? 'Your career search is in great shape. Keep the momentum going.'
-              : profile.healthScore >= 45
-                ? 'Solid foundation. Focus on the recommendations below to level up.'
-                : 'You\'re just getting started. Each action you take builds your intelligence.'}
+          <p className="premium-copy-wrap text-xs text-[var(--text-secondary)]">
+            {healthBands.length === 0
+              ? 'Score breakdown is not available for this profile yet.'
+              : ratingIsSupported
+                ? `Scored on ${measuredBandCount} of ${healthBands.length} measured groups. Unmeasured groups are left out of the total rather than counted as zero.`
+                : !searchHasStarted
+                  ? 'No applications have been sent yet, so this number describes your groundwork, not how a search is going.'
+                  : `Only ${measuredBandCount} of ${healthBands.length} ${healthBands.length === 1 ? 'group has' : 'groups have'} anything measured, so this is a partial picture, not a rating.`}
           </p>
-          <div className="flex flex-wrap gap-3 sm:gap-4 text-[10px]">
-            {[
-              { label: 'Activity', score: Math.min(30, Math.round(profile.healthScore * 0.3)), max: 30, color: '#3b82f6' },
-              { label: 'Performance', score: Math.min(35, Math.round(profile.healthScore * 0.35)), max: 35, color: '#22c55e' },
-              { label: 'Preparedness', score: Math.min(20, Math.round(profile.healthScore * 0.2)), max: 20, color: '#f59e0b' },
-              { label: 'Wellbeing', score: Math.min(15, Math.round(profile.healthScore * 0.15)), max: 15, color: '#8b5cf6' },
-            ].map(dim => (
-              <div key={dim.label}>
-                <span className="text-[var(--text-muted)] block mb-0.5">{dim.label} ({dim.score}/{dim.max})</span>
-                <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.06)' }}>
-                  <motion.div className="h-full rounded-full" style={{ background: dim.color }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(dim.score / dim.max) * 100}%` }}
-                    transition={{ duration: 1, delay: 0.3 }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-2 sm:gap-3 text-center">
           {[
             { label: 'Apps', value: profile.pipeline.totalApps, icon: 'send' },
-            { label: 'Interviews', value: profile.interviews.totalDebriefs, icon: 'groups' },
+            // Debriefs, not interviews. `totalDebriefs` counts documents in
+            // users/{uid}/debriefs — interviews you sat and then wrote up.
+            { label: 'Debriefs', value: profile.interviews.totalDebriefs, icon: 'groups' },
             { label: 'Stories', value: profile.stories.totalStories, icon: 'auto_stories' },
             { label: 'Skills', value: profile.skills.confirmed.length, icon: 'code' },
           ].map(s => (
@@ -879,6 +990,75 @@ export default function IntelligencePage() {
           ))}
         </div>
       </motion.div>
+
+      {/* ── Health breakdown ──
+          The four real bands from computeHealthBands. These used to be the one
+          health number multiplied by 0.3 / 0.35 / 0.2 / 0.15, so all four bars
+          moved together and none of them told you anything. */}
+      {healthBands.length > 0 && (
+        <SuitePanel>
+          <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">insights</span>
+            What the score is made of
+          </h3>
+          <p className="premium-copy-wrap mb-4 text-xs text-[var(--text-muted)]">
+            Each group scores only what has been measured. Nothing is counted as zero because it is unknown.
+          </p>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+            {healthBands.map(bandItem => {
+              const measuredItems = bandItem.items.filter(i => i.measured);
+              const pct = bandItem.available > 0
+                ? Math.round((bandItem.earned / bandItem.available) * 100)
+                : 0;
+
+              if (bandItem.available === 0) {
+                return (
+                  <SuiteUnmeasured
+                    key={bandItem.key}
+                    label={bandItem.label}
+                    reason={HEALTH_BAND_REASON[bandItem.key] ?? 'Nothing in this group has been measured yet.'}
+                    density="compact"
+                  />
+                );
+              }
+
+              return (
+                <div key={bandItem.key} className="min-w-0">
+                  <div className="flex min-w-0 items-baseline justify-between gap-3">
+                    <span className="premium-heading-wrap min-w-0 text-xs font-semibold text-[var(--text-primary)]">
+                      {bandItem.label}
+                    </span>
+                    <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold tabular-nums text-[var(--text-secondary)]">
+                      {bandItem.earned}/{bandItem.available}
+                    </span>
+                  </div>
+                  {/* Track is --border-subtle, not --bg-elevated: in light
+                      theme --bg-elevated is #EEF2FA sitting on a near-white
+                      panel, so the unfilled part of the bar disappeared. */}
+                  <div
+                    className="mt-1.5 h-1.5 overflow-hidden rounded-full"
+                    style={{ background: 'var(--border-subtle)' }}
+                  >
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ background: 'var(--accent)' }}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ duration: 0.8, delay: 0.2 }}
+                    />
+                  </div>
+                  <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">
+                    {measuredItems.length} of {bandItem.items.length} measured
+                    {bandItem.available < bandItem.max
+                      ? ` — ${bandItem.max - bandItem.available} points not on the table yet`
+                      : ''}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </SuitePanel>
+      )}
 
       <CareerTwinMemoryPanel
         twin={twin}
@@ -944,26 +1124,48 @@ export default function IntelligencePage() {
             <span className="material-symbols-rounded text-base text-blue-500">filter_alt</span>
             Pipeline Funnel
           </h3>
+          {/* Every value here is a count the graph produced, not a count
+              back-derived from a rate. `Offers` used to be
+              `round(totalApps * offerConversion / 10000)` — applications
+              multiplied by a ratio of interviews — which showed 0 offers to a
+              user with 50 apps, 4 interviews and 1 offer. And each conversion
+              caption now names its own denominator instead of borrowing the
+              stage above it. */}
+          {/* `bar` is the width, and it is deliberately NOT `pct ?? something`.
+              'Applied' is the base of the funnel rather than a conversion: it
+              has no percentage of its own, and its bar is the full width every
+              stage below is a share of — empty when nothing has been sent. The
+              three conversion rows below it are null exactly when they are not
+              measurable, so their bar is EMPTY. Reading a fallback into those
+              nulls is how "Not measurable" ended up captioning a solid
+              full-width bar next to the count 0. */}
           {[
-            { label: 'Applied', value: profile.pipeline.totalApps, pct: 100, color: '#3b82f6' },
-            { label: 'Responded', value: Math.round(profile.pipeline.totalApps * profile.pipeline.responseRate / 100), pct: profile.pipeline.responseRate, color: '#06b6d4' },
-            { label: 'Interviews', value: profile.interviews.totalDebriefs, pct: profile.pipeline.interviewConversion, color: '#8b5cf6' },
-            { label: 'Offers', value: Math.round(profile.pipeline.totalApps * profile.pipeline.offerConversion / 10000), pct: profile.pipeline.offerConversion, color: '#22c55e' },
+            { label: 'Applied', value: profile.pipeline.appliedApps, pct: null, bar: profile.pipeline.appliedApps > 0 ? 100 : 0, basis: '', color: '#3b82f6' },
+            { label: 'Responded', value: profile.pipeline.responded, pct: profile.pipeline.responseRate, bar: profile.pipeline.responseRate ?? 0, basis: 'of applications sent', color: '#06b6d4' },
+            { label: 'Interviews', value: profile.pipeline.interviews, pct: profile.pipeline.interviewConversion, bar: profile.pipeline.interviewConversion ?? 0, basis: 'of responses', color: '#8b5cf6' },
+            { label: 'Offers', value: profile.pipeline.offers, pct: profile.pipeline.offerConversion, bar: profile.pipeline.offerConversion ?? 0, basis: 'of interviews', color: '#22c55e' },
           ].map((stage, i) => (
             <div key={stage.label} className="mb-3">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-[var(--text-secondary)]">{stage.label}</span>
-                <span className="text-xs font-bold text-[var(--text-primary)]">{stage.value}</span>
+                <span className="text-xs font-bold tabular-nums text-[var(--text-primary)]">{stage.value}</span>
               </div>
               <div className="h-2 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
+                {/* No 2% floor. A visible sliver at zero reads as a small
+                    measured value; an empty track reads as nothing, which is
+                    what it is. */}
                 <motion.div className="h-full rounded-full" style={{ background: stage.color }}
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.max(2, Math.min(100, stage.pct))}%` }}
+                  animate={{
+                    width: `${Math.max(0, Math.min(100, stage.bar))}%`,
+                  }}
                   transition={{ duration: 0.8, delay: 0.5 + i * 0.1 }}
                 />
               </div>
               {i > 0 && (
-                <span className="text-[9px] mt-0.5 block" style={{ color: stage.color }}>{stage.pct}% conversion</span>
+                <span className="text-[9px] mt-0.5 block" style={{ color: stage.color }}>
+                  {stage.pct === null ? `Not measurable — no ${stage.basis.replace('of ', '')} yet` : `${stage.pct}% ${stage.basis}`}
+                </span>
               )}
             </div>
           ))}
@@ -1073,25 +1275,44 @@ export default function IntelligencePage() {
             </div>
           </div>
 
-          {/* Gaps */}
-          <div>
+          {/* Gaps — three states, not two. An empty `gap` array means "compared
+              you against N roles and found nothing missing" OR "never compared
+              you against anything". The second is not a clean bill of health. */}
+          <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-red-500" /> Gaps ({profile.skills.gap.length})
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ background: profile.skills.fitAnalysisCount > 0 ? '#ef4444' : 'var(--text-muted)' }}
+              />
+              Gaps{profile.skills.fitAnalysisCount > 0 ? ` (${profile.skills.gap.length})` : ''}
             </p>
-            <div className="flex flex-wrap gap-1">
-              {profile.skills.gap.map((s, index) => (
-                <span key={`${s || 'skill-gap'}-${index}`} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: '#ef444412', color: '#ef4444', border: '1px solid #ef444420' }}>{s}</span>
-              ))}
-              {profile.skills.gap.length === 0 && (
-                <span className="text-[10px] text-emerald-500">No gaps detected ✓</span>
-              )}
-            </div>
+            {profile.skills.fitAnalysisCount === 0 ? (
+              <SuiteUnmeasured
+                label="No job-fit analysis on record"
+                reason="Gaps are the skills a job description asks for that your resume does not show. Nothing has been compared yet, so there is nothing to report — this is not a clean bill of health."
+                density="compact"
+              />
+            ) : profile.skills.gap.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {profile.skills.gap.map((s, index) => (
+                  <span key={`${s || 'skill-gap'}-${index}`} className="wrap-natural text-[10px] px-2 py-0.5 rounded-full"
+                    style={{ background: '#ef444412', color: '#ef4444', border: '1px solid #ef444420' }}>{s}</span>
+                ))}
+              </div>
+            ) : (
+              <p className="premium-copy-wrap flex min-w-0 items-start gap-1 text-[10px] leading-4 text-[var(--text-secondary)]">
+                <span className="material-symbols-rounded shrink-0 text-[12px] text-[var(--text-muted)]">remove</span>
+                <span className="min-w-0">
+                  No gaps found across {profile.skills.fitAnalysisCount} analyzed{' '}
+                  {profile.skills.fitAnalysisCount === 1 ? 'role' : 'roles'}
+                </span>
+              </p>
+            )}
           </div>
         </div>
       </motion.div>
 
-      {/* ── Morale + Time to Offer ── */}
+      {/* ── Wellbeing + Search pace ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Morale */}
         <motion.div
@@ -1103,17 +1324,41 @@ export default function IntelligencePage() {
             <span className="material-symbols-rounded text-base" style={{ color: '#ec4899' }}>self_improvement</span>
             Wellbeing
           </h3>
-          <div className="flex items-center gap-4">
-            <span className="material-symbols-rounded text-[36px]" style={{ color: ['#ef4444', '#f59e0b', '#6b7280', '#22c55e', '#10b981'][profile.morale.current - 1] || '#6b7280' }}>{['sentiment_very_dissatisfied', 'sentiment_dissatisfied', 'sentiment_neutral', 'sentiment_satisfied', 'sentiment_very_satisfied'][profile.morale.current - 1] || 'sentiment_neutral'}</span>
-            <div>
-              <p className="text-sm font-semibold text-[var(--text-primary)]">{profile.morale.current}/5 Morale</p>
-              <p className="text-xs text-[var(--text-secondary)] capitalize">{profile.morale.trend} trend</p>
-              <p className="text-[10px] mt-0.5" style={{
-                color: profile.morale.burnoutRisk === 'low' ? '#22c55e'
-                  : profile.morale.burnoutRisk === 'moderate' ? '#f59e0b' : '#ef4444',
-              }}>Burnout risk: {profile.morale.burnoutRisk}</p>
+          {/* Morale is self-reported on the Weekly Pulse tab. With no check-in
+              there is no score, no trend and no burnout risk — we do not tell a
+              stranger how they feel. */}
+          {profile.morale.current === null ? (
+            <SuiteUnmeasured
+              label="No morale check-ins yet"
+              reason="Morale is something you report, not something we infer. Check in on the Weekly Pulse tab and it shows up here."
+              action={
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('pulse')}
+                  className="btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                >
+                  <span className="material-symbols-rounded text-[14px]">monitor_heart</span>
+                  Check in on Weekly Pulse
+                </button>
+              }
+            />
+          ) : (
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="material-symbols-rounded shrink-0 text-[36px]" style={{ color: ['#ef4444', '#f59e0b', '#6b7280', '#22c55e', '#10b981'][profile.morale.current - 1] || '#6b7280' }}>{['sentiment_very_dissatisfied', 'sentiment_dissatisfied', 'sentiment_neutral', 'sentiment_satisfied', 'sentiment_very_satisfied'][profile.morale.current - 1] || 'sentiment_neutral'}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold tabular-nums text-[var(--text-primary)]">{profile.morale.current}/5 Morale</p>
+              {profile.morale.trend && (
+                <p className="text-xs text-[var(--text-secondary)] capitalize">{profile.morale.trend} trend</p>
+              )}
+              {profile.morale.burnoutRisk && (
+                <p className="text-[10px] mt-0.5" style={{
+                  color: profile.morale.burnoutRisk === 'low' ? '#22c55e'
+                    : profile.morale.burnoutRisk === 'moderate' ? '#f59e0b' : '#ef4444',
+                }}>Burnout risk: {profile.morale.burnoutRisk}</p>
+              )}
             </div>
           </div>
+          )}
           {profile.morale.history.length > 0 && (
             <div className="flex items-end gap-0.5 h-8 mt-3">
               {profile.morale.history.map((m, i) => (
@@ -1131,112 +1376,69 @@ export default function IntelligencePage() {
           )}
         </motion.div>
 
-        {/* Time to Offer */}
+        {/* Search pace — counted, never projected. There is no honest weeks-to-offer
+            number without the user's own offer conversion, which needs an offer. */}
         <motion.div
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
-          className="rounded-xl p-5"
+          className="min-w-0 rounded-xl p-5"
           style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
           <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base text-blue-500">timer</span>
-            Estimated Time to Offer
+            <span className="material-symbols-rounded text-base text-blue-500">speed</span>
+            Search pace
           </h3>
-          {profile.estimatedWeeksToOffer ? (
-            <div>
-              <p className="text-3xl font-bold text-[var(--text-primary)]">
-                ~{profile.estimatedWeeksToOffer} <span className="text-sm font-normal text-[var(--text-muted)]">weeks</span>
+          {profile.pipeline.appliedApps > 0 ? (
+            <div className="min-w-0">
+              {/* Velocity carries one decimal. Rounded to an integer, one
+                  application three weeks old printed "0 apps / week" directly
+                  above "Applications tracked: 1". */}
+              <p className="whitespace-nowrap text-3xl font-bold tabular-nums text-[var(--text-primary)]">
+                {profile.pipeline.velocity}{' '}
+                <span className="text-sm font-normal text-[var(--text-muted)]">sent / week</span>
               </p>
-              <p className="text-xs text-[var(--text-secondary)] mt-1">
-                At {profile.pipeline.velocity} apps/week with {profile.pipeline.responseRate}% response rate
+              <dl className="mt-3 space-y-1.5 text-xs">
+                {[
+                  { term: 'Applications tracked', value: `${profile.pipeline.totalApps}` },
+                  { term: 'Marked as sent', value: `${profile.pipeline.appliedApps}` },
+                  { term: 'Days active', value: `${profile.daysActive}` },
+                  {
+                    term: 'Responded',
+                    value: `${profile.pipeline.responded} of ${profile.pipeline.appliedApps}`,
+                  },
+                ].map(row => (
+                  <div key={row.term} className="flex min-w-0 items-baseline justify-between gap-3">
+                    <dt className="min-w-0 text-[var(--text-secondary)]">{row.term}</dt>
+                    <dd className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-[var(--text-primary)]">
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="premium-copy-wrap mt-3 text-[10px] leading-4 text-[var(--text-muted)]">
+                Counted from what you have tracked here. No timeline is projected from it.
               </p>
-                <span className="text-[10px] text-[var(--text-muted)] mt-2 flex items-center gap-1">
-                  <span className="material-symbols-rounded text-[12px]">bar_chart</span> Based on: 40 apps → 8 responses → 3 interviews → 1 offer (industry avg)
-                </span>
             </div>
           ) : (
-            <div className="text-center py-4">
-              <span className="material-symbols-rounded text-[28px] block mb-1" style={{ color: '#6b7280' }}>timer</span>
-              <p className="text-xs text-[var(--text-muted)]">Apply to more jobs to estimate your timeline</p>
-            </div>
+            <SuiteUnmeasured
+              label="No pace to report"
+              reason={profile.pipeline.totalApps > 0
+                ? `Pace counts applications you have marked as sent. ${profile.pipeline.totalApps} ${profile.pipeline.totalApps === 1 ? 'record is' : 'records are'} tracked but none are marked sent yet, so there is nothing to count.`
+                : 'Pace is counted from the applications you track. None are tracked yet, so there is nothing to count.'}
+              action={
+                <button
+                  type="button"
+                  onClick={() => router.push('/suite/applications')}
+                  className="btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                >
+                  <span className="material-symbols-rounded text-[14px]">add</span>
+                  Track an application
+                </button>
+              }
+            />
           )}
         </motion.div>
       </div>
 
-      {/* ── Your Edge ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.9 }}
-        className="rounded-xl overflow-hidden"
-        style={{ border: `1px solid ${cardBorder}` }}
-      >
-        <div className="px-5 py-3.5 flex items-center gap-2" style={{
-          background: isLight ? 'rgba(34,197,94,0.04)' : 'rgba(34,197,94,0.06)',
-          borderBottom: `1px solid ${cardBorder}`,
-        }}>
-          <span className="material-symbols-rounded text-base" style={{ color: '#22c55e' }}>shield</span>
-          <span className="text-sm font-bold text-[var(--text-primary)]">Your Edge vs. Mass Apply</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x" style={{ borderColor: cardBorder }}>
-          {/* Your approach */}
-          <div className="p-5 space-y-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background: '#22c55e20', color: '#22c55e' }}>✓</span>
-              <span className="text-xs font-bold text-[var(--text-primary)]">Your Approach</span>
-            </div>
-            {[
-              { label: 'Tailored resumes per job', stat: `${profile.resumeVersionCount} morphed versions`, active: profile.resumeVersionCount > 0 },
-              { label: 'Fit analysis before applying', stat: `${profile.pipeline.responseRate}% response rate`, active: profile.pipeline.responseRate > 0 },
-              { label: 'Interview prep + debriefs', stat: `${profile.interviews.totalDebriefs} debriefs logged`, active: profile.interviews.totalDebriefs > 0 },
-              { label: 'Story bank for answers', stat: `${profile.stories.totalStories} STAR stories`, active: profile.stories.totalStories > 0 },
-              { label: 'Skill gap tracking', stat: `${profile.skills.gap.length} gaps identified`, active: true },
-            ].map(item => (
-              <div key={item.label} className="flex items-start gap-2">
-                <span className="material-symbols-rounded text-[14px] mt-0.5" style={{ color: item.active ? '#22c55e' : 'var(--text-muted)' }}>
-                  {item.active ? 'check_circle' : 'radio_button_unchecked'}
-                </span>
-                <div>
-                  <p className="text-xs text-[var(--text-primary)]">{item.label}</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">{item.stat}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Industry average */}
-          <div className="p-5 space-y-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black" style={{ background: '#ef444420', color: '#ef4444' }}>✗</span>
-              <span className="text-xs font-bold text-[var(--text-primary)]">Mass Apply Stats</span>
-            </div>
-            {[
-              { label: 'Generic resume for every job', stat: '2-3% callback rate' },
-              { label: 'No fit analysis', stat: '85% of apps are poor matches' },
-              { label: 'No interview prep', stat: '60% ghost after first round' },
-              { label: 'No answer preparation', stat: 'Winging behavioral questions' },
-              { label: 'No post-interview reflection', stat: 'Repeat same mistakes' },
-            ].map(item => (
-              <div key={item.label} className="flex items-start gap-2">
-                <span className="material-symbols-rounded text-[14px] mt-0.5" style={{ color: '#ef4444' }}>cancel</span>
-                <div>
-                  <p className="text-xs text-[var(--text-secondary)]">{item.label}</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">{item.stat}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Bottom insight */}
-        <div className="px-5 py-3 text-center" style={{
-          background: isLight ? 'rgba(34,197,94,0.03)' : 'rgba(34,197,94,0.04)',
-          borderTop: `1px solid ${cardBorder}`,
-        }}>
-          <p className="text-[11px] text-[var(--text-secondary)]">
-            <span className="font-bold" style={{ color: '#22c55e' }}>Intelligence-first</span> applicants see{' '}
-            <span className="font-bold text-[var(--text-primary)]">3-5x higher</span> response rates compared to spray-and-pray.
-          </p>
-        </div>
-      </motion.div>
       </>)}
       </>)}
     </SuiteToolShell>

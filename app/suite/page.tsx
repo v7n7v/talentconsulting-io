@@ -11,14 +11,25 @@ import JobFeedWidget from '@/components/JobFeedWidget';
 import DashboardActionInbox from '@/components/dashboard/DashboardActionInbox';
 import PhaseOneCommandCenter from '@/components/dashboard/PhaseOneCommandCenter';
 import { SuitePanel, SuiteToolIcon, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
-import { normalizeCareerTwinSummary, type CareerTwinSummary } from '@/lib/career-twin-client';
+import {
+  healthScoreBasis,
+  normalizeCareerTwinSummary,
+  percentOrDash,
+  type CareerTwinSummary,
+  type HealthScoreBand,
+} from '@/lib/career-twin-client';
 
 type DashboardTwinProfile = {
   healthScore?: number;
+  /** The bands the score was computed from. Needed to know if it can be rated. */
+  healthBands?: HealthScoreBand[];
   skills?: { confirmed?: string[] };
   pipeline?: {
     velocity?: number;
-    responseRate?: number;
+    /** Records actually sent. `totalApps` includes never-sent morph records. */
+    appliedApps?: number;
+    /** Null when nothing has been sent. Never render it as 0%. */
+    responseRate?: number | null;
   };
   interviews?: {
     totalDebriefs?: number;
@@ -151,6 +162,8 @@ function getSmartGreeting(firstName: string, twinData: DashboardTwinData | null)
 
   const { completeness, behavioralBank, background } = twinData;
   const score = twinData.profile?.healthScore || 0;
+  const basis = healthScoreBasis(twinData.profile?.healthBands);
+  const sentApplications = twinData.profile?.pipeline?.appliedApps ?? 0;
 
   if (completeness?.score < 40) {
     const next = completeness.missing?.[0] || 'Resume uploaded';
@@ -158,6 +171,25 @@ function getSmartGreeting(firstName: string, twinData: DashboardTwinData | null)
   }
   if (behavioralBank?.coverageScore < 25 && behavioralBank?.totalStories < 3) {
     return { greeting: `${timeGreet}, ${firstName}`, subtitle: `Add STAR stories to cover ${behavioralBank.uncoveredCategories?.slice(0, 2).join(' & ') || 'key areas'}.` };
+  }
+  /*
+   * Before any score-derived line, two facts that outrank it.
+   *
+   * healthScore is earned/available across measured items, so a user the
+   * product has barely observed can score high on a thin slice of evidence.
+   * `basis.ratingIsSupported` is the shared test for whether the number can
+   * carry a word at all — see lib/career-twin-client.ts.
+   *
+   * And "keep the momentum going" needs momentum. A user with a resume,
+   * debriefs and good morale but zero applications sent scored 85 here and was
+   * congratulated on a search that has not started. Applications sent is not
+   * an opinion.
+   */
+  if (sentApplications === 0) {
+    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `No applications sent yet. That is the next step.` };
+  }
+  if (!basis.ratingIsSupported) {
+    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `Tracking ${sentApplications} sent application${sentApplications === 1 ? '' : 's'}. More signal, sharper guidance.` };
   }
   if (score >= 70) {
     return { greeting: `${timeGreet}, ${firstName}`, subtitle: `You're in strong shape. Keep the momentum going.` };
@@ -182,7 +214,14 @@ export default function DashboardPage() {
   const { tier } = useUserTier();
   const [vaultStats, setVaultStats] = useState<{ total: number; bridge: number; interview: number; flashcards: number } | null>(null);
   const [healthData, setHealthData] = useState<{
-    score: number; velocity: number; responseRate: number;
+    // `number | null`, because the API returns null for a rate with no
+    // denominator. Declaring it `number` did not make it one — the profile
+    // arrives from `r.json()`, so TypeScript never saw the null and the tile
+    // printed a measured "0%" to users who had sent nothing.
+    score: number; velocity: number; responseRate: number | null;
+    bands: HealthScoreBand[];
+    /** Applications actually sent. Not `totalApps`, which counts morph records. */
+    appliedApps: number;
     debriefs: number; topRec: { title: string; actionPath: string; color: string; icon: string } | null;
     sonaBrief: { title: string; actionUrl: string; priority: 'high' | 'medium' | 'low' } | null;
   } | null>(null);
@@ -237,7 +276,11 @@ export default function DashboardPage() {
         setHealthData({
           score: p.healthScore || 0,
           velocity: p.pipeline?.velocity || 0,
-          responseRate: p.pipeline?.responseRate || 0,
+          // `?? null`, not `|| 0`. A null response rate means there is no
+          // denominator; zero means every employer stayed silent.
+          responseRate: typeof p.pipeline?.responseRate === 'number' ? p.pipeline.responseRate : null,
+          bands: Array.isArray(p.healthBands) ? p.healthBands : [],
+          appliedApps: p.pipeline?.appliedApps || 0,
           debriefs: p.interviews?.totalDebriefs || 0,
           topRec: topRec ? { title: topRec.title, actionPath: topRec.actionPath, color: topRec.color, icon: topRec.icon } : null,
           sonaBrief: data.sonaBrief ? { title: data.sonaBrief.title, actionUrl: data.sonaBrief.actionUrl, priority: data.sonaBrief.priority } : null,
@@ -289,11 +332,28 @@ export default function DashboardPage() {
   const initials = getInitials(fullName);
   const { greeting, subtitle } = getSmartGreeting(firstName, twinData);
   const score = healthData?.score || 0;
-  const healthStatus = score >= 70
-    ? { label: 'Strong', icon: 'check_circle', className: 'icon-status-success', color: 'var(--success)' }
-    : score >= 45
-      ? { label: 'Watch', icon: 'error', className: 'icon-status-warning', color: 'var(--warning)' }
-      : { label: 'Needs setup', icon: 'priority_high', className: 'icon-status-danger', color: 'var(--danger)' };
+  /*
+   * "Strong" / "Watch" / "Needs setup" are verdicts, and the number they read
+   * is earned/available across MEASURED items — not progress towards 100. A
+   * user measured on one thin slice can score high without the product knowing
+   * anything about their search, so the word is withheld until the same test
+   * the Intelligence page uses says the score can carry one.
+   */
+  const healthBasis = healthScoreBasis(healthData?.bands);
+  // ...and a verdict on a job search needs a job search. A user with a resume,
+  // good debriefs and good morale but nothing sent scored 73 and wore a green
+  // "Strong" badge. The badge and the greeting below now refuse on the same
+  // two conditions, so they cannot say different things about one account.
+  const searchHasStarted = (healthData?.appliedApps ?? 0) > 0;
+  const healthStatus = !searchHasStarted
+    ? { label: 'Nothing sent yet', icon: 'outbox', className: 'icon-neutral', color: 'var(--text-muted)' }
+    : !healthBasis.ratingIsSupported
+      ? { label: 'Partial picture', icon: 'pending', className: 'icon-neutral', color: 'var(--text-muted)' }
+      : score >= 70
+        ? { label: 'Strong', icon: 'check_circle', className: 'icon-status-success', color: 'var(--success)' }
+        : score >= 45
+          ? { label: 'Watch', icon: 'error', className: 'icon-status-warning', color: 'var(--warning)' }
+          : { label: 'Needs setup', icon: 'priority_high', className: 'icon-status-danger', color: 'var(--danger)' };
   const completeness = twinData?.completeness?.score ?? null;
   const memberSince = user?.metadata?.creationTime
     ? new Date(user.metadata.creationTime).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
@@ -554,7 +614,9 @@ export default function DashboardPage() {
                 <div className="mt-5 grid grid-cols-3 gap-2 border-t border-[var(--border-subtle)] pt-4">
                   {[
                     { label: 'Apps/week', value: healthData.velocity, icon: 'speed' },
-                    { label: 'Response', value: `${healthData.responseRate}%`, icon: 'mark_email_read' },
+                    // percentOrDash, not `${x}%`. An em dash reads as "we do
+                    // not know"; "0%" reads as "every employer ignored you".
+                    { label: 'Response', value: percentOrDash(healthData.responseRate), icon: 'mark_email_read' },
                     { label: 'Debriefs', value: healthData.debriefs, icon: 'rate_review' },
                   ].map((metric) => (
                     <div key={metric.label} className="min-w-0">

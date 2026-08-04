@@ -115,10 +115,17 @@ export async function GET(req: NextRequest) {
       .reverse()
       .slice(0, 10);
 
-    // Compute aggregate outcome stats
+    // Compute aggregate outcome stats.
+    //
+    // `|| 1` used to stand in for the denominator here. That turned five
+    // undefined ratios into five measured zeros: a brand-new account with no
+    // applications was shown "Response Rate 0%", "Interview Rate 0%",
+    // "Offer Rate 0%" and "Ghost Rate 0%" — and the "No Outcome Data" empty
+    // state below it was unreachable, because the page gates on the stats
+    // object existing rather than on the count.
     const appliedApps = allApps.filter(a => a.status !== 'not_applied');
     const withOutcome = allApps.filter(a => a.outcome_response);
-    const totalApplied = appliedApps.length || 1;
+    const totalApplied = appliedApps.length;
     const totalReported = withOutcome.length;
 
     const counts: Record<string, number> = { callback: 0, interview: 0, offer: 0, rejection: 0, ghosted: 0 };
@@ -133,15 +140,29 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const responded = counts.callback + counts.interview + counts.offer;
+    /*
+     * A rejection is a response.
+     *
+     * This used to be `callback + interview + offer`, which made "Response
+     * Rate" mean "positive response rate" while the Overview tab of the same
+     * page — EMPLOYER_RESPONSE_STATUSES in lib/career-graph.ts, under the
+     * comment "the statuses that mean an employer came back to you" — counted
+     * rejections. A user whose three employers had all written back to say no
+     * read "Responded 3 — 100% of applications sent" on one tab and "Response
+     * Rate 0% / Of 3 sent" on the next. `ghosted` stays out, for the obvious
+     * reason. The positive outcomes keep their own tiles below.
+     */
+    const responded = counts.callback + counts.interview + counts.offer + counts.rejection;
     const stats = {
       totalReported,
-      totalApplied: appliedApps.length,
-      responseRate: Math.round((responded / totalApplied) * 100),
-      ghostRate: Math.round((counts.ghosted / Math.max(totalReported, 1)) * 100),
+      totalApplied,
+      // Null, not zero, when there is nothing to divide by. The client renders
+      // null as an em dash and hides the whole panel when totalApplied is 0.
+      responseRate: totalApplied > 0 ? Math.round((responded / totalApplied) * 100) : null,
+      ghostRate: totalReported > 0 ? Math.round((counts.ghosted / totalReported) * 100) : null,
       avgDaysToResponse: daysCount > 0 ? Math.round(totalDays / daysCount) : null,
-      interviewRate: Math.round(((counts.interview + counts.offer) / totalApplied) * 100),
-      offerRate: Math.round((counts.offer / totalApplied) * 100),
+      interviewRate: totalApplied > 0 ? Math.round(((counts.interview + counts.offer) / totalApplied) * 100) : null,
+      offerRate: totalApplied > 0 ? Math.round((counts.offer / totalApplied) * 100) : null,
       callbackCount: counts.callback,
       interviewCount: counts.interview,
       offerCount: counts.offer,

@@ -383,8 +383,13 @@ export default function StoryBankPage() {
           maxAnswers: 4,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not match stories.');
+      // `res.json()` first would throw a raw SyntaxError on any non-JSON
+      // response, which is what the user saw: the parser's complaint about an
+      // HTML error page, presented as if it were a Story Bank message.
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) {
+        throw new Error(data?.error || 'Story matching is not available right now, so nothing was matched.');
+      }
       setMatchResult(data);
       if (data.recommendedStoryId) setSelectedId(data.recommendedStoryId);
       setStatus(data.recommendedStoryId ? 'Taco matched the best proof story.' : 'No strong proof match yet. Add a story for this category.');

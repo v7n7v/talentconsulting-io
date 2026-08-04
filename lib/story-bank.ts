@@ -306,7 +306,25 @@ function toFirestoreStory(story: StoryBankStory) {
   return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
 }
 
-async function migrateLegacyStories(uid: string) {
+/**
+ * A stable canonical id for a legacy story.
+ *
+ * `canonicalRef.doc()` mints a fresh auto-id, which makes the migration
+ * non-idempotent under concurrency: two handlers that both read before either
+ * writes each insert their own copy of the same legacy doc, and because the
+ * copies then dedupe against *each other* by legacySourceId, the duplication
+ * is permanent. A deterministic id makes the second write land on the first
+ * write's document instead of beside it.
+ */
+function legacyCanonicalId(legacySourcePath: string, legacyDocId: string) {
+  const safe = `legacy_${legacySourcePath}_${legacyDocId}`
+    .replace(/[/\\]/g, '-')
+    .replace(/^__|__$/g, '_')
+    .slice(0, 1400);
+  return safe;
+}
+
+export async function migrateLegacyStories(uid: string) {
   const db = getAdminDb();
   const userRef = db.collection('users').doc(uid);
   const canonicalRef = userRef.collection(STORY_BANK_COLLECTION);
@@ -346,7 +364,7 @@ async function migrateLegacyStories(uid: string) {
       const fp = fingerprint(normalized);
       if (existingLegacy.has(key) || existingFingerprints.has(fp)) return;
 
-      const nextRef = canonicalRef.doc();
+      const nextRef = canonicalRef.doc(legacyCanonicalId(source.legacySourcePath, doc.id));
       batch.set(nextRef, toFirestoreStory(normalized));
       existingLegacy.add(key);
       existingFingerprints.add(fp);
@@ -358,19 +376,30 @@ async function migrateLegacyStories(uid: string) {
   return migratedCount;
 }
 
-export async function listStoryBankStories(uid: string, filters: StoryListFilters = {}) {
-  const migratedCount = await migrateLegacyStories(uid);
+/**
+ * Read the canonical bank. No migration, no write, no pagination.
+ *
+ * `listStoryBankStories` runs `migrateLegacyStories` first, and that is a
+ * read-then-write with no transaction and no lock. Anything that only needs to
+ * READ the bank must come through here instead: two handlers racing into the
+ * migration on one page load is how a user's stories get duplicated.
+ */
+export async function readStoryBankStories(uid: string): Promise<StoryBankStory[]> {
   const db = getAdminDb();
-  const limit = Math.min(Math.max(Number(filters.limit) || 100, 1), 150);
-  const page = Math.max(Number(filters.page) || 1, 1);
-
   const snap = await db.collection('users').doc(uid)
     .collection(STORY_BANK_COLLECTION)
     .orderBy('createdAt', 'desc')
     .limit(300)
     .get();
+  return snap.docs.map(doc => normalizeStoryData(doc.data(), doc.id));
+}
 
-  let stories = snap.docs.map(doc => normalizeStoryData(doc.data(), doc.id));
+export async function listStoryBankStories(uid: string, filters: StoryListFilters = {}) {
+  const migratedCount = await migrateLegacyStories(uid);
+  const limit = Math.min(Math.max(Number(filters.limit) || 100, 1), 150);
+  const page = Math.max(Number(filters.page) || 1, 1);
+
+  let stories = await readStoryBankStories(uid);
   const search = cleanString(filters.search, 200).toLowerCase();
   const category = cleanString(filters.category, 80).toLowerCase();
   const source = cleanString(filters.source, 80).toLowerCase();

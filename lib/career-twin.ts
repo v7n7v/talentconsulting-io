@@ -78,11 +78,23 @@ export interface CareerTwinMemory {
   };
   activeSearch: {
     totalApplications: number;
-    responseRate: number;
+    /** Of `totalApplications`, the ones actually marked as sent. */
+    sentApplications: number;
+    /** Null until there is a sent application to divide by. */
+    responseRate: number | null;
     velocity: number;
     queuedApplications: number;
     staleApplications: number;
     skillGaps: string[];
+    /**
+     * How many fit analyses `skillGaps` was derived from.
+     *
+     * Without it, an empty `skillGaps` is ambiguous — "we compared you against
+     * roles and found nothing missing" and "we have never compared you against
+     * anything" are opposite facts, and the prompt was stating the second as
+     * the first.
+     */
+    fitAnalysisCount: number;
   };
   nextBestActions: CareerTwinAction[];
 }
@@ -96,7 +108,21 @@ export interface CareerTwinAction {
 }
 
 const TWIN_DOC_PATH = 'career_twin';
-const TWIN_VERSION = 2;
+// 3 — healthBands added and morale became nullable; persisted v2 twins carry a
+//     fabricated morale default and no band breakdown, so they must recompute.
+// 4 — pipeline gained appliedApps / responded / interviews / offers, its rates
+//     became nullable, and `responded` stopped counting `not_applied` records.
+//     A persisted v3 twin carries the inflated response rate and no real
+//     counts, so the UI would render `undefined` offers against a rate that
+//     never matched the Weekly Pulse tab.
+// 5 — the health items were re-gated on their own preconditions rather than on
+//     a neighbouring signal, `volume` switched from records tracked to
+//     applications sent, and velocity's denominator moved to the oldest SENT
+//     record. The bands are persisted, so a v4 document would keep serving a
+//     breakdown computed under the old, wrong gates. Also adds
+//     skills.weakEvidenceCategories, interviews.resolvedOutcomeCount /
+//     questionCount and memory.activeSearch.fitAnalysisCount.
+const TWIN_VERSION = 5;
 
 // Standard behavioral question categories
 const BEHAVIORAL_CATEGORIES = [
@@ -199,22 +225,28 @@ export function exportTwinJSON(twin: CareerTwin): object {
     profile: {
       healthScore: twin.healthScore,
       daysActive: twin.daysActive,
-      estimatedWeeksToOffer: twin.estimatedWeeksToOffer,
     },
     background: twin.background,
     skills: twin.skills,
     pipeline: {
       totalApplications: twin.pipeline.totalApps,
+      sentApplications: twin.pipeline.appliedApps,
       velocity: twin.pipeline.velocity,
+      responded: twin.pipeline.responded,
+      interviews: twin.pipeline.interviews,
+      offers: twin.pipeline.offers,
       responseRate: twin.pipeline.responseRate,
       ghostRate: twin.pipeline.ghostRate,
       topCompanies: twin.pipeline.topCompanies,
     },
     interviews: {
       totalDebriefs: twin.interviews.totalDebriefs,
-      passRate: twin.interviews.passRate,
-      avgConfidence: twin.interviews.avgConfidence,
-      trend: twin.interviews.confidenceTrend,
+      // null when the precondition is not met, for the same reason the
+      // pipeline rates above are nullable. An exported profile is evidence.
+      passRate: twin.interviews.resolvedOutcomeCount > 0 ? twin.interviews.passRate : null,
+      resolvedOutcomeCount: twin.interviews.resolvedOutcomeCount,
+      avgConfidence: twin.interviews.questionCount > 0 ? twin.interviews.avgConfidence : null,
+      trend: twin.interviews.questionCount > 0 ? twin.interviews.confidenceTrend : null,
       weakAreas: twin.interviews.weakCategories.map(c => c.category),
       strongAreas: twin.interviews.strongCategories.map(c => c.category),
     },
@@ -246,7 +278,8 @@ export function getTwinPromptSummary(twin: CareerTwin): string {
   };
   const activeSearch = memory.activeSearch || {
     totalApplications: 0,
-    responseRate: 0,
+    sentApplications: 0,
+    responseRate: null,
     velocity: 0,
     queuedApplications: 0,
     staleApplications: 0,
@@ -270,9 +303,14 @@ export function getTwinPromptSummary(twin: CareerTwin): string {
     '## Taco Career Twin Memory',
     `Identity: ${compactList([identity.name, identity.currentTitle, identity.seniority]) || 'not fully known'}`,
     `Targets: ${compactList(goals.targetRoles) || 'not set'}${goals.remotePreference ? ` (${goals.remotePreference})` : ''}`,
-    `Search: ${activeSearch.totalApplications} apps, ${activeSearch.velocity}/week, ${activeSearch.responseRate}% response rate, ${activeSearch.queuedApplications} queued`,
+    // "0% response rate" is what a null used to render as here, and Taco quoted
+    // it back at users who had never sent an application.
+    `Search: ${activeSearch.totalApplications} tracked (${activeSearch.sentApplications ?? 0} sent), ${activeSearch.velocity}/week, response rate ${activeSearch.responseRate === null || activeSearch.responseRate === undefined ? 'not measured' : `${activeSearch.responseRate}%`}, ${activeSearch.queuedApplications} queued`,
     `Skills: ${compactList(confirmedFacts.skills, 12) || 'not confirmed yet'}`,
-    `Gaps: ${compactList(activeSearch.skillGaps, 8) || 'none detected yet'}`,
+    // "none detected yet" told Taco a fact the product does not have. An empty
+    // gap list only means "no gaps" once a role has actually been analyzed —
+    // the same distinction the line above draws for the response rate.
+    `Gaps: ${compactList(activeSearch.skillGaps, 8) || (activeSearch.fitAnalysisCount ? 'none against the roles analyzed so far' : 'no role analyzed yet, so nothing compared')}`,
     `Story coverage: ${twin.behavioralBank.coverageScore}% across ${twin.behavioralBank.totalStories} stories`,
     `Constraints: external actions require user review; autonomy=${constraints.autonomyLevel || 'review-first'}`,
   ];
@@ -467,11 +505,13 @@ async function buildMemory(
     },
     activeSearch: {
       totalApplications: profile.pipeline.totalApps,
+      sentApplications: profile.pipeline.appliedApps,
       responseRate: profile.pipeline.responseRate,
       velocity: profile.pipeline.velocity,
       queuedApplications: queueSnap?.size || 0,
       staleApplications,
       skillGaps: cleanStrings(profile.skills.gap, 10),
+      fitAnalysisCount: profile.skills.fitAnalysisCount,
     },
     nextBestActions: buildNextBestActions(profile, behavioral, completeness, queueSnap?.size || 0, staleApplications),
   };

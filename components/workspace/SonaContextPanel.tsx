@@ -13,6 +13,7 @@ import {
   metricValue,
   normalizeCareerTwinMemory,
   normalizeCareerTwinSummary,
+  percentOrDash,
   type CareerTwinSummary,
 } from '@/lib/career-twin-client';
 import {
@@ -196,13 +197,18 @@ function CareerTwinRail({
     salaryMin: null,
     remotePreference: 'any',
   };
+  // `responseRate: null`, not 0 — this fallback only runs when there is no
+  // memory to read, which is the definition of not measured. `normalizeCareerTwinMemory`
+  // always returns an activeSearch, so it is belt and braces either way.
   const activeSearch = memory.activeSearch || {
     totalApplications: 0,
-    responseRate: 0,
+    sentApplications: 0,
+    responseRate: null,
     velocity: 0,
     queuedApplications: 0,
     staleApplications: 0,
     skillGaps: [],
+    fitAnalysisCount: 0,
   };
   const completeness = clampScore(normalizedTwin.completeness.score);
   const topAction = memory.nextBestActions?.[0];
@@ -224,7 +230,9 @@ function CareerTwinRail({
               {compactList(goals.targetRoles, 'Target roles not set', 2)}
             </span>
             <span className="premium-copy-wrap mt-1 block text-[10px] leading-4 text-[var(--text-muted)]">
-              {metricValue(activeSearch.totalApplications)} applications, {metricValue(activeSearch.queuedApplications)} queued packets, {metricValue(activeSearch.responseRate, '%')} response rate.
+              {/* percentOrDash on the rate: it is null until something has
+                  been sent, and "0% response rate" is a different claim. */}
+              {metricValue(activeSearch.totalApplications)} applications ({metricValue(activeSearch.sentApplications)} sent), {metricValue(activeSearch.queuedApplications)} queued packets, {percentOrDash(activeSearch.responseRate)} response rate.
             </span>
           </span>
         </div>

@@ -1,6 +1,12 @@
 import { NextRequest } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { getAdminDb } from '@/lib/firebase-admin';
+import {
+  countsAsApplied,
+  countsAsInterview,
+  countsAsOffer,
+  recordCountsAsEmployerResponse,
+} from '@/lib/career-graph';
 
 export async function GET(req: NextRequest) {
   const guard = await guardApiRoute(req, { rateLimit: 30, rateLimitWindow: 60_000 });
@@ -24,25 +30,43 @@ export async function GET(req: NextRequest) {
     const totalApps = apps.length;
     const thisWeekApps = apps.filter((a: any) => new Date(a.createdAt).getTime() > oneWeekAgo).length;
 
+    // Every funnel predicate comes from lib/career-graph so this tab and the
+    // Overview tab on the same page cannot report different numbers for the
+    // same user. Sharing only `countsAsApplied` and `countsAsEmployerResponse`
+    // was not enough: career-graph reads the recorded outcome history and a
+    // wider interview status list, so an application at `interview_scheduled`
+    // counted as an interview there and not here — and that is the status the
+    // outcome route writes for the commonest path.
     const statusCounts = { responded: 0, interviews: 0, offers: 0, rejected: 0, ghosted: 0 };
+    let appliedApps = 0;
+    let oldestSentTime = Infinity;
     apps.forEach((a: any) => {
       const s = (a.status || '').toLowerCase();
-      if (s === 'interview' || s === 'interviewing') statusCounts.interviews++;
-      if (s === 'offer' || s === 'accepted') statusCounts.offers++;
-      if (s === 'rejected' || s === 'declined') statusCounts.rejected++;
-      if (s === 'ghosted' || s === 'no_response') statusCounts.ghosted++;
-      if (s !== 'applied' && s !== 'saved' && s !== 'queued') statusCounts.responded++;
+      // Counted inside the applied branch, exactly as career-graph does it: an
+      // employer cannot reply to something that was never sent, and counting
+      // it would put `responded` above `appliedApps`.
+      if (countsAsApplied(s)) {
+        appliedApps++;
+        const sentTime = new Date(a.createdAt).getTime();
+        if (Number.isFinite(sentTime) && sentTime < oldestSentTime) oldestSentTime = sentTime;
+
+        if (countsAsInterview(a)) statusCounts.interviews++;
+        if (countsAsOffer(a)) statusCounts.offers++;
+        if (s === 'rejected' || s === 'declined') statusCounts.rejected++;
+        if (s === 'ghosted' || s === 'no_response') statusCounts.ghosted++;
+        if (recordCountsAsEmployerResponse(a)) statusCounts.responded++;
+      }
     });
 
-    // Velocity
-    const oldestApp = apps.length > 0 ? apps[apps.length - 1] : null;
-    const weeksActive = oldestApp
-      ? Math.max(1, Math.ceil((now - new Date(oldestApp.createdAt).getTime()) / (7 * 86400000)))
+    // Velocity — one decimal, and over applications actually sent. An integer
+    // round reported "0 apps/week" to someone with a tracked application, and
+    // dating the window from the oldest record of any kind meant a resume
+    // morphed twenty weeks ago dragged down the pace of applications sent last
+    // week. Numerator and denominator describe the same thing.
+    const weeksActive = Number.isFinite(oldestSentTime)
+      ? Math.max(1, Math.ceil((now - oldestSentTime) / (7 * 86400000)))
       : 1;
-    const weeklyRate = totalApps > 0 ? Math.round(totalApps / weeksActive) : 0;
-
-    // Estimated weeks to offer (industry: ~40 apps → 1 offer)
-    const estimatedWeeksToOffer = weeklyRate > 0 ? Math.max(1, Math.round(40 / weeklyRate)) : null;
+    const weeklyRate = appliedApps > 0 ? Math.round((appliedApps / weeksActive) * 10) / 10 : 0;
 
     // Stale apps (applied > 30 days, no response)
     const staleApps = apps
@@ -72,12 +96,20 @@ export async function GET(req: NextRequest) {
         daysSinceApply: Math.floor((now - new Date(a.createdAt).getTime()) / 86400000),
       }));
 
-    // Upcoming interviews
+    /*
+     * Upcoming interviews — deliberately NOT `countsAsInterview`.
+     *
+     * That predicate answers "did this ever reach an interview", which is the
+     * right question for the funnel count and the wrong one for a list headed
+     * "upcoming": it would include `interviewed`, `offer` and `accepted`, all
+     * of which are in the past. What this list was missing is the opposite
+     * problem — `interview_scheduled`, the status the outcome route writes
+     * when a user reports an interview, and the one case that genuinely is
+     * upcoming.
+     */
+    const UPCOMING_INTERVIEW_STATUSES = ['interview', 'interviewing', 'interview_scheduled'];
     const upcomingInterviews = apps
-      .filter((a: any) => {
-        const s = (a.status || '').toLowerCase();
-        return s === 'interview' || s === 'interviewing';
-      })
+      .filter((a: any) => UPCOMING_INTERVIEW_STATUSES.includes((a.status || '').toLowerCase()))
       .slice(0, 3)
       .map((a: any) => ({
         company: a.company || a.companyName || '?',
@@ -92,18 +124,19 @@ export async function GET(req: NextRequest) {
       .map(doc => ({ week: doc.data().week, score: doc.data().score }))
       .reverse();
 
-    // Smart Apply Rate (apps that used full pipeline)
+    // Smart Apply Rate (apps that used full pipeline). Null with no
+    // applications — a share of nothing is unknown, not 0%.
     const morphedCount = apps.filter((a: any) => a.resume_version_id).length;
     const fitAnalyzedCount = apps.filter((a: any) => a.talent_density_score != null && a.talent_density_score > 0).length;
-    const smartApplyRate = totalApps > 0 ? Math.round(morphedCount / totalApps * 100) : 0;
+    const smartApplyRate = totalApps > 0 ? Math.round(morphedCount / totalApps * 100) : null;
 
     return new Response(JSON.stringify({
       pulse: {
         totalApps,
+        appliedApps,
         thisWeekApps,
         ...statusCounts,
         weeklyRate,
-        estimatedWeeksToOffer,
         staleApps,
         upcomingInterviews,
         followUps,

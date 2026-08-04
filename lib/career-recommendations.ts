@@ -23,7 +23,10 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
   const recs: Recommendation[] = [];
 
   // ── Burnout Detection (Critical) ──
-  if (profile.morale.burnoutRisk === 'high') {
+  // burnoutRisk is only ever 'high' when a real 1-5 check-in exists, so
+  // `current` is non-null here — but assert it rather than interpolating a
+  // possible null into "null/5".
+  if (profile.morale.burnoutRisk === 'high' && profile.morale.current !== null) {
     recs.push({
       id: 'burnout-risk',
       priority: 'critical',
@@ -53,13 +56,19 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
   }
 
   // ── Ghost Rate Too High ──
-  if (profile.pipeline.totalApps >= 10 && profile.pipeline.ghostRate > 60) {
+  // Gated on applications actually sent, not on records tracked. A record
+  // created by a resume morph has never been in front of an employer, so it
+  // cannot have been ghosted by one.
+  if (profile.pipeline.appliedApps >= 10 && (profile.pipeline.ghostRate ?? 0) > 60) {
     recs.push({
       id: 'high-ghost-rate',
       priority: 'high',
       icon: 'visibility_off',
-      title: `${profile.pipeline.ghostRate}% of Applications Ghosted`,
-      description: 'More than half your applications never got a response. Your resume may not be passing ATS filters.',
+      // "Ghosted" is a claim the metric cannot support: ghostRate is
+      // (sent - responded) / sent, which counts an application sent yesterday
+      // alongside one sent in March. Say what was counted.
+      title: `${profile.pipeline.ghostRate}% of Applications Have No Reply Yet`,
+      description: 'Most of what you have sent has not come back. If the older ones have gone quiet, your resume may not be passing ATS filters.',
       action: 'Run ATS Preview to check parsing',
       actionPath: '/suite/ats-preview',
       color: '#6b7280',
@@ -68,12 +77,12 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
   }
 
   // ── Low Response Rate ──
-  if (profile.pipeline.totalApps >= 10 && profile.pipeline.responseRate < 15) {
+  if (profile.pipeline.appliedApps >= 10 && profile.pipeline.responseRate !== null && profile.pipeline.responseRate < 15) {
     recs.push({
       id: 'low-response',
       priority: 'high',
       icon: 'mark_email_unread',
-      title: `${profile.pipeline.responseRate}% Response Rate Across ${profile.pipeline.totalApps} Applications`,
+      title: `${profile.pipeline.responseRate}% Response Rate Across ${profile.pipeline.appliedApps} Applications`,
       description: 'Try morphing your resume per job description for better keyword matching.',
       action: 'Morph your resume in Resume Studio',
       actionPath: '/suite/resume',
@@ -144,13 +153,17 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
   }
 
   // ── Low Velocity ──
+  // No target and no industry median. "Below Target" named a target that
+  // exists nowhere in this codebase, and "Active job seekers typically apply to
+  // 5-10 jobs per week" was the same uncited claim step 6 deleted from the
+  // Weekly Pulse copy. State the user's own number and offer the next action.
   if (profile.pipeline.velocity < 3 && profile.daysActive > 14) {
     recs.push({
       id: 'low-velocity',
       priority: 'medium',
       icon: 'speed',
-      title: `${profile.pipeline.velocity} Apps/Week — Below Target`,
-      description: 'Active job seekers typically apply to 5-10 jobs per week. Increasing your velocity improves your odds significantly.',
+      title: `${profile.pipeline.velocity} Applications Per Week`,
+      description: `Over ${profile.daysActive} days you have sent ${profile.pipeline.appliedApps} ${profile.pipeline.appliedApps === 1 ? 'application' : 'applications'}. More tracked applications give the rest of this page something to measure.`,
       action: 'Find matching jobs in Job Search',
       actionPath: '/suite/job-search',
       color: '#06b6d4',
@@ -174,7 +187,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
   }
 
   // ── Morale Improving — Positive Reinforcement ──
-  if (profile.morale.trend === 'improving' && profile.morale.current >= 4) {
+  if (profile.morale.trend === 'improving' && (profile.morale.current ?? 0) >= 4) {
     recs.push({
       id: 'morale-great',
       priority: 'low',
@@ -221,21 +234,27 @@ export function generateProfileSummary(profile: CareerProfile): string {
   lines.push(`Active for ${profile.daysActive} days`);
   lines.push('');
 
-  // Pipeline
+  // Pipeline. Rates are null until they have a denominator — say "not measured"
+  // rather than hand Taco a 0% it will quote back as a fact.
   lines.push(`### Pipeline`);
-  lines.push(`- ${profile.pipeline.totalApps} total applications (${profile.pipeline.velocity}/week velocity)`);
-  lines.push(`- ${profile.pipeline.responseRate}% response rate`);
-  lines.push(`- ${profile.pipeline.interviewConversion}% interview conversion`);
-  if (profile.estimatedWeeksToOffer) {
-    lines.push(`- Estimated ~${profile.estimatedWeeksToOffer} weeks to offer at current pace`);
-  }
+  lines.push(`- ${profile.pipeline.totalApps} tracked, ${profile.pipeline.appliedApps} marked as sent (${profile.pipeline.velocity}/week)`);
+  lines.push(`- Response rate: ${profile.pipeline.responseRate === null ? 'not measured — no applications marked as sent' : `${profile.pipeline.responseRate}%`}`);
+  lines.push(`- Interview conversion: ${profile.pipeline.interviewConversion === null ? 'not measured — no employer responses yet' : `${profile.pipeline.interviewConversion}%`}`);
   lines.push('');
 
   // Interviews
   if (profile.interviews.totalDebriefs > 0) {
     lines.push(`### Interviews`);
-    lines.push(`- ${profile.interviews.totalDebriefs} debriefs logged, ${profile.interviews.passRate}% pass rate`);
-    lines.push(`- Avg confidence: ${profile.interviews.avgConfidence}% (${profile.interviews.confidenceTrend})`);
+    // Same rule as the pipeline rates above, and the same trap: a debrief is
+    // saved with outcome 'pending' by default and may carry no questions at
+    // all, so "0% pass rate" and "0% confidence" from a first debrief are
+    // unknowns, not results. Taco quotes these back as facts.
+    lines.push(`- ${profile.interviews.totalDebriefs} debriefs logged, ${profile.interviews.resolvedOutcomeCount === 0
+      ? 'pass rate not measured — no debrief has a reported outcome yet'
+      : `${profile.interviews.passRate}% pass rate across ${profile.interviews.resolvedOutcomeCount} resolved`}`);
+    lines.push(`- Avg confidence: ${profile.interviews.questionCount === 0
+      ? 'not measured — no questions logged on any debrief'
+      : `${profile.interviews.avgConfidence}% (${profile.interviews.confidenceTrend})`}`);
     if (profile.interviews.weakCategories.length > 0) {
       lines.push(`- Weak areas: ${profile.interviews.weakCategories.map(c => `${c.category} (${c.avgConfidence}%)`).join(', ')}`);
     }
@@ -252,10 +271,15 @@ export function generateProfileSummary(profile: CareerProfile): string {
     lines.push('');
   }
 
-  // Morale
+  // Morale — omitted entirely when the user has never checked in. Taco must not
+  // be handed a fabricated default and then quote it back as a fact.
   lines.push(`### Wellbeing`);
-  lines.push(`- Morale: ${profile.morale.current}/5 (${profile.morale.trend})`);
-  lines.push(`- Burnout risk: ${profile.morale.burnoutRisk}`);
+  if (profile.morale.current === null) {
+    lines.push('- No morale check-ins recorded. Do not assume or estimate how they feel.');
+  } else {
+    lines.push(`- Morale: ${profile.morale.current}/5 (${profile.morale.trend ?? 'trend unknown'})`);
+    lines.push(`- Burnout risk: ${profile.morale.burnoutRisk ?? 'unknown'}`);
+  }
 
   return lines.join('\n');
 }

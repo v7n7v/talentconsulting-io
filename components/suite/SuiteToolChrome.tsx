@@ -279,6 +279,7 @@ export function SuiteUnmeasured({
   label,
   reason,
   action,
+  density = 'comfortable',
   className,
 }: {
   /** What is not known, in the user's words. */
@@ -286,12 +287,21 @@ export function SuiteUnmeasured({
   /** Why it is not known, and implicitly how to change that. */
   reason: string;
   action?: ReactNode;
+  /**
+   * `compact` for grids of several of these side by side.
+   *
+   * `cx` is a plain join, not tailwind-merge, so passing `className="p-3"`
+   * did nothing — both padding classes landed and `.p-4` wins on stylesheet
+   * order. A variant, not a class the caller hopes overrides.
+   */
+  density?: 'comfortable' | 'compact';
   className?: string;
 }) {
   return (
     <div
       className={cx(
-        'min-w-0 rounded-[12px] border border-dashed border-[var(--border-subtle)] p-4',
+        'min-w-0 rounded-[12px] border border-dashed border-[var(--border-subtle)]',
+        density === 'compact' ? 'p-3' : 'p-4',
         className,
       )}
     >

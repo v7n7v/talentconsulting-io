@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { showToast } from '@/components/Toast';
 import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile';
 import { AssistantMark } from '@/components/assistant';
-import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
+import { SuiteToolHeader, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import { useUserTier } from '@/hooks/use-user-tier';
 import { authFetch } from '@/lib/auth-fetch';
 import { openSona } from '@/lib/assistant/execution-context';
@@ -54,7 +54,11 @@ interface SkillRecord {
   reviewDue: boolean;
   applicationLinked: boolean;
   highestProofScore: number;
-  readinessScore: number;
+  /**
+   * Highest graded-proof score on record, 0-100 — or null when nothing has been
+   * graded. Null renders as "Not proven yet", never as 0%.
+   */
+  readinessScore: number | null;
   sourceLabel: string;
   nextAction: string;
   nextActionDetail: string;
@@ -76,14 +80,15 @@ interface ProofDraft {
   };
 }
 
-const SAMPLE_GAPS: SkillGap[] = [
-  { skill: 'Kubernetes', confidence: 'ai-added', category: 'technical', priority: 1, reason: 'Required in target infrastructure roles.' },
-  { skill: 'CI/CD', confidence: 'ai-added', category: 'technical', priority: 2, reason: 'Repeated in job descriptions and agent packets.' },
-  { skill: 'GraphQL', confidence: 'weak', category: 'technical', priority: 3, reason: 'Listed as a required API skill.' },
-  { skill: 'AWS', confidence: 'weak', category: 'domain', priority: 4, reason: 'Cloud fluency strengthens senior role fit.' },
-  { skill: 'Leadership', confidence: 'weak', category: 'soft', priority: 5, reason: 'Interviewers will probe ownership and influence.' },
-  { skill: 'System Design', confidence: 'ai-added', category: 'technical', priority: 6, reason: 'Common in senior interviews.' },
-];
+/*
+ * There is deliberately no SAMPLE_GAPS constant here.
+ *
+ * Six invented gaps (Kubernetes, CI/CD, GraphQL, AWS, Leadership, System
+ * Design) used to be seeded into every account with no `tc_skill_gaps` entry —
+ * i.e. every new user — carrying invented reasons and labelled "Resume or JD
+ * gap". A nurse was told she had a Kubernetes gap. Gaps come from a resume
+ * morph (app/suite/resume/page.tsx:1876 and :3058) and nowhere else.
+ */
 
 const SKILL_COMPLEXITY: Record<string, number> = {
   Docker: 2, Git: 2, SQL: 2, Bash: 2, Linux: 2, 'REST API': 2,
@@ -187,7 +192,12 @@ function searchableSkillText(record: SkillRecord, jobTitle: string, companyName:
 function sortSkillRecords(records: SkillRecord[], sortMode: SkillSortMode): SkillRecord[] {
   return [...records].sort((a, b) => {
     if (sortMode === 'readiness') {
-      return b.readinessScore - a.readinessScore || skillActionPriority(a) - skillActionPriority(b);
+      // Unproven skills sort last rather than sorting as a zero-scored skill.
+      const aProven = a.readinessScore !== null;
+      const bProven = b.readinessScore !== null;
+      if (aProven !== bProven) return aProven ? -1 : 1;
+      const delta = (b.readinessScore ?? 0) - (a.readinessScore ?? 0);
+      return delta || skillActionPriority(a) - skillActionPriority(b);
     }
     if (sortMode === 'skill') return a.skill.localeCompare(b.skill);
     return skillActionPriority(a) - skillActionPriority(b);
@@ -323,14 +333,12 @@ export default function SkillBridgePage() {
         if (gapData.length > 0) {
           setGaps(gapData);
           setSelectedGapSkills(new Set(gapData.slice(0, 3).map(g => g.skill)));
-          return;
         }
       }
     } catch {
-      // Fall back to sample readiness gaps.
+      // Unreadable storage means we know nothing about this user's gaps.
+      // The empty state is the honest answer; there is nothing to fall back to.
     }
-    setGaps(SAMPLE_GAPS);
-    setSelectedGapSkills(new Set(SAMPLE_GAPS.slice(0, 3).map(g => g.skill)));
   }, []);
 
   const loadData = useCallback(async () => {
@@ -373,7 +381,7 @@ export default function SkillBridgePage() {
         reviewDue: false,
         applicationLinked: false,
         highestProofScore: 0,
-        readinessScore: 0,
+        readinessScore: null,
         sourceLabel: 'Manual',
         nextAction: 'Start bridge',
         nextActionDetail: 'Create a short plan and complete the first proof step.',
@@ -381,9 +389,18 @@ export default function SkillBridgePage() {
       });
     };
 
+    // The only writers of `tc_skill_gaps` are the two resume morph flows in
+    // app/suite/resume/page.tsx (:1876 and :3058). 'ai-added' means the skill
+    // appeared in the morphed resume and not in the original; 'weak' and
+    // 'strong' both mean it was already on the resume, with different emphasis.
+    // Neither is a "JD gap", which is what the label used to claim — and
+    // 'strong' must not fall through to "Manual", which would be the same kind
+    // of wrong label in a rarer case.
     gaps.forEach(gap => upsert(gap.skill, gap.category, {
       gap,
-      sourceLabel: gap.confidence === 'ai-added' ? 'Resume or JD gap' : 'Weak signal',
+      sourceLabel: gap.confidence === 'ai-added'
+        ? 'Added by a resume morph'
+        : 'Already on your resume',
       applicationLinked: Boolean(applicationId),
     }));
 
@@ -417,9 +434,30 @@ export default function SkillBridgePage() {
       const verified = record.progress?.readiness_status === 'verified' || sortedProofs.some(p => p.verdict === 'verified');
       const reviewDue = isReviewDue(record.progress);
       const readyToVerify = !verified && (record.progressPct >= 60 || highestProofScore >= 70 || record.progress?.readiness_status === 'ready_to_verify');
-      const readinessScore = verified
-        ? Math.max(85, highestProofScore, record.progress?.readiness_score || 0)
-        : Math.max(highestProofScore, Math.round(record.progressPct * 0.72), record.progress?.readiness_score || 0);
+      /*
+       * Readiness is a graded-proof number or it is nothing.
+       *
+       * `Math.round(record.progressPct * 0.72)` used to be folded in: 0.72 had
+       * no derivation anywhere, and ticking your own study-plan checkboxes is
+       * self-reported activity, not proven readiness.
+       *
+       * The `Math.max(85, ...)` floor on the verified branch is gone for the
+       * same reason — it could only ever round a real 82 up to a fabricated 85.
+       *
+       * One caveat, so nobody reads a clean invariant here that does not exist
+       * yet: `readiness_score` is written only from a graded score FROM NOW
+       * ON. Scores the deleted `fallbackGrade` already wrote are still in
+       * users/{uid}/study_progress, and verify/route.ts persists
+       * `Math.max(existing, score)` — monotonic — so a pre-cutoff fabricated 78
+       * is a floor a later genuine 55 cannot lower. Those rows need a one-off
+       * cleanup; until then this number can still be inherited rather than
+       * earned.
+       */
+      const gradedScores: number[] = [
+        ...sortedProofs.map(p => p.score).filter((s): s is number => typeof s === 'number'),
+        ...(typeof record.progress?.readiness_score === 'number' ? [record.progress.readiness_score] : []),
+      ];
+      const readinessScore: number | null = gradedScores.length ? Math.max(...gradedScores) : null;
 
       let nextAction = 'Create plan';
       let nextActionDetail = 'Generate a focused bridge plan before practicing.';
@@ -457,8 +495,17 @@ export default function SkillBridgePage() {
   const readyRecords = records.filter(r => r.readyToVerify);
   const reviewRecords = records.filter(r => r.reviewDue);
   const linkedRecords = records.filter(r => r.applicationLinked);
-  const averageReadiness = records.length ? Math.round(records.reduce((sum, r) => sum + r.readinessScore, 0) / records.length) : 0;
-  const interviewConfidence = Math.min(96, Math.round((averageReadiness * 0.7) + (verifiedRecords.length * 8) + (readyRecords.length * 4)));
+  // Average only the skills that actually have a graded proof. Averaging in the
+  // unproven ones as zero would report a low readiness the data does not support.
+  const provenRecords = records.filter((r): r is SkillRecord & { readinessScore: number } => r.readinessScore !== null);
+  const provenRecordCount = provenRecords.length;
+  const averageReadiness: number | null = provenRecordCount
+    ? Math.round(provenRecords.reduce((sum, r) => sum + r.readinessScore, 0) / provenRecordCount)
+    : null;
+  // `interviewConfidence` is deleted. It was
+  // min(96, avgReadiness*0.7 + verified*8 + ready*4) — four undocumented
+  // constants, a 96 ceiling whose only job was to never read 100, and nothing
+  // in the formula that touches an interview.
   const needsAttention = records.filter(r => r.reviewDue || r.readyToVerify || !r.progress || r.progressPct < 45).slice(0, 5);
 
   const baseVisibleRecords = view === 'plans'
@@ -813,8 +860,11 @@ export default function SkillBridgePage() {
               <div className="flex items-start gap-3">
                 <IconShell kind="locked" icon="lock" size="sm" />
                 <div>
-                  <p className="font-bold">Preview mode is showing the full readiness system.</p>
-                  <p className="mt-0.5 text-amber-800/80 dark:text-amber-100/70">Memory is yours to review. Standard unlocks new plans, proofs, and saved progress.</p>
+                  {/* This used to claim the page was "showing the full readiness
+                      system". With the invented sample gaps gone, a free account
+                      with no morph history sees an empty page — so it wasn't. */}
+                  <p className="font-bold">You are on the free plan.</p>
+                  <p className="mt-0.5 text-amber-800/80 dark:text-amber-100/70">Memory is yours to review. Standard unlocks new bridge plans, graded proofs, and saved progress.</p>
                 </div>
               </div>
               <button type="button" onClick={openUpgrade} className="rounded-[12px] bg-amber-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_80)] hover:bg-amber-700">
@@ -824,19 +874,33 @@ export default function SkillBridgePage() {
           </div>
         )}
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <TodayTile icon="priority_high" label="Due today" value={reviewRecords.length} detail="Reviews and fading proofs" tone="amber" onClick={() => setView('command')} />
-          <TodayTile icon="verified" label="Ready to prove" value={readyRecords.length} detail="Skills ready for a challenge" tone="violet" onClick={() => setView('proofs')} />
-          <TodayTile icon="route" label="Active bridges" value={activeRecords.length} detail="Learning paths in motion" tone="blue" onClick={() => setView('plans')} />
-          <TodayTile icon="workspace_premium" label="Verified" value={verifiedRecords.length} detail="Practice-proven skills" tone="green" onClick={() => setView('proofs')} />
-          <TodayTile icon="work" label="Application linked" value={linkedRecords.length} detail="Gaps tied to jobs" tone="cyan" onClick={() => setView('command')} />
-        </section>
+        {/* Both strips are counts OF the skill records. With no records they are
+            not five zeros and three zeros — they are eight numbers about nothing.
+            The empty state below is the honest surface. */}
+        {records.length > 0 && (
+          <>
+            <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <TodayTile icon="priority_high" label="Due today" value={reviewRecords.length} detail="Reviews and fading proofs" tone="amber" onClick={() => setView('command')} />
+              <TodayTile icon="verified" label="Ready to prove" value={readyRecords.length} detail="Skills ready for a challenge" tone="violet" onClick={() => setView('proofs')} />
+              <TodayTile icon="route" label="Active bridges" value={activeRecords.length} detail="Learning paths in motion" tone="blue" onClick={() => setView('plans')} />
+              <TodayTile icon="workspace_premium" label="Verified" value={verifiedRecords.length} detail="Practice-proven skills" tone="green" onClick={() => setView('proofs')} />
+              <TodayTile icon="work" label="Application linked" value={linkedRecords.length} detail="Gaps tied to jobs" tone="cyan" onClick={() => setView('command')} />
+            </section>
 
-        <section className="grid gap-3 md:grid-cols-3">
-          <MetricCard icon="monitoring" label="Readiness score" value={`${averageReadiness}%`} detail="Learning plus proof signal" tone="green" />
-          <MetricCard icon="record_voice_over" label="Interview confidence" value={`${interviewConfidence}%`} detail="Estimated from proof depth" tone="blue" />
-          <MetricCard icon="inventory_2" label="Proof attempts" value={proofs.length} detail="Saved verification history" tone="violet" />
-        </section>
+            <section className="grid gap-3 md:grid-cols-2">
+              <MetricCard
+                icon="monitoring"
+                label="Readiness score"
+                value={averageReadiness === null ? 'Not proven yet' : `${averageReadiness}%`}
+                detail={averageReadiness === null
+                  ? `None of your ${records.length} ${records.length === 1 ? 'skill has' : 'skills have'} a graded proof yet`
+                  : `Averaged over ${provenRecordCount} of ${records.length} ${records.length === 1 ? 'skill' : 'skills'} with a graded proof`}
+                tone="green"
+              />
+              <MetricCard icon="inventory_2" label="Proof attempts" value={proofs.length} detail="Saved verification history" tone="violet" />
+            </section>
+          </>
+        )}
 
         <div className="flex flex-col gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -856,7 +920,11 @@ export default function SkillBridgePage() {
               </button>
             ))}
           </div>
-          {view !== 'memory' && view !== 'settings' && (
+          {/* Gated on records, like the tile strips above. Removing SAMPLE_GAPS
+              left this as the page's only primary CTA on an empty account, and
+              nothing on that screen is selectable — so its sole outcome was a
+              toast telling the user to select a skill that does not exist. */}
+          {records.length > 0 && view !== 'memory' && view !== 'settings' && (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -948,7 +1016,10 @@ export default function SkillBridgePage() {
                   onAskSonaEmpty={() => askSona('Help me find the right Skill Bridge action from my current filters and goals.')}
                 />
               ) : (
-                <EmptyBridgeState onAdd={() => setView('command')} onAskSona={() => askSona('Help me identify three Skill Bridge gaps from my current career goals.')} />
+                <EmptyBridgeState
+                  onOpenResume={() => router.push('/suite/resume')}
+                  onAskSona={() => askSona('Help me identify three Skill Bridge gaps from my current career goals.')}
+                />
               )}
             </div>
 
@@ -1180,8 +1251,12 @@ function SkillQueue({
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
           <p className="text-sm text-[var(--text-secondary)]">{description}</p>
         </div>
-        <p className="text-xs font-semibold text-[var(--text-muted)]">
-          Showing {Math.min(records.length, visibleLimit)} of {filteredCount} matched · {totalCount} total
+        {/* With no filter applied, filteredCount === totalCount, and the old
+            "12 of 47 matched · 47 total" printed the same number twice. */}
+        <p className="whitespace-nowrap text-xs font-semibold tabular-nums text-[var(--text-muted)]">
+          {filteredCount === totalCount
+            ? `Showing ${Math.min(records.length, visibleLimit)} of ${totalCount}`
+            : `Showing ${Math.min(records.length, visibleLimit)} of ${filteredCount} matched · ${totalCount} total`}
         </p>
       </div>
 
@@ -1331,15 +1406,26 @@ function SkillQueueRow({ record, selected, loadingPlan, onOpen, onGeneratePlan, 
         </div>
 
         <div className="min-w-0">
-          <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
             <span className="text-[11px] font-bold uppercase text-[var(--text-muted)]">Readiness</span>
-            <span className="text-xs font-black tabular-nums text-[var(--text-primary)]">{record.readinessScore}%</span>
+            {/* No graded proof means no readiness. A 0% bar would claim we
+                measured this skill and found nothing there. */}
+            <span className="shrink-0 whitespace-nowrap text-xs font-black tabular-nums text-[var(--text-primary)]">
+              {record.readinessScore === null ? <span className="font-semibold text-[var(--text-muted)]">Not proven yet</span> : `${record.readinessScore}%`}
+            </span>
           </div>
-          <ProgressBar value={record.readinessScore} color={record.verified ? 'bg-emerald-500' : record.readyToVerify ? 'bg-violet-500' : record.reviewDue ? 'bg-orange-500' : 'bg-cyan-500'} />
+          {record.readinessScore !== null && (
+            <ProgressBar value={record.readinessScore} color={record.verified ? 'bg-emerald-500' : record.readyToVerify ? 'bg-violet-500' : record.reviewDue ? 'bg-orange-500' : 'bg-cyan-500'} />
+          )}
+          {/* `totalDays` falls back to getTrainingDays() — a per-skill table
+              nobody sourced. That is a fine default length for a plan we are
+              about to generate, but printed as "Tasks 0/4" on a skill with no
+              plan it asserts this skill takes four days to bridge. With no
+              plan there are no tasks. */}
           <div className="mt-2 grid grid-cols-3 gap-2">
-            <QueueStat label="Plan" value={`${record.progressPct}%`} />
+            <QueueStat label="Plan" value={record.progress ? `${record.progressPct}%` : 'None'} />
             <QueueStat label="Proof" value={record.highestProofScore ? `${record.highestProofScore}` : 'New'} />
-            <QueueStat label="Tasks" value={`${record.completedDays.length}/${record.totalDays}`} />
+            <QueueStat label="Tasks" value={record.progress ? `${record.completedDays.length}/${record.totalDays}` : '—'} />
           </div>
         </div>
 
@@ -1467,16 +1553,28 @@ function SettingRow({ icon, title, body }: { icon: string; title: string; body: 
   );
 }
 
-function EmptyBridgeState({ onAdd, onAskSona }: { onAdd: () => void; onAskSona: () => void }) {
+/**
+ * The only real sources of skill gaps are the two resume morph flows in
+ * app/suite/resume/page.tsx (:1876 writes them from a JD morph, :3058 from an
+ * improve pass). The previous CTA — "Open command view" — navigated to the view
+ * the user was already on, which is why it never produced a single gap.
+ */
+function EmptyBridgeState({ onOpenResume, onAskSona }: { onOpenResume: () => void; onAskSona: () => void }) {
   return (
-    <div className="rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-10 text-center">
+    <div className="rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-8 text-center md:p-10">
       <div className="mx-auto mb-4 flex justify-center">
         <IconShell kind="technical" icon="route" size="lg" />
       </div>
-      <h2 className="text-xl font-bold text-[var(--text-primary)]">No bridge work yet</h2>
-      <p className="mx-auto mt-2 max-w-xl text-sm text-[var(--text-secondary)]">Import gaps from Resume Studio or ask Taco to identify the first three skills worth proving for your target role.</p>
+      <h2 className="premium-heading-wrap text-xl font-bold text-[var(--text-primary)]">No skill gaps on record</h2>
+      <p className="premium-copy-wrap mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
+        Gaps arrive from Resume Studio: morph your resume against a job description, and the
+        skills the morph had to add — the ones your resume did not already show — land here.
+        Nothing is guessed on your behalf.
+      </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        <button type="button" onClick={onAdd} className="rounded-[12px] bg-emerald-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">Open command view</button>
+        <button type="button" onClick={onOpenResume} className="rounded-[12px] bg-emerald-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">
+          Open Resume Studio
+        </button>
         <button type="button" onClick={onAskSona} className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--border-subtle)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
           <AssistantMark size="xs" state="idle" />
           Ask Taco
@@ -1567,9 +1665,9 @@ function SkillDrawer({
               </button>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <MiniStat label="Readiness" value={`${record.readinessScore}%`} />
+              <MiniStat label="Readiness" value={record.readinessScore === null ? 'Not proven' : `${record.readinessScore}%`} />
               <MiniStat label="Proof score" value={record.highestProofScore ? `${record.highestProofScore}` : 'New'} />
-              <MiniStat label="Plan" value={`${record.completedDays.length}/${record.totalDays}`} />
+              <MiniStat label="Plan" value={record.progress ? `${record.completedDays.length}/${record.totalDays}` : 'None yet'} />
             </div>
           </div>
 
@@ -1596,7 +1694,14 @@ function SkillDrawer({
                 <Pill tone={record.verified ? 'green' : record.readyToVerify ? 'violet' : 'blue'}>{record.nextAction}</Pill>
               </div>
               <div className="mt-4">
-                <ProgressBar value={record.readinessScore} color={record.verified ? 'bg-emerald-500' : record.readyToVerify ? 'bg-violet-500' : 'bg-cyan-500'} />
+                {record.readinessScore === null ? (
+                  <SuiteUnmeasured
+                    label="No readiness score yet"
+                    reason="Readiness comes from a graded proof. Nothing on this skill has been graded, so there is no score — not a score of zero."
+                  />
+                ) : (
+                  <ProgressBar value={record.readinessScore} color={record.verified ? 'bg-emerald-500' : record.readyToVerify ? 'bg-violet-500' : 'bg-cyan-500'} />
+                )}
               </div>
             </section>
 

@@ -72,37 +72,21 @@ function fallbackChallenge(body: z.infer<typeof VerifySchema>) {
   };
 }
 
-function fallbackGrade(body: z.infer<typeof VerifySchema>) {
-  const answer = body.response || '';
-  const hasExample = /\b(example|project|used|built|implemented|scenario|case)\b/i.test(answer);
-  const hasTradeoff = /\b(trade.?off|risk|constraint|because|however|instead|avoid)\b/i.test(answer);
-  const hasSteps = /\b(first|then|next|finally|step|approach)\b/i.test(answer);
-  const lengthScore = Math.min(28, Math.floor(answer.length / 90));
-  const score = clampScore(42 + lengthScore + (hasExample ? 12 : 0) + (hasTradeoff ? 10 : 0) + (hasSteps ? 8 : 0), 58);
-  return {
-    score,
-    verdict: verdictFor(score, body.challengeType),
-    summary: 'Taco created a deterministic proof review because AI grading was unavailable.',
-    strengths: [
-      hasExample ? 'You grounded the answer in an applied example.' : 'You created a starting point for explaining the skill.',
-      hasSteps ? 'Your answer includes a process the interviewer can follow.' : 'The response can become stronger by adding a clear sequence.',
-    ],
-    gaps: [
-      hasTradeoff ? 'Sharpen the trade-offs by naming the constraint and your decision.' : 'Add trade-offs, risks, or failure modes.',
-      answer.length < 500 ? 'Give one richer, role-specific example.' : 'Trim generic language and keep the proof tightly tied to the role.',
-    ],
-    recommendations: [
-      'Use one concrete project or workplace scenario.',
-      'Name the decision you would make and why.',
-      'Practice the same answer in Interview Studio.',
-    ],
-    rubric: [
-      { label: 'Fundamentals', score: Math.min(90, score + 4), note: 'Core concept and vocabulary.' },
-      { label: 'Applied proof', score: hasExample ? Math.min(90, score + 8) : Math.max(35, score - 12), note: 'Specific usage in a realistic role scenario.' },
-      { label: 'Interview clarity', score: hasSteps ? Math.min(88, score + 6) : Math.max(40, score - 8), note: 'Structured explanation under time pressure.' },
-    ],
-  };
-}
+/*
+ * There is deliberately no fallbackGrade().
+ *
+ * When AI grading was unavailable this route used to synthesise a score:
+ * `clampScore(42 + min(28, length/90) + (hasExample ? 12 : 0) + ...)` — 42
+ * points for the answer existing, the rest from three keyword regexes and the
+ * character count. It then persisted that number as `readiness_score`, which
+ * Skill Bridge renders as "Readiness N%" with no indication it was never
+ * graded, and expanded the single number into a three-line rubric
+ * (`score + 4`, `score + 8`, `score + 6`) — the same one-number-rescaled-into-
+ * several pattern the health widget was cleaned of.
+ *
+ * A proof that was not graded is not a proof. The route now says so and
+ * persists nothing.
+ */
 
 export async function POST(req: NextRequest) {
   const guard = await guardApiRoute(req, { rateLimit: 8, rateLimitWindow: 60_000 });
@@ -197,11 +181,29 @@ Return JSON:
     let grade: any;
     try {
       grade = await geminiJSONCompletion(gradeSystemPrompt, gradePrompt, { temperature: 0.25, maxTokens: 1400 });
-    } catch {
-      grade = fallbackGrade(body);
+    } catch (gradeError: any) {
+      // Telemetry, because there is no fallback any more: without this a
+      // grader outage is invisible in monitoring while being visible to every
+      // paying user, and "the grader is down" looks exactly like "nobody used
+      // Skill Bridge today".
+      monitor.critical('Tool: skill-bridge/verify', `grader unavailable: ${String(gradeError)}`);
+      return NextResponse.json({
+        error: 'Grading is unavailable right now, so this answer was not scored. Your response was not saved — try again in a moment.',
+        code: 'GRADING_UNAVAILABLE',
+      }, { status: 503 });
     }
 
-    const score = clampScore(grade?.score, 60);
+    // No default score either. `clampScore(grade?.score, 60)` invented a 60 for
+    // any response the grader came back without a number for.
+    if (typeof grade?.score !== 'number' || !Number.isFinite(grade.score)) {
+      monitor.critical('Tool: skill-bridge/verify', `grader returned no score for skill "${body.skill}"`);
+      return NextResponse.json({
+        error: 'Grading came back without a score, so nothing was recorded. Try again in a moment.',
+        code: 'GRADING_INCOMPLETE',
+      }, { status: 503 });
+    }
+
+    const score = clampScore(grade.score, 60);
     const verdict = ['needs_work', 'building', 'ready', 'verified'].includes(grade?.verdict)
       ? grade.verdict
       : verdictFor(score, body.challengeType);

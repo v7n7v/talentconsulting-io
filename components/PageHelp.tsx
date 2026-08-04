@@ -31,7 +31,6 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
     tips: [
       'The score reflects your own activity and outcomes. It is not a comparison against other candidates.',
       'Check back weekly to see trends change.',
-      'The "Your Edge" section shows how intelligence-first search compares to mass-apply.',
     ],
   },
 
