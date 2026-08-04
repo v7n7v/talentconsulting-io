@@ -709,7 +709,7 @@ export default function IntelligencePage() {
                     }}>Outcome Insight</p>
                     <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                       {(outcomeStats.responseRate || 0) >= 20
-                        ? `Your ${outcomeStats.responseRate}% response rate is above the industry average of 10-15%. Your targeted approach is paying off.`
+                        ? `Your ${outcomeStats.responseRate}% response rate is across ${outcomeStats.totalReported} reported outcomes.`
                         : (outcomeStats.ghostRate || 0) > 60
                           ? `${outcomeStats.ghostRate}% of your applications went silent. Consider following up 7-10 days after applying, and use ATS Preview to optimize keyword matching.`
                           : `You've reported ${outcomeStats.totalReported} outcomes. Keep tracking to unlock deeper conversion insights and refine your strategy.`

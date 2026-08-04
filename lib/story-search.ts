@@ -190,6 +190,8 @@ export async function getCoverageMap(uid: string): Promise<{
   covered: { category: string; storyCount: number }[];
   uncovered: string[];
   totalStories: number;
+  /** The fixed denominator - BEHAVIORAL_CATEGORIES.length. */
+  total: number;
   coveragePercent: number;
 }> {
   const { stories } = await listStoryBankStories(uid, { limit: 150 });

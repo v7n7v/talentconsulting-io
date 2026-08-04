@@ -22,14 +22,14 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
     title: 'Career Intelligence',
     subtitle: 'Your unified career health dashboard',
     steps: [
-      { icon: 'visibility', title: 'Check Your Health Score', description: 'Your overall career health score (0–100) is computed from Activity, Performance, Preparedness, and Wellbeing — all auto-tracked from your suite usage.' },
+      { icon: 'visibility', title: 'Check Your Health Score', description: 'Your overall career health score (0–100) is computed from Activity, Performance, Preparedness, and Wellbeing. Signals you have not generated data for are shown as unmeasured, not as zero. All auto-tracked from your suite usage.' },
       { icon: 'lightbulb', title: 'Follow Smart Recommendations', description: 'AI-generated action items appear ranked by priority. Click any recommendation to jump directly to the relevant tool.' },
       { icon: 'filter_alt', title: 'Read Pipeline Funnel', description: 'See how many applications converted to responses, interviews, and offers. Identify where candidates drop off.' },
       { icon: 'hub', title: 'Audit Your Skills', description: 'Confirmed, in-demand, and gap skills are parsed from your resume and job descriptions you\'ve analyzed.' },
       { icon: 'self_improvement', title: 'Monitor Wellbeing', description: 'Weekly morale tracking and burnout risk are computed from your pulse check-ins.' },
     ],
     tips: [
-      'Use more tools → higher health score. Every action counts.',
+      'The score reflects your own activity and outcomes. It is not a comparison against other candidates.',
       'Check back weekly to see trends change.',
       'The "Your Edge" section shows how intelligence-first search compares to mass-apply.',
     ],
@@ -63,7 +63,7 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
       { icon: 'sell', title: 'Filter by Tags', description: 'Click any tag to filter stories. Tags come from skills and themes detected in your stories.' },
     ],
     tips: [
-      'Aim for 8–12 stories covering different categories.',
+      'Coverage is measured across 15 behavioral categories. One strong story per category is the target.',
       'Stories from Taco chats and fit analyses are auto-tagged.',
       'The "Question Matcher" also drafts a sample answer for you.',
     ],
@@ -75,14 +75,13 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
     steps: [
       { icon: 'target', title: 'Check Avg Fit Score', description: 'This is the average score from Taco\'s Fit Gate across all your applications. Higher = better targeting.' },
       { icon: 'filter_alt', title: 'Read the Pipeline Funnel', description: 'See Applied → Interviewing → Offer → Rejected breakdown to understand your conversion rates.' },
-      { icon: 'tune', title: 'Tailored vs Generic Ratio', description: 'Shows how many applications used a Taco-tailored resume vs. a generic one. Tailored apps convert 3–5x better.' },
-      { icon: 'trending_up', title: 'Track Interview Yield', description: 'What percentage of your applications lead to interviews. Industry average is 10–15%.' },
+      { icon: 'tune', title: 'Tailored vs Generic Ratio', description: 'Shows how many applications used a Taco-tailored resume vs. a generic one.' },
+      { icon: 'trending_up', title: 'Track Interview Yield', description: 'What percentage of your applications lead to interviews.' },
       { icon: 'history', title: 'Review Recent Activity', description: 'See your latest applications with their current status at a glance.' },
     ],
     tips: [
       'An Avg Fit Score above 80% means you\'re targeting well.',
       'If Interview Yield is low, try using the Fit Gate before applying.',
-      'Tailored resumes see 3–5x higher callback rates.',
     ],
   },
 
@@ -92,7 +91,7 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
     steps: [
       { icon: 'edit_note', title: 'Submit a Weekly Check-in', description: 'Rate your morale (1–5), share what went well, what was tough, and your focus for next week.' },
       { icon: 'timeline', title: 'View Mood Trends', description: 'Your morale history is plotted over time so you can see patterns and prevent burnout.' },
-      { icon: 'notifications', title: 'Get Burnout Alerts', description: 'If your morale trends downward for 2+ weeks, the intelligence page flags a burnout risk.' },
+      { icon: 'notifications', title: 'Get Burnout Alerts', description: 'Burnout risk shows as high when your latest morale is 2 or below, and moderate when it is 3 or below and trending down. With no check-ins it stays unmeasured.' },
     ],
     tips: [
       'Check in every Sunday or Monday for best tracking.',
@@ -160,7 +159,6 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
     tips: [
       'Focus on your headline first — it\'s what recruiters see in search results.',
       'Use industry-specific keywords naturally, don\'t stuff them.',
-      'Update your profile every 2–3 months for best visibility.',
     ],
   },
 
@@ -239,7 +237,6 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
     ],
     tips: [
       'Always humanize AI-generated content before submitting applications.',
-      'A human score above 85% is the safe zone for most reviewers.',
       'Small edits to tone and word choice make the biggest difference.',
     ],
   },
@@ -256,7 +253,6 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
     tips: [
       'Update your preferences regularly as your search focus evolves.',
       'Use the AI match score to prioritize applications.',
-      'Save 10–15 jobs per week, apply to top 5 with tailored resumes.',
     ],
   },
 
@@ -315,7 +311,6 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
       { icon: 'bar_chart', title: 'View Overview Stats', description: 'See total applications, response rates, interviews scheduled, and offers at a glance.' },
       { icon: 'timeline', title: 'Track Trends', description: 'View weekly application volume, response rates over time, and conversion funnel trends.' },
       { icon: 'pie_chart', title: 'Status Breakdown', description: 'See how your applications are distributed across Applied, Interviewing, Offer, and Rejected.' },
-      { icon: 'compare', title: 'Compare to Benchmarks', description: 'Your metrics are compared against industry averages for your role and level.' },
     ],
     tips: [
       'Check analytics weekly to spot trends early.',

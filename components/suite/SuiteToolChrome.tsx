@@ -259,6 +259,49 @@ export function SuiteMetricCard({
   );
 }
 
+/**
+ * A value we have not measured. Not a zero.
+ *
+ * `references/evidence-states.md`: unknown evidence stays unknown, and the
+ * missing state is dashed outline, muted ink, and a plain statement of what is
+ * absent. A missing ATS score is not 0%; an unlogged morale is not 3/5.
+ *
+ * This exists because six surfaces needed the same treatment at once and
+ * hand-rolling it six times is how a design system acquires six versions of one
+ * idea. It is deliberately NOT called `EvidenceBadge` - the four-state primitive
+ * (verified / inferred / draft / missing) is a design-system task with a wider
+ * blast radius, and that name stays free for it.
+ *
+ * No hue, no number, no bar. A zero-width bar still says "we measured, and the
+ * answer is nothing", which is the lie this replaces.
+ */
+export function SuiteUnmeasured({
+  label,
+  reason,
+  action,
+  className,
+}: {
+  /** What is not known, in the user's words. */
+  label: string;
+  /** Why it is not known, and implicitly how to change that. */
+  reason: string;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        'min-w-0 rounded-[12px] border border-dashed border-[var(--border-subtle)] p-4',
+        className,
+      )}
+    >
+      <p className="premium-heading-wrap text-sm font-medium text-[var(--text-muted)]">{label}</p>
+      <p className="premium-copy-wrap mt-1 text-xs leading-5 text-[var(--text-muted)]">{reason}</p>
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
+}
+
 export function SuiteEmptyState({
   icon,
   title,

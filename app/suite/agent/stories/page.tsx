@@ -43,6 +43,8 @@ interface CoverageMap {
   covered: { category: string; storyCount: number }[];
   uncovered: string[];
   totalStories: number;
+  /** The fixed denominator - BEHAVIORAL_CATEGORIES.length. */
+  total: number;
   coveragePercent: number;
 }
 
@@ -526,7 +528,7 @@ export default function StoryBankPage() {
             <MetricCard label="Stories" value={stories.length} icon="library_books" tone="cyan" />
             <MetricCard label="Strong proof" value={stats.strong} icon="verified" tone="emerald" />
             <MetricCard label="Linked" value={stats.linked} icon="account_tree" tone="blue" />
-            <MetricCard label="Coverage" value={coverage ? `${coverage.coveragePercent}%` : '...'} icon="radar" tone="amber" />
+            <MetricCard label="Category coverage" value={coverage ? `${coverage.coveragePercent}%` : '...'} icon="radar" tone="amber" />
           </div>
         </section>
 
@@ -1136,9 +1138,9 @@ function CoveragePanel({ coverage }: { coverage: CoverageMap | null }) {
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Coverage map</p>
-          <h2 className="premium-heading-wrap text-lg font-semibold text-[var(--text-primary)]">Interview readiness</h2>
+          <h2 className="premium-heading-wrap text-lg font-semibold text-[var(--text-primary)]">Behavioral category coverage</h2>
         </div>
-        <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-xs font-semibold tabular-nums text-[var(--text-secondary)]">{coverage ? `${coverage.coveragePercent}%` : '...'}</span>
+        <span className="rounded-full border border-[var(--border-subtle)] px-2.5 py-1 text-xs font-semibold tabular-nums text-[var(--text-secondary)]">{coverage ? `${coverage.covered.length} of ${coverage.total} categories` : '...'}</span>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3">
         {items.map(item => (

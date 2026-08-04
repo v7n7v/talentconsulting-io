@@ -109,11 +109,11 @@ export function AnalyticsContent() {
       insightIcon = 'trending_down';
       insightColor = '#f59e0b';
     } else if (interviewRate > 20) {
-      smartInsight = `Your interview rate is ${interviewRate}% — that's well above the 10-15% industry average. Your targeting strategy is working.`;
+      smartInsight = `Your interview rate is ${interviewRate}% across ${total} tracked applications.`;
       insightIcon = 'trending_up';
       insightColor = '#10b981';
     } else if (weeklyVelocity < 3 && total > 0) {
-      smartInsight = `At ${weeklyVelocity} apps/week, you're below the recommended 10-15. Consider using Resume Morph to tailor for more roles.`;
+      smartInsight = `You are applying at ${weeklyVelocity} per week. Resume Morph tailors for more roles in the same time.`;
       insightIcon = 'speed';
       insightColor = '#3b82f6';
     } else if (statusCounts.rejected > statusCounts.interviewing + statusCounts.offer) {

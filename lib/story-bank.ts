@@ -476,6 +476,8 @@ export function coverageFromStories(stories: StoryBankStory[]) {
     covered,
     uncovered,
     totalStories: stories.length,
+    /** The denominator, so a caller can show the fraction instead of only the percent. */
+    total: BEHAVIORAL_CATEGORIES.length,
     coveragePercent: Math.round((covered.length / BEHAVIORAL_CATEGORIES.length) * 100),
   };
 }

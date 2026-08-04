@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
       wordCount: number;
       toneScore: number;
     }>(
-      `You are an elite career writer who has written 10,000+ cover letters with an 85% interview callback rate.
+      `You are a career writer. Write only from the evidence in the candidate's resume below. Do not introduce employers, titles, dates, metrics, certifications or skills that are not present in it.
 
 RULES:
 1. NEVER start with "I am writing to express my interest" or "I am excited to apply"
