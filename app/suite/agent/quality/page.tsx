@@ -6,6 +6,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import SuiteSignedOut from '@/components/suite/SuiteSignedOut';
 
 interface QualityMetrics {
   avgFitScore: number;
@@ -84,7 +85,11 @@ export default function QualityDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    // Clear the flag on the way out - `loading` starts true and loadMetrics is
+    // its only other writer, so a bare return left the skeleton below as the
+    // whole page for a signed-out visitor. WorkspaceFrame renders suite routes
+    // signed out rather than redirecting, so this is reachable.
+    if (!user) { setLoading(false); return; }
     loadMetrics();
   }, [user]);
 
@@ -144,6 +149,17 @@ export default function QualityDashboard() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* `metricsData` a few lines up is `metrics || {…zeros}`, so this state
+          has to exist: with the load flag cleared and nothing gating it, an
+          account-less visitor would read a quality dashboard of measured
+          zeros. Everything below stays behind `metrics`. */}
+      {!loading && !user && (
+        <SuiteSignedOut
+          title="Sign in to see your application quality"
+          description="These metrics are computed from the applications and packets saved to your account. Signed out there is nothing to compute them from."
+        />
       )}
 
       {!loading && metrics && (<>

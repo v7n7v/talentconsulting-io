@@ -683,6 +683,11 @@ export default function WritingToolsPage() {
   return (
     <div className="mobile-app-content min-h-dvh px-4 py-3 text-[var(--text-primary)] md:p-6">
       <div className="mx-auto max-w-6xl space-y-5">
+        {/* First child, not last. UsageLimitGate is an in-flow section, not an
+            overlay, so calling this after </main> put a cap block below a
+            full-height two-column workspace - the spinner stopped and nothing
+            visible happened. Gallery and ATSScorePanel already render it first. */}
+        {renderAuthModal()}
         <SuiteToolHeader
           tool="gallery"
           title="Writing Trust Studio"
@@ -987,7 +992,6 @@ export default function WritingToolsPage() {
           { label: 'Copy', icon: 'content_copy', onClick: copyText, disabled: !activeText.trim() },
         ]}
       />
-      {renderAuthModal()}
     </div>
   );
 }

@@ -12,7 +12,27 @@ import { FieldValue } from 'firebase-admin/firestore';
 import type { PlanTier } from './pricing-tiers';
 
 // ── Feature Keys ──
-export type UsageFeature = 'morphs' | 'gauntlets' | 'flashcards' | 'jdGenerations' | 'coverLetters' | 'resumeChecks' | 'linkedinProfiles' | 'writingTools' | 'galleryTools';
+export type UsageFeature =
+  | 'morphs' | 'gauntlets' | 'flashcards' | 'jdGenerations' | 'coverLetters'
+  | 'resumeChecks' | 'linkedinProfiles' | 'writingTools' | 'galleryTools'
+  /*
+   * These three used to borrow 'resumeChecks', whose only writer is
+   * /api/resume/check. While that route 403'd every free user the meter never
+   * moved, so the borrowers were never really capped - and honouring the check
+   * route's own free-tier contract would have meant three Quality Scans locking
+   * someone out of UPLOADING A RESUME, under a message naming a tool they were
+   * not using. Resume upload is the product's first step.
+   *
+   * Deleting them from ROUTE_FEATURE_MAP fixed that and broke something worse:
+   * the ANONYMOUS cap is a self-incrementing counter in checkRateLimit, wholly
+   * independent of the Firestore meter, so it HAD been working. Removing it left
+   * /api/resume/parse and /api/resume/ai - both public, both allowAnonymous,
+   * both calling Groq - with no lifetime bound at all, throttled only per minute
+   * per IP. That is an uncapped LLM endpoint on someone else's bill.
+   *
+   * Their own meters: capped, but not on a stranger's counter.
+   */
+  | 'resumeParses' | 'resumeAssists' | 'vaultExports';
 
 // ── Free Tier Lifetime Caps ──
 /** 3 forever — no resets, no exceptions for free tier */
@@ -26,6 +46,11 @@ export const FREE_CAPS: Record<UsageFeature, number> = {
   linkedinProfiles: 3,
   writingTools: 3,
   galleryTools: 5,
+  // Upload is the first step of the product; 10 gives room to try more than one
+  // file and fix a bad parse without hitting a wall on day one.
+  resumeParses: 10,
+  resumeAssists: 3,
+  vaultExports: 3,
 };
 
 // ── Anonymous (No Account) Caps ──
@@ -40,6 +65,11 @@ export const ANON_CAPS: Record<UsageFeature, number> = {
   linkedinProfiles: 1,
   writingTools: 1,
   galleryTools: 1,
+  // 2, not 1: a scanned PDF fails the parse and a stranger should be able to
+  // retry once with a different file before being asked to sign up.
+  resumeParses: 2,
+  resumeAssists: 1,
+  vaultExports: 1,
 };
 
 // ── Voice Minute Caps (per month) ──
@@ -67,6 +97,9 @@ export interface UsageData {
   linkedinProfiles: number;
   writingTools: number;
   galleryTools: number;
+  resumeParses: number;
+  resumeAssists: number;
+  vaultExports: number;
 }
 
 export interface VoiceUsageData {
@@ -89,6 +122,9 @@ const DEFAULT_USAGE: UsageData = {
   linkedinProfiles: 0,
   writingTools: 0,
   galleryTools: 0,
+  resumeParses: 0,
+  resumeAssists: 0,
+  vaultExports: 0,
 };
 
 // ── Doc References (Admin SDK) ──
@@ -127,6 +163,10 @@ export async function getUsage(uid: string): Promise<UsageData> {
         linkedinProfiles: data.linkedinProfiles ?? 0,
         writingTools: data.writingTools ?? 0,
         galleryTools: data.galleryTools ?? 0,
+        // Absent on every document written before these meters existed.
+        resumeParses: data.resumeParses ?? 0,
+        resumeAssists: data.resumeAssists ?? 0,
+        vaultExports: data.vaultExports ?? 0,
       };
     }
     return { ...DEFAULT_USAGE };

@@ -302,9 +302,22 @@ export async function completeOnboarding(data: {
     const now = new Date().toISOString();
     const snap = await withTimeout(getDoc(docRef));
     const existing = snap.exists() ? snap.data() : {};
+    /* Every optional field here is `undefined` when the user skipped it, and the
+       modular Web SDK throws "Unsupported field value: undefined" on an
+       own-enumerable key holding undefined — the db is a plain getFirestore()
+       with no ignoreUndefinedProperties. Skipping is now the ordinary path
+       (the salary inputs start empty rather than pre-filled with 50/150), so the
+       whole profile write would fail for a normal user.
+       Unanswered keys are dropped, not nulled: this is a merge write and a
+       second run — "retry from settings" — would otherwise overwrite a resume
+       or a salary the first run saved. stripUndefined then handles nested
+       undefined inside base_resume_parsed, where null is the right record. */
+    const answered = stripUndefined(
+      Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)),
+    );
     const profileData = {
       ...existing,
-      ...data,
+      ...answered,
       ...((data.base_resume_parsed || data.base_resume_text) ? {
         resume_provenance: {
           verified: true,

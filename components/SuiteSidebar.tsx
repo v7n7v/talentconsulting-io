@@ -242,13 +242,45 @@ const navGroups: NavigationGroup[] = [
   },
 ];
 
+/* Signed-out preview destinations. These were `/?tool=…` links, but nothing
+   reads that param: neither app/page.tsx, TalentLanding.tsx nor
+   talentLandingMotion.ts touches useSearchParams or location.search, so a guest
+   landed on the marketing homepage with the query string silently discarded.
+   They point at the real public tool pages instead. The reader is deliberately
+   not built - app/page.tsx is 'use client' with no Suspense boundary, so
+   useSearchParams there would cost the LCP-critical page its prerender, and
+   CLAUDE.md §9.8 requires that page to work with no script at all.
+   Keyed by `item.path`, which is how handleNav looks it up, so every key must be
+   a path some navGroups entry actually declares. '/suite/writing-tools' was not
+   one - the Writing Toolkit item is `path: '/suite/gallery'` - so that entry
+   could never be read.
+   The constant name is asserted by scripts/suite-sidebar-parity.test.js.
+
+   Two of the three now resolve to the suite route itself, because that route
+   genuinely works signed out and sending the visitor to a marketing page
+   instead was the sidebar contradicting the page they arrived from:
+   TalentLanding.tsx links a guest straight at /suite/resume and at
+   /suite/ats-analyzer?tab=score, and this map used to bounce that same guest
+   off both back to /tools/*. Verified reachable without an account -
+   WorkspaceFrame renders suite routes signed out rather than redirecting, and
+   /api/resume/parse, /api/resume/ats-score and /api/gallery/run are all
+   allowAnonymous with their own ANON_CAPS. Everything not listed here still
+   falls through to the signup modal with a postAuthRedirect, which is correct
+   for the routes that really do need an account. */
 const GUEST_PREVIEW_BY_SUITE_PATH: Record<string, string> = {
-  '/suite/resume': '/?tool=resume-check',
-  '/suite/ats-analyzer': '/?tool=ats-analyzer',
-  '/suite/gallery': '/?tool=quick-polish',
-  '/suite/writing-tools': '/?tool=writing-trust',
+  '/suite/resume': '/suite/resume',
+  // The tab matters: ATS Preview reads a saved resume a guest does not have.
+  '/suite/ats-analyzer': '/suite/ats-analyzer?tab=score',
+  '/suite/gallery': '/suite/gallery',
 };
 
+/* Inert today, deliberately kept. It only participates when `pathname === '/'`
+   (see isItemActive and isDashboardActive), and SuiteSidebar is mounted solely
+   by WorkspaceFrame from app/suite/layout.tsx, so that pathname never reaches
+   it. Nothing emits `/?tool=` any more either. It stays because
+   scripts/suite-sidebar-parity.test.js pins both this map and `hasMappedRootTool`
+   as the route-ownership contract; delete it together with those assertions if
+   the root workspace never comes back. */
 const ROOT_TOOL_BY_ITEM_ID: Record<string, string[]> = {
   resume: ['resume-check'],
   'ats-analyzer': ['ats-analyzer'],

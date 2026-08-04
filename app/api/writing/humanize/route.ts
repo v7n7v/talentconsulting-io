@@ -14,6 +14,7 @@ import { countWords, checkWritingWordsAllowed, recordWritingWords, incrementUsag
 import { detectAI } from '@/lib/ai-detection';
 import { normalizeText, sanitizeForAI } from '@/lib/sanitize';
 import { monitor } from '@/lib/monitor';
+import { WORD_CAP_TITLE, wordCapBody } from '@/lib/product-copy';
 import { buildTrustReport } from '@/lib/writing-pipeline';
 import { writingJSONCompletion } from '@/lib/ai/writing-model-router';
 import {
@@ -97,13 +98,45 @@ export async function POST(req: NextRequest) {
 
     const wordCheck = await checkWritingWordsAllowed(guard.user.uid, tier, wordCount);
     if (!wordCheck.allowed) {
+      /* `limitReached` is what useAuthGate needs to raise the panel; without it
+         a free user fell through to a red toast, which is the toast-only block
+         this pass exists to remove. `upgrade` alone was worse than nothing here:
+         it was set only for `pro`, so the one tier that could not be told "not
+         included in Free" was the only tier that got told exactly that.
+         The unit is words per month, not free runs, so the panel is handed the
+         copy rather than deriving it from a feature name.
+
+         Two different facts arrive here and they must not share a sentence.
+         checkWritingWordsAllowed refuses on `used + THIS REQUEST > cap`
+         (lib/usage-tracker.ts:366) but reports only `used`, so on the free
+         500-word cap someone who has spent nothing and pastes 600 words was
+         told they had reached a monthly limit they had not touched.
+         `remainingWords` is the discriminator: 0 means the allowance really is
+         gone, anything above 0 means the allowance is intact and this one
+         draft does not fit inside what is left. */
+      const allowanceSpent = wordCheck.remainingWords <= 0;
+      const limitTitle = allowanceSpent
+        ? WORD_CAP_TITLE
+        : 'This draft is longer than your remaining words';
+      const limitBody = allowanceSpent
+        ? wordCapBody(wordCheck.usedWords, wordCheck.capWords)
+        : `This draft is ${wordCount} words and you have ${wordCheck.remainingWords} of ${wordCheck.capWords} left this month. Humanize a section at a time, or shorten it. Nothing you entered has been lost.`;
+
       return NextResponse.json(
         {
-          error: `Monthly word limit reached (${wordCheck.usedWords}/${wordCheck.capWords} words used)`,
+          error: limitBody,
+          limitReached: true,
+          limitTitle,
+          limitBody,
+          feature: 'writingTools',
+          used: wordCheck.usedWords,
+          cap: wordCheck.capWords,
           usedWords: wordCheck.usedWords,
           capWords: wordCheck.capWords,
           remainingWords: wordCheck.remainingWords,
-          upgrade: tier === 'pro',
+          requestWords: wordCount,
+          upgradeUrl: '/suite/upgrade',
+          upgrade: tier === 'free' || tier === 'pro',
         },
         { status: 429 }
       );

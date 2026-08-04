@@ -1757,8 +1757,16 @@ export default function LiquidResumePage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Blueprint generation failed' }));
+        // Return like the upgrade branch does. Throwing reached the catch,
+        // which fires 'Failed to generate blueprint' as a red toast behind the
+        // sign-in modal that had just opened - a failure notice about the
+        // thing that is working.
+        if (err.requiresAuth) { setShowDownloadAuth('signup'); return; }
         if (err.upgrade) {
-          showToast('Day-Zero Blueprint is a Standard feature <span className="material-symbols-rounded align-middle mr-1">auto_awesome</span>', 'lock');
+          // Same pattern as the four sites below: the toast names the feature,
+          // the modal is the way out. A toast alone was the whole block.
+          setShowUpgradeModal(true);
+          showToast('Day-Zero Blueprint is a Standard feature', 'lock');
           return;
         }
         throw new Error(err.error || 'Failed to generate blueprint');
@@ -2947,9 +2955,24 @@ export default function LiquidResumePage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        // 401 + requiresAuth is the signed-out answer; the upgrade modal is the
+        // wrong door for someone who has no account yet.
+        /* Return, do not throw. The catch below turns anything thrown into a
+           red `cancel` toast, so opening a modal and throwing fired both at
+           once - the way out and a failure notice about it, together. The
+           Blueprint handler above already had this right: raise the door, say
+           why with a lock icon, stop. */
+        if (data.requiresAuth) { setShowDownloadAuth('signup'); return; }
+        if (data.upgrade || res.status === 403) {
+          setShowUpgradeModal(true);
+          showToast(data.error || 'Cover Letter is a Standard feature', 'lock');
+          return;
+        }
+        throw new Error(data.error || 'Failed to generate cover letter');
+      }
       setCoverLetterResult(data);
-      showToast(`Cover letter generated! Score: ${data.score}/100 ${data.refined ? '(Dual-AI refined <span className="material-symbols-rounded align-middle mr-1">auto_awesome</span>)' : ''}`, 'check_circle');
+      showToast(`Cover letter generated! Score: ${data.score}/100${data.refined ? ' (Dual-AI refined)' : ''}`, 'check_circle');
     } catch (err: any) {
       showToast(err.message || 'Failed to generate cover letter', 'cancel');
     } finally { setCoverLetterLoading(false); }
@@ -2973,7 +2996,27 @@ export default function LiquidResumePage() {
         body: JSON.stringify({ resumeText, targetJD: jobDescription || undefined }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        /* Signed out is 401 + requiresAuth, not 403, and this page is reachable
+           signed out: the landing's Resume mode card links straight at
+           /suite/resume, WorkspaceFrame does not redirect, and /api/resume/parse
+           allows anonymous, so the resume renders and every Quality Scan button
+           is live. Without this the answer was a bare red toast. Same shape the
+           parse and morph handlers already use above. */
+        // Return, not throw - see the note in the cover-letter handler.
+        if (data.requiresAuth) { setShowDownloadAuth('signup'); return; }
+        // Post-entitlement-fix this route no longer 403s free users; it 429s
+        // with limitReached once FREE_CAPS.resumeChecks is spent, and that body
+        // carries `upgrade`, so the same test catches both. The server's own
+        // sentence is used because those two cases need different words and
+        // only the server knows which one it sent.
+        if (data.upgrade || res.status === 403) {
+          setShowUpgradeModal(true);
+          showToast(data.error || 'Resume Check is a Standard feature', 'lock');
+          return;
+        }
+        throw new Error(data.error || 'Failed to check resume');
+      }
       setResumeCheckResult(data);
       showToast(`Resume graded: ${data.overallGrade} (ATS: ${data.atsScore}/100)`, 'check_circle');
     } catch (err: any) {
@@ -2996,9 +3039,18 @@ export default function LiquidResumePage() {
         body: JSON.stringify({ resumeText, targetRole: displayResume.title }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        // Return, not throw - see the note in the cover-letter handler.
+        if (data.requiresAuth) { setShowDownloadAuth('signup'); return; }
+        if (data.upgrade || res.status === 403) {
+          setShowUpgradeModal(true);
+          showToast(data.error || 'LinkedIn Optimizer is a Standard feature', 'lock');
+          return;
+        }
+        throw new Error(data.error || 'Failed to generate LinkedIn profile');
+      }
       setLinkedinResult(data);
-      showToast(`LinkedIn profile generated! Score: ${data.score}/100 ${data.refined ? '(Dual-AI refined <span className="material-symbols-rounded align-middle mr-1">auto_awesome</span>)' : ''}`, 'check_circle');
+      showToast(`LinkedIn profile generated! Score: ${data.score}/100${data.refined ? ' (Dual-AI refined)' : ''}`, 'check_circle');
     } catch (err: any) {
       showToast(err.message || 'Failed to generate LinkedIn profile', 'cancel');
     } finally { setLinkedinLoading(false); setEnhancePhase('idle'); setEnhancePipelineStage(0); }

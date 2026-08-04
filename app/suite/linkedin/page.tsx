@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { showToast } from '@/components/Toast';
 import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
 import { authFetch } from '@/lib/auth-fetch';
+import { useAuthGate } from '@/hooks/useAuthGate';
 import ApplicationKitContextBar from '@/components/ApplicationKitContextBar';
 import ResumeLibraryPicker from '@/components/ResumeLibraryPicker';
 import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile';
@@ -67,6 +68,10 @@ function ScoreRing({ score, size = 56 }: { score: number; size?: number }) {
 
 export default function LinkedInOptimizerPage() {
   const { context: kitContext, updateContext } = useApplicationKitContext();
+  /* Same block, same shape as Cover Letter Studio: /api/agent/linkedin-optimize
+     403s a free user with `upgrade: true`, and a red toast was the whole
+     answer. This page is linked from the Gallery and from the landing rail. */
+  const { handleApiError, renderAuthModal } = useAuthGate();
   const [headline, setHeadline] = useState('');
   const [about, setAbout] = useState('');
   const [targetRole, setTargetRole] = useState('');
@@ -150,7 +155,7 @@ export default function LinkedInOptimizerPage() {
         showToast('Profile analyzed!', 'person');
       } else {
         updateContext({ linkedinResult: { status: 'error', error: data.error || 'Failed', updatedAt: new Date().toISOString() } });
-        showToast(data.error || 'Failed', 'cancel');
+        if (!handleApiError(data)) showToast(data.error || 'Failed', 'cancel');
       }
     } catch (error: any) {
       updateContext({ linkedinResult: { status: 'error', error: error.message || 'Something went wrong', updatedAt: new Date().toISOString() } });
@@ -161,6 +166,7 @@ export default function LinkedInOptimizerPage() {
 
   return (
     <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto px-4 py-3 md:p-6">
+      {renderAuthModal()}
       <SuiteToolHeader
         tool="linkedin"
         title="LinkedIn Optimizer"

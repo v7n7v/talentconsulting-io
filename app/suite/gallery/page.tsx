@@ -556,8 +556,8 @@ function GenericResult({ result }: { result: any }) {
 // ── Main Page ──
 export default function GalleryPage() {
   const { user } = useStore();
-  const { handleApiError, renderAuthModal } = useAuthGate();
-  const { tier } = useUserTier();
+  const { handleApiError, renderAuthModal, setAuthModal, setUsageLimit, revealUsageLimit } = useAuthGate();
+  const { tier, loading: tierLoading } = useUserTier();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -569,32 +569,89 @@ export default function GalleryPage() {
   const isPro = tier === 'pro' || tier === 'studio' || tier === 'god';
 
   // Auto-open tool from URL param (e.g. /suite/gallery?tool=grammar-checker)
+  // Waits for the tier to resolve. useUserTier starts at {tier:'free',
+  // loading:true}, so firing on the first render told a paying user deep-linking
+  // a Standard tool to upgrade, then left the tool closed once /api/usage
+  // answered. Firebase auth is already settled by the time this mounts:
+  // app/suite/layout.tsx wraps every suite page in WorkspaceFrame, which returns
+  // a spinner instead of children until onAuthStateChanged resolves
+  // (components/workspace/WorkspaceFrame.tsx:120-136), so `user` is never
+  // transiently null here and `tierLoading` is the whole race.
   useEffect(() => {
+    if (tierLoading) return;
     const toolId = searchParams.get('tool');
     if (toolId) {
       const tool = TOOLS.find(t => t.id === toolId);
       if (tool) selectTool(tool);
     }
-  }, [searchParams]);
+  }, [searchParams, tierLoading]);
+
+  /* A locked tool still opens. Refusing to open it left the visitor on a grid
+     they did not ask for with a toast as the only explanation - the landing rail
+     links straight at Paraphraser and Email Composer, both Standard - and a
+     toast is the "block that looks like a bug" this pass removes. The panel is
+     rendered by renderAuthModal() as the first child of the shell, so it is at
+     the top of the page, and Run re-checks before it spends anything.
+
+     Signed in only. use-user-tier.ts returns early for `!user` leaving
+     {tier:'free', loading:false}, so a stranger following the landing rail's
+     `?tool=paraphraser` used to be told "Available on a paid plan" - a claim
+     about a plan they are not on - alongside "Nothing you entered has been
+     lost", about input they never typed. A guest's next step is an account,
+     not a checkout, and `guestLocked` below routes them there. */
+  const isGuestOnPaidTool = useCallback(
+    (tool: GalleryTool) => !user && tool.tier === 'pro',
+    [user],
+  );
+  const isMemberLocked = useCallback(
+    (tool: GalleryTool) => Boolean(user) && !tierLoading && tool.tier === 'pro' && !isPro,
+    [user, tierLoading, isPro],
+  );
+
+  const showTierLock = useCallback((tool: GalleryTool) => {
+    setUsageLimit({
+      feature: tool.label,
+      used: null,
+      cap: null,
+      upgradeUrl: '/suite/upgrade',
+      variant: 'tier',
+    });
+  }, [setUsageLimit]);
 
   const selectTool = (tool: GalleryTool) => {
-    const isLocked = tool.tier === 'pro' && !isPro;
-    if (isLocked) { showToast('Upgrade to Standard for this tool', 'lock'); return; }
     setSelectedTool(tool);
     setResult(null);
     setInput('');
+    // A guest gets no panel on arrival - a modal or a plan claim the moment a
+    // link resolves is an ambush. The Run button carries the account ask.
+    if (isMemberLocked(tool)) showTierLock(tool);
+    else setUsageLimit(null);
   };
 
   // ── Run Tool ──
   const runTool = useCallback(async () => {
     if (!selectedTool) return;
-    if (!input.trim()) {
-      showToast('Enter some text first', 'cancel');
+
+    /* Both locks are checked before the empty-input nudge. The button stays
+       live for a locked tool so the click has somewhere to go, and telling
+       someone to type into a tool they cannot run is the wrong first answer. */
+    if (isGuestOnPaidTool(selectedTool)) {
+      setAuthModal('signup');
       return;
     }
 
-    if (selectedTool.tier === 'pro' && !isPro) {
-      showToast('This tool requires Standard or Max', 'lock');
+    if (isMemberLocked(selectedTool)) {
+      // Raise it if it is not already up, then take the user to it. selectTool
+      // has usually raised an identical panel already, in which case setting
+      // the same state repaints nothing and the aria-live region has no change
+      // to announce - the reveal is the whole answer to the click.
+      showTierLock(selectedTool);
+      revealUsageLimit();
+      return;
+    }
+
+    if (!input.trim()) {
+      showToast('Enter some text first', 'cancel');
       return;
     }
 
@@ -656,13 +713,20 @@ export default function GalleryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedTool, input, isPro, handleApiError]);
+  }, [selectedTool, input, handleApiError, showTierLock, isGuestOnPaidTool, isMemberLocked, setAuthModal, revealUsageLimit]);
 
   const closeTool = () => {
     setSelectedTool(null);
     setInput('');
     setResult(null);
+    setUsageLimit(null);
   };
+
+  /* Read once per render so the Run button and the click handler cannot
+     disagree about whether this tool is runnable. */
+  const guestLocked = selectedTool ? isGuestOnPaidTool(selectedTool) : false;
+  const memberLocked = selectedTool ? isMemberLocked(selectedTool) : false;
+  const runLocked = guestLocked || memberLocked;
 
   return (
     <SuiteToolShell variant="standard">
@@ -764,7 +828,13 @@ export default function GalleryPage() {
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     {TOOLS.filter(tool => tool.lane === lane.label).map((tool, i) => {
-                      const isLocked = tool.tier === 'pro' && !isPro;
+                      // The same two predicates the Run button reads, so the
+                      // padlock on a card and the label on its button cannot
+                      // disagree. `tier` reads 'free' until /api/usage answers,
+                      // and isMemberLocked carries the tierLoading guard that
+                      // stopped a paying user watching lock styling sit on
+                      // tools they own for the length of that round trip.
+                      const isLocked = isGuestOnPaidTool(tool) || isMemberLocked(tool);
                       return (
                         <motion.button
                           key={tool.id}
@@ -786,7 +856,7 @@ export default function GalleryPage() {
                               state={isLocked ? 'locked' : 'idle'}
                             />
                             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
-                              tool.tier === 'pro'
+                              tool.tier === 'pro' && !tierLoading
                                 ? isPro ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-500' : 'border-amber-500/20 bg-amber-500/10 text-amber-500'
                                 : 'border-[var(--border-subtle)] bg-[var(--bg-hover)] text-[var(--text-secondary)]'
                             }`}>
@@ -848,13 +918,23 @@ export default function GalleryPage() {
                 />
                 <div className="flex justify-between items-center mt-3">
                   <span className="text-xs text-[var(--text-secondary)]">{input.trim().split(/\s+/).filter(Boolean).length} words</span>
+                  {/* A locked tool no longer wears the Run styling. It keeps a
+                      live button, because from down here that click is the only
+                      route to the gate, but it says what it will do: open the
+                      account step for a guest, or scroll to the plan panel for a
+                      free member. Empty input does not disable it in that state
+                      - there is nothing to type into a tool you cannot run. */}
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={runTool}
-                    disabled={isLoading || !input.trim()}
-                    className="flex items-center gap-2 px-6 py-3 rounded-xl text-white font-medium text-sm disabled:opacity-50 shadow-lg"
-                    style={{ background: `linear-gradient(135deg, ${selectedTool.color}, ${selectedTool.color}cc)` }}
+                    disabled={isLoading || (!runLocked && !input.trim())}
+                    className={`flex min-h-11 min-w-0 items-center gap-2 whitespace-nowrap rounded-xl px-6 py-3 text-sm font-medium disabled:opacity-50 ${
+                      runLocked
+                        ? 'border border-amber-400/30 bg-amber-500/10 text-amber-500'
+                        : 'text-white'
+                    }`}
+                    style={runLocked ? undefined : { background: `linear-gradient(135deg, ${selectedTool.color}, ${selectedTool.color}cc)` }}
                   >
                     {isLoading ? (
                       <>
@@ -866,6 +946,11 @@ export default function GalleryPage() {
                           className="bg-[var(--card-bg)]"
                         />
                         Processing...
+                      </>
+                    ) : runLocked ? (
+                      <>
+                        <span className="material-symbols-rounded text-[18px]">lock</span>
+                        {guestLocked ? 'Create a free account' : `Unlock ${selectedTool.label}`}
                       </>
                     ) : (
                       <>

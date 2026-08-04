@@ -17,8 +17,13 @@ export default function ATSAnalyzerPage() {
   const [activeTab, setActiveTab] = useState<ATSTab>('preview');
   const { context: kitContext, updateContext } = useApplicationKitContext();
 
+  /* `tab` as well as `mobileTab`. The landing page's Job Match card links here
+     and needs the Match Score tab, which is the guest-usable one:
+     /api/resume/ats-score is allowAnonymous and ATSScorePanel wires useAuthGate.
+     `mobileTab` is kept because MobileQuickToolsRail already emits it, but it is
+     the wrong name for a link a desktop visitor follows. */
   useEffect(() => {
-    const requestedTab = searchParams.get('mobileTab');
+    const requestedTab = searchParams.get('tab') || searchParams.get('mobileTab');
     if (requestedTab === 'score' || requestedTab === 'preview') setActiveTab(requestedTab);
   }, [searchParams]);
 

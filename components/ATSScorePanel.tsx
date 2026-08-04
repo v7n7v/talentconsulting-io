@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { authFetch } from '@/lib/auth-fetch';
 import { showToast } from '@/components/Toast';
 import { useAuthGate } from '@/hooks/useAuthGate';
+import { useStore } from '@/lib/store';
 import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile';
 import { getResumeVersions, type ResumeVersion } from '@/lib/database-suite';
 import { useApplicationKitContext } from '@/hooks/useApplicationKitContext';
@@ -323,6 +324,7 @@ interface ATSScorePanelProps {
 }
 
 export default function ATSScorePanel({ resumeText: initialResumeText, onClose }: ATSScorePanelProps) {
+  const { user } = useStore();
   const { handleApiError, renderAuthModal } = useAuthGate();
   const { context: kitContext, updateContext } = useApplicationKitContext();
 
@@ -342,13 +344,21 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
     if (!result && kitContext.atsResult?.data?.overallScore) setResult(kitContext.atsResult.data as ATSScoreResult);
   }, [kitContext.updatedAt]);
 
+  /* Only with an account. getResumeVersions throws "Not authenticated" out of
+     getUserId (lib/database-suite.ts:42) and logs it with console.error, and
+     this panel is now a signed-out destination - the landing's Job Match card
+     opens /suite/ats-analyzer?tab=score. Firing a personal read at a visitor
+     who has no account put two red console errors on the first screen a
+     stranger sees, for a list the panel then hides anyway (the picker is
+     behind `savedResumes.length > 0`). */
   useEffect(() => {
+    if (!user) return;
     const loadSavedResumes = async () => {
       const res = await getResumeVersions();
       if (res.success && res.data) setSavedResumes(res.data);
     };
     loadSavedResumes();
-  }, []);
+  }, [user]);
 
   const handleSelectSavedResume = (resumeId: string) => {
     if (!resumeId) return;

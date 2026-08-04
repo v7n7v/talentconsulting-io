@@ -17,6 +17,7 @@ import { authFetch } from '@/lib/auth-fetch';
 import { compactList, normalizeCareerTwinSummary, type CareerTwinSummary } from '@/lib/career-twin-client';
 import { getJobApplications, getResumeVersions, type JobApplication, type ResumeVersion } from '@/lib/database-suite';
 import { analyzeInterview, type InterviewTelemetry } from '@/lib/interview-telemetry';
+import { UPGRADE_COPY } from '@/lib/product-copy';
 import { useStore } from '@/lib/store';
 import { useGeminiLiveAvatar } from '@/hooks/useGeminiLiveAvatar';
 
@@ -247,7 +248,12 @@ export default function InterviewStudioPage() {
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const [phase, setPhase] = useState<InterviewPhase>('setup');
-  const [mode, setMode] = useState<StudioMode>('sona_live');
+  // Opens on Quick Drill, not the live room. The live modes are real for free
+  // users - /api/voice/live-token guards on `gauntlets`, not on voice minutes,
+  // so they get three - but landing there makes a microphone permission prompt
+  // and one of those three the first thing a new account meets. `?mode=` still
+  // overrides, and MobileWorkbench already links `?mode=quick_drill`.
+  const [mode, setMode] = useState<StudioMode>('quick_drill');
   const [persona, setPersona] = useState<Persona>(PERSONAS[1]);
   const [interviewType, setInterviewType] = useState('mixed');
   const [intensity, setIntensity] = useState('balanced');
@@ -1595,8 +1601,38 @@ function LiveRoom({ mode, persona, gemini, transcriptRef, onEnd, onAbandon, busy
             </div>
           )}
           <div className="absolute left-4 top-4 rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
-            {gemini.error || (gemini.isListening ? 'Listening' : gemini.isSpeaking ? 'Taco responding' : gemini.isConnected ? 'Connected' : 'Preparing')}
+            {/* The failure is read first. Not every error clears isConnected -
+                'Microphone access denied' (hooks/useGeminiLiveAvatar.ts:393)
+                and 'WebSocket connection error' (:176) both leave it true - so
+                ranking isConnected above error printed "Connected" directly
+                above a card saying the session had failed. Two words because
+                the two cases are different: the socket never opened, or it
+                opened and something stopped. */}
+            {gemini.error
+              ? (gemini.isConnected ? 'Interrupted' : 'Not connected')
+              : gemini.isListening ? 'Listening'
+              : gemini.isSpeaking ? 'Taco responding'
+              : gemini.isConnected ? 'Connected'
+              : 'Preparing'}
           </div>
+          {/* The failure itself gets room to say what happened. It used to be
+              squeezed into the pill above, so the free interview-practice cap
+              read as a one-line status with no way out. Rendered outside the
+              avatar/voice branch so both live modes get it. */}
+          {gemini.error && (
+            <div className="absolute inset-x-4 bottom-4 min-w-0 rounded-[12px] border border-amber-400/25 bg-amber-500/10 p-3 text-left">
+              <p className="min-w-0 text-sm leading-6 text-[var(--text-primary)]">{gemini.error}</p>
+              {gemini.errorUpgradeUrl && (
+                <Link
+                  href={gemini.errorUpgradeUrl}
+                  className="mt-2 inline-flex min-h-11 min-w-0 items-center gap-1.5 text-sm font-semibold text-[var(--accent)] hover:underline"
+                >
+                  <span className="material-symbols-rounded text-[17px]">bolt</span>
+                  {UPGRADE_COPY.primaryCta}
+                </Link>
+              )}
+            </div>
+          )}
         </div>
         <TranscriptPanel transcript={gemini.fullTranscript} transcriptRef={transcriptRef} />
       </div>

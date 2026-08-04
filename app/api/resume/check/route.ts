@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
-import { checkUsageAllowed, incrementUsage } from '@/lib/usage-tracker';
+import { incrementUsage } from '@/lib/usage-tracker';
 import { geminiQuickCheck } from '@/lib/ai/dual-ai';
 import { validateBody } from '@/lib/validate';
 import { ResumeCheckSchema } from '@/lib/schemas';
@@ -32,16 +32,15 @@ interface ResumeCheckResult {
 
 export async function POST(req: NextRequest) {
   try {
-    const guard = await guardApiRoute(req, { rateLimit: 5, rateLimitWindow: 60_000 });
+    // Free-tier funnel tool: FREE_CAPS.resumeChecks (3 lifetime) is enforced by
+    // guardApiRoute, which returns a 429 carrying used/cap/upgradeUrl. The route
+    // path is not in ROUTE_FEATURE_MAP, so the feature must be passed explicitly.
+    const guard = await guardApiRoute(req, {
+      rateLimit: 5,
+      rateLimitWindow: 60_000,
+      feature: 'resumeChecks',
+    });
     if (guard.error) return guard.error;
-
-    // Pro-only feature
-    if (guard.user.tier === 'free') {
-      return NextResponse.json(
-        { error: 'Resume Checker is a Standard feature. Upgrade to access dual-AI tools.', upgrade: true },
-        { status: 403 }
-      );
-    }
 
     const validated = await validateBody(req, ResumeCheckSchema);
     if (!validated.success) return validated.error;

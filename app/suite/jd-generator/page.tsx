@@ -292,6 +292,9 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
   return (
     <div className="mobile-app-content min-h-dvh px-4 py-3 md:p-6 lg:p-8">
       <div className="mx-auto max-w-4xl">
+        {/* First child, not last: UsageLimitGate renders in flow, so calling
+            this at the bottom of the page put the cap block below the fold. */}
+        {renderAuthModal()}
         <SuiteToolHeader
           tool="jd-generator"
           title="Mission Blueprint Generator"
@@ -644,7 +647,6 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
           </motion.div>
         )}
       </AnimatePresence>
-      {renderAuthModal()}
     </div>
   );
 }

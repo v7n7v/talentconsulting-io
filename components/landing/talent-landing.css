@@ -304,10 +304,15 @@ html.js .tcl .rise.in {opacity:1;transform:none}
 .tcl .modes {display:grid;gap:12px;margin-top:30px}
 @media (min-width:620px){.tcl .modes {grid-template-columns:1fr 1fr}}
 @media (min-width:1000px){.tcl .modes {grid-template-columns:repeat(4,1fr)}}
+/* Each card is a real link to the tool it describes, so it carries the same
+   two declarations `.tool` does at :461 - without them the anchor inherits the
+   browser underline and link colour and the card stops reading as a card. */
 .tcl .mode {border:1px solid var(--line);border-radius:var(--r);padding:22px 20px;background:var(--deep);
-  display:flex;flex-direction:column;min-width:0;transition:border-color .4s,transform .4s var(--ease)}
+  display:flex;flex-direction:column;min-width:0;text-decoration:none;color:inherit;
+  transition:border-color .4s,transform .4s var(--ease)}
 .tcl .sec-alt .mode {background:var(--elevated)}
 @media (hover:hover){.tcl .mode:hover {border-color:var(--line-2);transform:translateY(-3px)}}
+.tcl .mode:focus-visible {outline:2px solid var(--accent);outline-offset:2px;border-color:var(--line-2)}
 .tcl .mode-top {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
 .tcl .mode-i {width:30px;height:30px;flex:none;stroke:var(--accent);fill:none;stroke-width:1.6;
   stroke-linecap:round;stroke-linejoin:round}

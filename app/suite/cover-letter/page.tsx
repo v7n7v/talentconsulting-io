@@ -8,6 +8,7 @@ import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
 import { saveCoverLetter, getCoverLetters, deleteCoverLetter, type CoverLetter } from '@/lib/database-suite';
 import { exportDocument, downloadBlob } from '@/lib/doc-export';
 import { authFetch } from '@/lib/auth-fetch';
+import { useAuthGate } from '@/hooks/useAuthGate';
 import ApplicationKitContextBar from '@/components/ApplicationKitContextBar';
 import ResumeLibraryPicker from '@/components/ResumeLibraryPicker';
 import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile';
@@ -275,6 +276,11 @@ const TEMPLATES = [
 export default function CoverLetterPage() {
   const { user } = useStore();
   const { context: kitContext, updateContext } = useApplicationKitContext();
+  /* /api/agent/cover-letter answers a free user with 403 + `upgrade: true`, and
+     this page used to render that as a red toast with no way out. The page is a
+     click away from the Gallery's Career Writing row and from the landing rail,
+     so the block had to stop looking like a failure. */
+  const { handleApiError, renderAuthModal } = useAuthGate();
   const [company, setCompany] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [jobDescription, setJobDescription] = useState('');
@@ -479,7 +485,7 @@ export default function CoverLetterPage() {
         showToast('Cover letter generated!', 'edit_document');
       } else {
         updateContext({ coverLetterResult: { status: 'error', error: data.error || 'Failed', updatedAt: new Date().toISOString() } });
-        showToast(data.error || 'Failed', 'cancel');
+        if (!handleApiError(data)) showToast(data.error || 'Failed', 'cancel');
       }
     } catch (error: any) {
       updateContext({ coverLetterResult: { status: 'error', error: error.message || 'Something went wrong', updatedAt: new Date().toISOString() } });
@@ -501,6 +507,7 @@ export default function CoverLetterPage() {
 
   return (
     <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto px-4 py-3 md:p-6">
+      {renderAuthModal()}
       <SuiteToolHeader
         tool="cover-letter"
         title="Cover Letter Studio"

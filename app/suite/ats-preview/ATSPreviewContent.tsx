@@ -274,7 +274,16 @@ export function ATSPreviewContent() {
 
   // Load latest resume from vault
   useEffect(() => {
-    if (!user) return;
+    /* Clear `loading` on the way out, not just in the fetch's `finally`.
+       `loading` starts true and the only other writer is the kit-snapshot
+       effect above, which needs a snapshot to fire. A signed-out visitor has
+       neither, so this bare `return` left the skeleton at the bottom of this
+       file as the entire page, forever. Reachable: /suite/ats-preview and the
+       ATS Preview tab of /suite/ats-analyzer both render this signed out —
+       WorkspaceFrame does not redirect. With the flag cleared the "No Resume
+       Found" card renders instead, which is the truthful state and carries a
+       route to the resume builder. */
+    if (!user) { setLoading(false); return; }
     (async () => {
       try {
         const res = await authFetch('/api/resume/latest');

@@ -47,7 +47,31 @@ interface TalentLandingProps {
 
 /* All 22 tools, split across two rails. Name only: the content file has real
    descriptions for six of them and none for the other sixteen, and writing the
-   missing sixteen would be inventing copy on a page about not doing that. */
+   missing sixteen would be inventing copy on a page about not doing that.
+
+   Every name in TOOLS_A and TOOLS_B has an entry, so the `?? '/tools'` fallback
+   in ToolCard never fires - it used to send sixteen of the twenty-two to a
+   five-item index, which is the same dead-end a friend reads as broken. The
+   destinations are: the five public pages in lib/tools-catalog.ts, seven Gallery
+   tools by the ids in app/suite/gallery/page.tsx, nine suite routes, and the
+   free Career Check, which is the section on this page rather than a route.
+
+   Only ids in the Gallery's own TOOLS array are deep-linkable: the reader at
+   app/suite/gallery/page.tsx does `TOOLS.find(t => t.id === toolId)`, and it
+   never consults CAREER_WRITING_TOOLS. `cover-letter` and `linkedin` live in
+   that second array and carry their own routes, so they are linked directly -
+   `?tool=cover-letter` resolved to nothing and dropped the visitor on the index.
+
+   "Job Match" points where the rest of this page says it points: the mode card
+   headed Job Match and the Career Check dropdown entry of the same name both
+   mean "your story against a role", which is /suite/ats-analyzer. It used to be
+   /suite/job-search, so the one label sent a friend to two unrelated tools.
+
+   It carries `?tab=score` because /suite/ats-analyzer opens on ATS Preview, and
+   that tab reads a saved resume a stranger does not have. Match Score is the
+   guest-usable half: /api/resume/ats-score is allowAnonymous and in
+   FREEMIUM_API_PATHS, and ATSScorePanel starts with two empty textareas rather
+   than a load. */
 const TOOL_HREF: Record<string, string> = {
   'ATS Analyzer': '/tools/ats-analyzer',
   'Resume Builder': '/tools/resume-builder',
@@ -55,6 +79,22 @@ const TOOL_HREF: Record<string, string> = {
   'AI Detector': '/tools/ai-detector',
   'Interview Prep': '/tools/interview-prep',
   'Job Tracker': '/suite/applications',
+  'Cover Letter': '/suite/cover-letter',
+  'Ask Taco': '/suite/agent',
+  'Career Check': '#check',
+  'Job Match': '/suite/ats-analyzer?tab=score',
+  'Grammar Checker': '/suite/gallery?tool=grammar-checker',
+  'Paraphraser': '/suite/gallery?tool=paraphraser',
+  'Word Counter': '/suite/gallery?tool=word-counter',
+  'Citation Machine': '/suite/gallery?tool=citation-machine',
+  'Tone Analyzer': '/suite/gallery?tool=tone-analyzer',
+  'Summarizer': '/suite/gallery?tool=summarizer',
+  'Email Composer': '/suite/gallery?tool=email-composer',
+  'LinkedIn Optimizer': '/suite/linkedin',
+  'ATS Preview': '/suite/ats-preview',
+  'Salary Coach': '/suite/negotiate',
+  'Skill Bridge': '/suite/skill-bridge',
+  'Career Intelligence': '/suite/intelligence',
 };
 
 const TOOLS_A = [
@@ -166,7 +206,10 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
               <a href="/tools/ai-detector"><b>AI Detector</b><span>Where the writing reads as generated</span></a>
               <a href="/tools/interview-prep"><b>Interview Prep</b><span>Stories, not scripts</span></a>
               <a href="/suite/applications"><b>Job Tracker</b><span>Stages, dates, and what to do next</span></a>
-              <a className="nd-all" href="/tools"><b>All 22 tools →</b></a>
+              {/* #tools, not /tools: the rail below names all 22 and every name
+                  now resolves to a real destination. /tools is the public index
+                  and lists 5, so it cannot carry the count. */}
+              <a className="nd-all" href="#tools"><b>All 22 tools →</b></a>
             </div></details>
           <details className="nd"><summary>Taco<svg className="nd-c" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" /></svg></summary>
             <div className="nd-pop">
@@ -228,7 +271,11 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
         <div className="hold">
           <div className="eyeb rise"><svg viewBox="70 118 372 290" aria-hidden="true"><use href="#mark" /></svg>Start here, no account</div>
           <h2 className="rise">Paste something. Get a real next step.</h2>
-          <p className="lede rise">Four checks, free, before you sign up for anything. Each one tells you what to fix first rather than handing back a score and leaving.</p>
+          {/* "Three", counted: Resume, Job Match and Writing Trust each reach a
+              route a signed-out visitor can finish. Quick Polish cannot - there
+              is no anonymous humanize surface anywhere - so the sentence no
+              longer covers all four. */}
+          <p className="lede rise">Four ways in, three of them before you sign up for anything. Each one tells you what to fix first rather than handing back a score and leaving.</p>
 
           <div className="check rise">
             <div className="check-top">
@@ -259,7 +306,7 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
 
           <p className="lede rise" style={{'marginTop': '34px'}}>Or start from one of the four:</p>
           <div className="modes" id="modes">
-            <article className="mode rise">
+            <a className="mode rise" href="/suite/resume">
               <div className="mode-top">
               <svg className="mode-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l2 2 4-4" /><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M8 2v4M16 2v4" /></svg>
               <svg className="doc" viewBox="0 0 44 50" aria-hidden="true">
@@ -273,9 +320,13 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
               </svg></div>
               <h3>Resume</h3>
               <p>Check ATS structure, clarity, and recruiter-readable signals.</p>
-              <div className="mode-f"><span className="mode-cap">500 words</span><span className="mode-go">Check resume →</span></div>
-            </article>
-            <article className="mode rise">
+              <div className="mode-f"><span className="mode-go">Check resume →</span></div>
+            </a>
+            {/* ?tab=score, not the bare route. /suite/ats-analyzer opens on ATS
+                Preview, which reads a saved resume; a stranger has none and got
+                a skeleton that never resolved. Match Score is the half that
+                works signed out - two textareas and an allowAnonymous route. */}
+            <a className="mode rise" href="/suite/ats-analyzer?tab=score">
               <div className="mode-top">
               <svg className="mode-i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /></svg>
               <svg className="doc" viewBox="0 0 44 50" aria-hidden="true">
@@ -291,9 +342,9 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
               </svg></div>
               <h3>Job Match</h3>
               <p>Compare your career story against a role and spot missing proof.</p>
-              <div className="mode-f"><span className="mode-cap">1,200 words</span><span className="mode-go">Analyze match →</span></div>
-            </article>
-            <article className="mode rise">
+              <div className="mode-f"><span className="mode-go">Analyze match →</span></div>
+            </a>
+            <a className="mode rise" href="/tools/ai-detector">
               <div className="mode-top">
               <svg className="mode-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" /><path d="M12 8a4 4 0 1 0 4 4" /><path d="M12 12l9-9" /></svg>
               <svg className="doc" viewBox="0 0 44 50" aria-hidden="true">
@@ -307,9 +358,9 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
               </svg></div>
               <h3>Writing Trust</h3>
               <p>Scan career writing for generic AI patterns and low-trust phrasing.</p>
-              <div className="mode-f"><span className="mode-cap">1,500 words</span><span className="mode-go">Scan trust →</span></div>
-            </article>
-            <article className="mode rise">
+              <div className="mode-f"><span className="mode-cap">500 words, no account</span><span className="mode-go">Scan trust →</span></div>
+            </a>
+            <a className="mode rise" href="/tools/ai-humanizer">
               <div className="mode-top">
               <svg className="mode-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4M4 19h4" /><path d="M13 3l3.5 6.5L23 13l-6.5 3.5L13 23l-3.5-6.5L3 13l6.5-3.5Z" /></svg>
               <svg className="doc" viewBox="0 0 44 50" aria-hidden="true">
@@ -322,8 +373,15 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
               </svg></div>
               <h3>Quick Polish</h3>
               <p>Humanize a short draft while preserving facts, numbers, and intent.</p>
-              <div className="mode-f"><span className="mode-cap">300 words · 3/day</span><span className="mode-go">Polish draft →</span></div>
-            </article>
+              {/* The only one of the four that is not a no-account check, and it
+                  now says so. /tools/ai-humanizer has no inputs - it is the
+                  explainer, and its forward links go to /suite/writing-tools,
+                  where /api/writing/humanize is allowAnonymous:false and absent
+                  from FREEMIUM_API_PATHS. So "Polish draft" was a promise no
+                  guest could collect anywhere in the product. The cap is real:
+                  WRITING_WORD_CAPS.free is 500 words a month. */}
+              <div className="mode-f"><span className="mode-cap">500 words/mo, free account</span><span className="mode-go">See how it works →</span></div>
+            </a>
           </div>
         </div>
       </section>
@@ -461,8 +519,12 @@ export function TalentLanding({ isAuthenticated, onOpenAuth }: TalentLandingProp
         loading="lazy"
         decoding="async"
       />
-        <nav><a href="#tools">Tools</a><a href="#pricing">Pricing</a><a href="/for-teams">For teams</a>
-          <a href="/blog">Blog</a><a href="/help">Help</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
+        {/* Routes, not in-page anchors. A footer that only jumps around the
+            page it is already on is not a site footer, and /contact had no
+            inbound link anywhere in the product. */}
+        <nav><a href="/tools">Tools</a><a href="/pricing">Pricing</a><a href="/for-teams">For teams</a>
+          <a href="/blog">Blog</a><a href="/help">Help</a><a href="/contact">Contact</a>
+          <a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
       </div></footer>
     </div>
   );

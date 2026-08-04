@@ -61,8 +61,12 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
 
   // Step 3: Preferences
   const [location, setLocation] = useState('');
-  const [salaryMin, setSalaryMin] = useState(50);
-  const [salaryMax, setSalaryMax] = useState(150);
+  // Null until the user types a number. These were 50 and 150, which the modal
+  // rendered as "$50k – $150k / year" and then persisted to the profile as the
+  // user's stated target - a figure nobody had entered, written across a
+  // persistence boundary.
+  const [salaryMin, setSalaryMin] = useState<number | null>(null);
+  const [salaryMax, setSalaryMax] = useState<number | null>(null);
 
   const firstName = userName?.split(' ')[0] || 'there';
 
@@ -133,11 +137,9 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
 
   // ── Complete onboarding ──
   const handleComplete = async () => {
-    if (careerFields.length === 0) {
-      showToast('Please select at least one career field', 'warning');
-      return;
-    }
-
+    // No hard requirement on career fields any more: step 2 now offers "Skip
+    // for now", and the only way to leave with an empty list is to have chosen
+    // to. An empty array is the honest record of that; a default would not be.
     setLoading(true);
     try {
       const roles = targetRoles
@@ -151,7 +153,10 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
         job_search_status: searchStatus,
         target_roles: roles.length > 0 ? roles : undefined,
         location_preference: location || undefined,
-        salary_range: salaryMin && salaryMax ? { min: salaryMin, max: salaryMax } : undefined,
+        // Explicit null checks, not truthiness: a stated minimum of 0 is a real
+        // answer and must not be dropped the way `salaryMin &&` dropped it.
+        salary_range:
+          salaryMin !== null && salaryMax !== null ? { min: salaryMin, max: salaryMax } : undefined,
         base_resume_text: resumeText || undefined,
         base_resume_parsed: resumeParsed || undefined,
       };
@@ -505,10 +510,24 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                   }}
                 />
 
-                <div className="flex justify-between items-center mt-2">
-                  <button onClick={goBack} className="text-sm font-medium transition-colors hover:underline" style={{ color: 'var(--text-secondary)' }}>
-                    ← Back
-                  </button>
+                <div className="flex justify-between items-center gap-3 mt-2">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <button onClick={goBack} className="text-sm font-medium transition-colors hover:underline" style={{ color: 'var(--text-secondary)' }}>
+                      ← Back
+                    </button>
+                    {/* Continue stays disabled until a career field is chosen,
+                        and this is the only other way off the step. Without it
+                        the modal is a dead end for anyone who does not want to
+                        answer, which is how a default answer gets invented. */}
+                    <button
+                      type="button"
+                      onClick={goNext}
+                      className="min-h-11 whitespace-nowrap text-sm font-medium transition-colors hover:underline"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      Skip for now
+                    </button>
+                  </div>
                   <button
                     onClick={goNext}
                     disabled={careerFields.length === 0}
@@ -567,8 +586,9 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     <label className="text-[10px] mb-1 block" style={{ color: 'var(--text-muted)' }}>Min ($k)</label>
                     <input
                       type="number"
-                      value={salaryMin}
-                      onChange={e => setSalaryMin(Number(e.target.value))}
+                      value={salaryMin ?? ''}
+                      onChange={e => setSalaryMin(e.target.value === '' ? null : Number(e.target.value))}
+                      placeholder="—"
                       min={0}
                       max={500}
                       className="w-full text-xs px-3 py-2 rounded-lg outline-none"
@@ -584,8 +604,9 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     <label className="text-[10px] mb-1 block" style={{ color: 'var(--text-muted)' }}>Max ($k)</label>
                     <input
                       type="number"
-                      value={salaryMax}
-                      onChange={e => setSalaryMax(Number(e.target.value))}
+                      value={salaryMax ?? ''}
+                      onChange={e => setSalaryMax(e.target.value === '' ? null : Number(e.target.value))}
+                      placeholder="—"
                       min={0}
                       max={1000}
                       className="w-full text-xs px-3 py-2 rounded-lg outline-none"
@@ -597,9 +618,15 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     />
                   </div>
                 </div>
-                <p className="text-[10px] mb-6" style={{ color: 'var(--text-muted)' }}>
-                  ${salaryMin}k – ${salaryMax}k / year
-                </p>
+                {/* The wrapper keeps the gap below the inputs constant, so the
+                    step does not reflow the moment a first digit is typed. */}
+                <div className="mb-6 min-h-[14px]">
+                  {salaryMin !== null && salaryMax !== null && (
+                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      ${salaryMin}k – ${salaryMax}k / year
+                    </p>
+                  )}
+                </div>
 
                 {/* Summary of selections */}
                 <div
@@ -608,7 +635,8 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                 >
                   <p className="text-[10px] font-medium mb-1" style={{ color: 'var(--accent)' }}>Your profile summary</p>
                   <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    {careerFields.join(', ')} · {SENIORITY_LEVELS.find(l => l.value === seniority)?.label} level ·{' '}
+                    {careerFields.length > 0 && `${careerFields.join(', ')} · `}
+                    {SENIORITY_LEVELS.find(l => l.value === seniority)?.label} level ·{' '}
                     {SEARCH_STATUS.find(s => s.value === searchStatus)?.label}
                     {targetRoles && ` · Targeting: ${targetRoles}`}
                     {resumeFileName && ` · Resume: ${resumeFileName}`}

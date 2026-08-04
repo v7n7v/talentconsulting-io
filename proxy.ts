@@ -151,8 +151,14 @@ export function proxy(request: NextRequest) {
           edgeAlert(request, 'warning', 'Repeated Auth Failures', `IP: ${ip}\n5 unauthenticated API requests in 1 minute\nLatest: ${pathname}`);
         }
       }
+      // `requiresAuth` is the flag every client gate reads (hooks/useAuthGate.tsx
+      // and the resume page's handlers) to open a sign-in modal instead of a red
+      // error toast. lib/api-auth.ts sets it on its own 401; the edge stops
+      // non-freemium routes before that code runs, so without it here a
+      // signed-out visitor on, say, /suite/resume got "Authentication required"
+      // as a failure message and no way to act on it.
       const unauthorized = NextResponse.json(
-        { error: 'Authentication required. Please sign in.' },
+        { error: 'Authentication required. Please sign in.', requiresAuth: true },
         { status: 401 },
       );
       unauthorized.headers.set('Cache-Control', 'private, no-store, max-age=0');

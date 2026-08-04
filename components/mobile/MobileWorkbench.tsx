@@ -26,7 +26,12 @@ function MobileIcon({ name, className = '' }: { name: string; className?: string
 
 const QUICK_TOOL_ITEMS = [
   { id: 'sona', label: 'Ask Taco', icon: 'auto_awesome', href: '/suite/agent' },
-  { id: 'job-match', label: 'Job Match', icon: 'work_history', href: '/?tool=job-match' },
+  /* "Job Search", not "Job Match": /suite/job-search is the opportunity radar,
+     while "Job Match" on the landing page and in the sidebar dropdown means
+     comparing a resume against one role. One label pointing at two unrelated
+     tools is what made this tile read as broken. The sidebar already calls this
+     route Job Search (components/SuiteSidebar.tsx:157). */
+  { id: 'job-search', label: 'Job Search', icon: 'work_history', href: '/suite/job-search' },
   { id: 'resume', label: 'Resume Check', icon: 'description', href: '/suite/resume?mobileAction=check' },
   { id: 'humanize', label: 'Humanize', icon: 'edit_note', href: '/suite/writing-tools' },
   { id: 'ats', label: 'ATS Score', icon: 'scanner', href: '/suite/ats-analyzer?mobileTab=score' },
@@ -35,15 +40,31 @@ const QUICK_TOOL_ITEMS = [
   { id: 'interview', label: 'Interview Prep', icon: 'interpreter_mode', href: '/suite/interview-sim?mode=quick_drill' },
 ] as const;
 
+/* Signed-out equivalents. Previously `/?tool=…`, which no code reads - see the
+   note on GUEST_PREVIEW_BY_SUITE_PATH in components/SuiteSidebar.tsx. A guest
+   tapping any of these was dropped on the marketing homepage.
+
+   Job Search has no public equivalent - /tools has five pages and none of them
+   is a job board - so it is left out of the guest rail rather than aliased to
+   /tools/ats-analyzer, which is already what "ATS Score" points at. Two tiles
+   with different names and one destination is the same lie as a dead link. */
 const GUEST_QUICK_TOOL_HREFS: Record<string, string> = {
   sona: '/suite/agent?intent=resume-upload',
-  'job-match': '/?tool=job-match',
-  resume: '/?tool=resume-check',
-  humanize: '/?tool=quick-polish',
-  ats: '/?tool=ats-analyzer',
+  /* Resume and ATS resolve to the suite route, matching the landing page's
+     mode cards and components/SuiteSidebar.tsx. Both work signed out -
+     /api/resume/parse and /api/resume/ats-score are allowAnonymous with their
+     own ANON_CAPS - so overriding them to a marketing page took a guest off a
+     working tool. The `?tab=score` is load-bearing: ATS Preview reads a saved
+     resume, and a guest has none.
+     Humanize keeps its override. /suite/writing-tools calls
+     /api/writing/humanize, which is allowAnonymous:false and not in
+     FREEMIUM_API_PATHS, so there is nothing there for a guest to finish. */
+  resume: '/suite/resume',
+  humanize: '/tools/ai-humanizer',
+  ats: '/suite/ats-analyzer?tab=score',
 };
 
-const GUEST_TOP_QUICK_TOOLS = new Set(['sona', 'job-match', 'resume', 'ats', 'humanize']);
+const GUEST_TOP_QUICK_TOOLS = new Set(['sona', 'resume', 'ats', 'humanize']);
 
 const GROUP_ORDER = ['Build', 'Search and Apply', 'Prepare', 'Grow', 'Taco', 'Home'];
 

@@ -20,15 +20,28 @@ interface AuthResult {
   tier: PlanTier;
 }
 
-/** Route → UsageFeature mapping for lifetime cap enforcement */
+/** Route → UsageFeature mapping for lifetime cap enforcement.
+ *
+ * A route belongs here only if it also *increments* the counter it is capped on.
+ * '/api/resume/ai', '/api/resume/parse' and '/api/vault/export-plan' used to
+ * borrow 'resumeChecks', whose only writer is app/api/resume/check/route.ts.
+ * While that route 403'd every free user the counter never moved, so the three
+ * borrowers were never actually capped. Honouring the check route's own contract
+ * started the counter moving — and would have meant three Quality Scans locking
+ * a free user out of uploading a resume at all, under a message naming a tool
+ * they were not using. Resume upload is the product's first step and
+ * '/api/resume/parse' is explicitly `allowAnonymous`; capping it on someone
+ * else's meter is not a cap, it is a bug. All three keep their per-minute rate
+ * limit; none of them consumes a lifetime allowance.
+ */
 const ROUTE_FEATURE_MAP: Record<string, UsageFeature> = {
   '/api/resume/morph':            'morphs',
-  '/api/resume/ai':               'resumeChecks',
-  '/api/resume/parse':            'resumeChecks',
+  '/api/resume/ai':               'resumeAssists',
+  '/api/resume/parse':            'resumeParses',
+  '/api/vault/export-plan':       'vaultExports',
   '/api/gauntlet/grade':          'gauntlets',
   '/api/gauntlet/generate':       'gauntlets',
   '/api/market-oracle':           'jdGenerations',
-  '/api/vault/export-plan':       'resumeChecks',
   '/api/chat':                    'gauntlets',
   '/api/ai':                      'gauntlets',
 };

@@ -22,6 +22,7 @@ import {
   type CareerTwinSummary,
 } from '@/lib/career-twin-client';
 import { SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
+import SuiteSignedOut from '@/components/suite/SuiteSignedOut';
 import dynamic from 'next/dynamic';
 
 const PulseTab = dynamic(() => import('@/app/suite/pulse/PulseContent').then(m => ({ default: m.PulseContent })), {
@@ -687,14 +688,34 @@ export default function IntelligencePage() {
         </div>
       </SuiteToolHeader>
 
+      {/* Signed out is not a failed load, and it is not a property of one tab.
+          This used to live inside the overview branch, so switching tabs
+          dropped a signed-out visitor back into data-less content. The tab
+          strip stays clickable; what it switches between is nothing until
+          there is an account to read. `loading` is already false here — the
+          load effect returns early when there is no user. */}
+      {/* SuiteSignedOut, not SuiteUnmeasured. SuiteUnmeasured is the evidence
+          primitive for "this number was never measured" — a dashed muted
+          advisory sized to sit inside a grid of results. Here it was the whole
+          page, which put the only route forward inside a footnote. The shared
+          component is the same shape app/suite/agent/queue/page.tsx:1883 and
+          app/suite/network/page.tsx:1441 already use, and three other routes
+          with this exact problem now use it too. */}
+      {!loading && !user && (
+        <SuiteSignedOut
+          title="Sign in to read your Career Intelligence"
+          description="This view is built from the resume, applications and checks saved to your account. There is nothing to read until there is an account to read it from."
+        />
+      )}
+
       {/* Pulse Tab */}
-      {activeTab === 'pulse' && <PulseTab />}
+      {activeTab === 'pulse' && user && <PulseTab />}
 
       {/* Analytics Tab */}
-      {activeTab === 'analytics' && <AnalyticsTab />}
+      {activeTab === 'analytics' && user && <AnalyticsTab />}
 
       {/* Outcomes Tab */}
-      {activeTab === 'outcomes' && (
+      {activeTab === 'outcomes' && user && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
           {outcomeLoading ? (
             <div className="space-y-4">
@@ -881,7 +902,7 @@ export default function IntelligencePage() {
         </div>
       )}
 
-      {!loading && !profile && (
+      {!loading && user && !profile && (
         <div className="space-y-4">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-8">
             <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>

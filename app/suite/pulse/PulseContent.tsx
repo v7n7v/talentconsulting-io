@@ -7,6 +7,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { SuiteToolHeader, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
+import SuiteSignedOut from '@/components/suite/SuiteSignedOut';
 
 interface PulseData {
   // Pipeline
@@ -45,7 +46,14 @@ export function PulseContent() {
   const [savingMorale, setSavingMorale] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    /* Clear the flag on the way out. `loading` starts true and loadPulse is its
+       only other writer, so a bare return left the skeleton below as the whole
+       of /suite/pulse for a signed-out visitor - WorkspaceFrame renders suite
+       routes signed out rather than redirecting. The signed-out panel below is
+       gated separately, because merely clearing the flag would have shown the
+       "no applications yet" empty state to someone with no account, which is a
+       claim about a record they never had. */
+    if (!user) { setLoading(false); return; }
     loadPulse();
   }, [user]);
 
@@ -105,6 +113,30 @@ export function PulseContent() {
     { label: 'Interviews', value: data.interviews, color: '#8b5cf6', icon: 'groups' },
     { label: 'Offers', value: data.offers, color: '#22c55e', icon: 'emoji_events' },
   ];
+
+  /* Signed out returns here rather than falling through. `data` is
+     `pulse || {…zeros}`, and the funnel, the velocity row and the stat cards
+     below are not gated on `loading` at all, so a visitor with no account
+     would have been shown a full pipeline of measured zeros - the one thing
+     this product does not do. Every hook above has already run, so the early
+     return does not change hook order. */
+  if (!user) {
+    return (
+      <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto space-y-5 px-4 py-3 md:space-y-6 md:p-6">
+        <SuiteToolHeader
+          tool="pulse"
+          title="Weekly Career Pulse"
+          subtitle="Pipeline health, velocity, and next actions"
+          icon="monitor_heart"
+          pageHelpId="pulse"
+        />
+        <SuiteSignedOut
+          title="Sign in to see your Career Pulse"
+          description="Pulse counts the applications, replies and interviews saved to your account. Signed out there is nothing to count — not zero of them, none recorded."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto space-y-5 px-4 py-3 md:space-y-6 md:p-6">

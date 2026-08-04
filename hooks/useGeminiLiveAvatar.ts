@@ -35,6 +35,13 @@ interface AvatarLiveState {
   aiTranscript: string;
   fullTranscript: Array<{ role: 'user' | 'ai'; text: string }>;
   error: string | null;
+  /**
+   * Set when `error` is a plan limit rather than a fault. /api/voice/live-token
+   * guards on the shared `gauntlets` cap, so a free user's fourth live session
+   * fails with "You used your free interview practice runs" — accurate, but the
+   * room only had a status line to print it in, with no way forward.
+   */
+  errorUpgradeUrl: string | null;
   questionCount: number;
   elapsedSeconds: number;
   inputLevel: number;
@@ -56,6 +63,7 @@ export function useGeminiLiveAvatar() {
     aiTranscript: '',
     fullTranscript: [],
     error: null,
+    errorUpgradeUrl: null,
     questionCount: 0,
     elapsedSeconds: 0,
     inputLevel: 0,
@@ -113,7 +121,7 @@ export function useGeminiLiveAvatar() {
   const connect = useCallback(async (config: AvatarLiveConfig) => {
     inputLevelRef.current = 0;
     outputLevelRef.current = 0;
-    setState(s => ({ ...s, isConnecting: true, error: null, inputLevel: 0, outputLevel: 0 }));
+    setState(s => ({ ...s, isConnecting: true, error: null, errorUpgradeUrl: null, inputLevel: 0, outputLevel: 0 }));
 
     try {
       const tokenRes = await authFetch('/api/voice/live-token', {
@@ -123,8 +131,15 @@ export function useGeminiLiveAvatar() {
       });
 
       if (!tokenRes.ok) {
-        const err = await tokenRes.json();
-        throw new Error(err.error || `Token request failed (${tokenRes.status})`);
+        const err = await tokenRes.json().catch(() => ({} as Record<string, unknown>));
+        const failure = new Error(err.error || `Token request failed (${tokenRes.status})`);
+        // Carry the route out, so the room can offer one. Only cap/tier answers
+        // set it — a mic fault or a dead socket must not suggest paying.
+        (failure as Error & { upgradeUrl?: string | null }).upgradeUrl =
+          err.limitReached || err.upgrade
+            ? (typeof err.upgradeUrl === 'string' ? err.upgradeUrl : '/suite/upgrade')
+            : null;
+        throw failure;
       }
 
       const { token } = await tokenRes.json();
@@ -177,6 +192,7 @@ export function useGeminiLiveAvatar() {
         ...s,
         isConnecting: false,
         error: error.message || 'Failed to connect',
+        errorUpgradeUrl: error?.upgradeUrl ?? null,
       }));
     }
   }, []);
@@ -391,6 +407,7 @@ export function useGeminiLiveAvatar() {
       aiTranscript: '',
       fullTranscript: [],
       error: null,
+      errorUpgradeUrl: null,
       questionCount: 0,
       elapsedSeconds: 0,
       inputLevel: 0,
