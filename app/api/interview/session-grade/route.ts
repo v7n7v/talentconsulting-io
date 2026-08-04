@@ -18,68 +18,26 @@ function cleanTranscript(value: unknown): TranscriptEntry[] {
   })).filter(entry => entry.text.length > 0);
 }
 
-function clampScore(score: number): number {
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-function fallbackGrade(transcript: TranscriptEntry[], telemetry: any) {
-  const userWords = transcript
-    .filter(entry => entry.role === 'user')
-    .flatMap(entry => entry.text.split(/\s+/).filter(Boolean)).length;
-  const questionCount = transcript.filter(entry => entry.role === 'ai' && entry.text.includes('?')).length;
-  const starScore = Number(telemetry?.starScore || 0);
-  const keywordCoverage = Number(telemetry?.keywordCoverage || 0);
-  const fillerRatio = Number(telemetry?.fillerRatio || 0);
-  const wpm = Number(telemetry?.wpm || 0);
-
-  const pacingScore = wpm === 0 ? 55 : wpm < 110 || wpm > 175 ? 68 : 84;
-  const fillerScore = fillerRatio > 6 ? 58 : fillerRatio > 3 ? 72 : 86;
-  const depthScore = userWords > 500 ? 84 : userWords > 180 ? 72 : 58;
-  const score = clampScore((starScore * 0.25) + (keywordCoverage * 0.2) + (pacingScore * 0.2) + (fillerScore * 0.15) + (depthScore * 0.2));
-
-  return {
-    score,
-    summary: questionCount > 0
-      ? 'Taco created a deterministic debrief from your transcript and delivery telemetry because AI grading was unavailable.'
-      : 'The session was too short for a full mock debrief. Add more answers to unlock stronger coaching.',
-    strengths: [
-      userWords > 180 ? 'You gave enough answer volume for meaningful coaching.' : 'You started the practice flow and created a baseline.',
-      fillerRatio <= 3 ? 'Your filler-word rate looks controlled.' : 'You have clear filler-word targets to practice next.',
-      keywordCoverage > 40 ? 'You referenced several role-relevant keywords.' : 'The transcript gives Taco a starting point for targeted drills.',
-    ],
-    improvements: [
-      starScore < 60 ? 'Use a clearer STAR arc: situation, task, action, result.' : 'Keep tightening STAR structure so every answer lands with impact.',
-      keywordCoverage < 55 ? 'Mirror more of the target role language from the job description.' : 'Connect keywords to concrete outcomes, not just mentions.',
-      wpm > 175 ? 'Slow down slightly and leave room for emphasis.' : wpm < 110 ? 'Add more energy and detail so answers do not feel underdeveloped.' : 'Preserve your current pacing while adding sharper examples.',
-    ],
-    answerFeedback: transcript.filter(entry => entry.role === 'user').slice(0, 5).map((entry, index) => ({
-      questionIndex: index + 1,
-      score: clampScore(score - 4 + index),
-      feedback: entry.text.split(/\s+/).length < 45
-        ? 'This answer is short. Add context, your direct action, and a measurable result.'
-        : 'This answer has enough substance. Tighten the opening and make the result more specific.',
-    })),
-    rubric: [
-      { label: 'Structure', score: clampScore(starScore || 55), note: 'Measured through STAR markers and answer organization.' },
-      { label: 'Delivery', score: clampScore((pacingScore + fillerScore) / 2), note: 'Measured through pacing and filler-word telemetry.' },
-      { label: 'Role Fit', score: clampScore(keywordCoverage || 50), note: 'Measured through job-description keyword coverage.' },
-    ],
-    recommendations: [
-      'Practice one behavioral answer with a measurable result.',
-      'Run a five-minute drill on the weakest category from this debrief.',
-      'Save strong answers into Story Bank so Taco can reuse them later.',
-    ],
-    nextDrills: [
-      { title: 'STAR Compression', focus: 'Answer in 90 seconds with one metric.' },
-      { title: 'Keyword Bridge', focus: 'Tie one role requirement to a real project.' },
-    ],
-    weakCategories: [
-      starScore < 60 ? 'STAR' : null,
-      fillerRatio > 3 ? 'filler_words' : null,
-      keywordCoverage < 55 ? 'specificity' : null,
-    ].filter(Boolean),
-  };
-}
+/*
+ * There is deliberately no fallbackGrade().
+ *
+ * When AI grading was unavailable this route used to synthesise a debrief:
+ * a weighted average of `starScore * 0.25 + keywordCoverage * 0.2 + ...`,
+ * where the telemetry inputs were read as `Number(telemetry?.starScore || 0)`
+ * — so a signal that was never measured entered the average as a real zero and
+ * dragged the score down, which is exactly the missing-rendered-as-zero pattern
+ * `evidence-states.md` forbids. The rest came from bucketed word counts and a
+ * words-per-minute threshold.
+ *
+ * It then expanded that one number into five per-answer scores (`score - 4 +
+ * index`) and three rubric rows whose notes read "Measured through STAR
+ * markers", "Measured through pacing and filler-word telemetry" — claiming
+ * measurement for values nothing had measured. All of it persisted to
+ * `interview_sessions.scores` and rendered in the debrief as an ordinary grade.
+ *
+ * An interview that was not graded is not a grade. The route now says so and
+ * persists nothing.
+ */
 
 export async function POST(req: NextRequest) {
   const guard = await guardApiRoute(req, { rateLimit: 8, rateLimitWindow: 60_000, feature: 'gauntlets' });
@@ -123,11 +81,29 @@ Return valid JSON:
       transcript,
     });
 
-    let grade;
+    let grade: any;
     try {
       grade = await groqJSONCompletion(systemPrompt, userPrompt, { temperature: 0.35, maxTokens: 2600 });
-    } catch (error) {
-      grade = fallbackGrade(transcript, telemetry);
+    } catch (gradeError: any) {
+      // Telemetry, because there is no fallback any more: without this a grader
+      // outage is invisible in monitoring while being visible to every user who
+      // finishes a mock, and "the grader is down" looks exactly like "nobody
+      // practised today".
+      monitor.critical('Tool: interview/session-grade', `grader unavailable: ${String(gradeError)}`);
+      return NextResponse.json({
+        error: 'Grading is unavailable right now, so this interview was not scored. No debrief was saved — try again in a moment.',
+        code: 'GRADING_UNAVAILABLE',
+      }, { status: 503 });
+    }
+
+    // No default score either. A debrief without a number is not a zero and it
+    // is not a 60 — it is an ungraded session.
+    if (typeof grade?.score !== 'number' || !Number.isFinite(grade.score)) {
+      monitor.critical('Tool: interview/session-grade', 'grader returned no score for interview session');
+      return NextResponse.json({
+        error: 'Grading came back without a score, so nothing was recorded. Try again in a moment.',
+        code: 'GRADING_INCOMPLETE',
+      }, { status: 503 });
     }
 
     if (sessionId) {

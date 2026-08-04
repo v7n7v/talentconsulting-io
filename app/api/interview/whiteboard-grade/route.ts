@@ -10,40 +10,24 @@ function cleanString(value: unknown, max = 8000): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
-function fallbackGrade(body: any) {
-  const prompt = cleanString(body?.prompt, 2000);
-  const assumptions = cleanString(body?.assumptions, 3000);
-  const approach = cleanString(body?.approach, 4000);
-  const solution = cleanString(body?.solution, 8000);
-  const complexity = cleanString(body?.complexity, 2000);
-  const tradeoffs = cleanString(body?.tradeoffs, 3000);
-  const completeness = [prompt, assumptions, approach, solution, complexity, tradeoffs].filter(Boolean).length;
-  const score = Math.max(35, Math.min(88, 38 + completeness * 8 + Math.min(18, Math.floor(solution.length / 220))));
-
-  return {
-    score,
-    summary: 'Taco created a deterministic whiteboard review because AI grading was unavailable.',
-    strengths: [
-      approach ? 'You captured an explicit approach before jumping into the answer.' : 'You created a starting point for a structured answer.',
-      assumptions ? 'You wrote assumptions, which helps interviewers follow your scope.' : 'The workspace makes it easy to add assumptions next time.',
-    ],
-    improvements: [
-      !tradeoffs ? 'Add trade-offs so the interviewer sees judgment, not only implementation.' : 'Make trade-offs sharper by naming what you would choose under constraints.',
-      !complexity ? 'Add complexity, scaling, or operational implications.' : 'Tie complexity back to the requirements and expected volume.',
-      solution.length < 500 ? 'Expand the solution with edge cases, APIs, data flow, or failure modes.' : 'Trim any generic prose and keep the answer interviewer-readable.',
-    ],
-    rubric: [
-      { label: 'Problem Framing', score: assumptions ? 80 : 55, note: 'Assumptions and scope clarity.' },
-      { label: 'Solution Structure', score: approach && solution ? 78 : 50, note: 'Approach, decomposition, and communication.' },
-      { label: 'Trade-offs', score: tradeoffs ? 76 : 42, note: 'Decision quality and awareness of constraints.' },
-    ],
-    nextSteps: [
-      'State the constraints before solving.',
-      'Narrate trade-offs out loud as you decide.',
-      'End with one measurable way to validate the solution.',
-    ],
-  };
-}
+/*
+ * There is deliberately no fallbackGrade().
+ *
+ * When AI grading was unavailable this route used to synthesise a score:
+ * `38 + (number of non-empty fields) * 8 + min(18, solution.length / 220)`,
+ * clamped to 35-88. That is 38 points for showing up, eight points per textarea
+ * the user typed anything into, and the rest from the character count of the
+ * solution box — nothing in it looked at whether the answer was correct.
+ *
+ * The rubric was worse: `assumptions ? 80 : 55`, `tradeoffs ? 76 : 42`. An
+ * empty trade-offs box scored 42 out of 100 for "Decision quality" — a measured-
+ * looking verdict on something never measured, which is the missing-as-zero
+ * pattern `evidence-states.md` forbids wearing a friendlier number. All of it
+ * persisted to `interview_sessions.scores` and rendered as an ordinary grade.
+ *
+ * An answer that was not graded is not a grade. The route now says so and
+ * persists nothing.
+ */
 
 export async function POST(req: NextRequest) {
   const guard = await guardApiRoute(req, { rateLimit: 8, rateLimitWindow: 60_000, feature: 'gauntlets' });
@@ -87,11 +71,28 @@ Return valid JSON:
       tradeoffs: cleanString(body?.tradeoffs, 4000),
     });
 
-    let grade;
+    let grade: any;
     try {
       grade = await groqJSONCompletion(systemPrompt, userPrompt, { temperature: 0.3, maxTokens: 2200 });
-    } catch {
-      grade = fallbackGrade({ ...body, mode });
+    } catch (gradeError: any) {
+      // Telemetry, because there is no fallback any more: without this a grader
+      // outage is invisible in monitoring while being visible to every user who
+      // finishes a whiteboard, and "the grader is down" looks exactly like
+      // "nobody used the whiteboard today".
+      monitor.critical('Tool: interview/whiteboard-grade', `grader unavailable: ${String(gradeError)}`);
+      return NextResponse.json({
+        error: 'Grading is unavailable right now, so this whiteboard answer was not scored. No review was saved — try again in a moment.',
+        code: 'GRADING_UNAVAILABLE',
+      }, { status: 503 });
+    }
+
+    // No default score either. An ungraded answer has no number, not a low one.
+    if (typeof grade?.score !== 'number' || !Number.isFinite(grade.score)) {
+      monitor.critical('Tool: interview/whiteboard-grade', `grader returned no score for ${mode} whiteboard answer`);
+      return NextResponse.json({
+        error: 'Grading came back without a score, so nothing was recorded. Try again in a moment.',
+        code: 'GRADING_INCOMPLETE',
+      }, { status: 503 });
     }
 
     if (sessionId) {
