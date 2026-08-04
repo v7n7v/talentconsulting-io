@@ -1,14 +1,14 @@
 # CLAUDE.md — Talent Studio (`talentconsulting-io`)
 
-Context for Claude Code working in this repository. Verified against source on 25 July 2026.
+Context for Claude Code in this repository. Every claim below was verified against source on 4 August 2026.
 
-**Read `TALENT_SUITE_ARCHITECTURE.md` before touching data, auth or billing.** Several older documents in this repo are wrong; see §8.
+**Read `TALENT_SUITE_ARCHITECTURE.md` before touching data, auth or billing.** Several older documents in this repo are wrong; see §6.
 
 ---
 
 ## 1. What this product is
 
-TalentConsulting.io is a mobile-first AI career workspace. The assistant is **Taco**. A user uploads a real resume, states a target role, gets a small number of **explainable** job matches, and Taco prepares a truthful application packet the user reviews before anything leaves the product.
+TalentConsulting.io is a mobile-first AI career workspace. The assistant is **Taco**. A user uploads a real resume, states a target role, gets a small number of *explainable* job matches, and Taco prepares a truthful application packet the user reviews before anything leaves the product.
 
 **It is not auto-apply.** Nothing is submitted, emailed or sent externally without explicit user approval.
 
@@ -21,15 +21,15 @@ North star: resume upload → 3 explainable matches + 1 review-ready packet, in 
 | Layer | Actual implementation |
 | --- | --- |
 | App | Next.js App Router, React, TypeScript, `output: 'standalone'` |
-| Data | **Cloud Firestore** |
-| Auth | Firebase Auth, **ID-token bearer, no session cookies** |
+| Data | Cloud Firestore |
+| Auth | Firebase Auth, ID-token bearer, **no session cookies** |
 | Storage | Firebase Storage |
 | Billing | Stripe Embedded Checkout + webhooks |
 | Email | Resend + Firestore outbox |
 | Rate limit | Upstash Redis |
 | Hosting | Cloud Run (primary) + Firebase Hosting SSR |
 
-**There is no Supabase, Postgres or pgvector.** Verified: no `@supabase/*` dependency; zero references in `lib/`, `app/`, `components/`.
+**There is no Supabase, Postgres or pgvector.** No `@supabase/*` dependency; zero references in `lib/`, `app/`, `components/`. Old docs claiming otherwise are listed in §6.
 
 ### AI providers — three, via Vercel AI SDK (`lib/ai/providers.ts`, `lib/ai/models.ts`)
 
@@ -41,35 +41,39 @@ writing:   default openai/gpt-oss-120b | verifier deepseek-v4-flash
            premium deepseek-v4-pro     | fallback qwen3.6-plus   (all OpenRouter)
 ```
 
-Voice: STT **Deepgram** `nova-2`; TTS **OpenRouter** `openai/gpt-4o-mini-tts-2025-12-15`; live `gemini-2.5-flash-preview-native-audio`.
+Voice: STT Deepgram `nova-2`; TTS OpenRouter `openai/gpt-4o-mini-tts-2025-12-15`; live `gemini-2.5-flash-preview-native-audio`.
 
 Two traps:
 - `lib/gemini.ts` is **not** a Gemini client — it POSTs to `/api/ai`. The real client is `lib/ai/gemini-client.ts`.
-- **ElevenLabs is unused.** It appears only in CSP allowlists.
+- **ElevenLabs is unused.** It appears only in CSP allowlists in `next.config.js` and `firebase.json`.
 
 ---
 
-## 3. Non-negotiable product rules
+## 3. Non-negotiable rules
 
-### Truth locks — enforced in the database, not just in code
+### Truth
 
-`firestore.rules` is the enforcement point. `resume_versions` become **immutable once a `guardrail_report` is attached**; packet proof fields on `applications` are unwritable by clients; `settings.resumeMorphSafety` and `settings.privacyControls` are server-only.
+IMPORTANT: Never generate or permit invented skills, metrics, certifications, degrees, employers, titles or dates.
+
+YOU MUST leave unknown evidence unknown. Never render a missing value as a measured zero, and never invent one. If a grader, scorer or data source is unavailable, fail loudly — return an error, persist nothing, and let the UI say so. Do not synthesise a plausible number from keyword counts, string lengths or field presence. The `talent-studio-design` skill's `references/evidence-states.md` is the full rule.
+
+Truth locks are enforced in `firestore.rules`, not just in code: `resume_versions` become immutable once a `guardrail_report` is attached; packet proof fields on `applications` are unwritable by clients; `settings.resumeMorphSafety` and `settings.privacyControls` are server-only. They are re-applied at the PDF/DOCX export boundary (`lib/resume-export-truth.ts`), not only at generation.
 
 Do not add a client write path that works around these. The rules will reject it, and that rejection is correct.
 
-Never generate or permit: invented skills, metrics, certifications, degrees, employers, titles, dates. Truth locks are re-applied at the **PDF/DOCX export boundary** (`lib/resume-export-truth.ts`), not only at generation.
+### Standing holds
 
-**Unknown evidence stays unknown — never render it as a measured zero.**
+No live payments. No real user emails. No external submission without human approval.
 
 ### Auth
 
 - User routes: `guardApiRoute()` in `lib/api-auth.ts`.
 - Admin routes: `requireAdmin(request, permission)` in `lib/admin-auth.ts` — revocation-checked token, `admin_accounts/{uid}` lookup, custom-claim cross-check, `email_verified`, MFA.
-- **`isMasterAccount` is a commercial-entitlement override only. Never use it to authorize an admin route.** The source says so explicitly.
+- IMPORTANT: `isMasterAccount` is a commercial-entitlement override only. Never use it to authorize an admin route.
 
 ### Billing
 
-`PLAN_PRICE` is `null` for every paid tier **by design**. Prices resolve from Stripe at runtime (`lib/billing-prices.ts`). **Never hardcode a price.** Repricing is a Stripe dashboard operation plus env var changes.
+`PLAN_PRICE` is `null` for every paid tier **by design**. Prices resolve from Stripe at runtime (`lib/billing-prices.ts`). YOU MUST NOT hardcode a price — repricing is a Stripe dashboard operation plus env var changes.
 
 Tiers in code: `free | pro | studio | god`. Strategy calls `studio` **"Max"** — customer-facing name only; `studio` is canonical in code.
 
@@ -78,173 +82,90 @@ Tiers in code: `free | pro | studio | god`. Strategy calls `studio` **"Max"** �
 | File | Rule |
 | --- | --- |
 | `.env`, `.env.local`, `.env.cloudrun.yaml`, `hermes-agent-keys.txt` | gitignored — **never commit** |
-| `.env.production` | **tracked by design** — only `NEXT_PUBLIC_*` values baked into the client bundle; the Docker build needs it |
+| `.env.production` | tracked **by design** — only `NEXT_PUBLIC_*` values baked into the client bundle; the Docker build needs it |
+
+Never deploy from an unreviewed dirty tree.
 
 ---
 
-## 4. Repository state — READ THIS FIRST
-
-**Recovered and committed as of 25 July 2026. One action outstanding: the push.**
-
-- The missing `.pack` was **found and restored** — in the sibling folder `Talent Consulting 04112026 - OLD-ANIMATED`, not the recycle bin. `git diff` works; history is whole at 96 commits.
-- The working tree is committed across **15 commits** on `codex/admin-command-grid`. Tree clean.
-- **`git push -u origin codex/admin-command-grid` has not run.** Git Credential Manager holds no `github.com` credential — only a legacy `api.github.com` entry — so it falls back to an interactive prompt. This is an owner action; nothing is on the remote yet.
-- The repo **still lives in a OneDrive-synced folder**. Root cause unaddressed. `recover-repo.ps1` performs the migration to `C:\dev\talent-consulting` if you want it, but recovery no longer depends on it.
-
-Actually lost: **`stash@{0}`** only. Its tree is among 16 still missing, and it is why `git gc` aborts — `gc.auto` is set to `0` locally so commits aren't interrupted. `stash@{1}` survived and is readable. The branches `codex/audit-automation-recovery` and `codex/release-safe-cleanup` were **never lost**; both are on GitHub at the commits the runbook lists as unrecoverable.
-
-`GIT-RECOVERY-RUNBOOK.md` is now historical. Both its scripts needed fixes to run on Windows PowerShell 5.1 (UTF-8 BOM, and `$ErrorActionPreference` vs native git stderr); the fixes are committed.
-
-**Never deploy from an unreviewed dirty tree.**
-
----
-
-## 5. Verification — run these
+## 4. Verification — run these
 
 ```bash
-npm run type-check
-npm run build                      # expect 180–181 static pages
-npm run test:release-safety        # 244/244
-npm run test:assistant-harness     # 329/329
-npm run test:admin-command-grid    # 24/24
-npm run test:email-system          # 59/59
-npm run test:observability         # 31/31
-npm run security:cve:ci            # 0 high/critical
-npm run seo:audit:ci
+npm run type-check                  # 0 errors
+npm run build                       # must pass
+node scripts/design-audit.js --ci   # PASS - never run --update to make it pass
+npm run test:release-safety         # 245
+npm run test:assistant-harness      # 329
+npm run test:admin-command-grid     # 24
+npm run test:email-system           # 59
+npm run test:observability          # 31
 ```
 
-A UI change is **not complete** until: `type-check` passes, `build` passes, and a real browser run at **320 / 390 / 430 / 768 / 1024 / 1440px** shows the core result state, a clean console, and no horizontal overflow.
+Counts are baselines as of 4 August 2026 and rise as tests are added. The gate is **zero failures**, not the exact number.
+
+Two gates currently fail. Both predate any current work — do not treat them as caused by your change, and do not "fix" them by weakening the check:
+- `npm run security:cve:ci` — 3 high, all `brace-expansion` transitive DoS advisories, patched versions available.
+- `npm run seo:audit:ci` — 1 critical, `robots.txt` returns 404. Note this crawls **live production**, not localhost.
+
+A UI change is **not complete** until `type-check` passes, `build` passes, and a real browser run at 320 / 390 / 430 / 768 / 1024 / 1440px shows the core result state, a clean console, and no horizontal overflow. Use the `ui-verify` skill; `node scripts/ui-verify.js` drives local Playwright.
 
 ---
 
-## 6. Design system
+## 5. Design system
 
-**Current state is fragmented.** Run `node scripts/design-audit.js` — **it is the authority, not this table.** Snapshot of 25 July 2026, `app/` + `components/` (411 files):
+Run `node scripts/design-audit.js` — **it is the authority**. Do not copy its numbers into this file; they move every session.
 
-| Metric | Value |
-| --- | --- |
-| Distinct hardcoded hex | 465 (1,553 occurrences) |
-| Prohibited class occurrences | 1,290 (includes CSS-level, which a `.tsx`-only scan misses) |
-| Distinct radius values | 32 against a documented single 12px standard |
-| Buttons inline vs `btn-*` | 301 vs 22 |
-| Cards inline vs shared | 1,212 vs 68 |
-| Suite routes outside `SuiteToolShell` | 22 of 43 |
-| Token definition files | 6 |
-| Tokens referenced but never defined | 23 |
+The current state is fragmented: heavy inline styling, many hardcoded hex values, and most suite routes still outside `SuiteToolShell`. Infrastructure is fine and the token habit is strong (thousands of `var()` calls) — what is missing is enforcement.
 
-Earlier hand counts (508 hex, 1,231 prohibited, 344 buttons, 488 cards, 18 routes, 28 tokens) are superseded. The inline-card figure matters most: **1,212, not 488** — Phase 3 is ~2.5× its planned size.
+The **`talent-studio-design` skill is the design law** for anything that renders, and carries the depth on tokens, surfaces and evidence states. Load it before writing or changing markup.
 
-Counterpoint: **8,101 `var()` calls** — the token habit is strong. Infrastructure is fine; enforcement is absent.
-
-`DESIGN.md` and `UI_DESIGN_GUIDE.md` **contradict each other** (cyan/emerald, gradients, card background, sidebar width) and `.glass-card` is named for a treatment both documents ban. Resolve against `docs/design-system-v2-plan.md`, not against either older document.
-
-**Direction is decided** — see `docs/design-system-v2-plan.md`:
+Decided direction — see `docs/design-system-v2-plan.md` and `docs/DECISIONS.md`:
 
 1. **Evidence-first semantics.** Color encodes epistemic status: verified / inferred / draft / missing.
-2. **New accent hue family**, replacing both the Google-blue token and the stray emerald. **Which family is reopened** — Cyan was chosen on a justification that failed re-measurement (it fails AA on hover/active in both themes, and is the second-closest candidate to the status hues, not the furthest). Recommendation is Azure. See §3.1 of the plan and `docs/DECISIONS.md`. **Do not implement an accent until an owner confirms one.**
+2. **Accent is Cobalt** — `#5a7fff` dark / `#315cff` light (decided 25 July 2026, superseding an earlier Cyan decision). It matches the shipped brand mark and the existing `--admin-cobalt`. Azure and Teal were considered and **rejected**. Not yet implemented: `app/globals.css` still ships a cyan `--accent`.
 3. **Admin folds into the main system**, keeping its density via a modifier rather than a 30-token fork.
 4. **TACO = assistant, TC = company.** Retire the `brand-*` and Sona mark systems.
 
-Do not start the design work until the repo is recovered, committed **and pushed** (§4 — the push is outstanding). It touches every file.
+A structural finding worth carrying: the accent cannot be one step per mode. The token system defines seven surfaces per mode and no candidate clears 4.5:1 on all of them — it needs a step per *surface tier*. Validate contrast per surface, never per mode.
 
-A structural finding worth carrying: the accent cannot be **one step per mode**. The token system defines seven surfaces per mode and no candidate clears 4.5:1 on all of them — it needs a step per *surface tier*. Validate contrast per surface, never per mode.
+`DESIGN.md` and `UI_DESIGN_GUIDE.md` contradict each other and `.glass-card` is named for a treatment both ban. Resolve against `docs/design-system-v2-plan.md`, not either older document.
 
-### Where things live
-
-- `.agent/.shared/ui-ux-pro-max/` is a **generic** design knowledge base. It recommends Lucide icons and glassmorphism, both of which contradict this project. Reference only — not project law.
-- Resume templates (`components/resume-templates/`, `lib/resume-templates/`) are **intentionally visually independent** — they're documents for employers, not product UI. Verified clean separation. Leave them out of unification.
-
----
-
-## 7. Blocked workstreams — all owner-gated, none engineering-blocked
-
-| Workstream | Blocked on |
-| --- | --- |
-| Admin Command Grid | `ADMIN_AGGREGATE_CRON_SECRET`, `ADMIN_REFERENCE_SECRET`, second-owner **provisioning**, auth-domain alignment |
-| Admin RBAC | MFA enforcement, pending that same second-owner provisioning |
-| Email V2 | Cloudflare MX + `_dmarc` for `support@`/`ops@`/`dmarc@`; `.env.production` V2 credentials |
-| User Observability v1 | retention-policy approval, managed HMAC secrets, approved rollback runbook |
-| ~~Resume Studio QA~~ | **unblocked** — `node scripts/ui-verify.js` drives local Playwright, which has no `localhost` restriction |
-
-**The second recovery owner is named:** `quantumsec01@gmail.com`, by the existing owner on 25 July 2026. What remains is **provisioning**, not naming — steps in `docs/SECOND-RECOVERY-OWNER.md`, run by the *existing* owner from a trusted environment with the production service account. It is still the single action that unblocks the most.
-
-Standing holds: no live payments, no real user emails, no external submission without human approval.
+Two things that are deliberately outside the system:
+- `.agent/.shared/ui-ux-pro-max/` is a **generic** knowledge base recommending Lucide icons and glassmorphism, both of which contradict this project. Reference only — not project law.
+- Resume templates (`components/resume-templates/`, `lib/resume-templates/`) are intentionally visually independent — they are documents for employers, not product UI. Leave them out of unification.
 
 ---
 
-## 8. Documents that are WRONG — do not build against them
+## 6. Documents that are WRONG — do not build against them
 
-Bannered as superseded on 25 July 2026:
-
-- `docs/archive/hirely-era/` — 10 Hirely.ai setup guides telling you to configure Supabase. Archived out of the repo root because their filenames (`QUICKSTART.md`, `GETTING_STARTED.md`, `README_NEXTJS.md`) are what a newcomer opens first. They leak a stale Supabase project ref (`qsriqbphmvnnbterqnsv`) — **treat it as a credential to revoke, not to use.**
+- `docs/archive/hirely-era/` — 10 Hirely.ai setup guides telling you to configure Supabase. Archived out of the repo root because their filenames (`QUICKSTART.md`, `GETTING_STARTED.md`, `README_NEXTJS.md`) are what a newcomer opens first. They leak a stale Supabase project ref (`qsriqbphmvnnbterqnsv`) — treat it as a credential to revoke, not to use.
 - `schema.sql`, `suite_schema.sql`, `suite_migration.sql`, `supabase/` — orphaned Postgres DDL. Safe to delete.
 - `TalentConsulting_Architecture_Rebuttal.md` — its `$2.99` pricing argument is superseded.
+- `GIT-RECOVERY-RUNBOOK.md` — historical. The recovery it describes is complete.
 
-**Current and correct:** `README.md`, `TALENT_SUITE_ARCHITECTURE.md`, `TALENT_SUITE_STATUS.md`, `CHANGELOG.md`, `GIT-RECOVERY-RUNBOOK.md`, `docs/pricing-reconciliation.md`, `docs/design-system-v2-plan.md`.
+**Current and correct:** `README.md`, `TALENT_SUITE_ARCHITECTURE.md`, `TALENT_SUITE_STATUS.md`, `CHANGELOG.md`, `docs/DECISIONS.md`, `docs/pricing-reconciliation.md`, `docs/design-system-v2-plan.md`.
+
+For workstream and blocked-on-owner status, `TALENT_SUITE_STATUS.md` §3 is the board. Do not duplicate it here — it drifts.
 
 ---
 
-## 9. Gotchas that will bite you
+## 7. Gotchas that will bite you
 
 1. **`NEXT_PUBLIC_*` is baked at Docker build time.** Changing one requires a rebuild, not just a redeploy.
 2. **Security headers are duplicated** in `firebase.json` and `next.config.js`. Change both or they drift.
 3. **Two deploy paths coexist** (Cloud Run and Firebase SSR). Confirm which serves production before deploying.
 4. **Text wrapping is a release blocker.** `min-w-0` on every text-bearing flex/grid child; `wrap-anywhere` only for URLs/IDs; stat numbers `tabular-nums whitespace-nowrap`, never stacked. Test any card below 420px.
 5. **The global theme cascade has caused the same P0 twice** — a light-theme override inverting an intentionally dark surface while leaving light text. Theme-invariant surfaces need an explicit boundary.
-6. Mobile has **no bottom nav bar**. `MobileQuickToolsRail` sits at the top below 1024px. Sticky bottom bars are for workflow actions only.
+6. **Mobile has no bottom nav bar.** `MobileQuickToolsRail` sits at the top below 1024px. Sticky bottom bars are for workflow actions only.
 7. **Never fabricate UI content** — no fake scores, mock saved data, or placeholder illustrations. `design-qa.md` strips these repeatedly.
-8. **The landing page went blank on a real device once.** Every CSS rule that
-   *hides* something there is scoped to `html.js`, set by the pre-paint script
-   in `app/layout.tsx`. If that class never lands — script error, blocked inline
-   script, in-app WebView with JS off — the page must stay readable. Do not
-   remove the gate, and do not add a hiding rule that is not gated on it.
-9. **`weakWords` matching is plain substring.** `leverage` does not match
-   `leveraging`; `utilize` does not match `utilizing`. The Career Check silently
-   under-reports. Stem the list or switch to a word-boundary regex — this is a
-   real product bug, not a demo artefact.
+
+`components/landing/` has its own CLAUDE.md covering four deliberate decisions that look like bugs. Read it before editing that directory.
 
 ---
 
-## 9b. The landing page — `components/landing/`
+## 8. Working style for this repo
 
-`app/page.tsx` renders `TalentLanding`. `GuidedCareerLanding` and `LandingPage`
-are retired to `_to_delete/`. Four things about it are deliberate and will look
-like mistakes if you do not know why:
-
-- **`talent-landing.css` is a plain global stylesheet, not a CSS module**, with
-  every selector mechanically scoped under `.tcl`. Converting it to a module
-  breaks the page: `talentLandingMotion.ts` finds elements by those exact class
-  names, and a module would hash them apart.
-- **It contains no colour literals.** The palette is the `.tcl` block in
-  `app/globals.css`, which also re-points the token names the app itself uses
-  (`--bg-input`, `--text-primary`, …) for that subtree. That is not redundancy:
-  `globals.css` styles bare `textarea` with
-  `background: var(--bg-input) !important`, and !important cannot be outranked
-  by specificity. Anything that leaks in now leaks in wearing the right colour.
-- **The landing is dark-only by product decision** — choosing a theme belongs to
-  signed-in people, inside the product. `color-scheme: dark` on `.tcl` keeps the
-  textarea, scrollbars and focus rings dark when the app is in light mode.
-- **Three regions use `dangerouslySetInnerHTML` with module-owned constants**
-  (`#res`, `#rwText`, `#chatLog`). The motion module rewrites their innerHTML;
-  marking them opaque stops React reconciling children it did not write. No user
-  input reaches any of them — the results panel is assembled from a fixed phrase
-  list and integer counts and never echoes the textarea at all.
-
-No `box-shadow` anywhere in it. `scripts/design-audit.js` bans it, and the
-`components/landing` exception is documented as covering gradients and
-`backdrop-filter` only. Elevation there is a solid fill, an accent-tinted border
-and an `outline` ring of page background.
-
-Two audit mechanics to understand before you "fix" a metric: `TOKEN_DEF_FILES`
-exempts token-defining files from the hex counts *only*, and `EXTERNAL_TOKENS`
-tells the scanner that next/font emits `--font-*` at build time. Neither is a
-way to switch a rule off.
-
----
-
-## 10. Working style for this repo
-
-- Verify against code, not against documentation. This repo's docs have drifted before.
+- Verify against code, not against documentation. This repo's docs have drifted before — that is why §4 carries dates and §5 refuses to cache numbers.
 - Prefer editing an existing file over creating a new one; this repo already has documentation sprawl.
 - Run the relevant test suite before claiming a change works.
-- For UI changes, a browser run is mandatory — "declared complete without a browser run" is an explicit anti-pattern here.
+- For UI changes a browser run is mandatory. "Declared complete without a browser run" is an explicit anti-pattern here.
