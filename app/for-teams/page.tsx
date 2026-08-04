@@ -47,7 +47,9 @@ export default function ForTeamsPage() {
     ] as const;
 
     return (
-        <div className="min-h-dvh bg-[#0a0a0a] text-white">
+        // tc-dark-surface: this page is dark in both themes. Without it the
+        // global remaps resolve its ink to #010E2F on #0a0a0a. See globals.css.
+        <div className="tc-dark-surface min-h-dvh bg-[#0a0a0a] text-white">
             {/* Hero */}
             <div className="relative overflow-hidden">
                 <div className="absolute inset-0">
@@ -64,12 +66,17 @@ export default function ForTeamsPage() {
                 </div>
 
                 <div className="relative max-w-6xl mx-auto px-6 pt-16 pb-12">
-                    <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/40 hover:text-white/70 transition-colors mb-8">
+                    <Link href="/" className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors mb-8">
                         ← Back to TalentConsulting.io
                     </Link>
 
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                        <TalentConsultingWordmark className="mb-8 w-[min(420px,86vw)]" />
+                        {/* The wordmark renders an inline <span>, so a margin on it
+                            leaves no vertical space and the inline-flex badge below
+                            lands on the same line. The block wrapper owns the gap. */}
+                        <div className="mb-8">
+                            <TalentConsultingWordmark darkSurface className="w-[min(420px,86vw)]" />
+                        </div>
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-6">
                             <span className="text-xs font-medium text-cyan-400">Enterprise & Education</span>
                         </div>
@@ -78,9 +85,9 @@ export default function ForTeamsPage() {
                                 TalentConsulting.io
                             </span>
                             {' '}
-                            <span className="block text-white/90">for Teams</span>
+                            <span className="block text-[var(--text-primary)]">for Teams</span>
                         </h1>
-                        <p className="text-lg text-white/50 max-w-2xl mb-8">
+                        <p className="text-lg text-[var(--text-muted)] max-w-2xl mb-8">
                             AI-powered career readiness at scale. Equip your students, candidates, or employees with 
                             resume intelligence, interview simulation, and skill development — all under one platform.
                         </p>
@@ -125,7 +132,7 @@ export default function ForTeamsPage() {
                         >
                             <span className="material-symbols-rounded text-3xl block mb-4 text-cyan-400">{item.icon}</span>
                             <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
-                            <p className="text-sm text-white/40 mb-4">{item.desc}</p>
+                            <p className="text-sm text-[var(--text-muted)] mb-4">{item.desc}</p>
                             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
                                 <span className="text-xs font-medium text-emerald-400">{item.stats}</span>
                             </div>
@@ -154,7 +161,7 @@ export default function ForTeamsPage() {
                                 <span className="material-symbols-rounded text-xl flex-shrink-0 mt-0.5 text-cyan-400">{f.icon}</span>
                                 <div>
                                     <h4 className="text-sm font-bold text-white mb-1">{f.title}</h4>
-                                    <p className="text-xs text-white/35">{f.desc}</p>
+                                    <p className="text-xs text-[var(--text-muted)]">{f.desc}</p>
                                 </div>
                             </div>
                         ))}
@@ -170,7 +177,7 @@ export default function ForTeamsPage() {
                     <div className="grid gap-5 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                         <div>
                             <h2 className="text-2xl font-bold text-white">Pilot the same tools your people will use</h2>
-                            <p className="mt-3 text-sm leading-7 text-white/45">
+                            <p className="mt-3 text-sm leading-7 text-[var(--text-muted)]">
                                 TalentConsulting.io for teams builds on the public career tools and the signed-in suite. Career centers, workforce programs, staffing teams, and HR teams can review the product path before planning rollout, training, or custom onboarding.
                             </p>
                         </div>
@@ -187,7 +194,7 @@ export default function ForTeamsPage() {
                                     className="rounded-xl border border-white/10 bg-black/20 p-4 transition hover:border-cyan-500/35 hover:bg-white/[0.04]"
                                 >
                                     <span className="block text-sm font-bold text-white">{item.label}</span>
-                                    <span className="mt-1 block text-xs leading-5 text-white/40">{item.body}</span>
+                                    <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">{item.body}</span>
                                 </Link>
                             ))}
                         </div>
@@ -220,7 +227,7 @@ export default function ForTeamsPage() {
                                         <span className="material-symbols-rounded text-6xl text-cyan-400">celebration</span>
                                     </motion.div>
                                     <h3 className="text-2xl font-bold text-white mb-2">We&apos;ll be in touch!</h3>
-                                    <p className="text-white/40 mb-6">
+                                    <p className="text-[var(--text-muted)] mb-6">
                                         Our team will reach out soon to discuss how TalentConsulting.io can work for {formData.organization}.
                                     </p>
                                     <Link
@@ -238,12 +245,12 @@ export default function ForTeamsPage() {
                                 >
                                     <div className="text-center mb-6">
                                         <h2 className="text-2xl font-bold text-white mb-1">Get Early Access</h2>
-                                        <p className="text-sm text-white/35">Tell us about your organization — we&apos;ll build a custom plan.</p>
+                                        <p className="text-sm text-[var(--text-muted)]">Tell us about your organization — we&apos;ll build a custom plan.</p>
                                     </div>
 
                                     <div className="grid md:grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-xs font-medium text-white/50 mb-1.5">Your Name *</label>
+                                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Your Name *</label>
                                             <input
                                                 type="text"
                                                 required
@@ -254,7 +261,7 @@ export default function ForTeamsPage() {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium text-white/50 mb-1.5">Work Email *</label>
+                                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Work Email *</label>
                                             <input
                                                 type="email"
                                                 required
@@ -267,7 +274,7 @@ export default function ForTeamsPage() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-white/50 mb-1.5">Organization Name *</label>
+                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Organization Name *</label>
                                         <input
                                             type="text"
                                             required
@@ -279,7 +286,7 @@ export default function ForTeamsPage() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-white/50 mb-2">Organization Type *</label>
+                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">Organization Type *</label>
                                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                             {orgTypes.map((org) => (
                                                 <button
@@ -289,7 +296,7 @@ export default function ForTeamsPage() {
                                                     className={`p-3 rounded-xl border text-left transition-all ${
                                                         formData.orgType === org.id
                                                             ? 'bg-cyan-500/20 border-cyan-500/50 text-white'
-                                                            : 'bg-white/5 border-white/10 text-white/40 hover:text-white/60 hover:bg-white/10'
+                                                            : 'bg-white/5 border-white/10 text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/10'
                                                     }`}
                                                 >
                                                     <span className="material-symbols-rounded text-base block mb-1" style={{ color: formData.orgType === org.id ? '#22d3ee' : 'rgba(255,255,255,0.4)' }}>{org.icon}</span>
@@ -300,7 +307,7 @@ export default function ForTeamsPage() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-white/50 mb-2">Expected Team Size</label>
+                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">Expected Team Size</label>
                                         <div className="flex gap-2">
                                             {['1-10', '11-50', '51-200', '200+'].map((size) => (
                                                 <button
@@ -310,7 +317,7 @@ export default function ForTeamsPage() {
                                                     className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                                                         formData.teamSize === size
                                                             ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-                                                            : 'bg-white/5 border-white/10 text-white/30 hover:text-white/50'
+                                                            : 'bg-white/5 border-white/10 text-[var(--text-muted)] hover:text-[var(--text-muted)]'
                                                     }`}
                                                 >
                                                     {size}
@@ -320,7 +327,7 @@ export default function ForTeamsPage() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-white/50 mb-1.5">Anything else? (optional)</label>
+                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Anything else? (optional)</label>
                                         <textarea
                                             value={formData.message}
                                             onChange={(e) => setFormData({ ...formData, message: e.target.value })}
@@ -345,7 +352,7 @@ export default function ForTeamsPage() {
                                         )}
                                     </button>
 
-                                    <p className="text-center text-[10px] text-white/20">
+                                    <p className="text-center text-[10px] text-[var(--text-muted)]">
                                         No commitment. We&apos;ll reach out to discuss pricing and onboarding.
                                     </p>
                                 </motion.form>

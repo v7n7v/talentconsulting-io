@@ -3303,6 +3303,99 @@ select:focus {
 }
 
 /* ============================================
+   THEME-INVARIANT DARK SURFACES — .tc-dark-surface
+
+   /help and /for-teams are dark in BOTH themes by product decision, the same
+   way the landing is. Three global mechanisms fight that, and between them
+   they have now produced this P0 four times (CLAUDE.md gotcha #5):
+
+   1. `.text-white { color: var(--text-primary) !important }` (line 2428, and
+      again at 2826) — unscoped, so it fires in dark mode too and is only
+      correct because --text-primary happens to be light there.
+   2. `[class*="bg-white/5"] { background-color: var(--accent-dim) }`
+      (2432-2453) — also unscoped. Every translucent white tint on a dark page
+      becomes whatever --accent-dim is, which in light mode is a pale teal.
+   3. The legacy --theme-* family resolves to #fff surfaces in light mode, so
+      a card painted bg-[var(--theme-bg-card)] turns white under light ink.
+
+   Measured before this block, with data-theme="light":
+     /for-teams  #010E2F ink on #0a0a0a                      = 1.04:1
+     /for-teams  cards on rgba(0,120,127,0.06) from (2)      = 24 elements <4.5
+     /help       #f8fafc headings on a #fff wrapper          = 1.05:1
+   Opposite symptoms, one cause: the page picks a fixed dark palette while its
+   ink and surfaces still resolve through theme-dependent tokens.
+
+   The fix is what `.tcl` already does for the landing (CLAUDE.md §9b):
+   re-point the token NAMES for the subtree instead of enumerating the
+   selectors that read them. Every rule above resolves through `var()`, so one
+   token block corrects all of them and there is no allowlist to keep in sync.
+   `.help-dark-page` took the enumerating approach, which is precisely why it
+   covered .text-white and missed every surface on the page.
+
+   Do not add a `[data-theme="light"] .tc-dark-surface ...` selector rule here.
+   If something inside still inverts, the missing piece is a token, and adding
+   it below fixes it everywhere rather than on one page.
+
+   color-scheme keeps UA-painted chrome — scrollbars, focus rings, form
+   controls — dark while the app itself is in light mode.
+   ============================================ */
+.tc-dark-surface {
+  color-scheme: dark;
+
+  /* ink */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+
+  /* surfaces */
+  --bg-surface: #131314;
+  --bg-elevated: #1e1e1f;
+  --bg-input: #1e1e1f;
+  --card-bg: #131314;
+  --sidebar-bg: #0b0b0b;
+
+  /* borders — these pages express elevation with hairlines, not shadow */
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.2);
+  --border-hover: rgba(255, 255, 255, 0.3);
+
+  /* accent. --accent-dim is what every bg-white/N tint collapses to via the
+     unscoped rules at 2432-2453, so it has to read as a white film on dark
+     rather than as a hue, or those cards stop looking translucent. */
+  --accent: #00c2cd;
+  --accent-dim: rgba(255, 255, 255, 0.05);
+
+  /* status hues. The emerald/amber/red utility classes are remapped to these
+     tokens at 2256+, so on a permanently dark page they need the dark-theme
+     step or the light one lands at 3.08:1. */
+  --success: #8ae47a;
+  --warning: #f5c860;
+  --danger: #ff9a8f;
+
+  /* legacy --theme-* family, verbatim from [data-theme="dark"] above */
+  --theme-bg: #0b0b0b;
+  --theme-bg-elevated: #131314;
+  --theme-bg-card: #131314;
+  --theme-bg-input: #1e1e1f;
+  --theme-bg-hover: #1f1f21;
+  --theme-text: #f1f1f1;
+  --theme-text-secondary: #9ca0a0;
+  --theme-text-muted: #5f6368;
+  --theme-border: #2d2d2f;
+  --theme-border-hover: #444746;
+  --theme-shadow: rgba(0, 0, 0, 0.3);
+  --theme-accent: #a8c7fa;
+  --theme-accent-soft: rgba(168, 199, 250, 0.08);
+  --theme-overlay: rgba(11, 11, 11, 0.9);
+  --theme-radial-from: #131314;
+  --theme-radial-to: #0b0b0b;
+  --obsidian: #0b0b0b;
+  --charcoal: #131314;
+  --silver: #8e918f;
+  --hairline: #2d2d2f;
+}
+
+/* ============================================
    REDUCED MOTION — the indeterminate upload bar
 
    This block is mandatory, and it is last in the file on purpose.

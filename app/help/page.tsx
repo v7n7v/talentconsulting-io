@@ -156,7 +156,7 @@ export default function HelpPage() {
     );
 
     return (
-        <div className="help-dark-page min-h-dvh bg-black text-white relative overflow-hidden">
+        <div className="tc-dark-surface help-dark-page min-h-dvh bg-black text-white relative overflow-hidden">
             {/* Background Ambience - subtle */}
             <div className="fixed inset-0 pointer-events-none">
                 <div className="absolute top-0 left-0 w-[800px] h-[800px] bg-[#0070F3]/5 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2" />
