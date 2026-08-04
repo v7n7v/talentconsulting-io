@@ -283,12 +283,22 @@ function audit() {
   }
 
   // --- suite routes on the shell
+  // A legacy path that only forwards into a consolidated tool renders no UI of
+  // its own, so the shell question does not apply to it. Counting those as
+  // off-shell reports a violation no edit to the route could ever clear.
+  const isRedirectOnly = (src) => {
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    return /from\s+['"]next\/navigation['"]/.test(code)
+      && /\bredirect\s*\(/.test(code)
+      && !/<[A-Za-z]/.test(code);
+  };
   const suiteDir = path.join(ROOT, 'app', 'suite');
   const suitePages = walk(suiteDir).filter((f) => /[\\/]page\.tsx$/.test(f.full));
   const offShell = [];
   for (const { full, rel } of suitePages) {
     let src = '';
     try { src = fs.readFileSync(full, 'utf8'); } catch { /* ignore */ }
+    if (isRedirectOnly(src)) continue;
     if (!/SuiteToolShell|SuiteToolHeader/.test(src)) offShell.push(rel);
   }
 
