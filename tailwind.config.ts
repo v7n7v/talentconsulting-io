@@ -8,6 +8,19 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      spacing: {
+        // The 11 step is the touch-target step - min-h-11 is how this codebase
+        // spells "44px tall enough to tap", and scripts/ui-verify.js fails any
+        // target under 44px below 768px.
+        //
+        // It could not keep that promise as a rem value. globals.css drops the
+        // root to 14px under `@media (max-width: 640px)`, so the stock 2.75rem
+        // resolved to 38.5px on exactly the phones the rule exists to protect,
+        // while staying a correct 44px from 641px up on the 16px root. Pinning
+        // the step to px is a no-op at desktop widths and lifts mobile to match
+        // what desktop has been rendering all along.
+        11: '44px',
+      },
       colors: {
         'studio-deep': '#0b0b0b',
         'studio-surface': '#131314',

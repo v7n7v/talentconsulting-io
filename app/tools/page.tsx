@@ -69,10 +69,11 @@ export default function ToolsIndexPage() {
       </header>
 
       <div className="mx-auto max-w-6xl px-6 py-10">
-        {/* Explicit 44px, not min-h-11. The root font-size here is 14px, so every
-            rem-based Tailwind size is 87.5% of nominal and min-h-11 resolves to
-            38.5px - under the target ui-verify.js checks for. A bare inline
-            breadcrumb link measures 29px wide on its own. */}
+        {/* Explicit 44px because a bare inline breadcrumb link measures 29px wide
+            on its own, and min-w-11 is not applied to the last crumb.
+            min-h-11 is now equally safe - tailwind.config.ts pins the 11 step to
+            44px, so it no longer shrinks to 38.5px under the 14px root that
+            globals.css sets below 640px. Either spelling works here. */}
         <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-1 text-xs text-[var(--text-muted)]">
           <Link
             href="/"
