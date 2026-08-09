@@ -18,6 +18,16 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 
 ---
 
+## 2026-08-08 - SuperTonic TTS: env-flag provider selection, SSRF-narrowed base URL
+
+**Decision:** `/api/voice/speak` picks its provider at request time — SuperTonic (self-hosted VPS) when `TTS_BASE_URL` is a valid base URL, else the existing OpenRouter path. `getSuperTonicConfig()` accepts only HTTPS or HTTP-to-loopback and rejects embedded credentials, mirroring the `EVER_JOBS_API_URL` precedent. `OPENROUTER_API_KEY` is now read inside the handler (was module scope) so the fallback branch and its tests can toggle without a re-import.
+
+**Constraint:** Cloud Run / Firebase SSR cannot reach the VPS `127.0.0.1:8080`; prod exposure (public HTTPS + token) is owner-gated, so the flag must default OFF and fall back cleanly. Billing (`recordVoiceUsage`) stays strictly after successful synthesis in both branches — an infra fault (`unreachable`/`timeout`/`non-200`/`empty-audio`) returns a generic 500 with no usage recorded and no upgrade prompt, so transport faults never look like a cap.
+
+**Rejected:** A dedicated `TTS_PROVIDER=supertonic|openrouter` switch — redundant with "is a valid base URL configured", and one more thing to set wrong. Passing a `fetchImpl` from the route — the client defaults to global `fetch`, which the route test controls via `global.fetch`.
+
+**Revisit if:** the VPS `/speak` request/response contract turns out to differ from the provisional `{text, sid, speed, format}` body, or per-persona sids are reassigned after the by-ear audition (edit `lib/ai/persona-voices.ts` only).
+
 ## 2026-07-25 - Visual direction: Studio product, Editorial landing
 
 **Decision:** Two registers, one system. The product surface is a craft tool - dark-first, focused, everything on screen serving the work (Figma/Ableton lineage). The landing is editorial - type at real scale, generous space, one striking idea. Both draw from the same tokens; they differ in scale and rhythm, never in palette.

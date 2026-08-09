@@ -4,8 +4,9 @@ import { checkVoiceAllowed, recordVoiceUsage, estimateTTSSeconds } from '@/lib/u
 import { validateBody } from '@/lib/validate';
 import { VoiceSpeakSchema } from '@/lib/schemas';
 import { monitor } from '@/lib/monitor';
+import { isSuperTonicConfigured, synthesize } from '@/lib/ai/supertonic-tts';
+import { resolveVoiceSid } from '@/lib/ai/persona-voices';
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_TTS_URL = 'https://openrouter.ai/api/v1/tts';
 const TTS_MODEL = 'openai/gpt-4o-mini-tts-2025-12-15';
 
@@ -39,8 +40,12 @@ export async function POST(req: NextRequest) {
         if (!validated.success) return validated.error;
         const { text, voiceId } = validated.data;
 
-        if (!OPENROUTER_API_KEY) {
-            return NextResponse.json({ error: 'TTS not configured. Missing OPENROUTER_API_KEY.' }, { status: 500 });
+        const useSuperTonic = isSuperTonicConfigured();
+
+        // Fail fast only when NEITHER provider is configured — SuperTonic (self-hosted
+        // VPS) takes precedence over the OpenRouter fallback when its base URL is set.
+        if (!useSuperTonic && !process.env.OPENROUTER_API_KEY) {
+            return NextResponse.json({ error: 'TTS not configured. Set TTS_BASE_URL or OPENROUTER_API_KEY.' }, { status: 500 });
         }
 
         // ── Voice minute cap check ──
@@ -78,33 +83,41 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // ── Synthesize via OpenRouter TTS ──
-        const voice = resolveVoice(voiceId);
+        // ── Synthesize (SuperTonic self-hosted when configured, else OpenRouter) ──
+        let audioBuffer: Buffer;
 
-        const ttsRes = await fetch(OPENROUTER_TTS_URL, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://talentconsulting.io',
-                'X-Title': 'TalentConsulting.io Interview Simulator',
-            },
-            body: JSON.stringify({
-                model: TTS_MODEL,
-                input: text,
-                voice,
-                response_format: 'mp3',
-                speed: 1.0,
-            }),
-        });
+        if (useSuperTonic) {
+            const voiceSid = resolveVoiceSid(voiceId);
+            const result = await synthesize({ text, voiceSid, format: 'mp3' });
+            audioBuffer = result.audio;
+        } else {
+            const voice = resolveVoice(voiceId);
 
-        if (!ttsRes.ok) {
-            const errText = await ttsRes.text().catch(() => 'Unknown error');
-            console.error('[api/voice/speak] OpenRouter TTS error:', ttsRes.status, errText);
-            throw new Error(`OpenRouter TTS failed: ${ttsRes.status}`);
+            const ttsRes = await fetch(OPENROUTER_TTS_URL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://talentconsulting.io',
+                    'X-Title': 'TalentConsulting.io Interview Simulator',
+                },
+                body: JSON.stringify({
+                    model: TTS_MODEL,
+                    input: text,
+                    voice,
+                    response_format: 'mp3',
+                    speed: 1.0,
+                }),
+            });
+
+            if (!ttsRes.ok) {
+                const errText = await ttsRes.text().catch(() => 'Unknown error');
+                console.error('[api/voice/speak] OpenRouter TTS error:', ttsRes.status, errText);
+                throw new Error(`OpenRouter TTS failed: ${ttsRes.status}`);
+            }
+
+            audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
         }
-
-        const audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
 
         // ── Record usage AFTER successful synthesis ──
         await recordVoiceUsage(guard.user.uid, estimatedSeconds);

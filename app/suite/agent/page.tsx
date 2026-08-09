@@ -618,7 +618,7 @@ export default function SonaAgentPage() {
 
   useEffect(() => () => activationProofAbortRef.current?.abort(), []);
 
-  // Voice: Deepgram STT + DashScope CosyVoice TTS (same stack as Interview Prep)
+  // Voice: Deepgram STT + /api/voice/speak TTS (self-hosted SuperTonic when TTS_BASE_URL is set, OpenRouter fallback)
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState<number | null>(null);
   const { isRecording, recordingTime, startRecording, stopRecording, getVisualizerData } = useAudioRecorder();
@@ -698,7 +698,7 @@ export default function SonaAgentPage() {
     }
   }, [isRecording, stopRecording, startRecording, getVisualizerData]);
 
-  // TTS: Send text → DashScope CosyVoice → play MP3
+  // TTS: Send text → /api/voice/speak → play MP3
   const speakMessage = useCallback(async (text: string, idx: number) => {
     if (speakingIdx === idx) {
       stopAudio();
