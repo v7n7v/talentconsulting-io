@@ -101,7 +101,6 @@ async function loadHooks() {
     stdin: {
       contents: `
         export { useTurnBasedInterview } from '@/hooks/useTurnBasedInterview';
-        export { useGeminiLiveAvatar } from '@/hooks/useGeminiLiveAvatar';
       `,
       resolveDir: repoRoot,
       loader: 'ts',
@@ -212,12 +211,19 @@ test('interface parity: the turn-based hook exposes the identical public surface
   globalThis.__resetShim();
   const turnBased = globalThis.__renderHook(() => hooks.useTurnBasedInterview());
 
-  globalThis.__resetShim();
-  const gemini = globalThis.__renderHook(() => hooks.useGeminiLiveAvatar());
-
+  // The retired Gemini-live hook (hooks/useGeminiLiveAvatar.ts) was deleted in
+  // Phase 3. Its public surface is frozen here as the contract the turn-based hook
+  // must match EXACTLY, so app/suite/interview-sim/page.tsx still swaps with a
+  // one-line import change. (Was: a live deepEqual against the old hook.)
   const surface = (o) => Object.keys(o).sort();
-  assert.deepEqual(surface(turnBased), surface(gemini),
-    'the two hooks must expose the same keys so page.tsx swaps with a one-line import change');
+  const RETIRED_HOOK_SURFACE = [
+    'connect', 'disconnect', 'getTranscript', 'sendText', 'setOnAudioChunk', 'setOnTurnComplete',
+    'isConnected', 'isConnecting', 'isListening', 'isSpeaking',
+    'error', 'errorUpgradeUrl', 'fullTranscript', 'userTranscript', 'aiTranscript',
+    'elapsedSeconds', 'questionCount', 'inputLevel', 'outputLevel',
+  ].sort();
+  assert.deepEqual(surface(turnBased), RETIRED_HOOK_SURFACE,
+    'the hook must expose exactly the retired Gemini-live surface so page.tsx swaps with a one-line import change');
 
   // The exact members app/suite/interview-sim/page.tsx (and LiveRoom) consume.
   const consumed = [

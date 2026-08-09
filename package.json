@@ -85,7 +85,6 @@
     "@ai-sdk/google": "^3.0.83",
     "@ai-sdk/openai-compatible": "^2.0.51",
     "@ai-sdk/react": "^3.0.211",
-    "@google/genai": "^1.50.1",
     "@google/generative-ai": "^0.24.1",
     "@react-pdf/renderer": "^4.3.2",
     "@react-pdf/renderer-5f716e9bc7d68b8a": "npm:@react-pdf/renderer@^4.3.2",

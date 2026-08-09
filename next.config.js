@@ -59,7 +59,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: blob: https:",
-              "connect-src 'self' data: blob: https://*.firebaseio.com https://*.googleapis.com https://www.google-analytics.com https://*.google-analytics.com https://region1.google-analytics.com https://api.groq.com https://api.deepgram.com https://api.elevenlabs.io https://generativelanguage.googleapis.com wss://generativelanguage.googleapis.com wss://*.firebaseio.com https://api.stripe.com https://js.stripe.com https://checkout.stripe.com https://hooks.stripe.com https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.jsdelivr.net",
+              "connect-src 'self' data: blob: https://*.firebaseio.com https://*.googleapis.com https://www.google-analytics.com https://*.google-analytics.com https://region1.google-analytics.com https://api.groq.com https://api.deepgram.com https://api.elevenlabs.io https://generativelanguage.googleapis.com wss://*.firebaseio.com https://api.stripe.com https://js.stripe.com https://checkout.stripe.com https://hooks.stripe.com https://cdnjs.cloudflare.com https://challenges.cloudflare.com https://cdn.jsdelivr.net",
               "media-src 'self' blob:",
               "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com https://js.stripe.com https://*.js.stripe.com https://checkout.stripe.com https://hooks.stripe.com https://challenges.cloudflare.com https://client.wra-api.net",
               "base-uri 'self'",
