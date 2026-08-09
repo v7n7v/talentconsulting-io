@@ -49,6 +49,14 @@ export async function POST(req: NextRequest) {
         }
 
         // ── Voice minute cap check ──
+        // NOTE (accepted deviation): this check→synthesize→record shape is a
+        // non-atomic TOCTOU. Two concurrent requests can both read the same
+        // usedSeconds here, both pass the cap, and both increment at
+        // recordVoiceUsage() below — overspending the monthly cap. Exposure is
+        // bounded by the 5-req/60s per-user rate limit above. A correct fix
+        // (atomic reserve-then-refund) inverts the "record only after success"
+        // invariant the route tests encode, so it is deferred. See
+        // docs/DECISIONS.md — "Voice-meter TOCTOU overspend" (2026-08-08).
         const voiceCheck = await checkVoiceAllowed(guard.user.uid, guard.user.tier);
         if (!voiceCheck.allowed) {
             const isFreeTier = guard.user.tier === 'free';
@@ -139,6 +147,9 @@ export async function POST(req: NextRequest) {
         }
 
         // ── Record usage AFTER successful synthesis ──
+        // Non-atomic with the cap check above (see the TOCTOU note there and
+        // docs/DECISIONS.md). Kept after synthesis so transport faults never
+        // debit usage; the concurrency-overspend window is the accepted cost.
         await recordVoiceUsage(guard.user.uid, estimatedSeconds);
 
         const remainingAfter = voiceCheck.remainingSeconds - estimatedSeconds;
