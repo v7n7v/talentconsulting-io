@@ -34,6 +34,17 @@ import { monitor } from '@/lib/monitor';
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 /** Keep the LLM context bounded — the tail of the conversation is what matters. */
 const MAX_HISTORY_TURNS = 20;
+/** Bound the Deepgram STT request so a stalled connection can never hang the turn. */
+const STT_TIMEOUT_MS = 15_000;
+
+/**
+ * Hard ceiling on the whole turn. A live voice room must never hold the client's
+ * gated mic for minutes: STT is AbortController-bounded, the LLM is bounded in
+ * `groqChat`, and TTS is bounded in `synthesize`. This is the platform-level
+ * backstop on top of those so a pathological turn fails fast rather than idling
+ * to the Cloud Run request cap.
+ */
+export const maxDuration = 90;
 
 interface TurnHistoryEntry {
   role: 'user' | 'ai';
@@ -60,14 +71,30 @@ async function transcribe(audio: Blob): Promise<string> {
   if (!apiKey) {
     throw new Error('Deepgram API key not configured');
   }
-  const response = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Token ${apiKey}`,
-      'Content-Type': audio.type || 'audio/wav',
-    },
-    body: audio,
-  });
+  // Deepgram has no server-side deadline of its own here; without this a stalled
+  // connection would hang the turn (and the client's gated mic) unbounded — unlike
+  // TTS, which is already AbortController-bounded in supertonic-tts.ts.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STT_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${apiKey}`,
+        'Content-Type': audio.type || 'audio/wav',
+      },
+      body: audio,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw new Error(`Deepgram request timed out after ${STT_TIMEOUT_MS}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
     console.error('[api/interview/turn] Deepgram error:', response.status, errorText);
@@ -146,7 +173,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. TTS: sentence-chunked SuperTonic. A TTS fault degrades to text. ──
-    const segments: Array<{ audio: string; contentType: string }> = [];
+    // Each segment carries the exact text it voices, so the client can commit the
+    // transcript sentence-by-sentence as each segment is actually heard. That is
+    // what lets a barge-in flush the queue WITHOUT crediting the interviewer with
+    // the un-heard tail (which the old "append the whole reply up front" path did).
+    const segments: Array<{ audio: string; contentType: string; text: string }> = [];
     let ttsFailed = false;
     const ttsAvailable = isSuperTonicConfigured();
 
@@ -159,6 +190,7 @@ export async function POST(req: NextRequest) {
           segments.push({
             audio: result.audio.toString('base64'),
             contentType: result.headers['content-type'] || 'audio/mpeg',
+            text: chunk,
           });
         } catch (ttsError) {
           // Infra fault: stop synthesizing, keep the transcript, flag the gap.

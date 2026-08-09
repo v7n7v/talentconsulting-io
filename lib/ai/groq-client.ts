@@ -107,13 +107,16 @@ export async function groqChat(
   try {
     const groq = getGroqClient();
 
+    // Bound the stall surface: the SDK default is 60s × 2 retries (~3 min), far
+    // longer than a live-voice turn should ever hold the client's gated mic. Scope
+    // the tighter budget to this call so other Groq callers keep the SDK defaults.
     const response = await groq.chat.completions.create({
       model: MODEL,
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2048,
       top_p: options.topP ?? 0.95,
-    });
+    }, { timeout: 30_000, maxRetries: 1 });
 
     const content = response.choices[0]?.message?.content;
     if (!content) {

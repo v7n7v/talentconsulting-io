@@ -77,6 +77,11 @@ const MAX_TURN_MS = 30_000; // safety cap on a single answer
 const BARGE_LEVEL = 0.12; // higher bar during playback (echo-guarded)
 const BARGE_MIN_MS = 350; // sustained speech that interrupts the interviewer
 const ECHO_DEBOUNCE_MS = 500; // wait after playback before re-opening the mic
+// Client-side backstop on a single turn. The server bounds each stage (STT/LLM/TTS)
+// and caps itself at maxDuration=90s, so this sits just above that: a dropped
+// connection or stalled body can't leave the room frozen in 'thinking' for the
+// full ~300s platform request cap with a misleading 'Connected' badge.
+const TURN_TIMEOUT_MS = 100_000;
 
 export function useTurnBasedInterview() {
   const [state, setState] = useState<InterviewState>({
@@ -107,6 +112,10 @@ export function useTurnBasedInterview() {
   const nextPlayTimeRef = useRef(0);
   const playTokenRef = useRef(0); // bumped to cancel in-flight playback (barge/disconnect)
   const outputMeterRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Per-segment transcript-commit timers: each AI sentence is committed at the
+  // moment it begins to sound, not up front, so a flush leaves the un-heard tail
+  // uncommitted. Cleared on flush/disconnect so a stale timer can't fire late.
+  const appendTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Turn / conversation state
   const phaseRef = useRef<Phase>('idle');
@@ -121,6 +130,10 @@ export function useTurnBasedInterview() {
     { chunks: [], speechActive: false, voicedMs: 0, silenceMs: 0, totalMs: 0 },
   );
   const bargeVoicedMsRef = useRef(0);
+  // The frames that constitute an in-progress barge, accumulated during playback so
+  // the audio that TRIGGERED the interruption is actually sent to STT — not dropped
+  // in favour of a single post-trigger frame paired with an inflated voiced count.
+  const bargeChunksRef = useRef<Float32Array[]>([]);
 
   // Timers + level metering
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -156,7 +169,20 @@ export function useTurnBasedInterview() {
   const appendTranscript = useCallback((role: 'user' | 'ai', text: string) => {
     const clean = text.trim();
     if (!clean) return;
-    historyRef.current = [...historyRef.current, { role, text: clean }];
+    // Merge consecutive same-role entries in the LLM history mirror too, so an AI
+    // turn committed sentence-by-sentence (see playSegments) collapses to a single
+    // assistant message — and a barge-in that stops mid-reply leaves history holding
+    // only the sentences actually spoken, keeping the next turn's context truthful.
+    const prevHist = historyRef.current;
+    const lastHist = prevHist.length > 0 ? prevHist[prevHist.length - 1] : null;
+    if (lastHist && lastHist.role === role) {
+      historyRef.current = [
+        ...prevHist.slice(0, -1),
+        { role, text: `${lastHist.text} ${clean}`.trim() },
+      ];
+    } else {
+      historyRef.current = [...prevHist, { role, text: clean }];
+    }
     setState(s => {
       const transcript = [...s.fullTranscript];
       const last = transcript.length > 0 ? transcript[transcript.length - 1] : null;
@@ -187,9 +213,16 @@ export function useTurnBasedInterview() {
     setState(s => (s.outputLevel === 0 ? s : { ...s, outputLevel: 0 }));
   }, []);
 
+  const clearAppendTimers = useCallback(() => {
+    for (const t of appendTimersRef.current) clearTimeout(t);
+    appendTimersRef.current = [];
+  }, []);
+
   const flushPlayback = useCallback(() => {
     // Bump the token so any in-flight decode/schedule loop bails immediately.
     playTokenRef.current += 1;
+    // Drop any not-yet-fired per-segment commits: their audio will never be heard.
+    clearAppendTimers();
     stopOutputMeter();
     if (playbackCtxRef.current && playbackCtxRef.current.state !== 'closed') {
       // Closing the context tears down every scheduled BufferSource at once —
@@ -199,7 +232,7 @@ export function useTurnBasedInterview() {
     playbackCtxRef.current = null;
     analyserRef.current = null;
     nextPlayTimeRef.current = 0;
-  }, [stopOutputMeter]);
+  }, [stopOutputMeter, clearAppendTimers]);
 
   const ensurePlaybackCtx = useCallback(() => {
     if (!playbackCtxRef.current || playbackCtxRef.current.state === 'closed') {
@@ -230,6 +263,7 @@ export function useTurnBasedInterview() {
     if (closedRef.current) return;
     captureRef.current = { chunks: [], speechActive: false, voicedMs: 0, silenceMs: 0, totalMs: 0 };
     bargeVoicedMsRef.current = 0;
+    bargeChunksRef.current = [];
     phaseRef.current = 'listening';
     setState(s => ({ ...s, isListening: true, isSpeaking: false }));
   }, []);
@@ -249,7 +283,7 @@ export function useTurnBasedInterview() {
     }, ECHO_DEBOUNCE_MS);
   }, [beginListening, stopOutputMeter]);
 
-  const playSegments = useCallback(async (segments: Array<{ audio: string; contentType?: string }>) => {
+  const playSegments = useCallback(async (segments: Array<{ audio: string; contentType?: string; text?: string }>) => {
     if (closedRef.current) return;
     if (!segments || segments.length === 0) {
       // Text-only turn (TTS unavailable or failed) — no audio to play.
@@ -264,6 +298,7 @@ export function useTurnBasedInterview() {
 
     phaseRef.current = 'speaking';
     bargeVoicedMsRef.current = 0;
+    bargeChunksRef.current = [];
     setState(s => ({ ...s, isSpeaking: true, isListening: false }));
     startOutputMeter();
     nextPlayTimeRef.current = Math.max(nextPlayTimeRef.current, ctx.currentTime);
@@ -283,6 +318,20 @@ export function useTurnBasedInterview() {
       const startAt = Math.max(ctx.currentTime, nextPlayTimeRef.current);
       src.start(startAt);
       nextPlayTimeRef.current = startAt + buffer.duration;
+      // Commit this sentence to the transcript when it actually begins to sound —
+      // not up front. A barge-in flushes the queue and clearAppendTimers() drops
+      // every pending commit, so the interviewer is credited only with what the
+      // candidate heard, and questionCount counts only questions actually asked.
+      const segText = typeof seg.text === 'string' ? seg.text.trim() : '';
+      if (segText) {
+        const delayMs = Math.max(0, (startAt - ctx.currentTime) * 1000);
+        const timerToken = token;
+        const timer = setTimeout(() => {
+          if (timerToken !== playTokenRef.current || closedRef.current) return;
+          appendTranscript('ai', segText);
+        }, delayMs);
+        appendTimersRef.current.push(timer);
+      }
     }
 
     if (token !== playTokenRef.current || closedRef.current) return;
@@ -290,7 +339,7 @@ export function useTurnBasedInterview() {
     await sleep(remainingMs);
     if (token !== playTokenRef.current || closedRef.current) return;
     finishSpeaking();
-  }, [ensurePlaybackCtx, finishSpeaking, startOutputMeter]);
+  }, [appendTranscript, ensurePlaybackCtx, finishSpeaking, startOutputMeter]);
 
   // ── Turn request ─────────────────────────────────────────────────────────
   const runTurn = useCallback(async (payload: { kickoff?: boolean; audio?: Blob; text?: string }) => {
@@ -309,6 +358,10 @@ export function useTurnBasedInterview() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    // `timedOut` distinguishes our client backstop from a disconnect/barge abort:
+    // only a timeout should surface a recoverable fault and re-open the mic.
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, TURN_TIMEOUT_MS);
 
     try {
       const res = await authFetch('/api/interview/turn', { method: 'POST', body: form, signal: controller.signal });
@@ -329,6 +382,11 @@ export function useTurnBasedInterview() {
       const data = await res.json();
       if (closedRef.current) return;
 
+      // A successful turn clears any stale fault banner left by an earlier
+      // recovered turn — otherwise `error` is reset only on connect/disconnect,
+      // so one transient fault haunts the amber banner for the whole session.
+      setState(s => (s.error ? { ...s, error: null, errorUpgradeUrl: null } : s));
+
       if (data.noSpeech) {
         beginListening();
         return;
@@ -336,14 +394,31 @@ export function useTurnBasedInterview() {
 
       if (payload.text) appendTranscript('user', payload.text);
       else if (data.userText) appendTranscript('user', data.userText);
-      if (data.aiText) appendTranscript('ai', data.aiText);
 
-      await playSegments(Array.isArray(data.segments) ? data.segments : []);
+      const segments = Array.isArray(data.segments) ? data.segments : [];
+      // The AI reply is committed sentence-by-sentence as it is heard, inside
+      // playSegments. Commit the whole reply here ONLY when there is no audio to
+      // hear (TTS unavailable/failed) — a text-mode degradation that can't be
+      // barged, so there is no un-heard tail to over-credit.
+      if (segments.length === 0 && typeof data.aiText === 'string' && data.aiText.trim()) {
+        appendTranscript('ai', data.aiText);
+      }
+
+      await playSegments(segments);
     } catch (error: any) {
-      if (closedRef.current || error?.name === 'AbortError') return;
+      if (closedRef.current) return;
+      if (error?.name === 'AbortError') {
+        // A disconnect/barge abort is silent; only our own timeout is a fault.
+        if (timedOut) {
+          setState(s => ({ ...s, error: 'The interviewer took too long to respond. Please try again.', errorUpgradeUrl: null }));
+          beginListening();
+        }
+        return;
+      }
       setState(s => ({ ...s, error: error?.message || 'Interview turn failed', errorUpgradeUrl: null }));
       beginListening();
     } finally {
+      clearTimeout(timeout);
       if (abortRef.current === controller) abortRef.current = null;
     }
   }, [appendTranscript, beginListening, playSegments]);
@@ -396,23 +471,34 @@ export function useTurnBasedInterview() {
       // during the interviewer's turn flushes playback and starts a new turn.
       if (level >= BARGE_LEVEL) {
         bargeVoicedMsRef.current += FRAME_MS;
+        // Keep the frames that make up the barge so the audio that TRIGGERED the
+        // interruption is the audio sent to STT — not dropped for a single frame.
+        bargeChunksRef.current.push(new Float32Array(input));
         if (bargeVoicedMsRef.current >= BARGE_MIN_MS) {
           flushPlayback();
           if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
-          // Seed the new turn with the interruption already in progress.
+          // Seed the new turn with the interruption already in progress — including
+          // its accumulated audio, so MIN_VOICED_MS gates on real captured speech
+          // and Deepgram receives the opening words instead of a clipped tail.
           captureRef.current = {
-            chunks: [new Float32Array(input)],
+            chunks: bargeChunksRef.current,
             speechActive: true,
             voicedMs: bargeVoicedMsRef.current,
             silenceMs: 0,
             totalMs: bargeVoicedMsRef.current,
           };
+          bargeChunksRef.current = [];
           bargeVoicedMsRef.current = 0;
           phaseRef.current = 'listening';
           setState(s => ({ ...s, isSpeaking: false, isListening: true }));
         }
       } else {
         bargeVoicedMsRef.current = Math.max(0, bargeVoicedMsRef.current - FRAME_MS);
+        // Leaky bucket: a burst that didn't sustain is discarded, audio and all, so
+        // a later real barge never inherits stale frames from a false start.
+        if (bargeVoicedMsRef.current === 0 && bargeChunksRef.current.length > 0) {
+          bargeChunksRef.current = [];
+        }
       }
     }
     // 'thinking' and 'debounce' phases: mic gated — ignore input entirely.
@@ -451,6 +537,7 @@ export function useTurnBasedInterview() {
   const cleanup = useCallback(() => {
     closedRef.current = true;
     playTokenRef.current += 1;
+    clearAppendTimers();
     if (debounceRef.current) { clearTimeout(debounceRef.current); debounceRef.current = null; }
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
@@ -461,6 +548,7 @@ export function useTurnBasedInterview() {
     phaseRef.current = 'idle';
     captureRef.current = { chunks: [], speechActive: false, voicedMs: 0, silenceMs: 0, totalMs: 0 };
     bargeVoicedMsRef.current = 0;
+    bargeChunksRef.current = [];
     if (scriptNodeRef.current) { scriptNodeRef.current.disconnect(); scriptNodeRef.current.onaudioprocess = null; scriptNodeRef.current = null; }
     if (sourceNodeRef.current) { sourceNodeRef.current.disconnect(); sourceNodeRef.current = null; }
     if (micStreamRef.current) { micStreamRef.current.getTracks().forEach(t => t.stop()); micStreamRef.current = null; }
@@ -469,7 +557,7 @@ export function useTurnBasedInterview() {
     playbackCtxRef.current = null;
     analyserRef.current = null;
     nextPlayTimeRef.current = 0;
-  }, [stopOutputMeter]);
+  }, [stopOutputMeter, clearAppendTimers]);
 
   useEffect(() => {
     return () => { cleanup(); };
@@ -548,6 +636,10 @@ export function useTurnBasedInterview() {
   const sendText = useCallback((text: string) => {
     const clean = text.trim();
     if (!clean || closedRef.current) return;
+    // Abort any in-flight turn first: without this, its runTurn keeps going and
+    // both requests reach appendTranscript('ai', …), double-appending the reply.
+    // The aborted turn's catch treats a non-timeout AbortError as silent.
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     // Interrupt any current playback, then run a text-driven turn.
     flushPlayback();
     void runTurn({ text: clean });

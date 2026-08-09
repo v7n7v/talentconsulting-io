@@ -681,7 +681,13 @@ export default function InterviewStudioPage() {
 
   const endLiveRoom = useCallback(async () => {
     const transcript = gemini.getTranscript();
-    const elapsed = gemini.elapsedSeconds || Math.max(180, transcript.length * 45);
+    // Pass the REAL elapsed time. The hook counts a second per second while the
+    // room is live, so a completed interview always has a true duration. Never
+    // substitute a synthetic ">=180s" here — analyzeInterview divides WPM by it,
+    // so an invented duration would render a fabricated delivery metric. Unknown
+    // stays unknown (a sub-1s session ends with an empty transcript that grading
+    // rejects anyway).
+    const elapsed = gemini.elapsedSeconds;
     gemini.disconnect();
     await authFetch('/api/interview/sessions', {
       method: 'PATCH',
@@ -1601,13 +1607,13 @@ function LiveRoom({ mode, persona, gemini, transcriptRef, onEnd, onAbandon, busy
             </div>
           )}
           <div className="absolute left-4 top-4 rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
-            {/* The failure is read first. Not every error clears isConnected -
-                'Microphone access denied' (hooks/useGeminiLiveAvatar.ts:393)
-                and 'WebSocket connection error' (:176) both leave it true - so
-                ranking isConnected above error printed "Connected" directly
-                above a card saying the session had failed. Two words because
-                the two cases are different: the socket never opened, or it
-                opened and something stopped. */}
+            {/* The failure is read first. A mid-session turn fault (STT/LLM/TTS,
+                set in useTurnBasedInterview.runTurn) leaves isConnected true, so
+                it must read 'Interrupted', not 'Connected' over a failure card.
+                A failure before the room opens - mic-denied (startMicCapture) or
+                the session gate - returns with isConnected still false, so it
+                reads 'Not connected'. Two words for two cases: the room never
+                opened, or it opened and a turn failed. */}
             {gemini.error
               ? (gemini.isConnected ? 'Interrupted' : 'Not connected')
               : gemini.isListening ? 'Listening'
