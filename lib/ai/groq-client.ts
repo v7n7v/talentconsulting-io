@@ -89,6 +89,44 @@ export async function groqCompletion(
 }
 
 /**
+ * Multi-turn chat completion.
+ *
+ * `groqCompletion` only carries a single system + user pair; a turn-based
+ * interview needs the running conversation so the interviewer does not repeat
+ * itself. Callers pass an ordered `messages` array (system first, then the
+ * alternating turns). Returns the assistant's plain-text reply.
+ */
+export async function groqChat(
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  options: {
+    temperature?: number;
+    maxTokens?: number;
+    topP?: number;
+  } = {}
+): Promise<string> {
+  try {
+    const groq = getGroqClient();
+
+    const response = await groq.chat.completions.create({
+      model: MODEL,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 2048,
+      top_p: options.topP ?? 0.95,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response content from Groq API');
+    }
+    return content;
+  } catch (error: any) {
+    console.error('Groq chat API error:', error?.message || error);
+    throw new Error(`Failed to get AI response: ${error.message || 'Unknown error'}`);
+  }
+}
+
+/**
  * JSON extraction helper
  * Extracts JSON from AI response that might have markdown formatting
  */

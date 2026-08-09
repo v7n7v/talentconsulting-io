@@ -19,7 +19,7 @@ import { getJobApplications, getResumeVersions, type JobApplication, type Resume
 import { analyzeInterview, type InterviewTelemetry } from '@/lib/interview-telemetry';
 import { UPGRADE_COPY } from '@/lib/product-copy';
 import { useStore } from '@/lib/store';
-import { useGeminiLiveAvatar } from '@/hooks/useGeminiLiveAvatar';
+import { useTurnBasedInterview as useGeminiLiveAvatar } from '@/hooks/useTurnBasedInterview';
 
 const AvatarCanvas = dynamic(() => import('@/components/interview/AvatarCanvas'), { ssr: false });
 

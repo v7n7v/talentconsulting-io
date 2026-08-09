@@ -18,6 +18,24 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 
 ---
 
+## 2026-08-08 - Phase 2 turn endpoint gates on session, not per-turn (entitlement parity)
+
+**Decision:** The turn-based interview splits into two endpoints. `/api/interview/session` keeps `guardApiRoute({ feature: 'gauntlets' })` — the exact gate the retired Gemini `live-token` used — and is the single point where the shared free-tier cap and the `errorUpgradeUrl` upgrade CTA apply. `/api/interview/turn` runs `guardApiRoute` with auth + a 30/60s rate limit and **no `feature`**: it does not decrement the gauntlets counter per turn and does not check the voice-minute cap.
+
+**Constraint:** Two facts force this. (1) `live-token` gauntlet-gated the *session*, then the Gemini stream billed nothing per message — per-turn gauntlet decrement would burn a free user's three interviews in one session. (2) `checkVoiceAllowed` returns `allowed:false` for the free tier (0 voice minutes), so metering the turn on voice minutes would 403 every turn of a gauntlet-gated free interview and break the feature the page promises ("free users get three"). Matching the old session-gated/unmetered-turn model is the faithful parity choice; the plan (line 70) only mandates the gauntlets gate + errorUpgradeUrl on the authorize endpoint.
+
+**Rejected:** Per-turn gauntlet decrement (burns the cap mid-session). Per-turn voice-minute metering (free tier is 0 minutes → feature dead on arrival). Both would silently tighten free-user entitlement below the retired live flow.
+
+**Revisit if:** the product decides self-hosted interview voice should meter against a real per-minute budget — then add a dedicated interview-voice meter (not the agent-chat `checkVoiceAllowed`, whose free cap is 0) and record it after a successful turn.
+
+## 2026-08-08 - Phase 2 TTS fault degrades to text; it never fails the turn or nags upgrade
+
+**Decision:** In `/api/interview/turn`, a SuperTonic TTS fault (any `SuperTonicError`) does not 500 the turn. The route returns 200 with the real `aiText`, whatever segments synthesized before the fault, and `ttsFailed: true`. STT and LLM faults, by contrast, return 502. No branch sets an `upgrade`/`upgradeUrl` on an infrastructure fault.
+
+**Constraint:** The transcript is the load-bearing product output (it is what `session-grade` reads); losing it because a voice server hiccuped is worse than a silent gap. And per the plan's transport/error lens, an infra fault must never surface as a billing/upgrade prompt. TTS is also the only stage with a clean text-only fallback, so it is the only one allowed to degrade rather than fail.
+
+**Revisit if:** interview voice becomes a hard requirement (e.g. an accessibility mode) where a silent AI turn is unacceptable — then a TTS fault should surface a retry affordance rather than degrade silently.
+
 ## 2026-08-08 - Voice-meter TOCTOU overspend left as an accepted, bounded deviation
 
 **Decision:** `/api/voice/speak` keeps its check-then-record shape: `checkVoiceAllowed` reads `usedSeconds`, synthesis runs, then `recordVoiceUsage` debits via `FieldValue.increment`. Two concurrent requests can both pass the cap and both increment, overspending the monthly minute cap. Remediation round 1 does NOT fix this.
