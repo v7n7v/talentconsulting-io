@@ -853,7 +853,14 @@ export async function searchTalentJobSupply(params: JobSearchParams): Promise<Ta
   if (jobs.length === 0 || providerStatus.everJobs !== 'success') {
     const legacy = await searchLegacyJobs(params);
     providerStatus.fallbackUsed = true;
-    providerStatus.fallbackStatus = legacy.source.toLowerCase().includes('(error)')
+    // A zero-result fallback is only a trustworthy "empty" when it came from a
+    // provider that actually ran. A disabled / unlicensed / errored source that
+    // returns nothing is NOT a healthy empty search — reporting it as 'empty'
+    // lets a total provider outage masquerade as "0 jobs found", which
+    // isJobSupplyOperational() would then treat as operational. Fail closed.
+    const fallbackSource = legacy.source.toLowerCase();
+    const fallbackDidNotRun = /\(error\)|disabled|unlicensed|no key/.test(fallbackSource);
+    providerStatus.fallbackStatus = fallbackDidNotRun
       ? 'error'
       : legacy.jobs.length > 0
         ? 'success'
