@@ -1,15 +1,15 @@
 {
-  "updated": "2026-07-26T22:44:09.634Z",
+  "updated": "2026-08-09T00:49:56.744Z",
   "metrics": {
-    "distinctHex": 300,
-    "hexOccurrences": 1183,
-    "prohibitedTotal": 1260,
-    "distinctRadii": 31,
-    "inlineButtons": 301,
-    "inlineCards": 1167,
-    "routesOffShell": 22,
+    "distinctHex": 235,
+    "hexOccurrences": 887,
+    "prohibitedTotal": 1129,
+    "distinctRadii": 30,
+    "inlineButtons": 256,
+    "inlineCards": 1053,
+    "routesOffShell": 18,
     "tokenDefFiles": 6,
-    "undefinedTokens": 20,
+    "undefinedTokens": 21,
     "accentContrastFails": 0
   }
 }
