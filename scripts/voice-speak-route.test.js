@@ -135,7 +135,7 @@ test('SuperTonic branch: TTS_BASE_URL set -> synthesizes via VPS /speak, records
 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'audio/mpeg');
-    assert.equal(res.headers.get('X-Voice-Used-Seconds'), '65');
+    assert.equal(res.headers.get('X-Voice-Estimated-Used-Seconds'), '65');
     assert.equal(res.headers.get('X-Voice-Remaining-Seconds'), '3535');
     assert.equal(res.headers.get('X-Voice-Cap-Minutes'), '60');
     const bytes = Buffer.from(await res.arrayBuffer());
@@ -203,6 +203,20 @@ test('SuperTonic transport failure (non-200) -> 500 and usage NOT recorded (no d
     assert.equal(res.status, 500);
     const payload = await res.json();
     // Generic synthesis failure — not an upgrade prompt.
+    assert.equal(payload.upgrade, undefined);
+    assert.equal(globalThis.__voiceSpeakMocks.recorded.length, 0);
+  });
+});
+
+test('OpenRouter fallback: empty 200 body -> 500 and usage NOT recorded (symmetric with SuperTonic empty-audio)', async () => {
+  const route = await routeModulePromise;
+  reset();
+  setEnv({ OPENROUTER_API_KEY: 'or-key' });
+
+  await withFetch(async () => new Response(new Uint8Array([]), { status: 200, headers: { 'content-type': 'audio/mpeg' } }), async () => {
+    const res = await route.POST({});
+    assert.equal(res.status, 500);
+    const payload = await res.json();
     assert.equal(payload.upgrade, undefined);
     assert.equal(globalThis.__voiceSpeakMocks.recorded.length, 0);
   });

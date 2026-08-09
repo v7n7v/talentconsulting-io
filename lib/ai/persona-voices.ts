@@ -44,6 +44,27 @@ export const PERSONA_VOICE_SID: Readonly<Record<string, number>> = Object.freeze
 });
 
 /**
+ * Agent-chat voice names → SuperTonic sid.
+ *
+ * The Taco agent quick-picker (`app/suite/agent/page.tsx`) offers six named voices
+ * borrowed from the OpenAI/OpenRouter TTS vocabulary: `alloy`, `nova`, `echo`,
+ * `fable`, `onyx`, `shimmer`. Those names mean nothing to SuperTonic, so without
+ * this map every one of them fell through to {@link DEFAULT_VOICE_SID} — six
+ * distinct labels playing one voice, while the UI caption ("Taco replies with
+ * {Onyx} voice") claimed a voice the audio never used. Each name resolves to a
+ * distinct in-range sid so the six selections actually sound different. The
+ * sid↔character pairing is PROVISIONAL — tune by ear in the TTS lab.
+ */
+export const AGENT_VOICE_SID: Readonly<Record<string, number>> = Object.freeze({
+    alloy: 5,
+    nova: 3,
+    echo: 6,
+    fable: 8,
+    onyx: 1,
+    shimmer: 9,
+});
+
+/**
  * Coarse gender hints, kept so callers that only know "male"/"female" (the agent
  * chat quick-toggle) still land on a sensible voice rather than the default.
  */
@@ -62,6 +83,7 @@ function isValidSid(value: number): boolean {
  * Accepts, in priority order:
  *   - a persona id (`'faang-lead'`)
  *   - a raw integer sid, as number or numeric string (`4`, `'4'`) within 0–9
+ *   - an agent-chat voice name (`'onyx'`, `'nova'`, …)
  *   - a coarse gender hint (`'male'` / `'female'`)
  *   - anything else, or nothing → {@link DEFAULT_VOICE_SID}
  *
@@ -86,6 +108,10 @@ export function resolveVoiceSid(hint?: string | number | null): number {
     if (/^\d+$/.test(normalized)) {
         const sid = Number.parseInt(normalized, 10);
         if (isValidSid(sid)) return sid;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(AGENT_VOICE_SID, normalized)) {
+        return AGENT_VOICE_SID[normalized];
     }
 
     if (Object.prototype.hasOwnProperty.call(GENDER_VOICE_SID, normalized)) {

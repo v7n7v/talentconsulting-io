@@ -64,6 +64,11 @@ const GATES = [
     cmd: 'npm', args: ['run', 'test:observability'],
     desc: 'observability foundation and privacy contract (expect 31/31)' },
 
+  { name: 'voice',    tier: 'mechanical', fast: false,
+    cmd: 'npm', args: ['run', 'test:voice'],
+    desc: 'SuperTonic TTS client, persona/agent voice mapping and speak-route billing invariants',
+    fix: 'A failure here means the voice code regressed - including the "usage only after successful synthesis" billing invariant. Do not weaken the guard to get green.' },
+
   { name: 'cve',      tier: 'mechanical', fast: false,
     cmd: 'npm', args: ['run', 'security:cve:ci'],
     desc: 'no high or critical CVEs' },

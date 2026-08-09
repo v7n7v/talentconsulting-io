@@ -9,9 +9,13 @@
  *
  * Transport failures are mapped to a small, typed set of error kinds so the route
  * can decide what to surface (an infra fault must NOT look like a billing/upgrade
- * prompt): `unreachable`, `timeout`, `non-200`, `empty-audio`, `not-configured`.
+ * prompt): `unreachable`, `timeout`, `non-200`, `empty-audio`, `bad-content-type`,
+ * `not-configured`.
  *
- * See docs/voice-vps-migration-plan.md.
+ * The timeout bounds the WHOLE exchange, not just header receipt: a VPS that
+ * returns 200 headers and then stalls the audio stream is aborted at the deadline,
+ * because the abort timer is not cleared until the body has been fully read (or the
+ * call has failed). See docs/voice-vps-migration-plan.md.
  */
 
 /** Default per-request timeout. SuperTonic TTFA is ~1.5 s; 10 s is generous headroom. */
@@ -22,7 +26,8 @@ export type SuperTonicErrorKind =
     | 'unreachable'
     | 'timeout'
     | 'non-200'
-    | 'empty-audio';
+    | 'empty-audio'
+    | 'bad-content-type';
 
 /** Typed transport error. `kind` lets callers branch without string-matching messages. */
 export class SuperTonicError extends Error {
@@ -134,57 +139,89 @@ export async function synthesize(params: SynthesizeParams): Promise<SynthesizeRe
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
 
-    let response: Response;
+    // The timer is held across BOTH the header fetch and the body download, then
+    // cleared in this single finally. Clearing it earlier (the old bug) left a
+    // 200-then-stalled body able to hang past the timeout budget.
     try {
-        response = await fetchImpl(`${config.baseUrl}/speak`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-TTS-Token': config.apiKey,
-            },
-            body: JSON.stringify({
-                text: params.text,
-                sid: params.voiceSid,
-                speed,
-                format,
-            }),
-            signal: controller.signal,
-        });
-    } catch (error) {
-        if (timedOut) {
+        let response: Response;
+        try {
+            response = await fetchImpl(`${config.baseUrl}/speak`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-TTS-Token': config.apiKey,
+                },
+                body: JSON.stringify({
+                    text: params.text,
+                    sid: params.voiceSid,
+                    speed,
+                    format,
+                }),
+                signal: controller.signal,
+            });
+        } catch (error) {
+            if (timedOut) {
+                throw new SuperTonicError(
+                    'timeout',
+                    `SuperTonic TTS did not respond within ${timeoutMs}ms`,
+                );
+            }
             throw new SuperTonicError(
-                'timeout',
-                `SuperTonic TTS did not respond within ${timeoutMs}ms`,
+                'unreachable',
+                `SuperTonic TTS unreachable: ${error instanceof Error ? error.message : String(error)}`,
             );
         }
-        throw new SuperTonicError(
-            'unreachable',
-            `SuperTonic TTS unreachable: ${error instanceof Error ? error.message : String(error)}`,
-        );
+
+        if (!response.ok) {
+            // Drain the body so we don't leak the connection; detail is logged by caller.
+            await response.text().catch(() => '');
+            throw new SuperTonicError(
+                'non-200',
+                `SuperTonic TTS returned ${response.status}`,
+                response.status,
+            );
+        }
+
+        let audio: Buffer;
+        try {
+            audio = Buffer.from(await response.arrayBuffer());
+        } catch (error) {
+            // The body read can abort mid-stream when our deadline fires; that is a
+            // timeout, not a generic transport fault.
+            if (timedOut) {
+                throw new SuperTonicError(
+                    'timeout',
+                    `SuperTonic TTS did not respond within ${timeoutMs}ms`,
+                );
+            }
+            throw new SuperTonicError(
+                'unreachable',
+                `SuperTonic TTS body read failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+
+        if (audio.length === 0) {
+            throw new SuperTonicError('empty-audio', 'SuperTonic TTS returned an empty audio body');
+        }
+
+        // A misconfigured VPS can answer 200 with a small JSON/HTML error body. Trust
+        // the observed content-type over the status line: anything that is not audio/*
+        // is a typed fault, never bytes handed to the browser mislabeled as audio.
+        const contentType = response.headers.get('content-type') || 'audio/mpeg';
+        if (!/^audio\//i.test(contentType.trim())) {
+            throw new SuperTonicError(
+                'bad-content-type',
+                `SuperTonic TTS returned a non-audio 200 (content-type: ${contentType})`,
+                response.status,
+            );
+        }
+
+        return {
+            audio,
+            headers: { 'content-type': contentType },
+        };
     } finally {
         clearTimeout(timer);
         if (params.signal) params.signal.removeEventListener('abort', onExternalAbort);
     }
-
-    if (!response.ok) {
-        // Drain the body so we don't leak the connection; detail is logged by caller.
-        await response.text().catch(() => '');
-        throw new SuperTonicError(
-            'non-200',
-            `SuperTonic TTS returned ${response.status}`,
-            response.status,
-        );
-    }
-
-    const audio = Buffer.from(await response.arrayBuffer());
-    if (audio.length === 0) {
-        throw new SuperTonicError('empty-audio', 'SuperTonic TTS returned an empty audio body');
-    }
-
-    return {
-        audio,
-        headers: {
-            'content-type': response.headers.get('content-type') || 'audio/mpeg',
-        },
-    };
 }

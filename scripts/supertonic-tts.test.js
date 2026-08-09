@@ -183,3 +183,41 @@ test('synthesize maps an empty 200 body to kind "empty-audio"', async () => {
     (err) => err instanceof SuperTonicError && err.kind === 'empty-audio',
   );
 });
+
+test('synthesize times out on a 200 whose headers arrive but whose body stalls', async () => {
+  // Headers resolve immediately; the body only settles when the abort fires. The
+  // old bug cleared the timer at header receipt, so this hung forever.
+  const fetchImpl = (url, init) => Promise.resolve({
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'audio/mpeg' }),
+    arrayBuffer: () => new Promise((_resolve, reject) => {
+      init.signal.addEventListener('abort', () => {
+        const err = new Error('aborted');
+        err.name = 'AbortError';
+        reject(err);
+      });
+    }),
+    text: async () => '',
+  });
+
+  await assert.rejects(
+    () => synthesize({ text: 'hi', voiceSid: 0, config: CONFIG, fetchImpl, timeoutMs: 20 }),
+    (err) => err instanceof SuperTonicError && err.kind === 'timeout',
+  );
+});
+
+test('synthesize rejects a non-audio 200 body as kind "bad-content-type"', async () => {
+  await assert.rejects(
+    () => synthesize({
+      text: 'hi',
+      voiceSid: 0,
+      config: CONFIG,
+      fetchImpl: async () => new Response(JSON.stringify({ error: 'boom' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    }),
+    (err) => err instanceof SuperTonicError && err.kind === 'bad-content-type',
+  );
+});

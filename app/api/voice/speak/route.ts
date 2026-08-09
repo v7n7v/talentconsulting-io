@@ -4,7 +4,7 @@ import { checkVoiceAllowed, recordVoiceUsage, estimateTTSSeconds } from '@/lib/u
 import { validateBody } from '@/lib/validate';
 import { VoiceSpeakSchema } from '@/lib/schemas';
 import { monitor } from '@/lib/monitor';
-import { isSuperTonicConfigured, synthesize } from '@/lib/ai/supertonic-tts';
+import { isSuperTonicConfigured, synthesize, DEFAULT_TTS_TIMEOUT_MS } from '@/lib/ai/supertonic-tts';
 import { resolveVoiceSid } from '@/lib/ai/persona-voices';
 
 const OPENROUTER_TTS_URL = 'https://openrouter.ai/api/v1/tts';
@@ -85,38 +85,57 @@ export async function POST(req: NextRequest) {
 
         // ── Synthesize (SuperTonic self-hosted when configured, else OpenRouter) ──
         let audioBuffer: Buffer;
+        // Carry the provider's observed content-type through rather than asserting
+        // audio/mpeg over whatever actually came back.
+        let responseContentType = 'audio/mpeg';
 
         if (useSuperTonic) {
             const voiceSid = resolveVoiceSid(voiceId);
             const result = await synthesize({ text, voiceSid, format: 'mp3' });
             audioBuffer = result.audio;
+            responseContentType = result.headers['content-type'] || responseContentType;
         } else {
             const voice = resolveVoice(voiceId);
 
-            const ttsRes = await fetch(OPENROUTER_TTS_URL, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': 'https://talentconsulting.io',
-                    'X-Title': 'TalentConsulting.io Interview Simulator',
-                },
-                body: JSON.stringify({
-                    model: TTS_MODEL,
-                    input: text,
-                    voice,
-                    response_format: 'mp3',
-                    speed: 1.0,
-                }),
-            });
+            // Bound the whole exchange (headers + body) the same way the SuperTonic
+            // client does; the timer is not cleared until arrayBuffer() resolves.
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), DEFAULT_TTS_TIMEOUT_MS);
+            try {
+                const ttsRes = await fetch(OPENROUTER_TTS_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'https://talentconsulting.io',
+                        'X-Title': 'TalentConsulting.io Interview Simulator',
+                    },
+                    body: JSON.stringify({
+                        model: TTS_MODEL,
+                        input: text,
+                        voice,
+                        response_format: 'mp3',
+                        speed: 1.0,
+                    }),
+                    signal: controller.signal,
+                });
 
-            if (!ttsRes.ok) {
-                const errText = await ttsRes.text().catch(() => 'Unknown error');
-                console.error('[api/voice/speak] OpenRouter TTS error:', ttsRes.status, errText);
-                throw new Error(`OpenRouter TTS failed: ${ttsRes.status}`);
+                if (!ttsRes.ok) {
+                    const errText = await ttsRes.text().catch(() => 'Unknown error');
+                    console.error('[api/voice/speak] OpenRouter TTS error:', ttsRes.status, errText);
+                    throw new Error(`OpenRouter TTS failed: ${ttsRes.status}`);
+                }
+
+                const buf = Buffer.from(await ttsRes.arrayBuffer());
+                // An empty 200 must fail before billing — symmetric with the SuperTonic
+                // branch, which throws 'empty-audio' rather than record usage for silence.
+                if (buf.length === 0) {
+                    throw new Error('OpenRouter TTS returned an empty audio body');
+                }
+                audioBuffer = buf;
+            } finally {
+                clearTimeout(timer);
             }
-
-            audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
         }
 
         // ── Record usage AFTER successful synthesis ──
@@ -126,8 +145,11 @@ export async function POST(req: NextRequest) {
 
         return new NextResponse(new Uint8Array(audioBuffer), {
             headers: {
-                'Content-Type': 'audio/mpeg',
-                'X-Voice-Used-Seconds': String(voiceCheck.usedSeconds + estimatedSeconds),
+                'Content-Type': responseContentType,
+                // The voice meter is estimate-based (estimateTTSSeconds), so this figure
+                // is a projection of the debited total, not a measured playback duration.
+                // Named accordingly so no client mistakes it for the latter.
+                'X-Voice-Estimated-Used-Seconds': String(voiceCheck.usedSeconds + estimatedSeconds),
                 'X-Voice-Remaining-Seconds': String(Math.max(0, remainingAfter)),
                 'X-Voice-Cap-Minutes': String(Math.floor(voiceCheck.capSeconds / 60)),
             },

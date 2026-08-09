@@ -74,6 +74,7 @@
     "test:taco-brand": "node --test scripts/taco-brand.test.js",
     "test:sidebar-parity": "node --test scripts/suite-sidebar-parity.test.js",
     "test:user-tier-safety": "node --test scripts/user-tier-firestore-safety.test.js",
+    "test:voice": "node --test scripts/supertonic-tts.test.js scripts/persona-voices.test.js scripts/voice-speak-route.test.js",
     "brand:taco:migrate:dry": "node scripts/taco-brand-migration.js",
     "brand:og": "node scripts/render-brand-og.js",
     "deploy": "node deploy-fix.js",

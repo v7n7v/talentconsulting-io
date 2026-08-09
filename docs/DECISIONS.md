@@ -18,6 +18,34 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 
 ---
 
+## 2026-08-08 - Voice-meter TOCTOU overspend left as an accepted, bounded deviation
+
+**Decision:** `/api/voice/speak` keeps its check-then-record shape: `checkVoiceAllowed` reads `usedSeconds`, synthesis runs, then `recordVoiceUsage` debits via `FieldValue.increment`. Two concurrent requests can both pass the cap and both increment, overspending the monthly minute cap. Remediation round 1 does NOT fix this.
+
+**Constraint:** A correct fix is a Firestore transaction that atomically reads-and-reserves before synthesis, then refunds on synthesis failure. That inverts the "record ONLY after successful synthesis" invariant that both the plan and `voice-speak-route.test.js` encode (a refund path would make usage appear recorded on a transport fault), and it is a billing-semantics change that deserves its own focused review rather than riding along in a voice-migration remediation pass. The exposure is bounded by the pre-existing 5-request/60s per-user rate limit, and this is a pre-existing property, not introduced by the SuperTonic swap.
+
+**Rejected:** Reserve-then-refund in this round — real fix, wrong blast radius for round 1. A mutex/lock — no shared lock primitive here, and the rate limit already caps the damage.
+
+**Revisit if:** the rate limit is loosened, voice caps become revenue-material, or a transaction-based `reserveVoiceSeconds` is built — at which point the "record after success" tests move with it.
+
+## 2026-08-08 - `X-Voice-Estimated-Used-Seconds`: name says estimate, because the meter is one
+
+**Decision:** The response header formerly named `X-Voice-Used-Seconds` is renamed `X-Voice-Estimated-Used-Seconds`. No consumer reads it (grep of `app/`, `components/`, `lib/` finds none outside the route and its test).
+
+**Constraint:** The voice meter debits `estimateTTSSeconds` — `Math.max(1, ceil(chars/12.5))`, a heuristic — not a measured playback duration, so the surfaced figure is a projection, not a measurement. Naming it `Used-Seconds` invited a client to treat an estimate as ground truth.
+
+**Revisit if:** measured playback duration ever replaces the estimate as the billed quantity, at which point the header can drop the `Estimated-` qualifier.
+
+## 2026-08-08 - Phase 0+1 branch/commit hygiene deviations, recorded not rewritten
+
+**Decision:** Two `docs/voice-vps-migration-plan.md` process rules were not followed and are being recorded rather than retroactively enforced: work landed on branch `feature/vps-voice` (plan line 117 mandates `feature/vps-voice-migration`), and Phase 0 and Phase 1 shipped in one commit `bc9cad4` (plan line 118 forbids batching phases into one commit).
+
+**Constraint:** Both are now in immutable git history and inside an active orchestration worktree (`.claude/worktrees/vps-voice`). Renaming the branch under a live worktree risks the harness that created it; un-batching `bc9cad4` means a history rewrite, which is strictly worse than the cosmetic deviation it would "fix." Neither affects runtime behaviour.
+
+**Rejected:** `git branch -m` / interactive rebase to conform after the fact — disruption and history-rewrite risk far exceed the value of matching a naming rule retroactively.
+
+**Revisit if:** later phases (2+) open — those SHOULD honour the per-phase-commit rule on a correctly named branch.
+
 ## 2026-08-08 - SuperTonic TTS: env-flag provider selection, SSRF-narrowed base URL
 
 **Decision:** `/api/voice/speak` picks its provider at request time — SuperTonic (self-hosted VPS) when `TTS_BASE_URL` is a valid base URL, else the existing OpenRouter path. `getSuperTonicConfig()` accepts only HTTPS or HTTP-to-loopback and rejects embedded credentials, mirroring the `EVER_JOBS_API_URL` precedent. `OPENROUTER_API_KEY` is now read inside the handler (was module scope) so the fallback branch and its tests can toggle without a re-import.
