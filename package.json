@@ -84,7 +84,8 @@
     "test:job-providers": "node --test scripts/job-provider-fantastic.test.js scripts/job-provider-scrapers.test.js scripts/job-catalog-route.test.js scripts/job-catalog-ingestion.test.js scripts/job-catalog-search.test.js scripts/job-catalog-staging-preflight.test.js",
     "jobs:catalog:trigger": "node scripts/job-catalog-trigger.js",
     "jobs:catalog:preflight": "node scripts/job-catalog-staging-preflight.js",
-    "test:dependency-compatibility": "node --test scripts/dependency-compatibility.test.js"
+    "test:dependency-compatibility": "node --test scripts/dependency-compatibility.test.js",
+    "test:install-boundaries": "node --test scripts/dependency-compatibility.test.js scripts/docker-build-context.test.js scripts/cloudrun-build-context.test.js scripts/security-cve-audit.test.js scripts/security-cve-zero.test.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.83",

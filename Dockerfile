@@ -1,16 +1,29 @@
+# Prepare the context first: node scripts/docker-build-context.js prepare
+# --source . --output <empty external directory>. Raw repository builds fail closed.
+# This official multi-platform digest was resolved from the registry, not invented.
+FROM node:22.23.2-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS base
+RUN npm install --global npm@12.1.0 --ignore-scripts \
+    && test "$(node --version)" = "v22.23.2" \
+    && test "$(npm --version)" = "12.1.0"
+
 # ── Stage 1: Install dependencies ──
-FROM node:22-alpine AS deps
+FROM base AS deps
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm install --legacy-peer-deps
+# The prepared bundle includes every reviewed installation input. Its contents
+# participate in this layer's cache key, including any future selected artifacts.
+COPY .docker-install/ ./
+RUN node scripts/docker-build-context.js verify-install --context . \
+    && npm ci --legacy-peer-deps --strict-allow-scripts \
+    && node scripts/docker-build-context.js verify-install --context . --after-install
 
 # ── Stage 2: Build the application ──
-FROM node:22-alpine AS builder
+FROM base AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN node scripts/docker-build-context.js verify --context . --with-node-modules
 
 # NEXT_PUBLIC_* values are compiled into the browser bundle by Next.js.
 # These values identify Firebase resources; server credentials remain runtime-only.
@@ -43,7 +56,7 @@ ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 RUN npm run build
 
 # ── Stage 3: Production runner ──
-FROM node:22-alpine AS runner
+FROM base AS runner
 WORKDIR /app
 
 ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
@@ -61,6 +74,11 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+
+# Next writes image-optimization and other runtime cache entries here.
+RUN mkdir -p .next/cache \
+    && chown nextjs:nodejs .next/cache \
+    && chmod 0755 .next/cache
 
 USER nextjs
 
