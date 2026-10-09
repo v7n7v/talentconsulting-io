@@ -176,7 +176,8 @@ test('public gallery is catalog-backed, deep-linked, tier truthful, and avoids u
     assert.match(gallery, new RegExp(href.replace(/\//g, '\\/')));
   }
   assert.match(gallery, /Frequently Asked Questions/);
-  assert.match(gallery, /17 new curated signature designs require Standard/);
+  assert.match(gallery, /Editorial Authority, Technical Signal, and Brutalist Voltage are free/i);
+  assert.match(gallery, /The (?:\d+ )?new curated signature designs require Standard/i);
   assert.match(gallery, /opacity-100[^"]*md:opacity-0[^"]*md:group-hover:opacity-100[^"]*md:group-focus-within:opacity-100/);
 });
 

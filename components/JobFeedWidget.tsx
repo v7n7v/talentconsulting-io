@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
+import { formatJobSalary } from '@/lib/job-display';
+import type { JobSalary } from '@/lib/job-ingestion';
 import { useAuthGate } from '@/hooks/useAuthGate';
 import JobDiscoveryRecoveryPanel from '@/components/jobs/JobDiscoveryRecoveryPanel';
 import {
@@ -22,7 +24,7 @@ interface SuggestedJob {
   title: string;
   company: string;
   location: string;
-  salary: { min: number | null; max: number | null; currency: string };
+  salary: JobSalary;
   description: string;
   skills: string[];
   url: string;
@@ -47,15 +49,6 @@ function getScoreColor(score: number): string {
   if (score >= 60) return '#3b82f6';
   if (score >= 40) return '#f59e0b';
   return '#ef4444';
-}
-
-function formatSalary(min: number | null, max: number | null): string {
-  if (!min && !max) return '';
-  const fmt = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`;
-  if (min && max && min !== max) return `${fmt(min)} – ${fmt(max)}`;
-  if (min) return `${fmt(min)}+`;
-  if (max) return `Up to ${fmt(max)}`;
-  return '';
 }
 
 const LEGACY_DISMISS_KEY = 'talent-job-alert-prompt-dismissed';
@@ -454,7 +447,7 @@ export default function JobFeedWidget() {
                 </span>
                 {(job.salary?.min || job.salary?.max) && (
                   <span className="text-[10px] text-emerald-500 font-medium">
-                    {formatSalary(job.salary.min, job.salary.max)}
+                    {formatJobSalary(job.salary)}
                   </span>
                 )}
               </div>

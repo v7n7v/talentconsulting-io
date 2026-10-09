@@ -149,3 +149,11 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 **Rejected:** In-place `git fetch` repair - viable and less disruptive, but leaves the repository inside a OneDrive-synced folder, which is the root cause.
 
 **Accepted loss:** `codex/audit-automation-recovery`, `codex/release-safe-cleanup`, and both stashes. Their trees live in the missing pack; bundle, format-patch and archive were all attempted and all failed.
+
+## 2026-10-08 - Isolate the job catalog release and preserve failing baseline gates
+
+**Decision:** Review and commit parser/catalog/provider work in `codex/job-catalog-release` from `e8c5b347`, retaining only the necessary salary/date UI and PDF sizing changes. Preserve the original dirty checkout and exclude its unrelated design and evidence work.
+
+**Constraint:** The required release checks expose existing dependency-security, undefined-token and mobile shared-shell touch-target failures. Keep those gates and baselines unchanged; the job implementation checkpoint is not deployable until remediation passes them. Broader dependency/tooling or design changes require their own work package.
+
+**Verified:** Focused job/PDF regression run 143 passed; independent review confirmed and fixed predicted-salary labeling and annual-USD-only suggestions filtering, with red mutation checks. Types, build, release-safety, assistant, admin, email, observability and SEO pass. Detailed scope, browser fixture limits and remaining holds are in `docs/job-catalog-operations.md`.
