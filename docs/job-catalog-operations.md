@@ -2,6 +2,8 @@
 
 ## Current state
 
+Latest release status: **R0 complete; R1 partial/HOLD; release HOLD.** See the [execution checkpoint](#r0r1-execution-checkpoint--october-9-2026) for current dependency/install results and blockers.
+
 The authenticated trigger is available at `/api/cron/job-catalog`. It accepts `POST` and `GET`, requires `Authorization: Bearer <CRON_SECRET>` (or the existing `x-cron-secret` header convention), and accepts only a `provider` query parameter. Providers currently exposed by the contract are `fantastic`, `brightdata`, and `apify`; omitting the parameter selects `fantastic`.
 
 No schedule, deployment, provider account, credentials, or live canary has been created by this change. The staging Compose template pins Ever Jobs to `a9f0bb58f8da2cad56fce3d0190b3fa3182de7de`, but the expected `deploy/staging/.env.staging` is absent from this checkout. The local pilot preflight reports configuration not ready and zero provider/deployment calls. Do not treat checked-in templates or code defaults as evidence that providers are configured.
@@ -120,3 +122,14 @@ The seven staging-preflight tests cover protected files, expected identity, sour
 The [critical release remediation implementation plan](job-site-parsing-implementation-plan.md#critical-release-remediation-plan--october-9-2026) defines the next work package: isolated installs, compatible dependency branches, a separately qualified solution for every unpatched tooling path, narrow radius/sidebar/help repairs, stateful browser verification, independent review and paired rollback. Source baseline remains `853c7f5`; planning changes are documentation only. Implementation and fresh candidate verification have not started, and all release holds above remain active.
 
 Research also reproduced an existing `minimatch` compatibility failure caused by globally forcing `brace-expansion` v5 onto a v1 consumer. The plan restores compatible branches rather than merely raising the global override. `--radius-full` is the single added unresolved token; open help/drawer states require more coverage than the prior closed-state fixture run. These findings set implementation scope; they are not completed repairs or a deployment decision.
+
+
+## R0/R1 execution checkpoint — October 9, 2026
+
+Execution now follows the earlier planning checkpoint: isolated compatible graph commit `5074148`, then install/context/CI/cache commit `8055273`. The canonical dirty checkout and its dependencies remain preserved. Clean install, 39 install-boundary tests, actual Alpine native behavior, both container build stages and repeated standalone image/cache requests pass. Type/build and the other core suites pass; full verification still returns failure.
+
+**Independent result: PARTIAL/HOLD.** Nine raw findings were confirmed, eight repaired and one remains open. The fresh project audit has fallen from 38 high/critical findings to one high `braces` finding; npm's own bundled vulnerable `brace-expansion` is a separate confirmed toolchain blocker outside that audit. Design, mobile shared-shell checks and a functioning lint command remain unresolved. No baseline was weakened, and no release/CI success is claimed.
+
+The [execution record](job-site-parsing-implementation-plan.md#13-r0r1-execution-checkpoint--october-9-2026) contains exact versions, context hash, tests, all review findings, runtime limits and rollback units. `deploy-cloudrun.sh` now prepares/verifies an external context before submission, but only mocked submission was tested; no cloud operation ran. Local raw evidence and the judge's HOLD verdict are under `.ui-verify/remediation/`, outside Git.
+
+Next engineering priority is a qualified npm CLI graph repair and the remaining `braces`/lint solution, followed by the planned local mobile/help and browser work. Provider credentials/staging identity and a capped live pilot are still separate outstanding steps. No push, deployment, schedule, job-provider call or live database write was performed.

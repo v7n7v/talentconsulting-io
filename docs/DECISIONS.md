@@ -167,3 +167,12 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 **Constraints:** Zero high/critical advisories, unchanged baselines, truthful dependency identity, preserved dashboard/auth/truth locks, real browser states and independent review. Tailwind/global design migration remains a separate decision with existing push prerequisites. Release holds remain active.
 
 **Handoff:** [Critical release remediation plan](job-site-parsing-implementation-plan.md#critical-release-remediation-plan--october-9-2026) contains dated source evidence, exact file ownership, candidate versions, decision gates, acceptance tests and rollback. Its unresolved tooling decision is explicit; no unqualified fork is recommended.
+
+
+## 2026-10-09 - Execute bounded dependency/install remediation and retain HOLD
+
+**Decision:** Save compatible graph work in `5074148` and deterministic context/install/CI work in `8055273`. Keep separate brace-expansion API branches, explicit reviewed lifecycle approvals, a worktree-local clean install and a verified external container context. Give the nonroot runner write access only to Next's cache directory.
+
+**Verified:** Clean install, 39/39 boundary tests, real GNU/Linux and Alpine behaviors, container builds, Docker ignore differential and repeated optimized-image/cache requests. Independent review: nine raw findings confirmed, eight closed, one open. Exact execution evidence and rollback are in the [implementation-plan execution record](job-site-parsing-implementation-plan.md#13-r0r1-execution-checkpoint--october-9-2026).
+
+**Hold:** The project audit decreases from 38 high/critical findings to one unpatched `braces` high. Separately, pinned npm bundles vulnerable `brace-expansion` `5.0.9` in build/runtime toolchain; project overrides do not cover it. R1 is partial and security completion is not certified. Design/mobile/lint and live staging prerequisites remain; no baseline relaxation, global tooling migration, live operation, deployment or push.

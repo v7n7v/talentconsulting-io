@@ -168,6 +168,8 @@ The browser fixture interception and viewport override were cleared, the tempora
 
 ## Critical release remediation plan — October 9, 2026
 
+Execution update: **R0 complete; R1 partial/HOLD; release HOLD.** The [execution checkpoint](#13-r0r1-execution-checkpoint--october-9-2026) records implemented commits, actual checks and the newly confirmed npm CLI blocker. The planning sections below retain their original decision boundaries.
+
 **Status: proposed implementation plan; research complete, execution not started.** The intended outcome is a reviewable local release candidate with reproducible installs, zero high/critical dependency advisories, unchanged design gates and usable shared mobile controls. It does not certify live job quality, production auth/storage, billing or deployment readiness.
 
 ### 1. Starting evidence and boundaries
@@ -387,3 +389,70 @@ Still unresolved: a qualified solution for every unpatched `braces` path; the ef
 ### 12. Planning review record
 
 Independent skeptic/judge review identified three planning defects: wrong minimatch major labels, an implicit 768px mobile enforcement gap, and underspecified Docker context exclusions. **3 raw; 3 confirmed; 0 refuted; 0 duplicate.** The revisions name the actual consumer branches, assign the `<1024px` geometry gate with negative controls, and require explicit credential-path exclusions plus a secret-free context check. The fresh judge inspected all three revisions and returned **PASS for plan readiness only**; its own whitespace check and four relative file/heading links passed. These are plan corrections only; none of the implementation defects is repaired by this documentation checkpoint. Implementation and release remain held.
+
+
+### 13. R0/R1 execution checkpoint — October 9, 2026
+
+**Status: R0 complete; R1 partial/HOLD; release HOLD.** Execution began from planning commit `5e159e1`, following job source checkpoint `853c7f5`. Compatible graph changes are separately revertible in `5074148`; install/context/CI guards and the narrow container cache repair are in source candidate `8055273`. No R2 tooling solution or R3/R4 UI/harness repair was selected or implemented in this slice.
+
+The worktree now has its own real `node_modules` directory. Only its former symlink was unlinked; the canonical checkout and its dependency directory were preserved. All 118 protected canonical source hashes still match. Eight prior reports, original install inputs and fresh baselines were frozen under `.ui-verify/remediation/r0/`; the baseline manifest SHA256 is `f02a0b94c43083c9ddd68350202431d2df9b0ec759b0ff0b5d6382ada5b2171f`. Both committed audit baselines are unchanged.
+
+#### Implemented graph and installation policy
+
+| Input | Executed choice |
+|---|---|
+| Next | Exact `16.3.8`, with its official matching platform packages |
+| Firebase Admin | Canonical and npm alias both exact `13.10.0`; the old Forge dependency is absent |
+| Existing vulnerable overrides | `@grpc/grpc-js` `1.14.5`, `js-yaml` `4.3.2`, Sharp `0.35.5` |
+| Brace expansion API branches | `brace-expansion@^1` → `1.1.21`; `@^5` → `5.0.12`; no global v5 substitution into minimatch v3 |
+| Other compatible security fixes | Major-scoped busboy, xmldom, Browserslist, engine.io, fast-uri, nanoid and source-map-js overrides recorded in `package.json` |
+| Local/CI/container runtime | Node `22.23.2`, npm `12.1.0`; Docker pins the verified official multi-platform Node Alpine digest |
+| Lifecycle policy | npm strict mode; exact approvals for esbuild `0.28.1`, unrs-resolver `1.11.1` and protobufjs `7.6.5`; Firebase utility configuration-fetch hook and optional Darwin fsevents hook denied |
+
+The lock was regenerated from the existing graph without a blanket upgrade or force. Script suppression was used only for lock metadata generation and installing the published npm CLI; actual clean application installation ran the reviewed required hooks under strict policy. Registry tarball/script integrity was reviewed. GNU/Linux and Alpine/musl behavior was executed; Darwin installation/watch behavior is unverified. See [Node release](https://nodejs.org/en/blog/release/v22.23.2), [npm release](https://github.com/npm/cli/releases/tag/v12.1.0), and [npm script-policy source](https://github.com/npm/cli/blob/v12.1.0/docs/lib/content/commands/npm-approve-scripts.md).
+
+A prepared external build context is now required. `scripts/docker-build-context.js` inventories and hashes reviewed source/assets and all selected installation inputs before Docker's install layer. It rejects dependency-root symlinks, unreviewed workspaces/hooks, root shrinkwrap/binding selectors, local dependency URLs and untracked build inputs. Credential/env/backup paths are omitted before their contents are read. The Cloud Run wrapper prepares, verifies and submits that context; raw repository Docker builds deliberately fail. This slice added no patch/vendor artifact or root installation hook.
+
+For a local container build, prepare and verify an empty directory outside the checkout, then pass that directory to Docker:
+
+```sh
+node scripts/docker-build-context.js prepare --source . --output '<empty-external-directory>'
+node scripts/docker-build-context.js verify --context '<empty-external-directory>'
+docker build --target deps '<empty-external-directory>'
+```
+
+A full application image also needs explicit public build arguments. The executed image used synthetic public Firebase/Stripe identifiers with demo mode off and no server credentials. Do not use this example as authorization to run `deploy-cloudrun.sh`; its external submission/deployment path was exercised only with mocks.
+
+#### Executed verification and its limits
+
+- Worktree-local clean `npm ci` passed without changing reviewed manifest/lock/npmrc bytes; installed dependency roots are real directories.
+- `npm run test:install-boundaries` passed **39/39**: eight real dependency behaviors, sixteen context cases, four mocked wrapper cases, six audit parser cases and five strict report cases. Both root and fresh judge executed the final boundary suite.
+- Actual consumer glob expansion/discovery, local watcher add/change/delete, loopback gRPC, both Firebase aliases' generated key parsing/rejection, DOCX/Unicode roundtrip and Sharp PNG/JPEG/WebP/AVIF/malformed input checks passed. The judge independently executed **8/8** in Alpine with networking disabled. Root also executed esbuild transformation and native resolver loading there.
+- Real Docker inventories matched the helper for **6/6** synthetic ignore-pattern cases. Dependency and full standalone image builds passed. Final context contains **813 files**, inventory SHA256 `48fb61cc599d176bc0977f2fde0911544f6d9c03df7039d94ce4c8692dbcc36b`; independent preparation matched it with zero credential reads.
+- Actual standalone startup returned root **200**, unauthenticated suggestions **401** and unconfigured supply **503** with no job data. Repeated optimized-image requests passed; cache files were written and reused. The judge independently observed **200 MISS → 200 HIT**, clean logs, UID1001 cache ownership and a root-owned surrounding `.next` directory. Only `.next/cache` is writable by the app user. The prior image's cache-permission failure is retained as the negative control.
+- Root and judge full verification each passed **7/9 gates**: types, build, release-safety, assistant, admin, email and observability. Final container build generated **187 static pages**. Design and CVE still fail; unchanged `next lint` still fails. SEO passes with 35 pages and zero critical/high issues. Affected job suites pass 192 tests; auth/sidebar passes 37; resume and additional PDF runs pass 195 and 15 respectively, with some overlapping coverage.
+- No full browser matrix, signed-in/live Firestore validation, provider canary or remote CI run was executed here. Dependency/native tests and synthetic runtime responses do not establish those boundaries. No application UI source, dashboard rule, auth rule, truth lock, price or provider policy was changed.
+
+#### Independent findings and remaining blockers
+
+**9 raw; 9 confirmed; 0 refuted; 0 duplicate. Eight remediated; one open.** Preserve historical findings even though their current reproductions pass.
+
+| Raw finding | Final disposition |
+|---|---|
+| 1. Original deploy wrapper omitted the required installation bundle | Closed: prepared external submission; failure prevents submission |
+| 2. Custom ignore model disagreed with Docker root/ancestor semantics | Closed: supported grammar/order corrected; real-engine differential passed |
+| 3. Installed-mode pruning bypassed dependency-root symlink checks | Closed: root must be a real directory; ordinary nested npm links retained |
+| 4. Workspaces could omit local installation inputs | Closed: workspace declarations rejected until explicitly qualified |
+| 5. Implicit root shrinkwrap/binding selectors could be omitted | Closed: existence rejected without reading contents |
+| 6. Mocked wrapper test used a context inside its source tree | Closed: sibling fixtures, outside-source assertion and preparation-failure case |
+| 7. Local `git+file:` dependencies bypassed the guard | Closed: manifest fields, lock URLs and case variants rejected |
+| 8. Pinned global npm bundles vulnerable `brace-expansion` `5.0.9` | **OPEN/HOLD:** separate toolchain advisory, present in build stages and runner |
+| 9. Nonroot standalone process could not create Next's image cache | Closed: narrow directory ownership plus real negative/positive runtime evidence |
+
+The judge removed guards only in isolated copies and observed the corresponding behavioral tests fail; control copies passed. It also proved npm's strict lifecycle denial with an offline synthetic tarball. No project dependency was mutated for these controls. The raw adjudication, mutation arithmetic and commands are retained in `.ui-verify/remediation/r1-judge-verdict.md` and adjacent artifacts.
+
+The fresh full **project** audit at `2026-10-09T13:31:27.445Z` reports **1 high, 0 critical, 1 new, 0 known**, down from 38 high/critical advisory findings. The remaining package is `braces` `3.0.3`, [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), through Tailwind and Next ESLint paths. Both the unchanged audit gate and new strict zero-report assertion return failure. This result excludes the global CLI bundle: npm's `brace-expansion` `5.0.9` independently matches [high GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7) and [moderate GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr). Project overrides do not repair it; exploit reachability was not established. R1 security completion is therefore **not certified**.
+
+Next: qualify and verify the CLI graph fix; resolve every R2 `braces` path and restore deliberate lint coverage; then execute the local radius/sidebar/help repairs and hardened browser matrix. Do not waive/rename either advisory or infer safety from an incomplete audit. The design 21-versus-20 token regression and existing mobile help/drawer target holds remain. Staging configuration, remote push/CI and the live capped provider pilot are still outstanding. No push, deployment, provider/DB write, real email/payment or external application submission occurred.
+
+Local execution artifacts are ignored, not a remote CI record. Their hashes and exact source commits are summarized in `.ui-verify/remediation/r1-execution-manifest.json`. Source rollback units are `5074148` and `8055273`; revert dependent units together when needed, then perform a new isolated clean install and affected verification. Returning to the original vulnerable graph preserves HOLD.
