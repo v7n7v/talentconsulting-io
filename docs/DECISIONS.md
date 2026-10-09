@@ -157,3 +157,13 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 **Constraint:** The required release checks expose existing dependency-security, undefined-token and mobile shared-shell touch-target failures. Keep those gates and baselines unchanged; the job implementation checkpoint is not deployable until remediation passes them. Broader dependency/tooling or design changes require their own work package.
 
 **Verified:** Focused job/PDF regression run 143 passed; independent review confirmed and fixed predicted-salary labeling and annual-USD-only suggestions filtering, with red mutation checks. Types, build, release-safety, assistant, admin, email, observability and SEO pass. Detailed scope, browser fixture limits and remaining holds are in `docs/job-catalog-operations.md`.
+
+## 2026-10-09 - Plan critical release remediation before implementation
+
+**Planning boundary:** The user requested a deeper implementation plan before starting the critical remediation. This checkpoint changes documentation only. Implementation selection and execution are not reported as approved or complete.
+
+**Recommended sequence:** Isolate the worktree install runtime, make reviewed compatible dependency/lock changes and align clean installs; repair the local radius/sidebar/help defects and harden browser state tests; select a qualified solution for all unpatched `braces` paths before broad tooling changes. A plain source patch does not by itself clear the unchanged full-tree npm audit, and a global `brace-expansion` v5 update retains the reproduced v1-consumer API defect.
+
+**Constraints:** Zero high/critical advisories, unchanged baselines, truthful dependency identity, preserved dashboard/auth/truth locks, real browser states and independent review. Tailwind/global design migration remains a separate decision with existing push prerequisites. Release holds remain active.
+
+**Handoff:** [Critical release remediation plan](job-site-parsing-implementation-plan.md#critical-release-remediation-plan--october-9-2026) contains dated source evidence, exact file ownership, candidate versions, decision gates, acceptance tests and rollback. Its unresolved tooling decision is explicit; no unqualified fork is recommended.

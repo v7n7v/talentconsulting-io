@@ -1,6 +1,6 @@
 # Taco job-site parsing implementation plan
 
-Created October 7, 2026. Basis: `job-site-parsing-research-2026-10-07.md` and the current source. The first delivery is the existing search supply pipeline, from provider response to ranked API result. Employer expansion, distributed indexing, and the browser extension have separate milestones after this delivery.
+Created October 7, 2026; planning status updated October 9, 2026. Basis: `job-site-parsing-research-2026-10-07.md`, current source, and the independently verified local checkpoint `853c7f5` on `codex/job-catalog-release`. Parsing/provider/catalog integration is committed locally. Release is held on security, design-token and mobile-shell gates; remediation has not started. The [critical remediation implementation plan](#critical-release-remediation-plan--october-9-2026) below is the current next work package. The October 7 implementation record remains historical; its PDF/type and source-assertion blockers were resolved in the October 8 checkpoint described in [job-catalog-operations.md](job-catalog-operations.md#local-release-checkpoint--october-8-2026).
 
 ## Outcomes
 
@@ -160,8 +160,230 @@ The browser fixture interception and viewport override were cleared, the tempora
 
 ## Next implementation sequence
 
-1. Resolve the existing PDF prop mismatch in its owning resume-export work and reconcile the mobile source-text assertion with the intended source-confidence presentation. Re-run only those checks and the release build after those fixes.
-2. Validate the pinned Ever Jobs service in staging with the existing canary. Record auth, source/host agreement, successful/empty/error distinction, and metadata coverage. Compare two local pages against one stable retrieved batch; do not present the bounded total as internet-wide vacancies.
+1. Complete the bounded release remediation below. Resolve every release gate with independent evidence; a job implementation checkpoint is not a deployable verdict. The PDF prop mismatch and mobile source-text assertion above are already resolved at `853c7f5`.
+2. After local release eligibility and staging prerequisites are independently reviewed, validate the pinned Ever Jobs service in staging with the existing canary. Record auth, source/host agreement, successful/empty/error distinction, and metadata coverage. Compare two local pages against one stable retrieved batch; do not present the bounded total as internet-wide vacancies. Staging credentials, provider billing and live operations are separate prerequisites, not implicit authorization from this plan.
 3. Add Greenhouse detail enrichment as a separately measured slice: request details on role opening/preparation, use `first_published` and opt-in pay transparency, retain distinct update/observation times, cache by board plus source job ID, coalesce requests, and preserve list evidence when detail retrieval fails. Test no pay, multiple currencies, invalid/closed job IDs, 429, and timeouts. Set a concurrency/request budget from observed latency before enabling broad enrichment.
 4. Expand the employer catalogue with platform/region/ownership evidence and migration fixtures. Keep historical posting counts out of current availability decisions; report stale-board outcomes without silently inventing replacement slugs.
 5. Build the user-activated clipper against this evidence contract: ATS API, structured JobPosting, visible-page adapter, then paste fallback. Include host fixtures and a review step that exposes unknown facts before saving. Measure extraction completeness before adding more hosts.
+
+## Critical release remediation plan — October 9, 2026
+
+**Status: proposed implementation plan; research complete, execution not started.** The intended outcome is a reviewable local release candidate with reproducible installs, zero high/critical dependency advisories, unchanged design gates and usable shared mobile controls. It does not certify live job quality, production auth/storage, billing or deployment readiness.
+
+### 1. Starting evidence and boundaries
+
+The source baseline is `853c7f5123da91c5a846d910add082762922a728` in `/home/xwingace/.codex/worktrees/job-catalog-release/Taco`. The canonical checkout `/home/xwingace/Documents/Projects/Taco` remains on `design/proof-engine-language` with unrelated changes. Work stays in the attached isolated checkout. Its current `node_modules` is a symlink to the canonical runtime: replacing that link safely is a prerequisite to installation, not permission to mutate its target.
+
+| Evidence, observed October 8–9 | Meaning for this plan |
+|---|---|
+| CVE report: 38 advisory-level findings, 3 critical / 35 high, all new | Resolve the complete dependency graph, including development tools; these are not 38 distinct vulnerable packages or demonstrated production exploits. |
+| Design audit: 21 undefined tokens versus baseline 20; accent contrast failures 0 | The added unresolved reference is `--radius-full`; repair its actual use without increasing the baseline. |
+| Mobile: four sidebar disclosure buttons about 25px high; help trigger 28px wide | Repair actual open controls and test hidden-state probe accuracy separately. |
+| Types, build, release-safety, assistant, admin, email, observability and SEO pass | These are dated baseline results to reproduce after dependency and shared-shell changes. Build produced 187 pages. |
+| Focused regression run: 143 passed; provider 63, parsing 45, PDF 15 independently passed | Preserve job evidence, provider bounds, truth locks and A4/Letter dimensions. Do not add overlapping test counts as distinct coverage. |
+| Job-search fixtures pass core interactions in six widths × two themes | Expand coverage to open help/drawer states and the actual dashboard widget; existing fixture evidence does not establish authenticated widget behavior. |
+
+Evidence locations: `.security-cve/security-cve-results.json`, `.ui-verify/judge-final/result.json`, `.ui-verify/release-reports/` and the operations checkpoint. These are local ignored artifacts. Before implementation, preserve a secret-free evidence bundle with hashes and source/runtime provenance; never rely on an ignored file being present in a fresh checkout. Claims about versions/advisories below are dated October 9 and must be refreshed before selecting an install.
+
+Scope includes compatible dependency remediation, deterministic local/CI/container installation, an explicit solution for the remaining unpatched tooling path, the single radius reference, sidebar/help repairs, and verification required by those changes. Preserve Firestore/Firebase bearer authentication, admin permission/MFA/revocation checks, database truth locks, runtime Stripe prices, packet approval and existing dashboard behavior.
+
+Source expansion, ingestion scheduling, TTL policies, database migrations, global design unification, sidebar offset redesign, resume-template styling, new auth bypasses and production secret handling are outside this work package. Existing owner prerequisites—including credential rotation already recorded by the release work—remain external release holds. No provider keys, live paid runs, real emails/payments, application submissions, push or deployment are performed by this plan.
+
+### 2. Completion contract
+
+All of the following are required; partial success remains a held checkpoint:
+
+1. A fresh full-tree audit succeeds, `summary.blocker` is absent, and `summary.totals.highCritical === 0`. The current CVE command only fails new findings; exit zero alone is insufficient. Keep `security/cve-baseline.json` unchanged and include development dependencies. An unavailable audit service is a blocker, not a clean report.
+2. Local and container clean installs resolve the reviewed lockfile without modifying it. Record Node/npm versions, lock hash and immutable container base identity; both environments use the same peer-dependency policy.
+3. All intended version branches are compatible with their consumers. `node-forge` is absent; ordinary glob/watch operations, auth/key handling, document parsing/export and native image processing work under the installed graph.
+4. Design CI passes with no metric regression and `accentContrastFails === 0`. The unresolved-reference set gains no new names, even if a valid local repair reduces its count below 20. No scanner exemption, token allowlist or baseline update substitutes for a fix.
+5. Real browser checks pass at 320 / 390 / 430 / 768 / 1024 / 1440px in dark and light themes on the surfaces/states in §8. Mobile interactive targets are at least 44 × 44 CSS pixels, inputs at least 16px, text readable, dialogs usable, console clean and horizontal overflow absent.
+6. Required release suites and independent skeptical review pass. A separate judge reproduces the material gates and deliberate regression checks from a clean candidate. Test fixtures prove only the boundaries they execute.
+
+### 3. Order and execution ownership
+
+```mermaid
+flowchart TD
+  R0[R0: freeze evidence and isolate runtime] --> R1[R1: compatible graph and install parity]
+  R1 --> R2[R2: resolve every unpatched tooling path]
+  R0 --> R3[R3: local radius and shell repairs]
+  R3 --> R4[R4: stateful browser harness]
+  R2 --> R5[R5: clean full verification and independent review]
+  R4 --> R5
+  R5 --> Hold[Reviewable local candidate; separate staging / release prerequisites]
+```
+
+| Work package | Exclusive files/responsibility | Exit evidence |
+|---|---|---|
+| R0 coordinator | Evidence manifest, protected-file hashes, worktree/runtime preparation | Baseline/source hashes saved; isolated install destination proved. |
+| R1 dependency builder | `package.json`, `package-lock.json`, overrides, dependency regression tests | Reviewed compatible graph; clean install; explicit list of remaining findings. |
+| R1 install builder, coordinated with manifest owner | `Dockerfile`, `.dockerignore`, existing CI workflow and verification integration | Local/container parity, unchanged lock, native/container smoke. |
+| R2 tooling builder | Manifest/lock only through the dependency owner; ESLint config; selected tooling artifacts/config | Qualified solution, all affected paths removed/remediated, actual lint coverage, zero high/critical findings. |
+| R3 UI builder | `components/resume-studio/resume-review-workbench.css`, `components/SuiteSidebar.tsx`, `components/PageHelp.tsx` | Local rendering/accessibility fixes, focused regressions and no design drift. |
+| R4 verification builder | `scripts/ui-verify.js`, existing related tests plus justified test-only harness files | Real state matrix, contained network, visible-defect negative controls. |
+| R5 fresh skeptic and judge | Read-only review/own verification; temporary mutations restored in `finally` | Raw findings, adjudications, exact commit/hash, independent verdict. |
+
+One owner writes the dependency manifest/lock. Builders share the checkout, preserve other agents' changes and never revert unrelated work. R3 can proceed while R1 is being reviewed because files differ, but the final browser run uses the final dependency/tooling candidate. Serialize production build and type-check: both touch generated `.next/types`, and concurrent execution previously caused a false failure. Runtime/container operations are coordinated rather than competing over one install.
+
+### 4. R0 — freeze the baseline and make installation safe
+
+1. Verify branch, source commit, clean scoped status, attached worktree identity and canonical-checkout protection hashes. Record the current stored evidence as historical; run fresh baseline checks when execution begins and label any changed advisory database results separately.
+2. Inspect the `node_modules` link with `lstat`/`readlink`. Remove only the verified worktree-owned symlink, using an unlink operation. Never recursively remove the linked canonical runtime. Install into a new worktree-local directory and verify its resolved path before further commands.
+3. Select one supported Node 22 patch and npm version after checking compatibility. The observed local baseline is Node 22.23.2 / npm 12.1.0; this is provenance, not an automatic version decision. Record the selected versions and align CI and all Docker stages. Resolve and record the container digest rather than inventing one.
+4. Preserve public build configuration deliberately; do not discover configuration by printing environment files. Before any Docker build, the install owner must exclude `hermes-agent-keys.txt`, all private environment files and their backup variants (including `.env-backup`), and any other known credential paths discovered through filename inventory. Gitignore is not a Docker protection. Keep the tracked public `.env.production` out of the context under the current policy; pass only the existing reviewed `NEXT_PUBLIC_*` build inputs deliberately. Require a secret-free context-path inventory and a synthetic-sentinel rejection test against the actual context preparation/ignore behavior before container builds. Enumerate paths, never secret contents; missing protection fails closed. Server credentials stay out of the context, logs, evidence and tests. Synthetic auth tests use generated keys and an explicitly isolated demo/emulator project where needed.
+5. Preserve an immutable baseline evidence bundle and manifest: source commit, protected-file hashes, manifest/lock hashes, audit timestamp/IDs, design metrics/unresolved set, browser report and screenshots. Select an existing reviewed storage location; omit response bodies, tokens, credentials and real resumes. A fresh executor must be able to distinguish baseline, candidate and fixture evidence.
+
+Exit: installation can no longer mutate the canonical checkout; baseline evidence and recovery point are identifiable. No release claim is made.
+
+### 5. R1 — compatible dependency changes and install parity
+
+These are minimum candidates resolving the reported advisories, not a promise of a clean future graph. Refresh registry/advisory metadata, inspect parent ranges and select reviewed versions within those compatible branches. Use targeted updates rather than a blanket `npm update`, `npm audit fix --force` or major-version override.
+
+| Package / observed locked version | Minimum candidate or graph change | Consumer constraint / primary evidence |
+|---|---|---|
+| Next 16.2.11 | 16.3.8 or a later independently checked 16.x | Keep official Next/env/SWC artifacts aligned; [advisory](https://github.com/advisories/GHSA-cjq9-62q9-8jv4). |
+| Both Firebase Admin 13.9.0 copies | 13.10.0 | Canonical and npm-alias declarations accept this; release removes Forge and uses native key validation; [official release](https://github.com/firebase/firebase-admin-node/releases/tag/v13.10.0). |
+| `@fastify/busboy` 3.2.0 | 3.2.1 | Both Admin manifests accept v3; [advisory](https://github.com/advisories/GHSA-xjh9-v7x6-24jw). |
+| `@grpc/grpc-js` 1.14.4 override | 1.14.5 | Update existing v1 override; [advisory](https://github.com/advisories/GHSA-m9gg-hp2v-232j). |
+| `@xmldom/xmldom` 0.8.13 | 0.8.15 | Preserve Mammoth's 0.8 branch; [advisory](https://github.com/advisories/GHSA-27p8-2357-5qqv). |
+| `brace-expansion` 5.0.7 global override | v1 consumers → 1.1.20; v5 consumers → 5.0.11 | Restore compatible major branches; [advisory](https://github.com/advisories/GHSA-qhr7-859c-m2p7). |
+| Browserslist 4.28.2 | 4.28.7 | Parent ranges accept it; [advisory](https://github.com/advisories/GHSA-c83g-rgw3-j3cx). |
+| Engine.IO 6.6.9 | 6.6.10 | Existing Socket.IO `~6.6.0`; [advisory](https://github.com/advisories/GHSA-2gc4-cqfq-p2gv). |
+| `fast-uri` 3.1.4 | 3.1.7 | AJV v3 branch; avoid unrelated v4; [advisory](https://github.com/advisories/GHSA-qw65-cvwx-89v3). |
+| `js-yaml` 4.3.0 override | 4.3.2 | Keep v4; [advisory](https://github.com/advisories/GHSA-2883-xcg3-v3hh). |
+| Nano ID 5.1.9 / 3.3.16 | 5.1.16 / 3.3.18 | DOCX and PostCSS retain their distinct majors; [v5 advisory](https://github.com/advisories/GHSA-28wg-ghj8-5hjv), [v3 advisory](https://github.com/advisories/GHSA-2v37-7h3g-55p8). |
+| Sharp 0.35.3 override | 0.35.5 | Preserve branch and verify Alpine/musl binaries; [advisory](https://github.com/advisories/GHSA-wq5f-xc86-pv6w). |
+| `source-map-js` 1.2.1 | 1.2.2 | Current PostCSS/css-tree ranges accept it; [advisory](https://github.com/advisories/GHSA-68fv-2mgg-jv7q). |
+| `braces` 3.0.3 | R2 decision; no published patched release verified | Compatible updates alone cannot complete this work package; [advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm). |
+
+**Repair override compatibility explicitly.** Installed `minimatch@3.1.5` requires callable `brace-expansion` v1 but the global v5 override supplies an object. The read-only reproduction `makeRe('a{b,c}')` throws `TypeError: expand is not a function`. Merely raising the global override to v5.0.11 preserves that defect. Prefer parent-compatible resolution; use scoped overrides only when needed, after enumerating every requester. Preserve the separate Nano ID majors too. Inspect all existing overrides for API/peer compatibility rather than judging them by advisory status alone.
+
+Regenerate the lock with the recorded toolchain, then review package additions/removals, aliases, resolved URLs, integrity and scripts. Do not manually fabricate lock identities. Explain every changed top-level package and unexpected transitive delta. Both Firebase Admin aliases must resolve to the reviewed release; `npm explain node-forge` must show no remaining installed path.
+
+**Installation contract:** the tracked `.npmrc` sets `legacy-peer-deps=true`; current CI uses `npm ci`, while Docker uses `npm install --legacy-peer-deps` and excludes `.npmrc`. Change Docker to `npm ci --legacy-peer-deps`, deliberately matching that existing policy. Keep `.npmrc` excluded unless a reviewed safe project configuration is intentionally copied. Pin the chosen Node/npm runtime consistently, include all required installation inputs before the install layer, and compare manifest/lock hashes before and after a fresh local and container install. A second fresh install must reproduce the reviewed graph. [npm clean-install requirements](https://docs.npmjs.com/cli/v11/commands/npm-ci/)
+
+**Build-context contract:** R1's install owner edits `.dockerignore` and the context-verification check assigned in R0. Exercise named key files, private environment/backup filenames and credential directories with synthetic sentinels; none may appear in the effective context manifest or any copied image layer. Deliberate public inputs and any selected patch/vendor files must remain available. Prefer a context prepared from a reviewed build-input allowlist, then inventory its paths before invoking Docker; do not depend on Git tracking or ignore-file text alone. If an exclusion/test fails, do not run `COPY . .` against that context. Record the sanitized manifest/hash and rejection checks as installation evidence.
+
+If a selected R2 artifact needs postinstall verification, copy its exact public patch/script/artifact inputs before Docker's dependency-install command. Fail on missing files, integrity mismatch or unsuccessful application; never hide the failure by disabling lifecycle scripts. Cache keys must include these inputs. Plain source patching remains insufficient for the audit requirement described below. [Patch installation guidance](https://github.com/ds300/patch-package#docker-and-ci)
+
+Add candidate verification to the existing security workflow: PR/manual triggers for this scoped candidate, clean install, the unchanged CVE command plus an explicit zero-high/critical report assertion, and always-uploaded secret-free reports. Preserve the weekly audit. Integrate lint and the required sequential release checks without invoking any deployment/provider schedule. Use read-only workflow permissions; no production secrets. Keep expected report/schema and failure checks executable—malformed, absent, stale or blocked audit results cannot pass.
+
+Exit: compatible changes and deterministic installs are reviewable, focused compatibility checks pass, and the exact remaining advisory paths are recorded. Do not promise that R1 clears 37 findings until a fresh report proves it.
+
+### 6. R2 — close the unpatched tooling gap without hiding it
+
+Verified current paths reach `braces@3.0.3` through Tailwind 3's micromatch/fast-glob/chokidar and Next ESLint plugin's fast-glob/micromatch. This is tooling exposure to content/watch/rootDir patterns; no direct application import was established. The CVE scanner's prose match is not proof of a production exploit. Tooling classification does not remove the full-tree gate.
+
+The [reviewed braces advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) lists no patched version as checked October 9. Recheck this at execution time. A bounded decision spike must produce a complete dependency-path inventory, candidate source/package provenance, security/compatibility results and an explicit recommendation before a broad tooling change starts.
+
+| Option | Acceptance / rejection | Recommendation |
+|---|---|---|
+| Official patched release or supported parent replacement | Fresh audit plus all paths and real behavior verified; existing tools/rules retained | First choice if one becomes available. No such complete solution is currently established. |
+| Maintained fork or transparent vendored replacement | Proven source/security diff, real package identity, independent guard tests, license, maintenance owner, pinned integrity and truthful advisory accounting | Conditional only. Research did not qualify a drop-in fork. Do not install a recently published guard package based on its name. |
+| Plain `patch-package` on 3.0.3 | Can reduce executable risk but leaves the affected package/version visible in the lock; cannot satisfy the unchanged audit gate by itself | Not a release-clearing solution. [npm audit inputs](https://docs.npmjs.com/cli/v11/commands/npm-audit/) |
+| Replace affected tool paths | All paths eliminated with equivalent CSS discovery/watch and lint coverage; no relocated vulnerable compiler or dropped checks | Viable fallback only after a separate implementation scope is concrete and reviewed. |
+| Tailwind 4 plus lint/tool migration | Tailwind 4 alone leaves Next ESLint's path; default/browser/config/rule changes need explicit coverage | Last fallback for this release package; not an automatic design-system migration. [Tailwind upgrade guide](https://tailwindcss.com/docs/upgrade-guide) |
+
+A fork/replacement qualifies only with: pinned source commit/release and tarball integrity; original license; transparent upstream relationship/advisory records; reproducible patch review; named ongoing maintenance responsibility; correct bounds at every affected entry point; ordinary-pattern compatibility/performance; and accurate audit/provenance reports. An unlisted new name is not security evidence. Renaming or inventing a version to escape an advisory, deleting lint coverage, moving dependencies to dev, omitting dev from audit, raising baselines, or accepting an unqualified fork is rejected.
+
+If no option satisfies those conditions, preserve the release hold and record precisely what is missing. A time limit on research does not select a candidate. The recommended implementation starts with R0/R1 and narrowly scoped R3/R4; R2 remains a real decision boundary before any global CSS/compiler change.
+
+**Restore an actual lint command as part of the chosen tooling solution.** `package.json` currently runs `next lint`, and no ESLint configuration was found. Next 16 removed that command and production build no longer runs lint. Use the ESLint CLI and a deliberate flat configuration, preserving Next, React, Hooks, accessibility, import and TypeScript checks; inspect effective configurations for representative JS/TS/TSX. Current rule enforcement is unverified, so preserve the intended official rules explicitly rather than claiming an existing passing lint baseline. [Official Next migration](https://nextjs.org/docs/app/guides/upgrading/version-16)
+
+Prove coverage using isolated invalid fixtures that fail for real rule violations and a valid fixture that passes. Full app lint must run, including rules relevant to link/image/script and Hooks use. Inventory pre-existing lint errors separately; do not disable rules, ignore application folders or call new failures stale without reproduction. An unexpectedly broad error inventory is another scope decision, not permission for a bulk rewrite. A replacement for the Next plugin must preserve its material protections; latest verified plugin 16.4.0 still declares fast-glob 3.3.1. [Registry manifest](https://registry.npmjs.org/%40next%2Feslint-plugin-next/16.4.0)
+
+If Tailwind migration is selected, write its bounded subplan before editing: PostCSS integration, configuration discovery, content sources/watch behavior, browser support, utility/default differences and generated CSS comparison. Preserve the 44px spacing step 11, mobile text rules, dark landing boundary, `.tcl` selector names/global stylesheet, `html.js`-gated hiding and theme-invariant surfaces. Do not alter accent choices or employer document templates. Any expanded design work also inherits the repository's recovered/committed/pushed prerequisite; this local planning checkpoint does not satisfy a push requirement.
+
+Exit: the chosen graph has zero high/critical findings under truthful identity; every former path is accounted for; lint and style behavior are tested; any broader migration has a reviewed scope. An unqualified option keeps R2 incomplete.
+
+### 7. R3 — narrow design and mobile-shell repairs
+
+**Radius:** replace `border-radius: var(--radius-full, 999px)` in `components/resume-studio/resume-review-workbench.css` with `border-radius: 999px`. The same file already uses that radius; the browser's fallback is already 999px. Prove equivalent computed rendering and run unchanged design CI. Do not add a global token merely to lower the count, redefine sidebar offsets, or clean up the other 20 existing references as part of this repair.
+
+**Sidebar:** change the four disclosure buttons from `min-h-7` to `min-h-11 lg:min-h-7`. Mobile root font size is 14px, which makes the current 1.75rem about 25px; spacing 11 is explicitly 44px in the existing config. Measure actual open-drawer targets at all four `<1024px` widths, including 768px. Preserve desktop density and existing `aria-hidden`/`inert` closed state, top mobile quick-tools rail, keyboard/dismissal behavior and dashboard routes. Repair any reproduced local focus defect within the same component; do not redesign the shell.
+
+**PageHelp:** make trigger and close controls `h-11 w-11 min-w-11 shrink-0`, explicit button types and accessible names. Constrain panel insets/width to the viewport; use an existing defined surface token in both themes instead of `--bg-primary`. Add a labelled modal dialog, initial focus, Escape, Tab/Shift+Tab containment, background interaction prevention and return focus to the trigger. Reuse the local behavior pattern in `components/modals/AuthModal.tsx` without extracting a global modal system or changing auth. Clean up the panel's prohibited shadow/blur treatment locally while preserving content and theme readability. Handle exit animation/unmount cleanup and route changes so focus/inert/scroll state cannot remain stranded. Keep all help fixes inside `PageHelp.tsx` unless a demonstrated dependency requires a separately reviewed scope.
+
+The known audit regression is the radius reference. `--bg-primary` is also used outside PageHelp, so fixing help does not establish that every existing token issue is resolved. Compare the unresolved names, not just their total. Use `min-w-0` on affected text-bearing children, retain readable ranges with currency/interval/estimate labels and avoid stacking stat numbers.
+
+Exit: the unchanged design gate passes; open controls meet geometry/accessibility expectations; desktop and dashboard behavior remain intact; no global token or layout migration is folded in.
+
+### 8. R4 — trustworthy browser and behavior verification
+
+**Harden the harness before using it as proof.** Existing browser fixtures return generic success for all writable endpoints and let unknown GET requests through. Replace them with an explicit method/path/schema allowlist and named response scenarios. Unexpected API/provider requests or writes fail the run; no real database or vendor operation is allowed. Static assets and required browser resources have an explicit provenance/host policy. Reports identify synthetic responses and the boundary under test; do not add fabricated product/demo content.
+
+Use real route renderers/components and stores. For the dashboard widget, start with a test-only browser entry and fixture boundary modules, never a production fixture route or product auth modification. Exercise the real dashboard/widget and real Zustand transitions. Separately verify authorization through normal bearer guards with mocks/emulators; a component fixture cannot certify signed-in server access. If a full signed-in route is required, use normal sign-in against explicitly isolated Auth/Firestore emulators, dedicated synthetic records and deny production hosts/projects. Verify production builds exclude fixture entries/modules. Do not enable `NEXT_PUBLIC_DISABLE_AUTH_GATE` or another demo bypass. Any emulator/harness tool version is pinned/reviewed, not silently fetched as unbounded latest.
+
+All rows below run in both themes at **320, 390, 430, 768, 1024 and 1440px**, with screenshots of populated and open-overlay states. This means at least 36 route/width/theme combinations plus the named state transitions—not twelve screenshots of one route relabelled as complete coverage.
+
+| Surface | Required states and assertions |
+|---|---|
+| `/suite/job-search` | Initial, loading, populated, legitimate empty, interrupted/retry; annual USD, foreign hourly, predicted and unknown salary/date/fit; long titles/locations/ranges; salary/date sort, structured remote filters, keyboard selection, detail open/close, top-three disclosure and collapse recovery. No invented salary conversion, freshness or fit zero. |
+| Dashboard `/suite` / real widget fixture | Loading, populated top three, setup required, partial response retaining prior picks, retry recovery and empty success; long salary and unknown evidence; real store transitions, navigation/local count behavior and dashboard rule preservation. Label component-only auth limits. |
+| Unchanged control `/suite/cover-letter` | Baseline shell, drawer closed/open, all four disclosures, help closed/open, keyboard traversal; proves shared-shell fixes work outside jobs. No live generation or provider call. |
+
+Also inspect the resume review workbench's affected chip/radius in both themes and the protected landing's readable no-JavaScript boundary if compiler/CSS tooling changes. Preserve A4/Letter outputs independently of UI theme.
+
+For every relevant state: record document/body scroll widths, visible element bounds, target sizes, input font sizes, clipping, console exceptions and failed/unexpected requests. Open drawers must have valid navigation/focus/dismissal behavior; open help stays inside the viewport, blocks background interaction, closes via Escape/backdrop/close and restores focus. Check all geometry after animations settle and inspect screenshots manually. A desktop pass cannot stand in for a 320px result.
+
+**Correct visibility probes without hiding defects.** The closed drawer is already inert and translated out of view, but the verifier measures nonzero bounds. For interactive-target/input/text probes, skip genuinely hidden/inert ancestors and computed hidden visibility. Do not ignore a visible control merely because it is offscreen or has `aria-hidden`. Keep real document overflow and visibly oversized content failures independent of interactivity. Reopening the drawer must bring its controls back into measurement.
+
+**Enforce the actual mobile breakpoint.** R4 changes `scripts/ui-verify.js` touch-target and input-size failure conditions from `width < 768` to `width < 1024`, matching the drawer's mobile range. The existing 768px run collects geometry but does not fail on those defects. Add executable negative controls at 768px: an open visible 24px control and a visible input below 16px must fail, while truly inert closed controls are ignored. Preserve desktop density and avoid applying this mobile target-size gate to 1024/1440px.
+
+Required deliberate regression checks, restored after each run:
+
+- A new unresolved token fails the identity/no-new-reference assertion and the unchanged count gate when it exceeds baseline; reverting the radius repair reproduces its regression. This still works if later valid removals reduce the total below 20.
+- A visible 24px control fails; an inert closed drawer is excluded from interactive checks; reopening a drawer with an undersized control fails. A visible oversized element and injected JS exception still fail.
+- Removing help Escape/focus restoration, shrinking either help control, allowing backdrop interaction or restoring the oversized panel makes the relevant open-state assertion fail.
+- Removing predicted-pay labeling or annual-USD-only comparisons fails the actual display/suggestions behavior tests. Unknown salary/date/fit do not become measured zero.
+- An unexpected request/write fails the fixture run; a known failure/retry scenario remains failure until the actual recovery transition succeeds. Blanket success and swallowed console errors fail harness tests.
+
+Exit: complete, bounded state coverage and negative controls pass with final candidate dependencies; authenticated/live claims remain limited to executed boundaries.
+
+### 9. R5 — clean candidate verification and independent decision
+
+Run focused checks after each material change; run the full boundary checks once the integrated candidate is stable. Preserve raw commands, exit codes, counts, hashes, screenshots and failures. Tests must exercise behavior, not simply assert a source string.
+
+| Risk surface | Meaningful evidence |
+|---|---|
+| Glob/tool replacement | Installed `minimatch` 3.1.5 → `brace-expansion` v1 and `minimatch` 10.2.5 → v5: execute ordinary brace patterns through both consumer APIs, refreshed from the candidate requester inventory. Also test actual content discovery, watch add/change/delete and differential ordinary-pattern results/performance. For any guard/fork: deeply nested/malformed patterns, direct and caller-created cyclic/deep ASTs across parse/compile/expand/stringify, raised-limit attempts and bounded rejection. Use child processes/workers with recorded time/memory limits so a hostile fixture cannot crash the judge. |
+| Firebase/native crypto | Generated ephemeral valid/invalid private keys; mocked/emulator valid/expired/missing bearer; admin permission/revocation/MFA and user ownership rejection; Firestore rule/truth-lock cases. No production credentials/writes. A successful key parse alone is insufficient. |
+| Documents/truth locks | `npm run test:resume`, `npm run test:resume-pdf`, real A4/Letter sizes, Unicode/long multipage resumes, truthful PDF/DOCX roundtrip extraction; missing evidence remains unknown and forbidden claims stay blocked at export. |
+| Native images/Next | Sharp PNG/JPEG/WebP/AVIF decode/resize and malformed input rejection in Alpine/musl; local optimized-image request and standalone container startup/readiness with no real user resources. Installed binaries and runtime packaging must match the reviewed target platform. |
+| Lint | Effective representative configs, invalid-rule fixtures red, valid fixture green, full application lint; no dropped security/Next/Hooks/TypeScript coverage. |
+| Job pipeline | `test:job-providers`, `test:job-parsing`, recommendations, supply, recovery, mobile review, sidebar parity; actual suggestions-route regressions and catalog replay/bounds remain protected. |
+| Release baseline | Types, build, release-safety, assistant harness, admin-command-grid, email-system, observability, auth, zero-high/critical CVE, design and SEO. Synthetic billing/email tests never send or charge. |
+
+Execute `node scripts/verify.js --all` sequentially, plus restored `npm run lint`, `npm run test:auth`, `npm run test:sidebar-parity`, job/provider/recovery/recommendation/mobile suites, resume suites, SEO CI, strict audit report assertion and the complete browser matrix. Commands not yet provided for new behavioral/harness checks must be added deliberately by their assigned owner and listed in the evidence manifest. Never treat a build as lint. Install/audit evidence comes from a fresh checkout and full lock, not a reused shared `node_modules` or cached audit JSON.
+
+A fresh skeptic reviews only the changed file list, current source/diff and verification lens; capture every raw finding before editing. A separate judge receives raw findings, reproduces/refutes each, checks actual code and performs its own material checks. Record confirmed/refuted/duplicate arithmetic and unresolved risks. Mutations restore original bytes in `finally`; compare hashes and rerun affected regressions afterward. Re-run other gates only when new changes/failures justify it.
+
+CI/container evidence and local evidence are distinct. No CI run is claimed before a reviewed remote run exists; local workflow emulation is labelled as such. Where a remote run requires pushing, preserve the owner's push prerequisite and obtain the already-required release action rather than assuming it happened. The final report identifies the exact candidate commit and artifact hashes, fresh advisory timestamp, complete browser coverage, outstanding external prerequisites and a PASS/HOLD verdict.
+
+### 10. Commit, rollback and escalation strategy
+
+Keep review units separately revertible: (a) compatible manifest/lock and compatibility tests, (b) deterministic install/CI checks, (c) selected unpatched-tooling/lint solution, (d) radius repair, (e) shell/help repair, (f) harness/verification and final evidence pointers. Integrate overlapping manifest changes serially. Intermediate units may remain held; never describe them as production ready.
+
+Before each phase, record its actual parent commit and affected files. Roll back that phase with a scoped revert, including its complete manifest/lock/patch/config set together; perform a new worktree-local `npm ci` and rerun affected checks. Do not reset the canonical checkout, discard another builder's edits or reinstall through the original symlink. No irreversible data change is planned.
+
+If a dependency or native-runtime regression appears, stop promotion and revert the review unit or repair it with a reproduced behavioral test. Returning to a vulnerable baseline restores a local investigation state and keeps release held—it is not permission to deploy that baseline. If open-state UI checks reveal more failures, record exact controls/states/geometry and repair local ownership scope; a broad redesign gets a separate concrete scope. If audit/network data is unavailable, retain the last report as historical and wait for a real fresh result.
+
+| Material risk | Containment / decision boundary |
+|---|---|
+| Unpatched `braces` has no qualified solution | R2 remains incomplete; no fork identity evasion or waived audit. |
+| Major/API-incompatible override | Branch-compatible resolution, requester inventory and executable regressions. |
+| Native crypto/image changes on musl | Fresh target-platform container smoke, key/image/document checks and paired rollback. |
+| Lint repair exposes broad existing errors | Preserve checks; inventory and review the added scope before bulk source changes. |
+| Tailwind defaults/browser/theme changes | Separate subplan and push prerequisite, generated CSS + full browser matrix; retain landing/template boundaries. |
+| A permissive test harness creates false confidence | Explicit responses/network deny, negative controls, build exclusion, distinct auth/live coverage labels. |
+| Advisory database or graph changes after planning | Refresh at installation and final review; never infer success from today's candidate table. |
+
+### 11. First executable slice and remaining decisions
+
+Recommended first slice after plan review: **R0 isolation/evidence, then targeted R1 compatible graph changes and clean-install parity**, while R3/R4 owners implement the bounded UI/harness work. Keep Tailwind 3 during this slice; do not choose an unqualified fork. Publish the fresh remaining-path report before selecting R2. This supplies concrete evidence for the critical decision without silently broadening into a global migration.
+
+Still unresolved: a qualified solution for every unpatched `braces` path; the effective lint error inventory under intended rules; selected immutable Node/npm/container identities; availability of a safe signed-in emulator route versus component-only widget coverage; and remote CI/staging prerequisites. These are explicit deliverables/decision boundaries, not hidden assumptions or completed checks. This plan authorizes no production operation and reports no implementation success.
+
+### 12. Planning review record
+
+Independent skeptic/judge review identified three planning defects: wrong minimatch major labels, an implicit 768px mobile enforcement gap, and underspecified Docker context exclusions. **3 raw; 3 confirmed; 0 refuted; 0 duplicate.** The revisions name the actual consumer branches, assign the `<1024px` geometry gate with negative controls, and require explicit credential-path exclusions plus a secret-free context check. The fresh judge inspected all three revisions and returned **PASS for plan readiness only**; its own whitespace check and four relative file/heading links passed. These are plan corrections only; none of the implementation defects is repaired by this documentation checkpoint. Implementation and release remain held.
