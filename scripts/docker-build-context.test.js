@@ -7,8 +7,8 @@ const crypto = require('node:crypto');
 const { execFileSync, spawnSync } = require('node:child_process');
 const test = require('node:test');
 const {
-  BUILD_FILES, INSTALL_INPUTS, CONTEXT_MANIFEST, INSTALL_DIR, INSTALL_MANIFEST,
-  credentialPath, ignoreRules, dockerIncludes, prepareContext, verifyContext, verifyInstall,
+  BUILD_FILES, INSTALL_INPUTS, TOOLCHAIN_INPUTS, CONTEXT_MANIFEST, INSTALL_DIR, INSTALL_MANIFEST,
+  credentialPath, ignoreRules, dockerIncludes, prepareContext, verifyContext, verifyInstall, installationIdentity,
 } = require('./docker-build-context');
 const repoRoot = path.resolve(__dirname, '..');
 const SECRET_SENTINEL = 'SYNTHETIC_ONLY_DO_NOT_COPY_0b84549e';
@@ -28,7 +28,7 @@ function fixture(t) {
   fs.mkdirSync(source);
   execFileSync('git', ['init', '--quiet', source], { stdio: 'pipe' });
   for (const name of BUILD_FILES) {
-    const content = ['.dockerignore', 'Dockerfile', 'scripts/docker-build-context.js'].includes(name)
+    const content = ['.dockerignore', 'Dockerfile', 'eslint.config.cjs', 'scripts/docker-build-context.js', ...TOOLCHAIN_INPUTS].includes(name)
       ? fs.readFileSync(path.join(repoRoot, name))
       : name === 'package.json' ? JSON.stringify({ name: 'synthetic-build-context', private: true, scripts: { build: 'next build --webpack' } })
         : name === 'package-lock.json' ? JSON.stringify({ name: 'synthetic-build-context', lockfileVersion: 3, packages: { '': { name: 'synthetic-build-context' } } })
@@ -47,6 +47,16 @@ function injectManifestEntry(root, relative) {
   const content = fs.readFileSync(path.join(root, relative));
   manifest.files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   manifest.files.sort((a, b) => a.path.localeCompare(b.path));
+  manifest.inventorySha256 = crypto.createHash('sha256').update(JSON.stringify(manifest.files)).digest('hex');
+  fs.writeFileSync(marker, JSON.stringify(manifest));
+}
+function refreshInstallFileInventory(root) {
+  const marker = path.join(root, INSTALL_MANIFEST);
+  const manifest = JSON.parse(fs.readFileSync(marker, 'utf8'));
+  manifest.files = INSTALL_INPUTS.map(relative => {
+    const content = fs.readFileSync(path.join(root, relative));
+    return { path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') };
+  }).sort((a, b) => a.path.localeCompare(b.path));
   manifest.inventorySha256 = crypto.createHash('sha256').update(JSON.stringify(manifest.files)).digest('hex');
   fs.writeFileSync(marker, JSON.stringify(manifest));
 }
@@ -357,6 +367,105 @@ test('source destinations, non-empty outputs and unsupported ignore rules are re
   assert.throws(() => prepareContext(source, output), /empty directory/);
   assert.equal(fs.readFileSync(path.join(output, 'existing.txt'), 'utf8'), 'existing output stays intact');
   assert.throws(() => ignoreRules('**\n!app/[a-z].tsx\n'), /Unsupported/);
+});
+
+test('schema-v1 manifests and incomplete or extra installation artifacts are rejected', t => {
+  assert.equal(INSTALL_INPUTS.length, 11);
+  assert.equal(new Set(INSTALL_INPUTS).size, INSTALL_INPUTS.length);
+
+  const oldBuild = fixture(t);
+  prepareContext(oldBuild.source, oldBuild.output);
+  const contextManifestPath = path.join(oldBuild.output, CONTEXT_MANIFEST);
+  const contextManifest = JSON.parse(fs.readFileSync(contextManifestPath, 'utf8'));
+  contextManifest.version = 1;
+  fs.writeFileSync(contextManifestPath, JSON.stringify(contextManifest));
+  assert.throws(() => verifyContext(oldBuild.output), /Invalid prepared context manifest/);
+
+  const oldInstall = fixture(t);
+  prepareContext(oldInstall.source, oldInstall.output);
+  const installRoot = path.join(oldInstall.output, INSTALL_DIR);
+  const installManifestPath = path.join(installRoot, INSTALL_MANIFEST);
+  const installManifest = JSON.parse(fs.readFileSync(installManifestPath, 'utf8'));
+  installManifest.version = 1;
+  fs.writeFileSync(installManifestPath, JSON.stringify(installManifest));
+  assert.throws(() => verifyInstall(installRoot), /Invalid prepared context manifest/);
+
+  for (const change of ['missing', 'extra']) {
+    const { source, output } = fixture(t);
+    prepareContext(source, output);
+    const install = path.join(output, INSTALL_DIR);
+    if (change === 'missing') fs.unlinkSync(path.join(install, 'toolchain/npm/NOTICE.md'));
+    else write(install, 'toolchain/npm/unreviewed-install-input.json', '{}\n');
+    assert.throws(() => verifyInstall(install), /inventory/);
+  }
+});
+
+test('regenerated installation file manifests cannot bypass external archive or lock pins', t => {
+  for (const artifact of [
+    { path: 'toolchain/npm/taco-npm-12.1.0-registry-patches.20261009.r1.tgz', error: /EARCHIVE_SHA256|EARCHIVE_SRI/ },
+    { path: 'toolchain/npm/toolchain-inputs.lock.json', error: /ELOCK/ },
+  ]) {
+    const { source, output } = fixture(t);
+    prepareContext(source, output);
+    const install = path.join(output, INSTALL_DIR);
+    const target = path.join(install, artifact.path);
+    if (artifact.path.endsWith('.tgz')) {
+      const bytes = fs.readFileSync(target);
+      bytes[bytes.length - 1] ^= 1;
+      fs.writeFileSync(target, bytes);
+    } else fs.appendFileSync(target, ' ');
+
+    // A recomputed per-file inventory is not an authority for the selected
+    // distribution. Verification must still compare against the profile pins.
+    refreshInstallFileInventory(install);
+    assert.throws(() => verifyInstall(install), artifact.error);
+  }
+});
+
+test('installation cache identity changes when reviewed verifier, runtime, notice or package inputs change', t => {
+  const changedInputs = [
+    'scripts/docker-build-context.js',
+    'scripts/toolchain/npm-runtime.cjs',
+    'toolchain/npm/NOTICE.md',
+    'package.json',
+  ];
+  for (const relative of changedInputs) {
+    const { source } = fixture(t);
+    const before = installationIdentity(source).cacheKey;
+    fs.appendFileSync(path.join(source, relative), relative.endsWith('.json') ? '\n  \n' : '\n// synthetic identity change\n');
+    const after = installationIdentity(source).cacheKey;
+    assert.notEqual(after, before, relative);
+  }
+});
+
+test('raw .npmrc is excluded from installation identity, never opened or copied', t => {
+  const { source, output } = fixture(t);
+  write(source, '.npmrc', SECRET_SENTINEL);
+  tracked(source, ['.npmrc']);
+  assert.equal(INSTALL_INPUTS.includes('.npmrc'), false);
+  const originalOpen = fs.openSync;
+  const reads = [];
+  fs.openSync = function (filename, flags, ...rest) {
+    if (String(filename) === path.join(source, '.npmrc')) {
+      reads.push(String(filename));
+      throw new Error('Raw npm config was read');
+    }
+    return originalOpen.call(this, filename, flags, ...rest);
+  };
+  try {
+    installationIdentity(source);
+    prepareContext(source, output);
+  } finally { fs.openSync = originalOpen; }
+  assert.deepEqual(reads, []);
+  assert.equal(fs.existsSync(path.join(output, '.npmrc')), false);
+  assert.equal(fs.existsSync(path.join(output, INSTALL_DIR, '.npmrc')), false);
+});
+
+test('Docker excludes unreviewed toolchain files while including the exact reviewed set', t => {
+  const { source } = fixture(t);
+  const rules = ignoreRules(fs.readFileSync(path.join(source, '.dockerignore'), 'utf8'));
+  assert.equal(dockerIncludes('toolchain/npm/unreviewed-install-input.json', rules), false);
+  for (const relative of TOOLCHAIN_INPUTS) assert.equal(dockerIncludes(relative, rules), true, relative);
 });
 
 test('CLI uses the same preparation and verifier, emits paths/hashes and fails without a prepared manifest', t => {

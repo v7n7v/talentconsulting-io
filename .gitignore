@@ -90,3 +90,6 @@ YOUR_CREDENTIALS.txt
 # .claude/skills is the local install target, per docs/claude-skills/README.md.
 # Tracking both would let the two copies diverge silently.
 /.claude
+
+# Worktree-scoped verified npm distribution and private state
+/.taco-toolcache/

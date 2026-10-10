@@ -1,13 +1,19 @@
 {
   "schemaVersion": 1,
-  "status": "candidate-preparation-only",
+  "status": "installation-qualification-candidate",
   "distributionId": "taco-npm-12.1.0-registry-patches.20261009.r1",
-  "activation": "not-selected",
-  "cacheDisposition": "pending",
+  "activation": "selected-for-qualification",
+  "cacheDisposition": "accepted-npm-private-cache",
+  "cacheAcceptance": {
+    "acceptedAt": "2026-10-10",
+    "scope": "verified npm make-fetch-happen private-cache consumer (shared:false)",
+    "upstreamBehaviorStillDisputed": true,
+    "regressionChecksRequired": true
+  },
   "runtime": {
     "nodeVersion": "22.23.2",
-    "targetPlatforms": ["linux-x64-musl"],
-    "qualificationStatus": "archive-preparation-only; application install and runner pending",
+    "targetPlatforms": ["linux-x64-glibc", "linux-x64-musl"],
+    "qualificationStatus": "application install and runtime qualification pending",
     "otherPlatforms": "not-qualified"
   },
   "materialization": {

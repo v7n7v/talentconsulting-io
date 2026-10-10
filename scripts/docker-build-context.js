@@ -12,10 +12,18 @@ const SCRIPT = 'scripts/docker-build-context.js';
 const CONTEXT_MANIFEST = '.docker-build-context-manifest.json';
 const INSTALL_DIR = '.docker-install';
 const INSTALL_MANIFEST = '.docker-install-manifest.json';
+const TOOLCHAIN_INPUTS = Object.freeze([
+  'toolchain/npm/distribution-profile.json', 'toolchain/npm/toolchain-inputs.lock.json',
+  'toolchain/npm/taco-npm-12.1.0-registry-patches.20261009.r1.tgz', 'toolchain/npm/NOTICE.md',
+  'scripts/toolchain/npm-distribution.cjs', 'scripts/toolchain/npm-distribution.test.cjs',
+  'scripts/toolchain/npm-runtime.cjs', 'scripts/toolchain/npm-runtime.test.cjs',
+]);
+const PUBLIC_NPM_POLICY = Object.freeze({ legacyPeerDeps: true, strictAllowScripts: true });
+const CONTEXT_VERSION = 2;
 const BUILD_FILES = new Set([
   '.dockerignore', 'Dockerfile', 'package.json', 'package-lock.json',
   'next.config.js', 'postcss.config.js', 'tailwind.config.ts', 'tsconfig.json',
-  'proxy.ts', SCRIPT,
+  'proxy.ts', 'eslint.config.cjs', SCRIPT, ...TOOLCHAIN_INPUTS,
 ]);
 const SOURCE_ROOTS = new Set(['app', 'components', 'hooks', 'lib', 'emails', 'types']);
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.json']);
@@ -38,10 +46,9 @@ const NON_BUILD_FILES = new Set([
   'deploy-cloudrun.sh', 'deploy-fix.js', 'force_black_text.js',
   'make_small_text_bold.js', 'test-mammoth.js', 'scratch_test_apis.js',
 ]);
-// No R2 artifact or root installation hook has been selected. Do not copy whole
-// scripts/patches/vendor folders to satisfy a future install: review exact inputs
-// and their integrity here, then bundle them before the Docker install layer.
-const INSTALL_INPUTS = Object.freeze(['package.json', 'package-lock.json', SCRIPT]);
+// Exact reviewed public inputs only. Raw .npmrc remains excluded; its two public
+// installation flags are a separately declared policy, never a copied config.
+const INSTALL_INPUTS = Object.freeze(['package.json', 'package-lock.json', SCRIPT, ...TOOLCHAIN_INPUTS]);
 const INSTALL_HOOKS = [
   'preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare',
 ];
@@ -197,7 +204,7 @@ function selectBuildPaths(root) {
   }
   const selectedSet = new Set(selected);
   for (const item of BUILD_FILES) if (!selectedSet.has(item)) fail(`Required build input is not tracked: ${item}`);
-  for (const sourceRoot of [...SOURCE_ROOTS, 'public']) {
+  for (const sourceRoot of [...SOURCE_ROOTS, 'public', 'toolchain', 'scripts/toolchain']) {
     if (!fs.existsSync(path.join(root, sourceRoot))) continue;
     if (fs.lstatSync(path.join(root, sourceRoot)).isSymbolicLink()) fail(`Symlink context input: ${sourceRoot}`);
     for (const item of walk(root, sourceRoot, credentialPath)) {
@@ -216,16 +223,37 @@ function writeFile(root, relative, content) {
   fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
   fs.writeFileSync(path.join(root, relative), content, { flag: 'wx', mode: 0o644 });
 }
+function installationIdentity(root) {
+  installPolicy(root);
+  const inputRecords = INSTALL_INPUTS.map(relative => {
+    const bytes = readPublicFile(root, relative);
+    return { path: relative, size: bytes.length, sha256: sha256(bytes) };
+  });
+  const distribution = require('./toolchain/npm-distribution.cjs');
+  const profile = distribution.validateProfile(JSON.parse(readPublicFile(root, TOOLCHAIN_INPUTS[0])));
+  if (profile.activation !== 'selected-for-qualification'
+      || profile.cacheDisposition !== 'accepted-npm-private-cache') fail('Toolchain selection and private-cache acceptance are required');
+  const { bytes: lockBytes } = distribution.loadExternalLock(profile, path.join(root, TOOLCHAIN_INPUTS[1]));
+  const verified = distribution.verifyArchiveBytes(readPublicFile(root, TOOLCHAIN_INPUTS[2]), profile, lockBytes);
+  const toolchain = {
+    distributionId: verified.distributionId, archiveSha256: verified.archiveSha256,
+    archiveIntegrity: profile.archive.integrity, treeSha256: verified.treeSha256,
+    inputLockSha256: profile.inputLock.sha256, nodeVersion: profile.runtime.nodeVersion,
+  };
+  const identity = { schemaVersion: CONTEXT_VERSION, inputRecords, publicNpmPolicy: PUBLIC_NPM_POLICY, toolchain };
+  return { ...identity, cacheKey: sha256(JSON.stringify(identity)) };
+}
 function makeManifest(root, paths, kind) {
   const files = paths.sort().map(relative => {
     const content = readPublicFile(root, relative);
     return { path: relative, size: content.length, sha256: sha256(content) };
   });
-  return { version: 1, kind, installInputs: [...INSTALL_INPUTS], files, inventorySha256: sha256(JSON.stringify(files)) };
+  const identityRoot = kind === 'talent-studio-build-context' ? path.join(root, INSTALL_DIR) : root;
+  return { version: CONTEXT_VERSION, kind, installInputs: [...INSTALL_INPUTS], installation: installationIdentity(identityRoot), files, inventorySha256: sha256(JSON.stringify(files)) };
 }
 function readManifest(root, relative, kind) {
   const manifest = JSON.parse(readPublicFile(root, relative));
-  if (manifest.version !== 1 || manifest.kind !== kind || !Array.isArray(manifest.files)
+  if (manifest.version !== CONTEXT_VERSION || manifest.kind !== kind || !Array.isArray(manifest.files)
       || JSON.stringify(manifest.installInputs) !== JSON.stringify(INSTALL_INPUTS)
       || manifest.inventorySha256 !== sha256(JSON.stringify(manifest.files))) fail('Invalid prepared context manifest');
   const seen = new Set();
@@ -256,6 +284,7 @@ function verifyInstall(root, afterInstall = false) {
   const manifest = readManifest(root, INSTALL_MANIFEST, 'talent-studio-install-inputs');
   if (JSON.stringify(manifest.files.map(item => item.path).sort()) !== JSON.stringify([...INSTALL_INPUTS].sort())) fail('Incomplete installation input inventory');
   verifyFiles(root, manifest, INSTALL_MANIFEST, item => INSTALL_INPUTS.includes(item), installedDependencySkip(root, afterInstall));
+  if (JSON.stringify(manifest.installation) !== JSON.stringify(installationIdentity(root))) fail('Prepared installation identity mismatch');
   installPolicy(root);
   return manifest;
 }
@@ -269,11 +298,13 @@ function verifyContext(root, withNodeModules = false) {
   for (const item of BUILD_FILES) if (!preparedPaths.has(item)) fail(`Missing required prepared input: ${item}`);
   const rules = ignoreRules(readPublicFile(root, '.dockerignore').toString('utf8'));
   for (const item of [...preparedPaths, CONTEXT_MANIFEST]) if (!dockerIncludes(item, rules)) fail(`Docker would omit prepared input: ${item}`);
-  verifyInstall(path.join(root, INSTALL_DIR));
+  const installManifest = verifyInstall(path.join(root, INSTALL_DIR));
+  if (JSON.stringify(manifest.installation) !== JSON.stringify(installManifest.installation)) fail('Build and install identity differ');
   installPolicy(root);
   for (const item of INSTALL_INPUTS) {
     if (!readPublicFile(root, item).equals(readPublicFile(root, `${INSTALL_DIR}/${item}`))) fail(`Installation input differs from build input: ${item}`);
   }
+  if (JSON.stringify(manifest.installation) !== JSON.stringify(installationIdentity(root))) fail('Prepared build installation identity mismatch');
   return manifest;
 }
 function prepareContext(source, destination) {
@@ -285,6 +316,7 @@ function prepareContext(source, destination) {
   if (!relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) fail('Prepared context must be outside the source checkout');
   if (fs.existsSync(destination) && (!fs.lstatSync(destination).isDirectory() || fs.lstatSync(destination).isSymbolicLink() || fs.readdirSync(destination).length)) fail('Prepared context destination must be a new or empty directory');
   const selected = selectBuildPaths(source);
+  installationIdentity(source); // Authenticate archive/lock before creating or populating the destination.
   const rules = ignoreRules(readPublicFile(source, '.dockerignore').toString('utf8'));
   for (const item of selected) if (!dockerIncludes(item, rules)) fail(`Docker would omit reviewed build input: ${item}`);
   fs.mkdirSync(destination, { recursive: true });
@@ -311,10 +343,10 @@ function main(argv) {
   else if (command === 'verify' && options['--context']) manifest = verifyContext(options['--context'], options['--with-node-modules']);
   else if (command === 'verify-install' && options['--context']) manifest = verifyInstall(options['--context'], options['--after-install']);
   else fail('Use prepare --source <checkout> --output <empty external directory>, verify --context <directory>, or verify-install --context <directory>');
-  console.log(JSON.stringify({ version: manifest.version, kind: manifest.kind, inventorySha256: manifest.inventorySha256, paths: manifest.files.map(item => item.path) }, null, 2));
+  console.log(JSON.stringify({ version: manifest.version, kind: manifest.kind, inventorySha256: manifest.inventorySha256, installation: manifest.installation, paths: manifest.files.map(item => item.path) }, null, 2));
 }
 if (require.main === module) {
   try { main(process.argv.slice(2)); }
   catch (error) { console.error(`Build context rejected: ${error.message}`); process.exitCode = 1; }
 }
-module.exports = { BUILD_FILES, INSTALL_INPUTS, CONTEXT_MANIFEST, INSTALL_DIR, INSTALL_MANIFEST, credentialPath, ignoreRules, dockerIncludes, prepareContext, verifyContext, verifyInstall };
+module.exports = { BUILD_FILES, INSTALL_INPUTS, TOOLCHAIN_INPUTS, PUBLIC_NPM_POLICY, CONTEXT_VERSION, CONTEXT_MANIFEST, INSTALL_DIR, INSTALL_MANIFEST, credentialPath, ignoreRules, dockerIncludes, prepareContext, verifyContext, verifyInstall, installationIdentity };

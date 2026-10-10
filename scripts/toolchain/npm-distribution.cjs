@@ -35,13 +35,23 @@ function loadProfile(profilePath = PROFILE_PATH) {
   return validateProfile(parseJson(fs.readFileSync(profilePath), 'distribution profile', ERR.PROFILE));
 }
 function validateProfile(profile) {
-  if (profile.schemaVersion !== 1 || profile.status !== 'candidate-preparation-only'
-      || profile.activation !== 'not-selected' || profile.cacheDisposition !== 'pending') {
-    fail(ERR.PROFILE, 'profile must remain an unselected preparation candidate');
+  const prepared = profile.status === 'candidate-preparation-only'
+    && profile.activation === 'not-selected' && profile.cacheDisposition === 'pending'
+    && profile.runtime?.qualificationStatus === 'archive-preparation-only; application install and runner pending';
+  const selected = profile.status === 'installation-qualification-candidate'
+    && profile.activation === 'selected-for-qualification' && profile.cacheDisposition === 'accepted-npm-private-cache'
+    && profile.runtime?.qualificationStatus === 'application install and runtime qualification pending'
+    && profile.maintenanceOwner?.role === 'current project owner'
+    && profile.maintenanceOwner?.acceptedAt === '2026-10-09'
+    && profile.cacheAcceptance?.acceptedAt === '2026-10-10'
+    && profile.cacheAcceptance?.scope === 'verified npm make-fetch-happen private-cache consumer (shared:false)'
+    && profile.cacheAcceptance?.upstreamBehaviorStillDisputed === true
+    && profile.cacheAcceptance?.regressionChecksRequired === true;
+  if (profile.schemaVersion !== 1 || (!prepared && !selected)) {
+    fail(ERR.PROFILE, 'profile must match the reviewed preparation or accepted qualification state');
   }
   if (profile.distributionId !== DISTRIBUTION_ID || profile.base?.name !== 'npm' || profile.base?.version !== '12.1.0'
       || profile.runtime?.nodeVersion !== '22.23.2' || !profile.runtime.targetPlatforms?.includes('linux-x64-musl')
-      || profile.runtime.qualificationStatus !== 'archive-preparation-only; application install and runner pending'
       || profile.archive?.file !== path.basename(ARCHIVE_PATH)
       || profile.inputLock?.file !== path.basename(LOCK_PATH)
       || profile.layout?.packagePrefix !== 'distribution/package/'

@@ -67,6 +67,21 @@ test('pinned candidate verifies against external archive, ordered-tree, and embe
   assert.equal(result.entries.some(entry => entry.path === 'distribution/package/bin/npm'), true);
 });
 
+test('profile states keep owner/private-cache acceptance distinct from qualification success', () => {
+  const selected = tool.loadProfile();
+  assert.equal(selected.activation, 'selected-for-qualification');
+  assert.equal(selected.cacheDisposition, 'accepted-npm-private-cache');
+  assert.equal(selected.cacheAcceptance.upstreamBehaviorStillDisputed, true);
+  for (const change of [
+    { cacheDisposition: 'pending' }, { activation: 'release-certified' },
+    { cacheAcceptance: { ...selected.cacheAcceptance, upstreamBehaviorStillDisputed: false } },
+    { maintenanceOwner: { role: 'unassigned' } },
+  ]) assert.throws(() => tool.validateProfile({ ...selected, ...change }), error => error.code === tool.ERR.PROFILE);
+  const preparation = { ...selected, status: 'candidate-preparation-only', activation: 'not-selected', cacheDisposition: 'pending',
+    runtime: { ...selected.runtime, qualificationStatus: 'archive-preparation-only; application install and runner pending' } };
+  assert.equal(tool.validateProfile(preparation).activation, 'not-selected');
+});
+
 test('materializer writes a fully verified exact tree atomically with recorded modes', async () => {
   await withTemp(async temp => {
     const destination = path.join(temp, 'selected-npm');
