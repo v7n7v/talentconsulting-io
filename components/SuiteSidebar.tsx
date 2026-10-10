@@ -833,7 +833,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
                     onClick={() => toggleGroup(group.label)}
                     aria-expanded={isExpanded}
                     aria-controls={groupId}
-                    className="mt-2 flex min-h-7 w-full items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+                    className="mt-2 flex min-h-11 w-full items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 lg:min-h-7"
                   >
                     <span
                       className="material-symbols-rounded text-base transition-transform duration-150"

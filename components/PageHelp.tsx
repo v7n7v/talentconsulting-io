@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { usePathname } from 'next/navigation';
 
 // ── Help content registry ──
 interface HelpStep {
@@ -414,131 +416,265 @@ const HELP_CONTENT: Record<string, ToolHelp> = {
   },
 };
 
-// ── Component ──
-export default function PageHelp({ toolId }: { toolId: string }) {
-  const [open, setOpen] = useState(false);
-  const help = HELP_CONTENT[toolId];
+// Keep modal effects mounted through AnimatePresence's exit animation. Route changes
+// remove the keyed presence boundary immediately, so its locks cannot follow a route.
+function HelpDialog({ help, onClose, triggerRef, headingId, titleId, subtitleId }: {
+  help: ToolHelp;
+  onClose: () => void;
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  headingId: string;
+  titleId: string;
+  subtitleId: string;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
-  if (!help) return null;
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    const dialog = dialogRef.current;
+    if (!overlay || !dialog) return;
+
+    const returnTarget = triggerRef.current;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // The drawer owns body overflow. Lock the document scroller separately so
+    // closing either overlay cannot restore the other overlay's stale body lock.
+    const scroller = document.documentElement;
+    const previousOverflow = scroller.style.overflow;
+    scroller.style.overflow = 'hidden';
+    closeRef.current?.focus({ preventScroll: true });
+
+    const backgroundInert = new Map<HTMLElement, string | null>();
+    const blockBackground = () => {
+      for (const child of Array.from(document.body.children)) {
+        if (!(child instanceof HTMLElement) || child === overlay || backgroundInert.has(child)) continue;
+        backgroundInert.set(child, child.getAttribute('inert'));
+        child.inert = true;
+      }
+    };
+    blockBackground();
+    const observer = new MutationObserver(blockBackground);
+    observer.observe(document.body, { childList: true });
+
+    const focusableSelector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const getFocusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+      .filter(element => !element.closest('[inert]') && element.getClientRects().length > 0
+        && getComputedStyle(element).visibility !== 'hidden');
+    const focusInside = () => (getFocusable()[0] || dialog).focus({ preventScroll: true });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      event.preventDefault();
+      event.stopPropagation();
+      const focusable = getFocusable();
+      if (!focusable.length) {
+        dialog.focus({ preventScroll: true });
+        return;
+      }
+      const currentIndex = focusable.indexOf(document.activeElement as HTMLElement);
+      const nextIndex = event.shiftKey
+        ? (currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1)
+        : (currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1);
+      focusable[nextIndex].focus({ preventScroll: true });
+    };
+    const handleFocus = (event: FocusEvent) => {
+      if (event.target instanceof Node && !dialog.contains(event.target)) focusInside();
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('focusin', handleFocus, true);
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('focusin', handleFocus, true);
+      for (const [element, previousInert] of backgroundInert) {
+        if (previousInert === null) element.removeAttribute('inert');
+        else element.setAttribute('inert', previousInert);
+      }
+      scroller.style.overflow = previousOverflow;
+      const canReceiveFocus = (element: HTMLElement | null | undefined): element is HTMLElement => {
+        if (!element?.isConnected || element.closest('[inert], [aria-hidden="true"]')) return false;
+        const bounds = element.getBoundingClientRect();
+        return bounds.width > 0 && bounds.height > 0
+          && bounds.bottom > 0 && bounds.right > 0
+          && bounds.top < window.innerHeight && bounds.left < window.innerWidth
+          && getComputedStyle(element).visibility !== 'hidden';
+      };
+      // SuiteToolHeader mounts separate desktop/mobile controls. A resize can
+      // hide the opener while its equivalent control becomes visible.
+      const correspondingTrigger = Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="dialog"]'))
+        .find(element => element.getAttribute('aria-label') === returnTarget?.getAttribute('aria-label')
+          && canReceiveFocus(element));
+      const target = [returnTarget, correspondingTrigger, previousFocus].find(canReceiveFocus);
+      target?.focus({ preventScroll: true });
+    };
+  }, [onClose, triggerRef]);
+
+  return (
+    <motion.div
+      ref={overlayRef}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className="fixed inset-0 z-[999] flex justify-end overflow-hidden p-4"
+    >
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-[color:var(--modal-backdrop)]"
+        onClick={onClose}
+      />
+      <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${headingId} ${titleId}`}
+        aria-describedby={subtitleId}
+        tabIndex={-1}
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        className="pointer-events-auto relative flex h-full min-w-0 w-full max-w-md flex-col overflow-hidden rounded-2xl"
+        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
+      >
+        {/* Header */}
+        <div className="flex min-w-0 shrink-0 items-center justify-between gap-2 p-4 sm:px-6"
+          style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="icon-shell-neutral flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border">
+              <span className="material-symbols-rounded text-lg" aria-hidden="true">menu_book</span>
+            </div>
+            <div className="min-w-0">
+              <h2 id={headingId} className="text-base font-bold text-[var(--text-primary)]">How to Use</h2>
+              <p id={titleId} className="text-xs text-[var(--text-tertiary)]">{help.title}</p>
+            </div>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label={`Close help for ${help.title}`}
+            className="flex h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+          >
+            <span className="material-symbols-rounded text-[20px] text-[var(--text-tertiary)]" aria-hidden="true">close</span>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div
+          role="region"
+          aria-label={`Help instructions for ${help.title}`}
+          tabIndex={0}
+          className="min-h-0 min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] sm:p-6"
+        >
+          {/* Intro */}
+          <div className="rounded-xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
+            <p id={subtitleId} className="text-sm text-[var(--text-secondary)] leading-relaxed">{help.subtitle}</p>
+          </div>
+
+          {/* Steps */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
+              <span className="material-symbols-rounded icon-neutral text-sm">format_list_numbered</span>
+              Step by Step
+            </h3>
+            {help.steps.map((step, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 + i * 0.06 }}
+                className="flex gap-3 p-3.5 rounded-xl"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
+              >
+                <div className="icon-shell-neutral w-8 h-8 rounded-lg border flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-[var(--text-secondary)]">{i + 1}</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="mb-1 flex min-w-0 items-center gap-1.5">
+                    <span className="material-symbols-rounded shrink-0 text-sm text-[var(--text-secondary)]" aria-hidden="true">{step.icon}</span>
+                    <p className="min-w-0 text-sm font-semibold text-[var(--text-primary)]">{step.title}</p>
+                  </div>
+                  <p className="text-xs text-[var(--text-tertiary)] leading-relaxed">{step.description}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Tips */}
+          {help.tips && help.tips.length > 0 && (
+            <div className="space-y-2.5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
+                <span className="material-symbols-rounded icon-neutral text-sm">tips_and_updates</span>
+                Pro Tips
+              </h3>
+              <div className="rounded-xl p-4 space-y-2.5" style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)' }}>
+                {help.tips.map((tip, i) => (
+                  <div key={i} className="flex min-w-0 items-start gap-2">
+                    <span className="material-symbols-rounded icon-neutral text-[14px] mt-0.5 flex-shrink-0">lightbulb</span>
+                    <p className="min-w-0 text-xs text-[var(--text-secondary)] leading-relaxed">{tip}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// Keyed by the route and tool, so navigation discards open state and its portal.
+function HelpControl({ help }: { help: ToolHelp }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const close = useCallback(() => setOpen(false), []);
 
   return (
     <>
       <button
+        ref={triggerRef}
+        type="button"
         onClick={() => setOpen(true)}
-        className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-        style={{
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-subtle)',
-        }}
+        aria-label={`How to use ${help.title}`}
+        aria-haspopup="dialog"
+        className="flex h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-xl transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
         title={`How to use ${help.title}`}
       >
-        <span className="material-symbols-rounded text-[18px] text-[var(--text-tertiary)]">help</span>
+        <span className="material-symbols-rounded text-[18px] text-[var(--text-tertiary)]" aria-hidden="true">help</span>
       </button>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[999]"
-              style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
-              onClick={() => setOpen(false)}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {open && (
+            <HelpDialog
+              key="help-dialog"
+              help={help}
+              onClose={close}
+              triggerRef={triggerRef}
+              headingId={`${id}-heading`}
+              titleId={`${id}-title`}
+              subtitleId={`${id}-subtitle`}
             />
-
-            {/* Panel */}
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="fixed top-4 right-4 bottom-4 w-full max-w-md z-[1000] flex flex-col overflow-hidden rounded-2xl"
-              style={{
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--border-subtle)',
-                boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
-              }}
-            >
-              {/* Header */}
-              <div className="flex-shrink-0 px-6 py-5 flex items-center justify-between"
-                style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border-subtle)' }}>
-                <div className="flex items-center gap-3">
-                  <div className="icon-shell-neutral w-9 h-9 rounded-xl border flex items-center justify-center">
-                    <span className="material-symbols-rounded text-lg">menu_book</span>
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-[var(--text-primary)]">How to Use</h2>
-                    <p className="text-xs text-[var(--text-tertiary)]">{help.title}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setOpen(false)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
-                >
-                  <span className="material-symbols-rounded text-[20px] text-[var(--text-tertiary)]">close</span>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-                {/* Intro */}
-                <div className="rounded-xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
-                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{help.subtitle}</p>
-                </div>
-
-                {/* Steps */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
-                    <span className="material-symbols-rounded icon-neutral text-sm">format_list_numbered</span>
-                    Step by Step
-                  </h3>
-                  {help.steps.map((step, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.1 + i * 0.06 }}
-                      className="flex gap-3 p-3.5 rounded-xl"
-                      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
-                    >
-                      <div className="icon-shell-neutral w-8 h-8 rounded-lg border flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <span className="text-xs font-black text-[var(--text-secondary)]">{i + 1}</span>
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="material-symbols-rounded text-sm text-[var(--text-secondary)]">{step.icon}</span>
-                          <p className="text-sm font-semibold text-[var(--text-primary)]">{step.title}</p>
-                        </div>
-                        <p className="text-xs text-[var(--text-tertiary)] leading-relaxed">{step.description}</p>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-
-                {/* Tips */}
-                {help.tips && help.tips.length > 0 && (
-                  <div className="space-y-2.5">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-2">
-                      <span className="material-symbols-rounded icon-neutral text-sm">tips_and_updates</span>
-                      Pro Tips
-                    </h3>
-                    <div className="rounded-xl p-4 space-y-2.5" style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)' }}>
-                      {help.tips.map((tip, i) => (
-                        <div key={i} className="flex items-start gap-2">
-                          <span className="material-symbols-rounded icon-neutral text-[14px] mt-0.5 flex-shrink-0">lightbulb</span>
-                          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{tip}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </>
   );
+}
+
+// ── Component ──
+export default function PageHelp({ toolId }: { toolId: string }) {
+  const pathname = usePathname();
+  const help = HELP_CONTENT[toolId];
+  if (!help) return null;
+  return <HelpControl key={`${pathname}:${toolId}`} help={help} />;
 }

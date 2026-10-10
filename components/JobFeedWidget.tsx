@@ -29,7 +29,7 @@ interface SuggestedJob {
   skills: string[];
   url: string;
   postedDate: string;
-  acceptanceChance: number;
+  acceptanceChance?: number | null;
   acceptanceReason: string;
   sourceMeta?: {
     sourceName?: string;
@@ -44,7 +44,12 @@ interface SuggestedJob {
   outboundLinkVerified?: boolean;
 }
 
-function getScoreColor(score: number): string {
+function hasFitScore(score: unknown): score is number {
+  return typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 100;
+}
+
+function getScoreColor(score: number | null | undefined): string {
+  if (!hasFitScore(score)) return 'var(--text-muted)';
   if (score >= 80) return '#10b981';
   if (score >= 60) return '#3b82f6';
   if (score >= 40) return '#f59e0b';
@@ -415,7 +420,10 @@ export default function JobFeedWidget() {
       {/* Job Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <AnimatePresence>
-          {topJobs.map((job, i) => (
+          {topJobs.map((job, i) => {
+            const fitAvailable = hasFitScore(job.acceptanceChance);
+            const scoreColor = getScoreColor(job.acceptanceChance);
+            return (
             <motion.div
               key={getJobResultIdentity(job)}
               initial={{ opacity: 0, y: 10 }}
@@ -430,20 +438,21 @@ export default function JobFeedWidget() {
               {/* Ambient glow */}
               <div
                 className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20 pointer-events-none blur-xl"
-                style={{ background: getScoreColor(job.acceptanceChance) }}
+                style={{ background: scoreColor }}
               />
 
               {/* Score badge */}
               <div className="flex items-center justify-between mb-2.5 relative">
                 <span
-                  className="px-2 py-0.5 text-[11px] font-bold rounded-md border"
+                  className="shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px] font-bold tabular-nums rounded-md border"
                   style={{
-                    color: getScoreColor(job.acceptanceChance),
-                    background: `${getScoreColor(job.acceptanceChance)}12`,
-                    borderColor: `${getScoreColor(job.acceptanceChance)}25`,
+                    color: scoreColor,
+                    background: fitAvailable ? `${scoreColor}12` : 'var(--bg-elevated)',
+                    borderColor: fitAvailable ? `${scoreColor}25` : 'var(--border-subtle)',
+                    borderStyle: fitAvailable ? 'solid' : 'dashed',
                   }}
                 >
-                  {job.acceptanceChance}% match
+                  {fitAvailable ? `${job.acceptanceChance}% match` : 'Fit unavailable'}
                 </span>
                 {(job.salary?.min || job.salary?.max) && (
                   <span className="text-[10px] text-emerald-500 font-medium">
@@ -506,7 +515,8 @@ export default function JobFeedWidget() {
                 )}
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </AnimatePresence>
       </div>
       </motion.div>
