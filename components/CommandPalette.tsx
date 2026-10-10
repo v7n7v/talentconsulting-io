@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { TalentConsultingMark } from '@/components/BrandLogo';
-import { suiteToolRegistry, type SuiteToolDefinition } from '@/lib/suite-tool-registry';
+import { TacoMark, TacoName, TacoText } from '@/components/BrandLogo';
+import { getGuestWorkspaceHref, workspaceDestinations, workspaceQuickActions } from '@/lib/workspace-navigation';
+import { useStore } from '@/lib/store';
+import AuthModal from '@/components/modals/AuthModal';
 
 type CommandCategory = 'action' | 'tool' | 'workspace';
 
@@ -14,14 +16,14 @@ interface SuiteCommand {
   icon: string;
   category: CommandCategory;
   path?: string;
-  keywords: string[];
+  keywords: readonly string[];
   action?: () => void;
   recommended?: boolean;
 }
 
 const categoryLabels: Record<CommandCategory, string> = {
   action: 'Frequent actions',
-  tool: 'Suite tools',
+  tool: 'More tools',
   workspace: 'Workspace',
 };
 
@@ -54,28 +56,23 @@ export default function CommandPalette() {
   const pathname = usePathname();
   const showLauncher = pathname !== '/';
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const user = useStore(state => state.user);
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | null>(null);
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const commands = useMemo<SuiteCommand[]>(() => {
-    const registeredTools = suiteToolRegistry as readonly SuiteToolDefinition[];
-    const toolCommands: SuiteCommand[] = registeredTools.map(tool => ({
-      id: `tool-${tool.id}`,
-      label: tool.title,
-      description: tool.mobileDescription || tool.subtitle,
+    const toolCommands: SuiteCommand[] = workspaceDestinations.map(tool => ({
+      id: `destination-${tool.id}`,
+      label: tool.label,
+      description: tool.description,
       icon: tool.icon,
-      category: tool.id === 'dashboard' ? 'workspace' : 'tool',
-      path: tool.mobileHref || tool.path,
-      keywords: [
-        tool.id,
-        tool.title,
-        tool.subtitle,
-        tool.eyebrow,
-        tool.group,
-        tool.mobileLabel || '',
-        tool.mobileActionLabel || '',
-      ],
+      category: tool.placement === 'primary' || tool.placement === 'assistant' || tool.placement === 'utility' ? 'workspace' : 'tool',
+      path: tool.path,
+      keywords: [tool.id, tool.section, ...tool.keywords],
     }));
 
     const actionCommands: SuiteCommand[] = [
@@ -107,63 +104,10 @@ export default function CommandPalette() {
           { artifactTargets: ['resume', 'cover-letter', 'screening-answers', 'approval-checklist'] },
         ),
       },
-      {
-        id: 'review-agent-queue',
-        label: 'Review application queue',
-        description: 'Open prepared packets that need a human decision.',
-        icon: 'pending_actions',
-        category: 'action',
-        path: '/suite/agent/queue',
-        keywords: ['queue', 'review', 'approval', 'packet', 'prepared'],
-      },
-      {
-        id: 'upload-resume',
-        label: 'Upload or check resume',
-        description: 'Open Resume Studio in the fastest review path.',
-        icon: 'upload_file',
-        category: 'action',
-        path: '/suite/resume?mobileAction=check',
-        keywords: ['upload', 'resume', 'cv', 'check', 'proof'],
-      },
-      {
-        id: 'save-job',
-        label: 'Save a job',
-        description: 'Open Job Search to capture a role before building a packet.',
-        icon: 'bookmark_add',
-        category: 'action',
-        path: '/suite/job-search?intent=save-job',
-        keywords: ['save', 'job', 'role', 'posting', 'opportunity'],
-      },
-      {
-        id: 'due-follow-ups',
-        label: 'Review follow-ups',
-        description: 'Open applications that need a reply, nudge, or decision.',
-        icon: 'forward_to_inbox',
-        category: 'action',
-        path: '/suite/applications?mobileView=followups',
-        keywords: ['follow up', 'email', 'recruiter', 'application', 'due'],
-      },
-      {
-        id: 'start-mock-interview',
-        label: 'Start mock interview',
-        description: 'Open Interview Studio in quick drill mode.',
-        icon: 'interpreter_mode',
-        category: 'action',
-        path: '/suite/interview-sim?mode=quick_drill',
-        keywords: ['interview', 'mock', 'practice', 'drill', 'prep'],
-      },
-      {
-        id: 'billing',
-        label: 'Open billing and plan',
-        description: 'Review plan, limits, Stripe billing, and upgrade options.',
-        icon: 'credit_card',
-        category: 'workspace',
-        path: '/suite/settings?tab=subscription',
-        keywords: ['billing', 'stripe', 'plan', 'subscription', 'upgrade', 'usage'],
-      },
+      ...workspaceQuickActions.map(action => ({ ...action, category: 'action' as const })),
     ];
 
-    return [...actionCommands, ...toolCommands];
+    return [...actionCommands, ...toolCommands].sort((a, b) => categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category));
   }, [pathname]);
 
   const filteredCommands = useMemo(() => {
@@ -188,7 +132,8 @@ export default function CommandPalette() {
     }, { action: [], tool: [], workspace: [] });
   }, [filteredCommands]);
 
-  const selectedCommand = filteredCommands[selectedIndex];
+  const activeIndex = Math.min(selectedIndex, Math.max(filteredCommands.length - 1, 0));
+  const selectedCommand = filteredCommands[activeIndex];
 
   const closePalette = useCallback(() => {
     setIsOpen(false);
@@ -213,8 +158,15 @@ export default function CommandPalette() {
       return;
     }
 
-    if (command.path) router.push(command.path);
-  }, [router]);
+    if (command.path) {
+      const guestHref = getGuestWorkspaceHref(command.path);
+      if (!user && !guestHref) {
+        setPendingPath(command.path);
+        setAuthMode('signup');
+      } else router.push(!user ? guestHref! : command.path);
+    }
+  }, [router, user]);
+
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -234,26 +186,38 @@ export default function CommandPalette() {
 
   useEffect(() => {
     if (!isOpen) return;
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 40);
-    return () => window.clearTimeout(timer);
+    const returnTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    inputRef.current?.focus({ preventScroll: true });
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      const elements = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input, button:not([disabled])') || []).filter(element => element.offsetParent !== null);
+      if (!elements.length) return;
+      const index = elements.indexOf(document.activeElement as HTMLElement);
+      if (event.shiftKey && index <= 0) {
+        event.preventDefault();
+        elements[elements.length - 1].focus();
+      } else if (!event.shiftKey && (index < 0 || index === elements.length - 1)) {
+        event.preventDefault();
+        elements[0].focus();
+      }
+    };
+    window.addEventListener('keydown', trapFocus);
+    return () => {
+      window.removeEventListener('keydown', trapFocus);
+      document.body.style.overflow = previousOverflow;
+      if (returnTarget?.isConnected) returnTarget.focus({ preventScroll: true });
+    };
   }, [isOpen]);
-
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query]);
-
-  useEffect(() => {
-    if (selectedIndex <= filteredCommands.length - 1) return;
-    setSelectedIndex(Math.max(filteredCommands.length - 1, 0));
-  }, [filteredCommands.length, selectedIndex]);
 
   const handlePaletteKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setSelectedIndex(index => Math.min(index + 1, Math.max(filteredCommands.length - 1, 0)));
+      setSelectedIndex(Math.min(activeIndex + 1, Math.max(filteredCommands.length - 1, 0)));
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setSelectedIndex(index => Math.max(index - 1, 0));
+      setSelectedIndex(Math.max(activeIndex - 1, 0));
     } else if (event.key === 'Enter') {
       event.preventDefault();
       executeCommand(selectedCommand);
@@ -266,12 +230,12 @@ export default function CommandPalette() {
         <button
           type="button"
           onClick={openPalette}
-          className="fixed bottom-5 left-1/2 z-30 hidden -translate-x-1/2 items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] shadow-sm transition hover:border-[var(--border)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 lg:flex"
+          className="elevation-card fixed bottom-5 left-1/2 z-30 hidden min-h-11 -translate-x-1/2 items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 lg:flex"
           aria-label="Open command palette"
         >
           <Icon name="search" className="text-[17px]" />
           <span>Command</span>
-          <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+          <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
             Cmd K
           </kbd>
         </button>
@@ -279,14 +243,15 @@ export default function CommandPalette() {
 
       {isOpen && (
         <div
-          className="fixed inset-0 z-[90] flex items-start justify-center bg-[color-mix(in_srgb,var(--bg-deep)_82%,transparent)] px-3 pt-[12vh]"
+          ref={dialogRef}
+          className="workspace-command-palette fixed inset-0 z-[90] flex items-start justify-center bg-[color-mix(in_srgb,var(--bg-deep)_82%,transparent)] px-3 pt-[12vh]"
           role="dialog"
           aria-modal="true"
           aria-label="Command palette"
           onMouseDown={closePalette}
         >
           <div
-            className="w-full max-w-2xl overflow-hidden rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl"
+            className="elevation-raised w-full max-w-2xl overflow-hidden rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)]"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex min-w-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
@@ -295,17 +260,17 @@ export default function CommandPalette() {
                 ref={inputRef}
                 type="search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => { setQuery(event.target.value); setSelectedIndex(0); }}
                 onKeyDown={handlePaletteKeyDown}
                 placeholder="Search tools or run an action"
-                className="min-h-10 min-w-0 flex-1 bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                className="min-h-11 min-w-0 flex-1 bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
                 aria-label="Search commands"
                 aria-activedescendant={selectedCommand ? `command-${selectedCommand.id}` : undefined}
               />
               <button
                 type="button"
                 onClick={closePalette}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
                 aria-label="Close command palette"
               >
                 <Icon name="close" className="text-[18px]" />
@@ -318,7 +283,7 @@ export default function CommandPalette() {
                   <Icon name="search_off" className="mx-auto text-[30px] text-[var(--text-muted)]" />
                   <h2 className="mt-3 text-sm font-semibold text-[var(--text-primary)]">No matching command</h2>
                   <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-[var(--text-muted)]">
-                    Try resume, packet, follow-up, billing, interview, or Taco.
+                    Try resume, packet, follow-up, billing, interview, or <TacoName />.
                   </p>
                 </div>
               ) : (
@@ -328,13 +293,13 @@ export default function CommandPalette() {
 
                   return (
                     <section key={category} className="py-1" aria-label={categoryLabels[category]}>
-                      <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      <h2 className="px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                         {categoryLabels[category]}
                       </h2>
                       <div className="space-y-1">
                         {categoryCommands.map((command) => {
                           const globalIndex = filteredCommands.findIndex(item => item.id === command.id);
-                          const selected = globalIndex === selectedIndex;
+                          const selected = globalIndex === activeIndex;
 
                           return (
                             <button
@@ -355,16 +320,16 @@ export default function CommandPalette() {
                               <span className="min-w-0 flex-1">
                                 <span className="flex min-w-0 flex-wrap items-center gap-2">
                                   <span className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                                    {command.label}
+                                    <TacoText text={command.label} />
                                   </span>
                                   {command.recommended && (
-                                    <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+                                    <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                                       Review first
                                     </span>
                                   )}
                                 </span>
                                 <span className="mt-0.5 block truncate text-xs text-[var(--text-muted)]">
-                                  {command.description}
+                                  <TacoText text={command.description} />
                                 </span>
                               </span>
                               <Icon
@@ -383,7 +348,7 @@ export default function CommandPalette() {
 
             <div className="flex min-w-0 items-center justify-between gap-3 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
               <div className="hidden min-w-0 items-center gap-2 text-xs text-[var(--text-muted)] sm:flex">
-                <TalentConsultingMark className="h-5 w-5 rounded-[7px]" />
+                <TacoMark className="h-5 w-5 rounded-[7px]" />
                 <span className="truncate">Review-first actions. Nothing submits without approval.</span>
               </div>
               <div className="ml-auto flex shrink-0 items-center gap-2 text-[11px] text-[var(--text-muted)]">
@@ -396,6 +361,15 @@ export default function CommandPalette() {
             </div>
           </div>
         </div>
+      )}
+      {authMode && (
+        <AuthModal
+          mode={authMode}
+          onClose={() => { setAuthMode(null); setPendingPath(null); }}
+          onSwitchMode={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+          postAuthRedirect={pendingPath}
+          returnFocusSelector='[aria-label="Open command palette"]'
+        />
       )}
     </>
   );

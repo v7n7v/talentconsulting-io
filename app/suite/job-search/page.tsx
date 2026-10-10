@@ -1,10 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { TacoName } from '@/components/BrandLogo';
+import { readPreparedPacketResponse } from '@/lib/job-packet-recovery';
+import Link from 'next/link';
+
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref, type MutableRefObject } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { motion, useReducedMotion } from 'framer-motion';
+import OracleContent from '@/app/suite/market-oracle/OracleContent';
+import { workspaceCompatibilityHref } from '@/lib/workspace-compatibility';
+import { motion } from 'framer-motion';
 import { showToast } from '@/components/Toast';
-import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
+import { SuiteToolHeader, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import { useStore } from '@/lib/store';
 import { getResumeVersions, getUserProfile, updateApplicationStatus, type ResumeVersion } from '@/lib/database-suite';
 import { authFetch } from '@/lib/auth-fetch';
@@ -26,6 +32,11 @@ import {
 import { useAuthGate } from '@/hooks/useAuthGate';
 import JobPreferencesPanel from './JobPreferencesPanel';
 import { normalizeAlertTargetRole, SONA_ALERT_TARGET_ROLE_KEY } from '@/lib/assistant/alert-consent-handoff';
+import { chooseJobSearchResumeSource, isEligibleJobSearchResume } from '@/lib/job-search-resume-source';
+import ApplicationsContext from '@/components/workspace/ApplicationsContext';
+import { jobSearchContentKey, jobSearchSourceKey, jobSearchInputsChanged, type JobSearchResultContext } from '@/lib/job-search-context';
+import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
+import { isGuidanceShortcutBlocked } from '@/lib/tool-guidance-shortcuts';
 
 type SortOption = 'relevance' | 'salary' | 'date';
 type FeedFilter = 'all' | 'strong' | 'fresh' | 'direct' | 'remote' | 'ready';
@@ -43,16 +54,17 @@ interface OpportunityFitScore {
   scoreVersion?: string;
   confidence?: 'high' | 'medium' | 'low';
   evidenceCoverage?: number;
+  factorsMeasured?: boolean;
   overall: number;
-  skills: number;
-  titleSeniority: number;
-  domain: number;
-  location: number;
-  salary: number;
-  freshness: number;
-  resumeCoverage: number;
-  risk: number;
-  preference: number;
+  skills: number | null;
+  titleSeniority: number | null;
+  domain: number | null;
+  location: number | null;
+  salary: number | null;
+  freshness: number | null;
+  resumeCoverage: number | null;
+  risk: number | null;
+  preference: number | null;
   source?: number;
 }
 
@@ -87,7 +99,7 @@ interface OpportunityJob {
   sourceJobId?: string;
   ledgerStatus?: string | null;
   ledgerFeedbackTags?: string[];
-  freshness: { isFresh: boolean; ghostRisk: 'low' | 'medium' | 'high'; reasons: string[] };
+  freshness: { isFresh: boolean; ghostRisk: 'low' | 'medium' | 'high' | 'unknown'; reasons: string[] };
   recommendationReason: string;
   fitReasons?: string[];
   riskNotes?: string[];
@@ -98,6 +110,8 @@ interface OpportunityJob {
 }
 
 interface ApplicationPacket {
+  sourceKey?: string;
+  jobDescriptionKey?: string;
   status: PacketStatus;
   stageIndex: number;
   applicationId?: string;
@@ -115,6 +129,119 @@ const SEARCH_PREFS_KEY = 'talent-job-search-prefs';
 const RESUME_STORAGE_KEY = 'talent-job-search-skills';
 const PACKET_STORAGE_KEY = 'talent-job-packets-v3';
 const RESUME_ID_STORAGE_KEY = 'talent-job-search-resume-id';
+
+const FIND_ROLES_GUIDE_ANCHORS = Object.freeze({
+  target: 'find-roles-target',
+  location: 'find-roles-location',
+  source: 'find-roles-source',
+  search: 'find-roles-search',
+  role: 'find-roles-role',
+  evidence: 'find-roles-evidence',
+  decisions: 'find-roles-decisions',
+});
+
+interface FindRolesGuidanceFacts {
+  owner: string;
+  sourceKey: string | null;
+  hasSource: boolean;
+  query: string;
+  loading: boolean;
+  resumeLoading: boolean;
+  hasSearched: boolean;
+  inputsChanged: boolean;
+  totalResults: number;
+  visibleResults: number;
+  recovery: JobDiscoveryRecovery | null;
+  selectedJob: OpportunityJob | null;
+  packet?: ApplicationPacket;
+}
+
+function findRolesWorkState(facts: FindRolesGuidanceFacts) {
+  if (facts.loading) return 'pending';
+  if (facts.resumeLoading) return 'waiting';
+  if (facts.inputsChanged && facts.totalResults > 0) return 'stale';
+  if (facts.recovery) return facts.totalResults > 0 ? 'partial' : 'failure';
+  if (facts.totalResults > 0 && facts.visibleResults === 0) return 'filtered-empty';
+  if (facts.totalResults > 0) return 'results';
+  return facts.hasSearched ? 'empty' : 'setup';
+}
+
+/** Observes existing work only. Guide position never authorizes a role action. */
+function findRolesGuidance(facts: FindRolesGuidanceFacts): Parameters<typeof useToolGuidance>[0] {
+  const state = findRolesWorkState(facts);
+  const hasCurrentResults = state === 'results' || state === 'partial';
+  const resultAvailability = state === 'stale' ? 'stale' : state === 'failure' ? 'blocked' : hasCurrentResults ? 'available' : 'waiting';
+  const resultReason = state === 'pending'
+    ? 'Your search is running. Help will wait for the current request; your inputs stay available.'
+    : state === 'waiting'
+      ? 'Resume sources are loading. Browsing will be available once loading finishes, including without a resume.'
+      : state === 'stale'
+        ? 'These roles belong to your earlier search settings. Run Search yourself to refresh them before continuing this chapter.'
+        : state === 'failure'
+          ? facts.recovery?.message || 'The search failed. Keep your inputs and use the search recovery action to retry.'
+          : state === 'filtered-empty'
+            ? 'Your search returned roles, but none match these filters. Clear filters yourself to review the existing results.'
+            : state === 'empty'
+              ? 'No roles found for this search. Edit the target or location, then run Search when you are ready.'
+              : state === 'partial'
+                ? 'The latest search failed. The earlier roles remain available to inspect; retry the affected search when ready.'
+                : 'Run Search yourself to get roles. Next only moves through these explanations.';
+  const decisionState = facts.packet?.status === 'preparing' ? 'waiting' : resultAvailability;
+  const savedOutcome = facts.selectedJob?.ledgerStatus === 'saved'
+    ? ' This role was successfully saved for later.'
+    : facts.selectedJob?.ledgerStatus === 'dismissed' ? ' Your choice to skip this role was saved.' : '';
+  const preparedOutcome = facts.packet?.status === 'ready' && facts.packet.applicationId && facts.packet.morphedVersionId
+    ? ' Its prepared draft is available in Applications for your review; it has not been submitted.'
+    : '';
+  const decisionCopy = facts.packet?.status === 'ready' || facts.packet?.status === 'applied'
+    ? 'Review the prepared work, save or skip this role, or open its verified posting where available. Record submission only after you actually submit on the job site.'
+    : facts.packet?.status === 'failed' || facts.packet?.status === 'needs_attention'
+      ? `Review the packet recovery message and its available next action. ${facts.packet.recovery?.message || 'Preparation did not finish; keep any saved work and retry only where offered.'}`
+      : facts.selectedJob && !facts.selectedJob.preparationEligible
+        ? `Save this role for review${facts.selectedJob.outboundLinkVerified && facts.selectedJob.url ? ' or open its verified source' : ''}. Review the source and evidence before any packet work.`
+        : facts.hasSource
+          ? 'Prepare a draft when the role is eligible and your plan allows it. Review every draft before using it. You can also keep exploring or pause.'
+          : 'You can keep exploring. Preparation needs a confirmed resume source and measured fit; choose the source and search again when ready.';
+  return {
+    toolId: 'job-search',
+    version: '1',
+    title: 'Find roles',
+    // Typing or a real search updates availability without closing assistance.
+    // Changing the owner/source closes it; content stays out of guide storage.
+    contextKey: `find-roles:${facts.owner}:${jobSearchContentKey(facts.sourceKey)}`,
+    preferredChapterId: hasCurrentResults ? 'review-choices' : 'set-direction',
+    chapters: [
+      {
+        id: 'set-direction',
+        title: 'Set your direction',
+        description: 'Choose the search you want to run. You remain in control of every action.',
+        steps: [
+          { id: 'target', title: 'Choose a target role', description: 'What role are you looking for? This defines the search.', anchor: FIND_ROLES_GUIDE_ANCHORS.target },
+          { id: 'location', title: 'Choose where you would work', description: 'Set the location or work preference. Keep the constraints that matter to you.', anchor: FIND_ROLES_GUIDE_ANCHORS.location },
+          { id: 'source', title: 'Choose your resume source', description: facts.hasSource ? 'Your confirmed source is selected. It supplies the resume evidence used to compare fit and prepare a draft.' : 'Use a confirmed resume to compare your experience and prepare a draft. You can still browse without one; resume fit stays unmeasured.', anchor: FIND_ROLES_GUIDE_ANCHORS.source, availability: facts.resumeLoading ? 'waiting' : 'available', unavailableReason: 'Resume sources are loading. Your search inputs are retained.' },
+          { id: 'search', title: 'Run Search when you are ready', description: 'Use Search yourself. It keeps your inputs available for retry and returns roles to review. Help will not run it for you.', anchor: FIND_ROLES_GUIDE_ANCHORS.search, availability: facts.loading || facts.resumeLoading ? 'waiting' : !facts.query.trim() ? 'blocked' : 'available', unavailableReason: facts.loading ? 'Your current search is running.' : facts.resumeLoading ? 'Resume sources are loading.' : 'Add a target role to make Search available.' },
+        ],
+      },
+      {
+        id: 'review-choices',
+        title: 'Review your choices',
+        description: hasCurrentResults ? state === 'partial' ? resultReason : 'Inspect real role facts, their evidence, and your available decisions.' : resultReason,
+        availability: resultAvailability,
+        unavailableReason: resultReason,
+        steps: [
+          { id: 'role', title: 'Inspect an actual role', description: 'Select a role to inspect the posting and why it appeared. Selecting a role is your choice; Next does not select one.', anchor: FIND_ROLES_GUIDE_ANCHORS.role, availability: resultAvailability, unavailableReason: resultReason },
+          { id: 'evidence', title: 'Review the basis and uncertainty', description: 'The Fit tab shows what the returned evidence supports and what is not measured. Missing evidence does not establish a lack of ability.', anchor: FIND_ROLES_GUIDE_ANCHORS.evidence, availability: hasCurrentResults && !facts.selectedJob ? 'waiting' : resultAvailability, unavailableReason: hasCurrentResults && !facts.selectedJob ? 'Select a role yourself to inspect its evidence.' : resultReason, targetUnavailableReason: 'Open the selected role’s Fit tab yourself to see the evidence. Help does not switch tabs.' },
+          { id: 'decisions', title: 'Choose your next action', description: `The Packet tab shows this role’s available actions. ${decisionCopy}${savedOutcome}${preparedOutcome}`, anchor: FIND_ROLES_GUIDE_ANCHORS.decisions, availability: hasCurrentResults && !facts.selectedJob ? 'waiting' : decisionState, unavailableReason: facts.packet?.status === 'preparing' ? 'Your packet is being prepared. Wait for its actual result; reading Help does not finish it.' : hasCurrentResults && !facts.selectedJob ? 'Select a role yourself to see its available decisions.' : resultReason, targetUnavailableReason: 'Open the selected role’s Packet tab yourself to see its available decisions. Help does not switch tabs or start work.' },
+        ],
+      },
+    ],
+  };
+}
+
+function FindRolesGuidance({ config }: { config: Parameters<typeof useToolGuidance>[0] }) {
+  useToolGuidance(config);
+  return null;
+}
 
 function scopedJobStorageKey(base: string, uid: string) {
   return `${base}:${uid}`;
@@ -165,12 +292,13 @@ function extractResumeSkills(resume: any): string[] {
 }
 
 function clampScore(value: number) {
-  return Math.min(98, Math.max(0, Math.round(value)));
+  return Math.min(100, Math.max(0, Math.round(value)));
 }
 
-function formatSalary(min: number | null, max: number | null): string {
+function formatSalary(min: number | null, max: number | null, currency = "USD"): string {
   if (!min && !max) return 'Not listed';
-  const fmt = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`;
+  const code = /^[A-Z]{3}$/.test(currency) ? currency : "";
+  const fmt = (n: number) => code ? `${code} ${n >= 1000 ? `${Math.round(n / 1000)}k` : n}` : `${n.toLocaleString()} (currency unknown)`;
   if (min && max && min !== max) return `${fmt(min)} - ${fmt(max)}`;
   if (min) return `${fmt(min)}+`;
   if (max) return `Up to ${fmt(max)}`;
@@ -190,14 +318,14 @@ function timeAgo(dateString: string): string {
 }
 
 function scoreColor(score: number) {
-  if (score >= 85) return '#059669';
-  if (score >= 70) return '#0284c7';
-  if (score >= 55) return '#d97706';
-  return '#dc2626';
+  if (score >= 85) return 'var(--success)';
+  if (score >= 70) return 'var(--accent)';
+  if (score >= 55) return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 function scoreLabel(score: number | null) {
-  if (score === null) return 'Needs resume';
+  if (score === null) return 'Fit not measured';
   if (score >= 85) return 'Strong fit';
   if (score >= 70) return 'Good fit';
   if (score >= 55) return 'Review fit';
@@ -218,24 +346,25 @@ function sourceLabel(meta: OpportunitySourceMeta) {
 }
 
 function fitFromRaw(job: any): OpportunityFitScore | null {
-  if (job.fitScore) return { ...job.fitScore, preference: job.fitScore.preference ?? 70 };
-  if (job.fitBreakdown) return { ...job.fitBreakdown, preference: job.fitBreakdown.preference ?? 70 };
+  if (job.fitScore) return { ...job.fitScore, preference: job.fitScore.preference ?? null };
+  if (job.fitBreakdown) return { ...job.fitBreakdown, preference: job.fitBreakdown.preference ?? null };
   const match = job.matchScore;
   if (match === null || match === undefined) return null;
-  const ghostRisk = job.ghostRisk?.risk || job.freshness?.ghostRisk || 'low';
-  const riskPenalty = ghostRisk === 'high' ? 25 : ghostRisk === 'medium' ? 10 : 0;
-  const salaryScore = job.salary?.min || job.salary?.max ? 82 : 55;
+  // Only an overall match score is available. Do NOT synthesize a per-factor
+  // breakdown from it (project rule #1). Carry the real score and mark every
+  // factor as not measured so the UI renders a labelled absence, not fake bars.
   return {
     overall: clampScore(match),
-    skills: clampScore(match),
-    titleSeniority: clampScore(match + 2),
-    domain: clampScore(match - 4),
-    location: job.location?.toLowerCase().includes('remote') ? 88 : 72,
-    salary: salaryScore,
-    freshness: clampScore(84 - riskPenalty),
-    resumeCoverage: clampScore(match),
-    risk: clampScore(100 - riskPenalty),
-    preference: 70,
+    factorsMeasured: false,
+    skills: null,
+    titleSeniority: null,
+    domain: null,
+    location: null,
+    salary: null,
+    freshness: null,
+    resumeCoverage: null,
+    risk: null,
+    preference: null,
   };
 }
 
@@ -253,7 +382,7 @@ function normalizeJob(job: any): OpportunityJob {
   const dedupeKey = job.dedupeKey || `${job.company}|${job.title}|${job.location}`.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const freshness = job.freshness || {
     isFresh: job.ghostRisk?.fresh || false,
-    ghostRisk: job.ghostRisk?.risk || 'low',
+    ghostRisk: job.ghostRisk?.risk || 'unknown',
     reasons: job.ghostRisk?.reasons || [],
   };
   const fitScore = fitFromRaw(job);
@@ -266,8 +395,8 @@ function normalizeJob(job: any): OpportunityJob {
     description: job.description || '',
     skills: Array.isArray(job.skills) ? Array.from(new Set(job.skills.map(String))) : [],
     url: job.url || '',
-    postedDate: job.postedDate || new Date().toISOString(),
-    employmentType: job.employmentType || 'Full-time',
+    postedDate: job.postedDate || '',
+    employmentType: job.employmentType || 'Not listed',
     category: job.category,
     source: sourceName,
     matchScore: job.matchScore ?? fitScore?.overall ?? null,
@@ -282,7 +411,7 @@ function normalizeJob(job: any): OpportunityJob {
       ...freshness,
       reasons: Array.from(new Set(Array.isArray(freshness.reasons) ? freshness.reasons.map(String) : [])),
     },
-    recommendationReason: job.recommendationReason || (fitScore ? 'Role appears relevant based on your current skills and preferences.' : 'Add a resume or skills profile to unlock fit scoring.'),
+    recommendationReason: job.recommendationReason || (fitScore ? 'Role appears relevant based on your current skills and preferences.' : 'Fit has not been measured for this role yet. Review the source and role evidence before deciding.'),
     fitReasons: Array.isArray(job.fitReasons) ? job.fitReasons : [],
     riskNotes: Array.isArray(job.riskNotes) ? job.riskNotes : [],
     sourceNotes: Array.isArray(job.sourceNotes) ? job.sourceNotes : [],
@@ -307,24 +436,24 @@ function readStoredPackets(value: unknown): Record<string, ApplicationPacket> {
     if (!STORED_PACKET_STATUSES.has(candidate.status as PacketStatus)) continue;
     const interrupted = candidate.status === 'preparing';
     const claimsComplete = candidate.status === 'ready' || candidate.status === 'applied';
-    const hasCompleteArtifacts = typeof candidate.applicationId === 'string' && Boolean(candidate.applicationId)
-      && typeof candidate.morphedVersionId === 'string' && Boolean(candidate.morphedVersionId)
-      && typeof candidate.coverLetter === 'string' && Boolean(candidate.coverLetter.trim())
-      && Number.isFinite(candidate.atsScore);
+    const validAtsScore = typeof candidate.atsScore === 'number' && Number.isFinite(candidate.atsScore) && candidate.atsScore >= 0 && candidate.atsScore <= 100;
+    const hasCompleteArtifacts = readPreparedPacketResponse({ success: true, packetStatus: 'ready_for_review', applicationId: candidate.applicationId, morphedVersionId: candidate.morphedVersionId, coverLetter: candidate.coverLetter, atsResult: { overallScore: candidate.atsScore } }).ready;
     const incomplete = claimsComplete && !hasCompleteArtifacts;
     const fallbackRecovery = interrupted ? classifyJobPacketFailure('network interrupted') : null;
     const incompleteRecovery = incomplete ? packetIncompleteRecovery({
       morphSucceeded: typeof candidate.morphedVersionId === 'string' && Boolean(candidate.morphedVersionId),
       coverLetterSucceeded: typeof candidate.coverLetter === 'string' && Boolean(candidate.coverLetter.trim()),
-      atsSucceeded: Number.isFinite(candidate.atsScore),
+      atsSucceeded: validAtsScore,
     }) : null;
     packets[key] = {
+      jobDescriptionKey: typeof candidate.jobDescriptionKey === 'string' ? candidate.jobDescriptionKey.slice(0, 64) : undefined,
+      sourceKey: typeof candidate.sourceKey === 'string' ? candidate.sourceKey.slice(0, 512) : undefined,
       status: interrupted ? 'failed' : incomplete ? 'needs_attention' : candidate.status as PacketStatus,
       stageIndex: Number.isFinite(candidate.stageIndex) ? Math.max(0, Math.min(PACKET_STAGES.length - 1, Number(candidate.stageIndex))) : 0,
       applicationId: typeof candidate.applicationId === 'string' ? candidate.applicationId.slice(0, 256) : undefined,
       morphedVersionId: typeof candidate.morphedVersionId === 'string' ? candidate.morphedVersionId.slice(0, 256) : null,
       coverLetter: typeof candidate.coverLetter === 'string' ? candidate.coverLetter.slice(0, 30_000) : undefined,
-      atsScore: Number.isFinite(candidate.atsScore) ? clampScore(Number(candidate.atsScore)) : undefined,
+      atsScore: validAtsScore ? candidate.atsScore : undefined,
       keywordGaps: Array.isArray(candidate.keywordGaps)
         ? Array.from(new Set(candidate.keywordGaps.map(String))).slice(0, 24)
         : [],
@@ -353,15 +482,15 @@ function PacketStatusPill({ packet }: { packet?: ApplicationPacket }) {
   const status = packet?.status || 'idle';
   const config: Record<PacketStatus, { label: string; icon: string; className: string }> = {
     idle: { label: 'Not prepared', icon: 'radio_button_unchecked', className: 'border-[var(--border-subtle)] text-[var(--text-muted)] bg-[var(--card-bg)]' },
-    preparing: { label: 'Preparing', icon: 'progress_activity', className: 'border-cyan-400/35 text-cyan-700 bg-cyan-500/10 dark:text-cyan-300' },
-    ready: { label: 'Ready', icon: 'verified', className: 'border-emerald-400/35 text-emerald-700 bg-emerald-500/10 dark:text-emerald-300' },
-    needs_attention: { label: 'Needs attention', icon: 'error', className: 'border-amber-400/35 text-amber-700 bg-amber-500/10 dark:text-amber-300' },
-    failed: { label: 'Retry needed', icon: 'error', className: 'border-rose-400/35 text-rose-700 bg-rose-500/10 dark:text-rose-300' },
-    applied: { label: 'Applied', icon: 'done_all', className: 'border-emerald-400/35 text-emerald-700 bg-emerald-500/10 dark:text-emerald-300' },
+    preparing: { label: 'Preparing', icon: 'progress_activity', className: 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-dim)]' },
+    ready: { label: 'Ready', icon: 'verified', className: 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] text-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)]' },
+    needs_attention: { label: 'Needs attention', icon: 'error', className: 'border-[color-mix(in_srgb,var(--warning)_35%,transparent)] text-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)]' },
+    failed: { label: 'Retry needed', icon: 'error', className: 'border-[color-mix(in_srgb,var(--danger)_35%,transparent)] text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]' },
+    applied: { label: 'Applied', icon: 'done_all', className: 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] text-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)]' },
   };
   const item = config[status];
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${item.className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${item.className}`}>
       <span className={`material-symbols-rounded text-[12px] ${status === 'preparing' ? 'animate-spin' : ''}`}>{item.icon}</span>
       {item.label}
     </span>
@@ -371,7 +500,7 @@ function PacketStatusPill({ packet }: { packet?: ApplicationPacket }) {
 function RecommendationStatusPill({ status }: { status?: string | null }) {
   if (status !== 'saved' && status !== 'dismissed') return null;
   return (
-    <span className="inline-flex items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--text-secondary)]">
+    <span className="inline-flex items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--text-secondary)]">
       {status === 'saved' ? 'Saved role' : 'Skipped role'}
     </span>
   );
@@ -397,6 +526,7 @@ function ResumeSourcePicker({
   const [sortBy, setSortBy] = useState<ResumeSort>('newest');
 
   const selectedResume = resumes.find(resume => resume.id === selectedResumeId) || null;
+  const eligibleResumes = useMemo(() => resumes.filter(isEligibleJobSearchResume), [resumes]);
   const visibleResumes = useMemo(() => {
     const now = Date.now();
     const maxAgeMs = dateFilter === '30d'
@@ -407,7 +537,7 @@ function ResumeSourcePicker({
           ? 180 * 24 * 60 * 60 * 1000
           : null;
 
-    return resumes
+    return eligibleResumes
       .filter(resume => {
         const created = new Date(resume.created_at).getTime();
         const inRange = !maxAgeMs || (!Number.isNaN(created) && now - created <= maxAgeMs);
@@ -426,7 +556,7 @@ function ResumeSourcePicker({
         if (sortBy === 'match') return (b.matchScore || b.metadata?.matchScore || 0) - (a.matchScore || a.metadata?.matchScore || 0);
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
-  }, [dateFilter, query, resumes, sortBy]);
+  }, [dateFilter, eligibleResumes, query, sortBy]);
 
   const filters: Array<{ value: ResumeDateFilter; label: string }> = [
     { value: 'all', label: 'All' },
@@ -441,26 +571,27 @@ function ResumeSourcePicker({
   ];
 
   return (
-    <div className="relative">
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Resume source</span>
+    <div className="relative min-w-0 w-full">
+      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Resume source</span>
       <button
         type="button"
+        data-guide={FIND_ROLES_GUIDE_ANCHORS.source}
         onClick={() => setOpen(prev => !prev)}
-        className={`flex h-11 w-full items-center justify-between gap-3 rounded-[12px] border px-3 text-left transition ${
+        className={`flex h-11 min-w-0 w-full items-center justify-between gap-3 rounded-[12px] border px-3 text-left transition ${
           open || selectedResume
-            ? 'border-cyan-400/40 bg-cyan-500/10'
+            ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
             : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:border-[var(--border)]'
         }`}
         aria-expanded={open}
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <span className={`material-symbols-rounded text-[18px] ${selectedResume ? 'text-cyan-700 dark:text-cyan-300' : 'text-[var(--text-muted)]'}`}>description</span>
-          <span className="min-w-0">
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className={`material-symbols-rounded text-[18px] ${selectedResume ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>description</span>
+          <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
-              {selectedResumeName || selectedResume?.version_name || (resumes.length > 0 ? 'Choose resume' : 'No saved resumes')}
+              {selectedResumeName || selectedResume?.version_name || (eligibleResumes.length > 0 ? 'Choose resume' : 'No confirmed source resumes')}
             </span>
-            <span className="block truncate text-[10px] text-[var(--text-muted)]">
-              {selectedResume ? `${timeAgo(selectedResume.created_at)} · ${extractResumeSkills(selectedResume.content).length} skills` : `${resumes.length} available`}
+            <span className="block truncate text-[11px] text-[var(--text-muted)]">
+              {selectedResume ? `${timeAgo(selectedResume.created_at)} · ${extractResumeSkills(selectedResume.content).length} skills` : `${eligibleResumes.length} eligible`}
             </span>
           </span>
         </span>
@@ -471,16 +602,17 @@ function ResumeSourcePicker({
         <motion.div
           initial={{ opacity: 0, y: 8, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          className="absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-[0_18px_60px_rgba(15,23,42,0.18)]"
+          className="absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-raised lg:min-w-80"
         >
           <div className="border-b border-[var(--border-subtle)] p-3">
             <div className="relative">
-              <span className="material-symbols-rounded pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-[var(--text-muted)]">search</span>
+              <span aria-hidden="true" className="material-symbols-rounded pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-[var(--text-muted)]">search</span>
               <input
                 value={query}
                 onChange={event => setQuery(event.target.value)}
-                placeholder="Search resume versions..."
-                className="h-10 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/20"
+                aria-label="Search resume versions"
+                placeholder="Search resumes..."
+                className="h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] !pl-11 pr-3 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
               />
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -491,7 +623,7 @@ function ResumeSourcePicker({
                   onClick={() => setDateFilter(filter.value)}
                   className={`rounded-[9px] border px-2.5 py-1.5 text-[11px] font-semibold transition ${
                     dateFilter === filter.value
-                      ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -507,7 +639,7 @@ function ResumeSourcePicker({
                   onClick={() => setSortBy(sort.value)}
                   className={`inline-flex items-center gap-1 rounded-[9px] border px-2.5 py-1.5 text-[11px] font-semibold transition ${
                     sortBy === sort.value
-                      ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                      ? 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -518,6 +650,11 @@ function ResumeSourcePicker({
             </div>
           </div>
           <div className="max-h-[300px] overflow-y-auto p-2">
+            {resumes.length > eligibleResumes.length && (
+              <p className="px-2 pb-2 text-[11px] leading-4 text-[var(--text-muted)]">
+                Generated packet versions stay out of source selection. Choose a confirmed source resume for fit and packet work.
+              </p>
+            )}
             {visibleResumes.length > 0 ? visibleResumes.map(resume => {
               const skills = extractResumeSkills(resume.content);
               const active = resume.id === selectedResumeId;
@@ -532,13 +669,13 @@ function ResumeSourcePicker({
 	                  }}
 	                  aria-pressed={active}
 	                  aria-label={`${active ? 'Selected resume' : 'Select resume'}: ${resume.version_name}`}
-	                  className={`mb-1 flex w-full items-start gap-3 rounded-[12px] border p-3 text-left transition ${
+	                  className={`mb-1 grid min-w-0 w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-[12px] border p-3 text-left transition ${
 	                    active
-	                      ? 'border-cyan-400/40 bg-cyan-500/10'
+	                      ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
 	                      : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--card-bg)]'
 	                  }`}
 	                >
-	                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] ${active ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300' : 'bg-[var(--card-bg)] text-[var(--text-muted)]'}`} aria-hidden="true">
+	                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] ${active ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-[var(--card-bg)] text-[var(--text-muted)]'}`} aria-hidden="true">
 	                    <span className="material-symbols-rounded text-[18px]">{active ? 'check_circle' : 'description'}</span>
 	                  </span>
 	                  <span className="min-w-0 flex-1">
@@ -549,12 +686,12 @@ function ResumeSourcePicker({
 	                    {skills.length > 0 && (
 	                      <span className="mt-2 flex flex-wrap gap-1">
 	                        {Array.from(new Set(skills)).slice(0, 4).map((skill, index) => (
-	                          <span key={`${skill}:${index}`} className="rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">{skill}</span>
+	                          <span key={`${skill}:${index}`} className="rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">{skill}</span>
 	                        ))}
 	                      </span>
 	                    )}
 	                  </span>
-	                  <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${active ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'}`}>
+	                  <span className={`col-start-2 mt-0.5 inline-flex items-center justify-self-start gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${active ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'}`}>
 	                    <span className="material-symbols-rounded text-[13px]" aria-hidden="true">{active ? 'check' : 'touch_app'}</span>
 	                    {active ? 'Selected' : 'Use'}
 	                  </span>
@@ -588,7 +725,13 @@ function JobSearchCommandStrip({
   onLocationChange,
   onSearch,
   onResumeSelect,
+  resultContext,
+  inputsChanged,
+  resumeLoading,
 }: {
+  resultContext: JobSearchResultContext | null;
+  inputsChanged: boolean;
+  resumeLoading: boolean;
   query: string;
   location: string;
   loading: boolean;
@@ -604,13 +747,13 @@ function JobSearchCommandStrip({
   onResumeSelect: (id: string) => void;
 }) {
   return (
-    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm">
+    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 elevation-card">
       <form
         onSubmit={event => {
           event.preventDefault();
           onSearch();
         }}
-        className="grid gap-3 lg:grid-cols-[1.2fr_1.2fr_0.8fr_auto] lg:items-end"
+        className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[1.2fr_1.2fr_0.8fr_auto] lg:items-end"
       >
         <ResumeSourcePicker
           resumes={resumes}
@@ -619,91 +762,62 @@ function JobSearchCommandStrip({
           onResumeSelect={onResumeSelect}
         />
         <label>
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Target role</span>
+          <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Target role</span>
           <input
             id="job-search-target-role"
+            data-guide={FIND_ROLES_GUIDE_ANCHORS.target}
             aria-label="Target role"
             value={query}
             onChange={event => onQueryChange(event.target.value)}
             placeholder="Software engineer, data analyst, product manager..."
-            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-sm font-medium text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-base font-medium text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
           />
         </label>
         <label>
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Location</span>
+          <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Location</span>
           <input
+            data-guide={FIND_ROLES_GUIDE_ANCHORS.location}
+            aria-label="Location or work preference"
             value={location}
             onChange={event => onLocationChange(event.target.value)}
             placeholder="Remote, New York, Austin..."
-            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
           />
         </label>
         <button
           type="submit"
-          disabled={loading || !query.trim()}
+          data-guide={FIND_ROLES_GUIDE_ANCHORS.search}
+          disabled={loading || resumeLoading || !query.trim()}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-5 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 disabled:opacity-45"
         >
           <span className={`material-symbols-rounded text-[18px] ${loading ? 'animate-spin' : ''}`}>{loading ? 'progress_activity' : 'radar'}</span>
-          {loading ? 'Scanning' : 'Search'}
+          {resumeLoading ? 'Loading resumes…' : loading ? 'Searching…' : 'Search'}
         </button>
       </form>
 
-      <div className="mt-4 grid gap-2 md:grid-cols-4">
-        <CommandMetric icon="description" label="Resume" value={selectedResumeName || (userSkillsCount > 0 ? `${userSkillsCount} skills loaded` : 'Needs resume')} tone={selectedResumeId || userSkillsCount > 0 ? 'emerald' : 'muted'} />
-        <CommandMetric icon="hub" label="Sources" value={`${sourceHealth.direct} direct / ${sourceHealth.aggregator} API`} tone={sourceHealth.direct > 0 ? 'cyan' : 'muted'} />
-        <CommandMetric icon="fact_check" label="Packets" value={packetCount > 0 ? `${packetCount} active` : 'None prepared'} tone={packetCount > 0 ? 'emerald' : 'muted'} />
-        <CommandMetric icon="visibility" label="Watchlist" value="Review first" tone="cyan" />
+      <div className="mt-3 min-w-0 border-t border-[var(--border-subtle)] pt-3 text-xs leading-5 text-[var(--text-secondary)]" aria-label="Search context" aria-live="polite">
+        {resultContext ? (
+          <>
+            <p className="break-words"><strong className="text-[var(--text-primary)]">Results for {resultContext.query}</strong> · {resultContext.location || 'Any location'} · {resultContext.scoreResumeId ? `Resume source: ${resultContext.sourceName}` : 'Resume fit unmeasured'}</p>
+            {inputsChanged && <p className="mt-1 text-[var(--warning)]">Search settings changed. Search again to update these results.</p>}
+          </>
+        ) : (
+          <p className="break-words"><strong className="text-[var(--text-primary)]">{query.trim() || 'Choose your target role'}</strong> · {location.trim() || 'Any location'} · {selectedResumeId ? `Resume source: ${selectedResumeName}` : 'Browse without a resume; fit is unmeasured and preparation needs a confirmed source.'}</p>
+        )}
+        {loading && <p className="mt-1">Searching sources. Your inputs remain available.</p>}
       </div>
     </section>
   );
 }
 
-function JobSearchHeader({
-  resultCount,
-  packetCount,
-  strongCount,
-}: {
-  resultCount: number;
-  packetCount: number;
-  strongCount: number;
-}) {
+function JobSearchHeader() {
   return (
     <SuiteToolHeader
       tool="job-search"
-      actions={
-        <div className="grid w-full min-w-0 grid-cols-3 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end">
-          <HeaderStat label="Ranked" value={resultCount.toLocaleString()} />
-          <HeaderStat label="Fits" value={strongCount.toLocaleString()} />
-          <HeaderStat label="Packets" value={packetCount.toLocaleString()} />
-        </div>
-      }
+      title="Find roles worth your time"
+      eyebrow="Your next opportunity"
+      subtitle="Choose your direction, inspect the evidence, then decide which roles deserve an application."
     />
-  );
-}
-
-function HeaderStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-2 sm:min-w-[92px] sm:px-3">
-      <p className="truncate text-[8px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)] sm:text-[9px] sm:tracking-[0.12em]">{label}</p>
-      <p className="mt-0.5 text-sm font-semibold text-[var(--text-primary)]">{value}</p>
-    </div>
-  );
-}
-
-function CommandMetric({ icon, label, value, tone }: { icon: string; label: string; value: string; tone: 'cyan' | 'emerald' | 'muted' }) {
-  const toneClass = tone === 'emerald'
-    ? 'text-emerald-700 bg-emerald-500/10 border-emerald-400/25 dark:text-emerald-300'
-    : tone === 'cyan'
-      ? 'text-cyan-700 bg-cyan-500/10 border-cyan-400/25 dark:text-cyan-300'
-      : 'text-[var(--text-secondary)] bg-[var(--card-bg)] border-[var(--border-subtle)]';
-  return (
-    <div className={`flex min-h-[58px] items-center gap-3 rounded-[14px] border px-3 py-2 ${toneClass}`}>
-      <span className="material-symbols-rounded text-[20px]">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] opacity-70">{label}</p>
-        <p className="mt-0.5 truncate text-xs font-semibold">{value}</p>
-      </div>
-    </div>
   );
 }
 
@@ -711,21 +825,30 @@ function SourceHealthPanel({ jobs }: { jobs: OpportunityJob[] }) {
   const direct = jobs.filter(job => job.sourceMeta.sourceType === 'direct_ats').length;
   const aggregator = jobs.filter(job => job.sourceMeta.sourceType === 'aggregator').length;
   const remote = jobs.filter(job => job.sourceMeta.sourceType === 'remote_board').length;
-  const total = Math.max(1, jobs.length);
+  const total = jobs.length;
   return (
     <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Source health</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Source health</p>
           <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Hybrid supply</p>
         </div>
-        <span className="material-symbols-rounded text-cyan-600 dark:text-cyan-300">hub</span>
+        <span className="material-symbols-rounded text-[var(--accent)]">hub</span>
       </div>
-      <div className="mt-4 space-y-3">
-        <SourceBar label="Direct ATS" value={direct} total={total} />
-        <SourceBar label="Aggregator" value={aggregator} total={total} />
-        <SourceBar label="Remote boards" value={remote} total={total} />
-      </div>
+      {total > 0 ? (
+        <div className="mt-4 space-y-3">
+          <SourceBar label="Direct ATS" value={direct} total={total} />
+          <SourceBar label="Aggregator" value={aggregator} total={total} />
+          <SourceBar label="Remote boards" value={remote} total={total} />
+        </div>
+      ) : (
+        <SuiteUnmeasured
+          className="mt-4"
+          density="compact"
+          label="No source mix yet"
+          reason="Run a search to see how supply splits across direct ATS, aggregators, and remote boards."
+        />
+      )}
     </div>
   );
 }
@@ -739,7 +862,7 @@ function SourceBar({ label, value, total }: { label: string; value: number; tota
         <span className="text-[var(--text-muted)]">{value}</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--card-bg)]">
-        <div className="h-full rounded-full bg-cyan-500/70" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -762,6 +885,7 @@ function OpportunityIntelligenceBar({
   onSavedSearch,
   onPrefsToggle,
   onPrefsLoaded,
+  onPrefsApplied,
   onPrefsClose,
 }: {
   activeFilter: FeedFilter;
@@ -780,28 +904,26 @@ function OpportunityIntelligenceBar({
   onSavedSearch: (query: string) => void;
   onPrefsToggle: () => void;
   onPrefsLoaded: (prefs: any) => void;
+  onPrefsApplied: (prefs: any) => void;
   onPrefsClose: () => void;
 }) {
   const profileScore = [hasPrefs, userSkills.length > 0, matchThreshold >= 60, !hideGhosts].filter(Boolean).length;
   const directCount = jobs.filter(job => job.sourceMeta.sourceType === 'direct_ats').length;
   return (
-    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 shadow-sm">
+    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 elevation-card">
       <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:w-[560px]">
-          <SignalTile icon="fact_check" label="Profile" value={`${profileScore}/4 ready`} done={profileScore >= 3} />
-          <SignalTile icon="description" label="Resume" value={userSkills.length > 0 ? `${userSkills.length} skills` : 'Needed'} done={userSkills.length > 0} />
-          <SignalTile icon="hub" label="Direct" value={`${directCount} roles`} done={directCount > 0} />
-          <SignalTile icon="visibility" label="Mode" value="Review first" done />
-        </div>
+
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {FILTERS.map(filter => (
             <button
               key={filter.value}
+              type="button"
+              aria-pressed={activeFilter === filter.value}
               onClick={() => onFilterChange(filter.value)}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
+              className={`inline-flex items-center justify-center gap-1.5 min-h-11 rounded-[12px] border px-3 py-2 text-xs font-medium transition ${
                 activeFilter === filter.value
-                  ? 'border-cyan-400/45 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                   : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
@@ -815,7 +937,7 @@ function OpportunityIntelligenceBar({
           <select
             value={sortBy}
             onChange={event => onSortChange(event.target.value as SortOption)}
-            className="h-10 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-xs font-semibold text-[var(--text-secondary)] outline-none"
+            className="h-11 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-sm font-semibold text-[var(--text-secondary)] outline-none"
             aria-label="Sort opportunities"
           >
             <option value="relevance">Relevance</option>
@@ -824,9 +946,9 @@ function OpportunityIntelligenceBar({
           </select>
           <button
             onClick={onPrefsToggle}
-            className={`inline-flex h-10 items-center gap-1.5 rounded-[11px] border px-3 text-xs font-semibold transition ${
+            className={`inline-flex h-11 items-center gap-1.5 rounded-[11px] border px-3 text-xs font-semibold transition ${
               showPrefs
-                ? 'border-cyan-400/45 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                 : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
@@ -847,16 +969,17 @@ function OpportunityIntelligenceBar({
               visible={showPrefs}
               suggestedTargetRole={suggestedTargetRole}
               onPrefsLoaded={onPrefsLoaded}
+              onPrefsApplied={onPrefsApplied}
               onClose={onPrefsClose}
             />
             <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-1">
               <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Search profile</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Search profile</p>
                     <h2 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{profileScore}/4 ready</h2>
                   </div>
-                  <span className="material-symbols-rounded text-cyan-600 dark:text-cyan-300">checklist</span>
+                  <span className="material-symbols-rounded text-[var(--accent)]">checklist</span>
                 </div>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <ChecklistRow label="Preferences saved" done={hasPrefs} />
@@ -867,13 +990,13 @@ function OpportunityIntelligenceBar({
               </section>
 
               <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Saved searches</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Role suggestions</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {SAVED_SEARCHES.map(search => (
                     <button
                       key={search}
                       onClick={() => onSavedSearch(search)}
-                      className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:border-cyan-400/35 hover:text-cyan-700 dark:hover:text-cyan-300"
+                      className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
                     >
                       {search}
                     </button>
@@ -881,27 +1004,27 @@ function OpportunityIntelligenceBar({
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1.4fr]">
                   <label>
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Min fit</span>
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Min fit</span>
                     <div className="flex items-center gap-3">
                       <input
                         type="range"
-                        min={40}
-                        max={95}
+                        min={0}
+                        max={100}
                         step={5}
                         value={matchThreshold}
                         onChange={event => onThresholdChange(Number(event.target.value))}
-                        className="w-full accent-cyan-500"
+                        className="w-full accent-[var(--accent)]"
                       />
-                      <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">{matchThreshold}%</span>
+                      <span className="rounded-full bg-[var(--accent-dim)] px-2 py-0.5 text-[11px] font-semibold text-[var(--accent)]">{matchThreshold}%</span>
                     </div>
                   </label>
-                  <label className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
+                  <label className="flex min-h-[44px] cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
                     <span className="text-xs font-medium text-[var(--text-secondary)]">Hide high ghost risk</span>
                     <input
                       type="checkbox"
                       checked={hideGhosts}
                       onChange={event => onHideGhostsChange(event.target.checked)}
-                      className="accent-cyan-500"
+                      className="h-5 w-5 accent-[var(--accent)]"
                     />
                   </label>
                 </div>
@@ -916,26 +1039,10 @@ function OpportunityIntelligenceBar({
   );
 }
 
-function SignalTile({ icon, label, value, done }: { icon: string; label: string; value: string; done: boolean }) {
-  return (
-    <div className={`flex items-center gap-2 rounded-[12px] border px-3 py-2 ${
-      done
-        ? 'border-cyan-400/20 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
-        : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
-    }`}>
-      <span className="material-symbols-rounded text-[18px]">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] opacity-70">{label}</p>
-        <p className="truncate text-xs font-semibold">{value}</p>
-      </div>
-    </div>
-  );
-}
-
 function ChecklistRow({ label, done }: { label: string; done: boolean }) {
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className={`material-symbols-rounded text-[16px] ${done ? 'text-emerald-600 dark:text-emerald-300' : 'text-[var(--text-muted)]'}`}>
+      <span className={`material-symbols-rounded text-[16px] ${done ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
         {done ? 'check_circle' : 'radio_button_unchecked'}
       </span>
       <span className={done ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}>{label}</span>
@@ -956,7 +1063,11 @@ function OpportunityFeed({
   onEmptySearch,
   onRecoveryAction,
   onEditSearch,
+  totalJobs,
+  onResetFilters,
 }: {
+  totalJobs: number;
+  onResetFilters: () => void;
   jobs: OpportunityJob[];
   selectedId: string | null;
   loading: boolean;
@@ -995,7 +1106,7 @@ function OpportunityFeed({
 
   if (loading) {
     return (
-      <section className="flex min-h-[560px] flex-col items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center">
+      <section className="flex min-h-[360px] flex-col items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center">
         <AssistantThinkingTile
           variant="jobs"
           icon="radar"
@@ -1012,11 +1123,11 @@ function OpportunityFeed({
   if (!hasSearched) {
     return (
       <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
-        <div className="mx-auto max-w-2xl py-12 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[16px] border border-cyan-400/20 bg-cyan-500/10">
-            <span className="material-symbols-rounded text-2xl text-cyan-600 dark:text-cyan-300">radar</span>
+        <div className="mx-auto max-w-2xl py-6 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[16px] border border-[var(--accent)] bg-[var(--accent-dim)]">
+            <span className="material-symbols-rounded text-2xl text-[var(--accent)]">radar</span>
           </div>
-          <h2 className="mt-5 text-xl font-semibold tracking-tight text-[var(--text-primary)]">Start with a role, then let Taco rank the market.</h2>
+          <h2 className="mt-5 text-xl font-semibold tracking-tight text-[var(--text-primary)]">Start with a role, then let <TacoName /> rank the market.</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
             Search across broad APIs and direct ATS boards. Fit scoring improves when your resume and preferences are loaded.
           </p>
@@ -1025,7 +1136,7 @@ function OpportunityFeed({
               <button
                 key={search}
                 onClick={() => onEmptySearch(search)}
-                className="rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-cyan-400/35 hover:text-cyan-700 dark:hover:text-cyan-300"
+                className="min-h-11 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {search}
               </button>
@@ -1050,12 +1161,13 @@ function OpportunityFeed({
     return (
       <section className="flex min-h-[420px] flex-col items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center">
         <span className="material-symbols-rounded text-4xl text-[var(--text-muted)]">search_off</span>
-        <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">No roles matched these filters.</p>
-        <p className="mt-1 text-xs text-[var(--text-secondary)]">Lower the fit threshold or broaden the search location.</p>
+        <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{totalJobs > 0 ? 'No roles matched these filters.' : 'No roles found for this search.'}</p>
+        <p className="mt-1 text-xs text-[var(--text-secondary)]">{totalJobs > 0 ? 'Your search returned roles. Clear the filters to see them.' : 'Try a broader role title or another location.'}</p>
+        {totalJobs > 0 && <button type="button" onClick={onResetFilters} className="btn-secondary mt-4 min-h-11">Clear filters</button>}
         <button
           type="button"
           onClick={onEditSearch}
-          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35"
+          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
           <span className="material-symbols-rounded text-[16px]" aria-hidden="true">edit</span>
           Edit search
@@ -1070,6 +1182,7 @@ function OpportunityFeed({
       job={job}
       rank={index + 1}
       selected={selectedId === getJobResultIdentity(job)}
+      guideTarget={selectedId === getJobResultIdentity(job) || (!jobs.some(candidate => getJobResultIdentity(candidate) === selectedId) && index === 0)}
       packet={packets[getJobResultIdentity(job)]}
       onSelect={() => onSelect(job)}
       onDetails={() => onDetails(job)}
@@ -1085,8 +1198,7 @@ function OpportunityFeed({
         </div>
       )}
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Opportunity feed</p>
+        <div className="min-w-0">
           <h2 className="text-base font-semibold text-[var(--text-primary)]">{jobs.length} ranked roles</h2>
           {jobs.length > 3 && (
             <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)] lg:hidden">Reviewing the strongest three first.</p>
@@ -1108,7 +1220,7 @@ function OpportunityFeed({
               setMobileReviewExpanded(nextExpanded);
               if (!nextExpanded && !topThreeJobs.some(job => getJobResultIdentity(job) === selectedId)) onSelect(topThreeJobs[0]);
             }}
-            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 lg:hidden"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] lg:hidden"
           >
             <span className="material-symbols-rounded text-[17px]" aria-hidden="true">{mobileReviewExpanded ? 'collapse_all' : 'expand_all'}</span>
             {mobileReviewExpanded ? 'Show top 3 only' : `Show all ${jobs.length} roles`}
@@ -1129,6 +1241,7 @@ function OpportunityCard({
   job,
   rank,
   selected,
+  guideTarget,
   packet,
   onSelect,
   onDetails,
@@ -1137,13 +1250,14 @@ function OpportunityCard({
   job: OpportunityJob;
   rank?: number;
   selected: boolean;
+  guideTarget: boolean;
   packet?: ApplicationPacket;
   onSelect: () => void;
   onDetails: () => void;
   onPrepare: () => void;
 }) {
   const score = job.fitScore?.overall ?? job.matchScore;
-  const color = score === null ? '#64748b' : scoreColor(score);
+  const color = score === null ? 'var(--text-muted)' : scoreColor(score);
   const canPrepare = job.preparationEligible;
   const packetNeedsRecovery = packet?.status === 'needs_attention' || packet?.status === 'failed';
   const canRetryPacket = packetNeedsRecovery && packet?.recovery?.action === 'retry_packet';
@@ -1159,20 +1273,21 @@ function OpportunityCard({
   return (
     <article
       className={`rounded-[16px] border bg-[var(--bg-surface)] p-4 transition ${
-        selected ? 'border-cyan-400/45 shadow-[0_0_0_3px_rgba(34,211,238,0.08)]' : 'border-[var(--border-subtle)] hover:border-cyan-400/30'
+        selected ? 'border-[var(--accent)] elevation-raised' : 'border-[var(--border-subtle)] elevation-card hover:border-[var(--accent)]'
       }`}
     >
       <button
+        data-guide={guideTarget ? FIND_ROLES_GUIDE_ANCHORS.role : undefined}
         onClick={onSelect}
         aria-pressed={selected}
         aria-controls="opportunity-intelligence-panel"
         className="block w-full text-left"
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+        <div className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
               {rank && (
-                <span className="inline-flex min-h-6 items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 text-[10px] font-semibold tabular-nums text-[var(--text-secondary)] lg:hidden">
+                <span className="inline-flex min-h-6 items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 text-[11px] font-semibold tabular-nums text-[var(--text-secondary)] lg:hidden">
                   Pick {rank}
                 </span>
               )}
@@ -1181,32 +1296,28 @@ function OpportunityCard({
               <PacketStatusPill packet={packet} />
               <RecommendationStatusPill status={job.ledgerStatus} />
             </div>
-            <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[var(--text-primary)]">{job.title}</h3>
+            <h3 className="break-words text-[15px] font-semibold leading-snug text-[var(--text-primary)]">{job.title}</h3>
             <p className="mt-1 text-sm font-medium text-[var(--text-secondary)]">{job.company}</p>
           </div>
-          <div className="shrink-0 text-right">
-            <div className="rounded-[12px] border px-3 py-2" style={{ borderColor: `${color}33`, background: `${color}10` }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color }}>{scoreLabel(score)}</p>
+          <div className="min-w-0 shrink-0 text-right">
+            <div className="flex items-center justify-between gap-3 rounded-[12px] border px-3 py-2 sm:block" style={{ borderColor: `color-mix(in srgb, ${color} 25%, transparent)`, background: `color-mix(in srgb, ${color} 10%, transparent)` }}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em]" style={{ color }}>{scoreLabel(score)}</p>
               <p className="mt-0.5 text-xl font-semibold" style={{ color }}>{score === null ? '--' : `${score}%`}</p>
             </div>
           </div>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <MetaChip icon="location_on" text={job.location} />
-          <MetaChip icon="payments" text={formatSalary(job.salary.min, job.salary.max)} />
-          <MetaChip icon="schedule" text={timeAgo(job.postedDate)} />
-        </div>
+        <p className="mt-3 min-w-0 break-words text-[11px] leading-5 text-[var(--text-secondary)]">{job.location} · {formatSalary(job.salary.min, job.salary.max, job.salary.currency)} · Posted {timeAgo(job.postedDate)}</p>
         <p className="mt-3 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">{job.recommendationReason}</p>
         {(job.fitReasons || []).length > 0 && (
           <div className="mt-3 flex min-w-0 items-start gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-            <span className="material-symbols-rounded mt-0.5 text-[14px] text-blue-600 dark:text-blue-300" aria-hidden="true">fact_check</span>
+            <span className="material-symbols-rounded mt-0.5 text-[14px] text-[var(--accent)]" aria-hidden="true">fact_check</span>
             <p className="line-clamp-2 min-w-0 text-[11px] leading-5 text-[var(--text-secondary)]">{job.fitReasons?.[0]}</p>
           </div>
         )}
         {job.skills.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {job.skills.slice(0, 6).map((skill, index) => (
-              <span key={`${skill}:${index}`} className="rounded-[8px] bg-[var(--card-bg)] px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)]">{skill}</span>
+              <span key={`${skill}:${index}`} className="rounded-[8px] bg-[var(--card-bg)] px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)]">{skill}</span>
             ))}
           </div>
         )}
@@ -1260,9 +1371,9 @@ function MetaChip({ icon, text }: { icon: string; text: string }) {
 function SourceBadge({ meta }: { meta: OpportunitySourceMeta }) {
   const direct = meta.sourceType === 'direct_ats';
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${
       direct
-        ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+        ? 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]'
         : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
     }`}>
       <span className="material-symbols-rounded text-[12px]">{direct ? 'verified' : 'travel_explore'}</span>
@@ -1274,14 +1385,14 @@ function SourceBadge({ meta }: { meta: OpportunitySourceMeta }) {
 function FreshnessBadge({ job }: { job: OpportunityJob }) {
   const risk = job.freshness.ghostRisk;
   const className = risk === 'high'
-    ? 'border-rose-400/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+    ? 'border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]'
     : risk === 'medium'
-      ? 'border-amber-400/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-      : 'border-cyan-400/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300';
+      ? 'border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)]'
+      : 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]';
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${className}`}>
       <span className="material-symbols-rounded text-[12px]">{job.freshness.isFresh ? 'bolt' : risk === 'high' ? 'warning' : 'schedule'}</span>
-      {job.freshness.isFresh ? 'Fresh' : risk === 'high' ? 'Ghost risk' : timeAgo(job.postedDate)}
+      {job.freshness.isFresh ? 'Fresh' : risk === 'high' ? 'Ghost risk' : 'Review freshness'}
     </span>
   );
 }
@@ -1290,6 +1401,7 @@ function OpportunityIntelligencePanel({
   job,
   packet,
   userSkills,
+  hasSource,
   onClose,
   onPrepare,
   onMarkApplied,
@@ -1301,6 +1413,7 @@ function OpportunityIntelligencePanel({
   job: OpportunityJob | null;
   packet?: ApplicationPacket;
   userSkills: string[];
+  hasSource: boolean;
   onClose: () => void;
   onPrepare: (job: OpportunityJob) => void;
   onMarkApplied: (job: OpportunityJob) => void;
@@ -1344,7 +1457,7 @@ function OpportunityIntelligencePanel({
   ).slice(0, 10);
 
   return (
-    <aside id="opportunity-intelligence-panel" ref={panelRef} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
+    <aside id="opportunity-intelligence-panel" ref={panelRef} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
       <div className="border-b border-[var(--border-subtle)] p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1353,16 +1466,16 @@ function OpportunityIntelligencePanel({
               <FreshnessBadge job={job} />
             </div>
             <h2 className="text-lg font-semibold leading-tight text-[var(--text-primary)]">{job.title}</h2>
-            <p className="mt-1 text-sm font-medium text-cyan-700 dark:text-cyan-300">{job.company}</p>
+            <p className="mt-1 text-sm font-medium text-[var(--accent)]">{job.company}</p>
           </div>
-          <button aria-label="Close role details" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] lg:h-8 lg:w-8">
+          <button aria-label="Close role details" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]">
             <span className="material-symbols-rounded text-base" aria-hidden="true">close</span>
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           <PanelMetric label="Fit" value={job.fitScore ? `${job.fitScore.overall}%` : '--'} />
-          <PanelMetric label="Salary" value={formatSalary(job.salary.min, job.salary.max)} />
           <PanelMetric label="Posted" value={timeAgo(job.postedDate)} />
+          <div className="col-span-2 min-w-0"><PanelMetric label="Salary" value={formatSalary(job.salary.min, job.salary.max, job.salary.currency)} /></div>
         </div>
         <div className="mt-4 grid grid-cols-4 gap-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-1">
           {(['fit', 'jd', 'packet', 'company'] as const).map(item => (
@@ -1370,7 +1483,7 @@ function OpportunityIntelligencePanel({
               key={item}
               onClick={() => setTab(item)}
               className={`min-h-11 rounded-[9px] px-2 py-2 text-xs font-semibold capitalize transition ${
-                tab === item ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                tab === item ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] elevation-card' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
               {item === 'jd' ? 'JD' : item}
@@ -1381,7 +1494,7 @@ function OpportunityIntelligencePanel({
 
       <div className="max-h-[calc(100dvh-270px)] overflow-y-auto p-5">
         {tab === 'fit' && (
-          <div className="space-y-4">
+          <div data-guide={FIND_ROLES_GUIDE_ANCHORS.evidence} className="space-y-4">
             <p className="text-sm leading-6 text-[var(--text-secondary)]">{job.recommendationReason}</p>
             <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Tune future picks</p>
@@ -1407,7 +1520,7 @@ function OpportunityIntelligencePanel({
                     }}
                     className={`min-h-11 rounded-[11px] border px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
                       feedbackTag === tag
-                        ? 'border-blue-500/45 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                        ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                         : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
@@ -1422,21 +1535,21 @@ function OpportunityIntelligencePanel({
                 icon="verified"
                 tone="blue"
                 items={job.fitReasons || []}
-                empty="Add a resume and preferences to get stronger fit evidence."
+                empty={hasSource ? 'Fit evidence has not been measured for this role yet.' : 'Add a confirmed resume and preferences to get stronger fit evidence.'}
               />
               <EvidenceNoteList
                 title="Source confidence"
                 icon="travel_explore"
                 tone="neutral"
                 items={job.sourceNotes || []}
-                empty="Source metadata was not available."
+                empty="No additional source notes were returned."
               />
               <EvidenceNoteList
                 title="Checks before applying"
                 icon="rule"
                 tone="warning"
                 items={(job.riskNotes || []).length ? job.riskNotes || [] : job.freshness.reasons}
-                empty="No major risk notes detected. Still verify the posting before applying."
+                empty="Risk checks are unavailable. Verify the original posting before applying."
               />
             </div>
             <button
@@ -1449,30 +1562,42 @@ function OpportunityIntelligencePanel({
                 });
                 window.location.href = '/suite/market-oracle';
               }}
-              className="flex w-full items-center justify-center gap-2 rounded-[13px] border border-cyan-500/20 bg-cyan-500/10 px-4 py-2.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-500/15 dark:text-cyan-300"
+              className="flex w-full items-center justify-center gap-2 rounded-[13px] border border-[var(--accent)] bg-[var(--accent-dim)] px-4 py-2.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-hover)]"
             >
               <span className="material-symbols-rounded text-base">troubleshoot</span>
               Deep Analyze in Market Oracle
             </button>
             {job.fitScore ? (
-              <div className="space-y-3">
-                <FitRow label="Skills" value={job.fitScore.skills} />
-                <FitRow label="Seniority" value={job.fitScore.titleSeniority} />
-                <FitRow label="Domain" value={job.fitScore.domain} />
-                <FitRow label="Location" value={job.fitScore.location} />
-                <FitRow label="Freshness" value={job.fitScore.freshness} />
-                <FitRow label="Your signals" value={job.fitScore.preference} />
-                <FitRow label="Risk control" value={job.fitScore.risk} />
-              </div>
+              job.fitScore.factorsMeasured === false ? (
+                <SuiteUnmeasured
+                  label="Fit breakdown not measured"
+                  reason="Only an overall match score is available for this role. Add or refresh your resume so Taco can break fit down by factor."
+                />
+              ) : (
+                <div className="space-y-3">
+                  <FitRow label="Skills" value={job.fitScore.skills} />
+                  <FitRow label="Seniority" value={job.fitScore.titleSeniority} />
+                  <FitRow label="Domain" value={job.fitScore.domain} />
+                  <FitRow label="Location" value={job.fitScore.location} />
+                  <FitRow label="Freshness" value={job.fitScore.freshness} />
+                  <FitRow label="Your signals" value={job.fitScore.preference} />
+                  <FitRow label="Risk control" value={job.fitScore.risk} />
+                </div>
+              )
             ) : (
-              <SetupNudge icon="description" title="Add resume to unlock fit scoring" body="Upload or save a resume version so Taco can rank roles by actual evidence instead of broad search terms." />
+              <SuiteUnmeasured
+                label="Fit not measured"
+                reason={hasSource
+                  ? 'This role has no measured fit score yet. Review the source and role evidence before deciding.'
+                  : 'This search did not return resume fit evidence. Confirm your source and search again.'}
+              />
             )}
-            {missingSkills.length > 0 && (
-              <div className="rounded-[14px] border border-amber-400/20 bg-amber-500/5 p-4">
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Keyword gaps</p>
+            {hasSource && userSkills.length > 0 && missingSkills.length > 0 && (
+              <div className="rounded-[14px] border border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_6%,transparent)] p-4">
+                <p className="text-xs font-semibold text-[var(--warning)]">Keyword gaps</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {missingSkills.map((skill, index) => (
-                    <span key={`${skill}:${index}`} className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{skill}</span>
+                    <span key={`${skill}:${index}`} className="rounded-full bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--warning)]">{skill}</span>
                   ))}
                 </div>
               </div>
@@ -1487,21 +1612,23 @@ function OpportunityIntelligencePanel({
               <MetaChip icon="work" text={job.employmentType} />
             </div>
             <div>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Role description</p>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Role description</p>
               <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--text-secondary)]">{job.description || 'No description was provided by the source.'}</p>
             </div>
           </div>
         )}
 
         {tab === 'packet' && (
-          <ApplicationPacketBuilder
-            job={job}
-            packet={packet}
-            onPrepare={() => onPrepare(job)}
-            onMarkApplied={() => onMarkApplied(job)}
-            onSaveLater={() => onSaveLater(job)}
-            onSkip={() => onSkip(job)}
-          />
+          <div data-guide={FIND_ROLES_GUIDE_ANCHORS.decisions}>
+            <ApplicationPacketBuilder
+              job={job}
+              packet={packet}
+              onPrepare={() => onPrepare(job)}
+              onMarkApplied={() => onMarkApplied(job)}
+              onSaveLater={() => onSaveLater(job)}
+              onSkip={() => onSkip(job)}
+            />
+          </div>
         )}
 
         {tab === 'company' && (
@@ -1525,8 +1652,8 @@ function OpportunityIntelligencePanel({
 function PanelMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
-      <p className="mt-1 truncate text-xs font-semibold text-[var(--text-primary)]">{value}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
+      <p className="mt-1 tabular-nums whitespace-nowrap text-xs font-semibold text-[var(--text-primary)]">{value}</p>
     </div>
   );
 }
@@ -1545,9 +1672,9 @@ function EvidenceNoteList({
   tone: 'blue' | 'warning' | 'neutral';
 }) {
   const toneClass = tone === 'blue'
-    ? 'text-blue-600 dark:text-blue-300'
+    ? 'text-[var(--accent)]'
     : tone === 'warning'
-      ? 'text-amber-700 dark:text-amber-300'
+      ? 'text-[var(--warning)]'
       : 'text-[var(--text-muted)]';
   const uniqueItems = Array.from(new Set(items.map(item => item.trim()).filter(Boolean)));
   const visible = uniqueItems.length ? uniqueItems.slice(0, 3) : [empty];
@@ -1569,7 +1696,15 @@ function EvidenceNoteList({
   );
 }
 
-function FitRow({ label, value }: { label: string; value: number }) {
+function FitRow({ label, value }: { label: string; value: number | null }) {
+  if (value === null || !Number.isFinite(value)) {
+    return (
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium text-[var(--text-secondary)]">{label}</span>
+        <span className="font-medium text-[var(--text-tertiary)]">Not measured</span>
+      </div>
+    );
+  }
   const color = scoreColor(value);
   return (
     <div>
@@ -1588,7 +1723,7 @@ function SetupNudge({ icon, title, body }: { icon: string; title: string; body: 
   return (
     <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="flex gap-3">
-        <span className="material-symbols-rounded mt-0.5 text-lg text-cyan-600 dark:text-cyan-300">{icon}</span>
+        <span className="material-symbols-rounded mt-0.5 text-lg text-[var(--accent)]">{icon}</span>
         <div>
           <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
           <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{body}</p>
@@ -1614,42 +1749,12 @@ function ApplicationPacketBuilder({
   onSkip: () => void;
 }) {
   const current = packet || createInitialPacket();
-  const prefersReducedMotion = useReducedMotion();
-
   if (current.status === 'preparing') {
     return (
-      <div className="relative overflow-hidden rounded-[16px] p-[1px]" role="status" aria-live="polite">
-        <motion.div
-          className="absolute left-1/2 top-1/2 h-[220%] w-[220%] -translate-x-1/2 -translate-y-1/2"
-          style={{ background: 'conic-gradient(from 0deg, transparent 0deg, transparent 250deg, rgba(34,211,238,0.08) 286deg, rgba(34,211,238,0.78) 322deg, transparent 360deg)' }}
-          animate={prefersReducedMotion ? undefined : { rotate: 360 }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-        />
-        <div className="relative rounded-[15px] border border-cyan-400/25 bg-[var(--bg-surface)] p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-cyan-500/10 text-cyan-700 dark:text-cyan-300">
-              <span className="material-symbols-rounded">auto_fix_high</span>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-[var(--text-primary)]">Taco is preparing this packet</p>
-              <p className="text-xs text-[var(--text-secondary)]">{PACKET_STAGES[current.stageIndex] || 'Working'}</p>
-            </div>
-          </div>
-          <div className="mt-4 space-y-2">
-            {PACKET_STAGES.map((stage, index) => {
-              const done = index < current.stageIndex;
-              const active = index === current.stageIndex;
-              return (
-                <div key={stage} className="flex items-center gap-3 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-                  <span className={`material-symbols-rounded text-[16px] ${done ? 'text-emerald-600 dark:text-emerald-300' : active ? 'text-cyan-600 dark:text-cyan-300' : 'text-[var(--text-muted)]'}`}>
-                    {done ? 'check_circle' : active ? 'progress_activity' : 'radio_button_unchecked'}
-                  </span>
-                  <span className={`text-xs font-medium ${active ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>{stage}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      <div className="rounded-[12px] border border-[var(--accent)] bg-[var(--bg-surface)] p-4" role="status" aria-live="polite">
+        <p className="text-sm font-semibold text-[var(--text-primary)]"><TacoName /> is preparing this packet</p>
+        <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">Resume tailoring, cover letter and checks are pending. We will show the completed work when the server confirms it.</p>
+        <p className="mt-2 text-xs text-[var(--text-muted)]">Nothing has been submitted.</p>
       </div>
     );
   }
@@ -1658,10 +1763,10 @@ function ApplicationPacketBuilder({
     const markedApplied = current.status === 'applied';
     return (
       <div className="space-y-4">
-        <div className="rounded-[14px] border border-emerald-400/25 bg-emerald-500/5 p-4">
+        <div className="rounded-[14px] border border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_6%,transparent)] p-4">
           <div className="flex items-center gap-3">
-            <span className="material-symbols-rounded text-emerald-600 dark:text-emerald-300">verified</span>
-            <div>
+            <span className="material-symbols-rounded text-[var(--success)]">verified</span>
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-[var(--text-primary)]">{markedApplied ? 'Application marked applied' : 'Packet ready for manual submit'}</p>
               <p className="text-xs text-[var(--text-secondary)]">
                 {markedApplied
@@ -1673,7 +1778,7 @@ function ApplicationPacketBuilder({
         </div>
         <div className="grid grid-cols-2 gap-2">
           <PanelMetric label="ATS" value={Number.isFinite(current.atsScore) ? `${current.atsScore}%` : 'Needs check'} />
-          <PanelMetric label="Gaps" value={`${current.keywordGaps?.length || 0}`} />
+          <PanelMetric label="Gaps" value={Array.isArray(current.keywordGaps) ? `${current.keywordGaps.length}` : 'Not checked'} />
         </div>
         {current.coverLetter && (
           <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
@@ -1695,7 +1800,7 @@ function ApplicationPacketBuilder({
         {current.keywordGaps && current.keywordGaps.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {Array.from(new Set(current.keywordGaps)).slice(0, 8).map((gap, index) => (
-              <span key={`${gap}:${index}`} className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{gap}</span>
+              <span key={`${gap}:${index}`} className="rounded-full bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--warning)]">{gap}</span>
             ))}
           </div>
         )}
@@ -1711,8 +1816,17 @@ function ApplicationPacketBuilder({
               Open posting
             </a>
           )}
+          {current.applicationId && (
+            <a
+              href={`/suite/applications?application=${encodeURIComponent(current.applicationId)}`}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--text-primary)]"
+            >
+              <span className="material-symbols-rounded text-base" aria-hidden="true">fact_check</span>
+              Continue to review
+            </a>
+          )}
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={onMarkApplied} disabled={markedApplied} className="min-h-11 min-w-0 rounded-[11px] border border-emerald-400/25 bg-emerald-500/10 px-2 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50 dark:text-emerald-300">{markedApplied ? 'Applied' : 'I submitted it'}</button>
+            <button onClick={onMarkApplied} disabled={markedApplied} className="min-h-11 min-w-0 rounded-[11px] border border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] px-2 py-2 text-xs font-semibold text-[var(--success)] disabled:opacity-50">{markedApplied ? 'Applied' : 'I submitted it'}</button>
             <button onClick={onSaveLater} className="min-h-11 min-w-0 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-2 text-xs font-semibold text-[var(--text-secondary)]">Save</button>
             <button onClick={onSkip} className="min-h-11 min-w-0 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-2 text-xs font-semibold text-[var(--text-secondary)]">Skip</button>
           </div>
@@ -1727,18 +1841,18 @@ function ApplicationPacketBuilder({
     const recoveryHref = recovery.action === 'upload_resume'
       ? '/suite/resume'
       : recovery.action === 'upgrade'
-        ? '/suite/upgrade?plan=pro'
+        ? '/suite/upgrade?plan=studio'
         : recovery.action === 'open_applications'
           ? '/suite/applications'
           : null;
     return (
-      <div className={`rounded-[14px] border p-4 ${needsAttention ? 'border-amber-400/25 bg-amber-500/5' : 'border-rose-400/25 bg-rose-500/5'}`} role="status" aria-live="polite">
+      <div className={`rounded-[14px] border p-4 ${needsAttention ? 'border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_6%,transparent)]' : 'border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)]'}`} role="status" aria-live="polite">
         <div className="flex items-start gap-3">
-          <span className={`material-symbols-rounded mt-0.5 text-[20px] ${needsAttention ? 'text-amber-700 dark:text-amber-300' : 'text-rose-700 dark:text-rose-300'}`} aria-hidden="true">
+          <span className={`material-symbols-rounded mt-0.5 text-[20px] ${needsAttention ? 'text-[var(--warning)]' : 'text-[var(--danger)]'}`} aria-hidden="true">
             {needsAttention ? 'pending_actions' : 'sync_problem'}
           </span>
           <div className="min-w-0">
-            <p className={`text-sm font-semibold ${needsAttention ? 'text-amber-800 dark:text-amber-200' : 'text-rose-700 dark:text-rose-300'}`}>{recovery.title}</p>
+            <p className={`text-sm font-semibold ${needsAttention ? 'text-[var(--warning)]' : 'text-[var(--danger)]'}`}>{recovery.title}</p>
             <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{recovery.message}</p>
           </div>
         </div>
@@ -1808,7 +1922,9 @@ function ApplicationPacketBuilder({
   );
 }
 
-export default function JobSearchPage() {
+type PendingJobSearchIntent = { query: string; location: string; salaryMin: number; owner: string; accessToken: string };
+
+function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRefObject<PendingJobSearchIntent | null> } = {}) {
   const searchParams = useSearchParams();
   const user = useStore(state => state.user);
   const jobCountUserId = String((user as any)?.uid || '');
@@ -1834,9 +1950,17 @@ export default function JobSearchPage() {
   const [resumes, setResumes] = useState<ResumeVersion[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<string | null>(null);
   const [selectedResumeName, setSelectedResumeName] = useState('');
+  const [resumeLoadAttempt, setResumeLoadAttempt] = useState(0);
+  const [resumeLoading, setResumeLoading] = useState(true);
+  const [resultContext, setResultContext] = useState<JobSearchResultContext | null>(null);
+  const sourceLoadRequestRef = useRef(0);
+  const activeSourceKeyRef = useRef<string | null>(null);
+  const resumeReadyOwnerRef = useRef("");
+  const activeRoleContextRef = useRef<{ key: string | null; descriptionKey: string | null }>({ key: null, descriptionKey: null });
+  const [resumeSourceRecovery, setResumeSourceRecovery] = useState<string | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
   const [storageHydratedUserId, setStorageHydratedUserId] = useState('');
-  const alertControlsRequested = searchParams.get('controls') === 'alerts';
+  const alertControlsRequested = searchParams.get('controls') === 'alerts' || searchParams.get('view') === 'preferences';
   const [alertSuggestedTargetRole] = useState(() => {
     if (typeof window === 'undefined') return '';
     try {
@@ -1865,13 +1989,29 @@ export default function JobSearchPage() {
   }, [alertControlsRequested, showPrefs]);
   const [hasPrefs, setHasPrefs] = useState(false);
   const detailPanelRef = useRef<HTMLElement | null>(null);
+  const workingRegionRef = useRef<HTMLElement | null>(null);
   const searchRequestIdRef = useRef(0);
   const packetRequestGenerationRef = useRef(0);
-  const pendingSearchAfterAuthRef = useRef<{ query: string; location: string; salaryMin: number } | null>(null);
+  const packetRequestRevisionsRef = useRef<Map<string, symbol>>(new Map());
+  const restoredDraftRef = useRef({ query: false, location: false, salaryMin: false });
+  const draftEditedRef = useRef(false);
+  const draftInputsRef = useRef({ query, location, salaryMin });
+  draftInputsRef.current = { query, location, salaryMin };
+  useEffect(() => () => {
+    searchRequestIdRef.current += 1;
+    packetRequestGenerationRef.current += 1;
+  }, []);
+  const localPendingSearchRef = useRef<PendingJobSearchIntent | null>(null);
+  const pendingSearchAfterAuthRef = pendingSearchRef || localPendingSearchRef;
 
   useEffect(() => {
     searchRequestIdRef.current += 1;
     packetRequestGenerationRef.current += 1;
+    restoredDraftRef.current = { query: false, location: false, salaryMin: false };
+    draftEditedRef.current = false;
+    activeSourceKeyRef.current = null;
+    sourceLoadRequestRef.current += 1;
+    setResultContext(null);
     setJobs([]);
     setSelectedJobKey(null);
     setSearchImpressionId(null);
@@ -1880,11 +2020,15 @@ export default function JobSearchPage() {
     setResumes([]);
     setSelectedResumeId(null);
     setSelectedResumeName('');
+    setResumeSourceRecovery(null);
     setQuery('');
     setLocation('');
     setSalaryMin(0);
     setMatchThreshold(50);
     setHasPrefs(false);
+    setActiveFilter('all');
+    setSortBy('relevance');
+    setHideGhosts(false);
     setHasSearched(false);
     setSearchRecovery(null);
     try {
@@ -1897,18 +2041,12 @@ export default function JobSearchPage() {
       const savedPrefs = localStorage.getItem(scopedJobStorageKey(SEARCH_PREFS_KEY, jobCountUserId));
       if (savedPrefs) {
         const parsed = JSON.parse(savedPrefs);
+        restoredDraftRef.current = { query: Boolean(parsed?.query), location: Boolean(parsed?.location), salaryMin: Boolean(parsed?.salaryMin) };
         if (typeof parsed?.query === 'string') setQuery(parsed.query.slice(0, 160));
         if (typeof parsed?.location === 'string') setLocation(parsed.location.slice(0, 160));
         if (Number.isFinite(parsed?.threshold)) setMatchThreshold(Math.max(0, Math.min(100, Number(parsed.threshold))));
         if (Number.isFinite(parsed?.salaryMin)) setSalaryMin(Math.max(0, Math.min(10_000_000, Number(parsed.salaryMin))));
       }
-      const savedSkills = localStorage.getItem(scopedJobStorageKey(RESUME_STORAGE_KEY, jobCountUserId));
-      if (savedSkills) {
-        const parsedSkills = JSON.parse(savedSkills);
-        if (Array.isArray(parsedSkills)) setUserSkills(Array.from(new Set(parsedSkills.map(String))).slice(0, 100));
-      }
-      const savedResumeId = localStorage.getItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, jobCountUserId));
-      if (savedResumeId) setSelectedResumeId(savedResumeId);
       const savedPackets = sessionStorage.getItem(scopedJobStorageKey(PACKET_STORAGE_KEY, jobCountUserId));
       if (savedPackets) setPackets(readStoredPackets(JSON.parse(savedPackets)));
     } catch {
@@ -1919,26 +2057,65 @@ export default function JobSearchPage() {
   }, [jobCountUserId]);
 
   useEffect(() => {
-    if (!user) return;
+    const requestId = ++sourceLoadRequestRef.current;
     const requestedUserId = jobCountUserId;
+    const isCurrent = () => sourceLoadRequestRef.current === requestId && activeJobUserIdRef.current === requestedUserId;
+    resumeReadyOwnerRef.current = "";
+    setResumeLoading(Boolean(user));
+    if (!user) return;
+    const failed = () => {
+      if (!isCurrent()) return;
+      activeSourceKeyRef.current = null;
+      packetRequestGenerationRef.current += 1;
+      searchRequestIdRef.current += 1;
+      setLoading(false);
+      setJobs([]);
+      setResultContext(null);
+      setSelectedJobKey(null);
+      setHasSearched(false);
+      setResumes([]);
+      setSelectedResumeId(null);
+      setSelectedResumeName('');
+      setUserSkills([]);
+      resumeReadyOwnerRef.current = requestedUserId;
+      setResumeSourceRecovery('Your resumes could not be loaded. Retry to restore source selection and fit evidence. You can still browse roles without a resume.');
+      setResumeLoading(false);
+    };
     getResumeVersions().then(result => {
-      if (activeJobUserIdRef.current !== requestedUserId) return;
-      if (!result.success || !result.data) return;
-      setResumes(result.data);
-      const savedId = localStorage.getItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, jobCountUserId));
-      const selected = result.data.find(resume => resume.id === savedId) || result.data[0];
-      if (selected) {
-        setSelectedResumeId(selected.id);
-        setSelectedResumeName(selected.version_name);
-        const skills = extractResumeSkills(selected.content);
-        if (skills.length > 0) {
-          setUserSkills(skills);
-          localStorage.setItem(scopedJobStorageKey(RESUME_STORAGE_KEY, jobCountUserId), JSON.stringify(skills));
-        }
-        mergeApplicationKitContext(resumeVersionToApplicationKitContext(selected));
+      if (!isCurrent()) return;
+      if (!result.success || !result.data) { failed(); return; }
+      const savedId = localStorage.getItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId));
+      const choice = chooseJobSearchResumeSource(result.data, savedId);
+      const selected = choice.resume;
+      const sourceKey = jobSearchSourceKey(selected);
+      if (activeSourceKeyRef.current !== sourceKey) {
+        packetRequestGenerationRef.current += 1;
+        searchRequestIdRef.current += 1;
+        setLoading(false);
+        setJobs([]);
+        setResultContext(null);
+        setSelectedJobKey(null);
+        setHasSearched(false);
       }
-    }).catch(() => {});
-  }, [jobCountUserId, user]);
+      activeSourceKeyRef.current = sourceKey;
+      setResumes(result.data);
+      setSelectedResumeId(selected?.id || null);
+      setSelectedResumeName(selected?.version_name || '');
+      const skills = selected ? extractResumeSkills(selected.content) : [];
+      setUserSkills(skills);
+      localStorage.setItem(scopedJobStorageKey(RESUME_STORAGE_KEY, requestedUserId), JSON.stringify(skills));
+      if (selected) {
+        localStorage.setItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId), selected.id);
+        mergeApplicationKitContext(resumeVersionToApplicationKitContext(selected));
+      } else localStorage.removeItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId));
+      resumeReadyOwnerRef.current = requestedUserId;
+      setResumeSourceRecovery(choice.recoveredFromId
+        ? selected ? `Your saved source is unavailable. Using ${selected.version_name}.` : 'Add or confirm a resume to measure fit and prepare a packet.'
+        : null);
+      setResumeLoading(false);
+    }).catch(failed);
+    return () => { if (sourceLoadRequestRef.current === requestId) sourceLoadRequestRef.current += 1; };
+  }, [jobCountUserId, user, resumeLoadAttempt]);
 
   useEffect(() => {
     if (!jobCountUserId || storageHydratedUserId !== jobCountUserId) return;
@@ -1955,15 +2132,12 @@ export default function JobSearchPage() {
     const requestedUserId = jobCountUserId;
     getUserProfile().then(({ data }) => {
       if (activeJobUserIdRef.current !== requestedUserId) return;
-      if (!data) return;
-      if (data.target_roles?.[0]) setQuery(data.target_roles[0]);
-      if (data.location_preference) setLocation(data.location_preference);
-      if (!selectedResumeId && Array.isArray(data.skills) && data.skills.length > 0) {
-        setUserSkills(data.skills);
-        localStorage.setItem(scopedJobStorageKey(RESUME_STORAGE_KEY, jobCountUserId), JSON.stringify(data.skills));
-      }
+      if (!data || draftEditedRef.current) return;
+      if (!restoredDraftRef.current.query && !draftInputsRef.current.query && data.target_roles?.[0]) setQuery(data.target_roles[0]);
+      if (!restoredDraftRef.current.location && !draftInputsRef.current.location && data.location_preference) setLocation(data.location_preference);
+
     }).catch(() => {});
-  }, [jobCountUserId, selectedResumeId, user, query]);
+  }, [jobCountUserId, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -1975,16 +2149,16 @@ export default function JobSearchPage() {
         if (data.success && !data.isNew) {
           const prefs = data.preferences as JobSearchPreferences;
           setHasPrefs(Boolean(prefs?.targetRoles?.length || prefs?.preferredCities?.length || prefs?.salaryMin));
-          if (!query && prefs?.targetRoles?.[0]) setQuery(prefs.targetRoles[0]);
-          if (!location) {
+          if (!draftEditedRef.current && !restoredDraftRef.current.query && !draftInputsRef.current.query && prefs?.targetRoles?.[0]) setQuery(prefs.targetRoles[0]);
+          if (!restoredDraftRef.current.location && !draftInputsRef.current.location && !draftEditedRef.current) {
             if (prefs?.preferredCities?.[0]) setLocation(prefs.preferredCities[0]);
             else if (prefs?.remotePref === 'remote') setLocation('Remote');
           }
-          if (prefs?.salaryMin) setSalaryMin(prefs.salaryMin);
+          if (!restoredDraftRef.current.salaryMin && !draftInputsRef.current.salaryMin && !draftEditedRef.current && prefs?.salaryMin) setSalaryMin(prefs.salaryMin);
         }
       })
       .catch(() => {});
-  }, [jobCountUserId, location, query, user]);
+  }, [jobCountUserId, user]);
 
   const selectedResume = useMemo(() => resumes.find(resume => resume.id === selectedResumeId) || null, [resumes, selectedResumeId]);
 
@@ -1994,8 +2168,15 @@ export default function JobSearchPage() {
     remote: jobs.filter(job => job.sourceMeta.sourceType === 'remote_board').length,
   }), [jobs]);
 
-  const packetCount = useMemo(() => Object.values(packets).filter(packet => packet.status !== 'idle').length, [packets]);
-  const strongCount = useMemo(() => jobs.filter(job => (job.fitScore?.overall || job.matchScore || 0) >= 75).length, [jobs]);
+  const selectedSourceKey = useMemo(() => jobSearchSourceKey(selectedResume), [selectedResume]);
+  const currentPackets = useMemo(() => Object.fromEntries(jobs.flatMap(job => {
+    const key = getJobResultIdentity(job);
+    const packet = packets[key];
+    return selectedSourceKey && packet?.sourceKey === selectedSourceKey && packet.jobDescriptionKey === jobSearchContentKey(job.description) ? [[key, packet]] : [];
+  })), [jobs, packets, selectedSourceKey]);
+  const inputsChanged = resultContext ? jobSearchInputsChanged(resultContext, { query, location, salaryMin, sourceKey: selectedSourceKey }) : false;
+
+  const packetCount = useMemo(() => Object.values(currentPackets).filter(packet => packet.status !== 'idle').length, [currentPackets]);
 
   const filteredJobs = useMemo(() => {
     let next = jobs.filter(job => {
@@ -2005,7 +2186,7 @@ export default function JobSearchPage() {
       if (activeFilter === 'fresh' && !job.freshness.isFresh) return false;
       if (activeFilter === 'direct' && job.sourceMeta.sourceType !== 'direct_ats') return false;
       if (activeFilter === 'remote' && !job.location.toLowerCase().includes('remote')) return false;
-      const packet = packets[getJobResultIdentity(job)];
+      const packet = currentPackets[getJobResultIdentity(job)];
       if (activeFilter === 'ready' && packet?.status !== 'ready' && packet?.status !== 'applied') return false;
       return true;
     });
@@ -2017,14 +2198,17 @@ export default function JobSearchPage() {
       next = [...next].sort((a, b) => (b.fitScore?.overall || b.matchScore || 0) - (a.fitScore?.overall || a.matchScore || 0));
     }
     return next;
-  }, [activeFilter, hideGhosts, jobs, matchThreshold, packets, sortBy]);
+  }, [activeFilter, hideGhosts, jobs, matchThreshold, currentPackets, sortBy]);
 
   const selectedJob = useMemo(
     () => filteredJobs.find(job => getJobResultIdentity(job) === selectedJobKey) || null,
     [filteredJobs, selectedJobKey],
   );
 
+  activeRoleContextRef.current = { key: selectedJob ? getJobResultIdentity(selectedJob) : null, descriptionKey: selectedJob ? jobSearchContentKey(selectedJob.description) : null };
+
   const selectJob = useCallback((job: OpportunityJob, options: { scrollToDetails?: boolean } = {}) => {
+    activeRoleContextRef.current = { key: getJobResultIdentity(job), descriptionKey: jobSearchContentKey(job.description) };
     setSelectedJobKey(getJobResultIdentity(job));
     mergeApplicationKitContext({
       ...(selectedResume ? resumeVersionToApplicationKitContext(selectedResume) : {}),
@@ -2047,8 +2231,17 @@ export default function JobSearchPage() {
 
   const selectResume = useCallback((id: string) => {
     const resume = resumes.find(item => item.id === id);
+    if (resume && !isEligibleJobSearchResume(resume)) {
+      setResumeSourceRecovery('Generated packet versions cannot be used as a source resume. Choose a confirmed source instead.');
+      return;
+    }
+    setResumeSourceRecovery(null);
     setSelectedResumeId(id || null);
     if (id !== selectedResumeId) {
+      activeSourceKeyRef.current = jobSearchSourceKey(resume || null);
+      packetRequestGenerationRef.current += 1;
+      setPackets(previous => Object.fromEntries(Object.entries(previous).map(([key, packet]) => [key, packet.status === 'preparing' ? { ...packet, status: 'failed' as const, stageIndex: 0, error: 'The resume source changed during preparation. Open Applications for any saved work, or prepare again.', recovery: classifyJobPacketFailure('network interrupted') } : packet])));
+      setResultContext(null);
       searchRequestIdRef.current += 1;
       setLoading(false);
       setJobs([]);
@@ -2058,6 +2251,7 @@ export default function JobSearchPage() {
     }
     if (!resume) {
       setSelectedResumeName('');
+      setUserSkills([]);
       if (jobCountUserId) localStorage.removeItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, jobCountUserId));
       return;
     }
@@ -2121,10 +2315,13 @@ export default function JobSearchPage() {
 
   const fetchJobs = useCallback(async (page = 1, overrideQuery?: string, overrideLocation?: string, overrideSalaryMin?: number) => {
     const search = (overrideQuery || query).trim();
-    if (!search) return;
+    if (!search || resumeLoading) return;
     const searchLocation = (overrideLocation ?? location).trim();
     const searchSalaryMin = overrideSalaryMin ?? salaryMin;
     const salaryMinDollars = searchSalaryMin > 0 ? (searchSalaryMin < 1000 ? searchSalaryMin * 1000 : searchSalaryMin) : 0;
+    const requestedOwner = jobCountUserId;
+    const requestedSourceKey = selectedSourceKey;
+    const requestedSourceName = selectedResumeName;
     const requestId = searchRequestIdRef.current + 1;
     searchRequestIdRef.current = requestId;
     setLoading(true);
@@ -2144,12 +2341,17 @@ export default function JobSearchPage() {
         headers: selectedResumeId ? { 'x-talent-resume-id': selectedResumeId } : undefined,
       });
       const data = await res.json();
-      if (requestId !== searchRequestIdRef.current) return;
+      if (requestId !== searchRequestIdRef.current || activeJobUserIdRef.current !== requestedOwner || activeSourceKeyRef.current !== requestedSourceKey) return;
       if (!res.ok || !data.success) {
         setSearchRecovery(classifyJobDiscoveryResponse(data, 'search', res.status));
         return;
       }
-      const normalized = (data.jobs || []).map(normalizeJob);
+      const scoreResumeId = typeof data.scoreResumeId === 'string' ? data.scoreResumeId : null;
+      const normalized = (Array.isArray(data.jobs) ? data.jobs : []).map((raw: unknown) => {
+        const job = normalizeJob(raw);
+        return job.preparationEligible && selectedResumeId && scoreResumeId !== selectedResumeId ? { ...job, preparationEligible: false, nextAction: 'Resume fit unavailable. Retry the search.' } : job;
+      });
+      setResultContext({ query: typeof data.query === 'string' ? data.query : search, location: typeof data.location === 'string' ? data.location : searchLocation, salaryMin: searchSalaryMin, sourceKey: requestedSourceKey, sourceName: scoreResumeId === selectedResumeId ? requestedSourceName : 'Server-selected source', scoreResumeId });
       setSearchRecovery(null);
       setJobs(normalized);
       setSearchImpressionId(typeof data.impressionId === 'string' ? data.impressionId : null);
@@ -2160,12 +2362,12 @@ export default function JobSearchPage() {
       window.dispatchEvent(new Event('job-count-updated'));
       if (normalized[0]) selectJob(normalized[0]);
     } catch (error) {
-      if (requestId !== searchRequestIdRef.current) return;
+      if (requestId !== searchRequestIdRef.current || activeJobUserIdRef.current !== requestedOwner || activeSourceKeyRef.current !== requestedSourceKey) return;
       setSearchRecovery(classifyJobDiscoveryFailure(error, 'search'));
     } finally {
       if (requestId === searchRequestIdRef.current) setLoading(false);
     }
-  }, [jobCountUserId, location, matchThreshold, query, salaryMin, selectJob, selectedResumeId, sortBy]);
+  }, [jobCountUserId, location, matchThreshold, query, salaryMin, selectJob, selectedResumeId, selectedSourceKey, selectedResumeName, resumeLoading, sortBy]);
 
   const editSearch = useCallback(() => {
     const input = document.getElementById('job-search-target-role') as HTMLInputElement | null;
@@ -2176,7 +2378,7 @@ export default function JobSearchPage() {
   const handleSearchRecoveryAction = useCallback(() => {
     if (!searchRecovery) return;
     if (searchRecovery.action === 'create_account' || searchRecovery.action === 'sign_in') {
-      pendingSearchAfterAuthRef.current = { query, location, salaryMin };
+      pendingSearchAfterAuthRef.current = { query, location, salaryMin, owner: jobCountUserId, accessToken: jobSearchAccessToken };
       setAuthModal(searchRecovery.action === 'create_account' ? 'signup' : 'login');
       return;
     }
@@ -2189,21 +2391,23 @@ export default function JobSearchPage() {
       return;
     }
     fetchJobs(1);
-  }, [fetchJobs, location, query, salaryMin, searchRecovery, setAuthModal]);
+  }, [fetchJobs, location, query, salaryMin, searchRecovery, setAuthModal, jobCountUserId, jobSearchAccessToken]);
 
   useEffect(() => {
-    if (!jobCountUserId || !pendingSearchAfterAuthRef.current) return;
     const pending = pendingSearchAfterAuthRef.current;
+    if (!pending) return;
+    if (pending.owner && jobCountUserId !== pending.owner) { pendingSearchAfterAuthRef.current = null; return; }
+    if (!jobCountUserId || resumeLoading || resumeReadyOwnerRef.current !== jobCountUserId || pending.accessToken === jobSearchAccessToken) return;
     pendingSearchAfterAuthRef.current = null;
     void fetchJobs(1, pending.query, pending.location, pending.salaryMin);
-  }, [fetchJobs, jobCountUserId, jobSearchAccessToken]);
+  }, [fetchJobs, jobCountUserId, jobSearchAccessToken, resumeLoading]);
 
-  const handlePreferencesLoaded = useCallback((prefs: JobSearchPreferences | null | undefined) => {
+  const handlePreferencesApplied = useCallback((prefs: JobSearchPreferences | null | undefined) => {
     const applied = applyPreferencesToSearch(prefs);
     if (applied?.query) {
       showToast('Preferences applied. Searching matching roles...', 'tune');
       setShowPrefs(false);
-      setTimeout(() => fetchJobs(1, applied.query, applied.location, applied.salaryMin), 0);
+      void fetchJobs(1, applied.query, applied.location, applied.salaryMin);
     } else {
       setHasPrefs(!!prefs);
       showToast('Preferences saved. Add a target role to search jobs.', 'info');
@@ -2212,7 +2416,7 @@ export default function JobSearchPage() {
 
   const runSavedSearch = useCallback((nextQuery: string) => {
     setQuery(nextQuery);
-    setTimeout(() => fetchJobs(1, nextQuery), 0);
+    void fetchJobs(1, nextQuery);
   }, [fetchJobs]);
 
   const updatePacket = useCallback((packetKey: string, patch: Partial<ApplicationPacket>) => {
@@ -2229,34 +2433,37 @@ export default function JobSearchPage() {
   const prepareApplication = useCallback(async (job: OpportunityJob) => {
     const requestUserId = jobCountUserId;
     const requestGeneration = packetRequestGenerationRef.current;
-    const requestIsCurrent = () => Boolean(requestUserId)
+    const requestSourceKey = selectedSourceKey;
+    const packetKey = getJobResultIdentity(job);
+    const requestDescriptionKey = jobSearchContentKey(job.description);
+    const requestRevision = Symbol('packet preparation');
+    const sourceRequestIsCurrent = () => Boolean(requestUserId)
       && activeJobUserIdRef.current === requestUserId
-      && packetRequestGenerationRef.current === requestGeneration;
-    if (!requestIsCurrent()) {
+      && packetRequestGenerationRef.current === requestGeneration
+      && activeSourceKeyRef.current === requestSourceKey;
+    const requestIsCurrent = () => sourceRequestIsCurrent()
+      && packetRequestRevisionsRef.current.get(packetKey) === requestRevision;
+    if (!sourceRequestIsCurrent()) {
       setAuthModal('login');
       return;
     }
-    const packetKey = getJobResultIdentity(job);
-    if (packets[packetKey]?.status === 'preparing') return;
+    if (currentPackets[packetKey]?.status === 'preparing') return;
+    if (!selectedResume || !requestSourceKey || resumeLoading || resultContext?.sourceKey !== requestSourceKey || resultContext?.scoreResumeId !== selectedResumeId) {
+      showToast('Choose a loaded, confirmed resume before preparing a packet.', 'description');
+      return;
+    }
     if (!job.preparationEligible) {
       selectJob(job, { scrollToDetails: true });
       showToast(job.nextAction || 'Review fit evidence before preparing a packet.', 'fact_check');
       return;
     }
+    // A new description or retry owns this slot; an older response cannot relabel its artifacts.
+    packetRequestRevisionsRef.current.set(packetKey, requestRevision);
     selectJob(job);
-    updatePacket(packetKey, { status: 'preparing', stageIndex: 0, error: undefined });
+    updatePacket(packetKey, { ...createInitialPacket(), sourceKey: requestSourceKey, jobDescriptionKey: requestDescriptionKey, status: 'preparing', applicationId: undefined, morphedVersionId: null, coverLetter: undefined, atsScore: undefined, keywordGaps: [], warnings: [], error: undefined, recovery: undefined });
     await recordLedgerStatus(job, 'queued', ['packet_requested']);
     if (!requestIsCurrent()) return;
 
-    let stage = 0;
-    const interval = window.setInterval(() => {
-      if (!requestIsCurrent()) {
-        window.clearInterval(interval);
-        return;
-      }
-      stage = Math.min(stage + 1, PACKET_STAGES.length - 2);
-      updatePacket(packetKey, { status: 'preparing', stageIndex: stage });
-    }, 900);
 
     try {
       const res = await authFetch('/api/agent/apply-pipeline', {
@@ -2280,17 +2487,11 @@ export default function JobSearchPage() {
       });
       const data = await res.json();
       if (!requestIsCurrent()) {
-        window.clearInterval(interval);
         return;
       }
       const atsScore = data.atsResult?.overallScore;
-      const responseReady = data.packetStatus === 'ready_for_review'
-        && typeof data.applicationId === 'string' && Boolean(data.applicationId)
-        && typeof data.morphedVersionId === 'string' && Boolean(data.morphedVersionId)
-        && typeof data.coverLetter === 'string' && Boolean(data.coverLetter.trim())
-        && Number.isFinite(atsScore);
+      const responseReady = readPreparedPacketResponse(data).ready;
       if (!res.ok) {
-        window.clearInterval(interval);
         const recovery = readJobPacketRecovery(data.recovery)
           || classifyJobPacketFailure(data.error || `Packet request failed with ${res.status}`);
         updatePacket(packetKey, {
@@ -2304,7 +2505,6 @@ export default function JobSearchPage() {
         return;
       }
       if (!responseReady) {
-        window.clearInterval(interval);
         const recovery = readJobPacketRecovery(data.recovery) || packetIncompleteRecovery({
           morphSucceeded: Boolean(data.morphedVersionId || data.morphedResume),
           coverLetterSucceeded: Boolean(data.coverLetter),
@@ -2327,7 +2527,6 @@ export default function JobSearchPage() {
         showToast(recovery.title, 'pending_actions');
         return;
       }
-      window.clearInterval(interval);
       updatePacket(packetKey, {
         status: 'ready',
         stageIndex: PACKET_STAGES.length - 1,
@@ -2343,22 +2542,23 @@ export default function JobSearchPage() {
       if (!requestIsCurrent()) return;
       await recordLedgerStatus(job, 'prepared', ['packet_prepared']);
       if (!requestIsCurrent()) return;
-      mergeApplicationKitContext({
-        applicationId: data.applicationId,
-        applicationUrl: job.outboundLinkVerified ? job.url : undefined,
-        jobDescription: job.description,
-        company: job.company,
-        jobTitle: job.title,
-        targetRole: job.title,
-        resumeVersionId: data.morphedVersionId || null,
-        resumeSnapshot: data.morphedResume || undefined,
-        resumeSource: 'job_search',
-        atsResult: data.atsResult ? { status: 'success', data: data.atsResult, updatedAt: new Date().toISOString() } : undefined,
-        coverLetterResult: data.coverLetter ? { status: 'success', data: { coverLetter: data.coverLetter }, updatedAt: new Date().toISOString() } : undefined,
-      });
+      if (activeRoleContextRef.current.key === packetKey && activeRoleContextRef.current.descriptionKey === requestDescriptionKey) {
+        mergeApplicationKitContext({
+          applicationId: data.applicationId,
+          applicationUrl: job.outboundLinkVerified ? job.url : undefined,
+          jobDescription: job.description,
+          company: job.company,
+          jobTitle: job.title,
+          targetRole: job.title,
+          resumeVersionId: data.morphedVersionId || null,
+          resumeSnapshot: data.morphedResume || undefined,
+          resumeSource: 'job_search',
+          atsResult: data.atsResult ? { status: 'success', data: data.atsResult, updatedAt: new Date().toISOString() } : undefined,
+          coverLetterResult: data.coverLetter ? { status: 'success', data: { coverLetter: data.coverLetter }, updatedAt: new Date().toISOString() } : undefined,
+        });
+      }
       showToast(`Packet ready for ${job.company}`, 'verified');
     } catch (error) {
-      window.clearInterval(interval);
       if (!requestIsCurrent()) return;
       const recovery = classifyJobPacketFailure(error);
       updatePacket(packetKey, {
@@ -2370,12 +2570,19 @@ export default function JobSearchPage() {
       });
       showToast(recovery.title, 'sync_problem');
     }
-  }, [jobCountUserId, packets, recordLedgerStatus, searchImpressionId, selectJob, selectedResumeId, setAuthModal, updatePacket]);
+  }, [jobCountUserId, currentPackets, resultContext, resumeLoading, selectedResume, selectedSourceKey, recordLedgerStatus, searchImpressionId, selectJob, selectedResumeId, setAuthModal, updatePacket]);
 
   const markApplied = useCallback(async (job: OpportunityJob) => {
     const requestUserId = jobCountUserId;
     const packetKey = getJobResultIdentity(job);
-    const packet = packets[packetKey];
+    const requestGeneration = packetRequestGenerationRef.current;
+    const requestSourceKey = selectedSourceKey;
+    const requestRevision = packetRequestRevisionsRef.current.get(packetKey);
+    const isCurrent = () => activeJobUserIdRef.current === requestUserId
+      && packetRequestGenerationRef.current === requestGeneration
+      && activeSourceKeyRef.current === requestSourceKey
+      && packetRequestRevisionsRef.current.get(packetKey) === requestRevision;
+    const packet = currentPackets[packetKey];
     if (!packet?.applicationId) {
       showToast('Prepare a tracker draft before marking this applied.', 'cancel');
       return;
@@ -2384,19 +2591,19 @@ export default function JobSearchPage() {
     if (!confirmed) return;
 
     const result = await updateApplicationStatus(packet.applicationId, 'applied', { appliedAt: new Date() });
-    if (!requestUserId || activeJobUserIdRef.current !== requestUserId) return;
+    if (!requestUserId || !isCurrent()) return;
     if (!result.success) {
       showToast(result.error || 'Could not mark this applied', 'cancel');
       return;
     }
     updatePacket(packetKey, { status: 'applied' });
     const learned = await recordLedgerStatus(job, 'applied', ['user_marked_applied']);
-    if (activeJobUserIdRef.current !== requestUserId) return;
+    if (!isCurrent()) return;
     showToast(
       learned ? `Marked applied after your manual submission to ${job.company}` : 'Application updated. Recommendation learning will retry later.',
       learned ? 'done_all' : 'sync_problem',
     );
-  }, [jobCountUserId, packets, recordLedgerStatus, updatePacket]);
+  }, [jobCountUserId, currentPackets, selectedSourceKey, recordLedgerStatus, updatePacket]);
 
   const saveLater = useCallback(async (job: OpportunityJob) => {
     const requestUserId = jobCountUserId;
@@ -2446,7 +2653,7 @@ export default function JobSearchPage() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+      if (!workingRegionRef.current || isGuidanceShortcutBlocked(event, workingRegionRef.current)) return;
       if (!filteredJobs.length) return;
       const currentIndex = Math.max(0, filteredJobs.findIndex(job => getJobResultIdentity(job) === selectedJobKey));
       if (event.key === 'ArrowDown') {
@@ -2457,8 +2664,14 @@ export default function JobSearchPage() {
         event.preventDefault();
         selectJob(filteredJobs[Math.max(0, currentIndex - 1)]);
       }
-      if ((event.key === 'p' || event.key === 'P') && selectedJob) prepareApplication(selectedJob);
-      if ((event.key === 's' || event.key === 'S') && selectedJob) saveLater(selectedJob);
+      if ((event.key === 'p' || event.key === 'P') && selectedJob) {
+        event.preventDefault();
+        void prepareApplication(selectedJob);
+      }
+      if ((event.key === 's' || event.key === 'S') && selectedJob) {
+        event.preventDefault();
+        void saveLater(selectedJob);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -2467,14 +2680,15 @@ export default function JobSearchPage() {
   return (
     <>
       <SuiteToolShell variant="workbench">
-        <JobSearchHeader
-          resultCount={jobs.length}
-          packetCount={packetCount}
-          strongCount={strongCount}
-        />
+        <FindRolesGuidance config={findRolesGuidance({ owner: jobCountUserId || 'guest', sourceKey: selectedSourceKey, hasSource: Boolean(selectedResume), query, loading, resumeLoading, hasSearched, inputsChanged, totalResults: jobs.length, visibleResults: filteredJobs.length, recovery: searchRecovery, selectedJob, packet: selectedJob ? currentPackets[getJobResultIdentity(selectedJob)] : undefined })} />
+        <ApplicationsContext active="search" context="Find roles and prepare review-ready work" />
+        <JobSearchHeader />
 
             <JobSearchCommandStrip
               query={query}
+              resultContext={resultContext}
+              inputsChanged={inputsChanged}
+              resumeLoading={resumeLoading}
               location={location}
               loading={loading}
               sourceHealth={sourceHealth}
@@ -2483,11 +2697,19 @@ export default function JobSearchPage() {
               resumes={resumes}
               selectedResumeId={selectedResumeId}
               selectedResumeName={selectedResumeName}
-              onQueryChange={setQuery}
-              onLocationChange={setLocation}
+              onQueryChange={value => { draftEditedRef.current = true; setQuery(value); }}
+              onLocationChange={value => { draftEditedRef.current = true; setLocation(value); }}
               onSearch={() => fetchJobs(1)}
               onResumeSelect={selectResume}
             />
+            {resumeSourceRecovery && (
+              <div className="mb-4 flex items-start gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-3 py-2.5 text-xs leading-5 text-[var(--text-secondary)]" role="status">
+                <span className="material-symbols-rounded mt-0.5 text-[16px] text-[var(--warning)]" aria-hidden="true">info</span>
+                <div className="min-w-0 flex-1"><p>{resumeSourceRecovery}</p>
+                  <button type="button" disabled={resumeLoading} onClick={() => setResumeLoadAttempt(value => value + 1)} className="btn-secondary mt-2 min-h-11">{resumeLoading ? 'Loading resumes…' : 'Retry resume load'}</button>
+                </div>
+              </div>
+            )}
 
             <OpportunityIntelligenceBar
               activeFilter={activeFilter}
@@ -2505,18 +2727,21 @@ export default function JobSearchPage() {
               onHideGhostsChange={value => { setHideGhosts(value); setSearchImpressionId(null); }}
               onSavedSearch={runSavedSearch}
               onPrefsToggle={() => setShowPrefs(prev => !prev)}
-              onPrefsLoaded={handlePreferencesLoaded}
+              onPrefsLoaded={prefs => setHasPrefs(Boolean(prefs?.targetRoles?.length || prefs?.preferredCities?.length || prefs?.salaryMin))}
+              onPrefsApplied={handlePreferencesApplied}
               onPrefsClose={() => setShowPrefs(false)}
             />
 
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_430px] 2xl:grid-cols-[minmax(0,1fr)_460px]">
+            <section ref={workingRegionRef} tabIndex={0} aria-label="Role results and decisions" className="grid gap-5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] xl:grid-cols-[minmax(0,1fr)_430px] 2xl:grid-cols-[minmax(0,1fr)_460px]">
               <OpportunityFeed
                 jobs={filteredJobs}
+                totalJobs={jobs.length}
+                onResetFilters={() => { setActiveFilter("all"); setMatchThreshold(0); setHideGhosts(false); }}
                 selectedId={selectedJobKey}
                 loading={loading}
                 hasSearched={hasSearched}
                 recovery={searchRecovery}
-                packets={packets}
+                packets={currentPackets}
                 onSelect={selectJob}
                 onDetails={job => selectJob(job, { scrollToDetails: true })}
                 onPrepare={prepareApplication}
@@ -2527,8 +2752,9 @@ export default function JobSearchPage() {
 
               <OpportunityIntelligencePanel
                 job={selectedJob}
-                packet={selectedJob ? packets[getJobResultIdentity(selectedJob)] : undefined}
-                userSkills={userSkills}
+                packet={selectedJob ? currentPackets[getJobResultIdentity(selectedJob)] : undefined}
+                userSkills={resultContext?.scoreResumeId === selectedResumeId ? userSkills : []}
+                hasSource={Boolean(selectedResume && resultContext?.scoreResumeId === selectedResume.id)}
                 onClose={() => setSelectedJobKey(null)}
                 onPrepare={prepareApplication}
                 onMarkApplied={markApplied}
@@ -2537,9 +2763,37 @@ export default function JobSearchPage() {
                 onFeedback={tuneRecommendation}
                 panelRef={detailPanelRef}
               />
-            </div>
+            </section>
       </SuiteToolShell>
       {renderAuthModal()}
     </>
   );
+}
+
+
+export default function JobSearchPage() {
+  const searchParams = useSearchParams();
+  const owner = useStore(state => state.user?.uid || 'guest');
+  const pendingSearchRef = useRef<PendingJobSearchIntent | null>(null);
+  const view = searchParams.get('view') || 'discover';
+  const context = Object.fromEntries(searchParams.entries());
+  return <>
+    <nav aria-label="Find roles views" className="flex min-w-0 flex-wrap gap-2 px-4 pt-4 md:px-6">
+      {[['discover', 'Discover'], ['analysis', 'Role analysis'], ['preferences', 'Preferences']].map(([value, label]) => (
+        <Link
+          key={value}
+          aria-current={view === value ? 'page' : undefined}
+          href={workspaceCompatibilityHref(`/suite/job-search?view=${value}`, context)}
+          className={`inline-flex min-h-11 min-w-0 items-center justify-center rounded border border-[color:var(--text-primary)] px-4 py-2 text-sm font-semibold transition-colors ${
+            view === value
+              ? 'bg-[color:var(--text-primary)] text-[color:var(--bg-deep)]'
+              : 'bg-[color:var(--bg-surface)] text-[color:var(--text-primary)] hover:bg-[color:var(--bg-hover)]'
+          }`}
+        >
+          {label}
+        </Link>
+      ))}
+    </nav>
+    {view === 'analysis' ? <OracleContent key={owner} /> : <JobSearchWorkspace key={owner} pendingSearchRef={pendingSearchRef} />}
+  </>;
 }

@@ -52,6 +52,8 @@ export const ResumeParseSchema = z.object({
 export const ResumeMorphSchema = z.object({
   resume: z.record(z.string(), z.unknown()),
   jobDescription: SafeText(30_000),
+  targetRole: SafeString(300).optional(),
+  targetCompany: SafeString(300).optional(),
   morphPercentage: z.number().int().min(10).max(100).optional(),
   targetPageCount: z.union([z.number().int().min(1).max(5), z.literal('auto')]).optional(),
 });
@@ -185,10 +187,14 @@ export const AdminEmailSchema = z.object({
 // ──────────────────────────────────────────────
 
 export const OracleAnalyzeSchema = z.object({
-  resumeText: SafeText(50_000),
-  jdText: SafeText(30_000).optional(),
+  resumeVersionId: z.string().regex(/^[A-Za-z0-9_-]{1,180}$/).nullable().optional(),
+  resumeText: z.string().max(50_000),
+  jdText: z.string().max(30_000).optional(),
   targetRole: SafeString(200).optional(),
   location: SafeString(200).optional(),
+  company: SafeString(200).optional(),
+  jobUrl: z.string().url().max(2000).refine(value => /^https?:\/\//i.test(value), 'Use an HTTP or HTTPS posting URL').optional(),
+  salaryTarget: z.number().finite().min(0).max(1_000_000_000).optional(),
 });
 
 // ──────────────────────────────────────────────
@@ -281,7 +287,7 @@ export const SonaAgentHarnessSchema = z.object({
 // ──────────────────────────────────────────────
 
 export const HumanizeSchema = z.object({
-  text: SafeText(50_000),
+  text: z.string().max(50_000),
   domain: z.enum(['general', 'academic', 'resume', 'marketing', 'creative']).optional().default('general'),
   tone: z.enum(['professional', 'creative', 'casual', 'academic', 'confident']).optional().default('professional'),
   lengthMode: z.enum(['exact', 'condense', 'expand']).optional().default('exact'),
@@ -289,8 +295,10 @@ export const HumanizeSchema = z.object({
   intensity: z.enum(['light', 'balanced', 'deep']).optional().default('balanced'),
   qualityMode: z.enum(['fast', 'best']).optional().default('fast'),
   protectedTerms: z.array(z.string().trim().min(1).max(120)).max(120).optional(),
-  rewriteScope: z.enum(['full', 'flagged_paragraphs']).optional().default('flagged_paragraphs'),
+  rewriteScope: z.enum(['full', 'flagged_paragraphs']).optional().default('full'),
   paragraphIndices: z.array(z.number().int().min(0).max(200)).optional(),
+  voiceSample: z.string().trim().max(5_000).optional(),
+  requestId: z.string().uuid().optional(),
 });
 
 // ──────────────────────────────────────────────

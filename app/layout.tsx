@@ -1,15 +1,18 @@
 import type { Metadata } from 'next';
 import { Google_Sans_Flex, Inter, JetBrains_Mono, Poppins } from 'next/font/google';
 import './globals.css';
+import '@/components/taco-theme.css';
+import '@/components/taco-public-palette.css';
+import '@/components/taco-identity.css';
 import ClientProviders from '@/components/ClientProviders';
 import ConsentAwareAnalytics from '@/components/privacy/ConsentAwareAnalytics';
 
 const BRAND_NAME = 'TalentConsulting.io';
 const BRAND_WORDMARK = '/brand/talentconsulting-logo-white.png';
-const BRAND_OG_IMAGE = '/brand/brand-og-v2.png';
-const BRAND_MARK_192 = '/brand/brand-icon-192.png';
-const BRAND_MARK_512 = '/brand/brand-icon-512.png';
-const BRAND_APPLE_ICON = '/brand/brand-icon-180.png';
+const BRAND_OG_IMAGE = '/opengraph-image';
+const BRAND_MARK_192 = '/taco-icon-192.png';
+const BRAND_MARK_512 = '/taco-icon-512.png';
+const BRAND_APPLE_ICON = '/taco-icon-180.png';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -43,44 +46,11 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Talent Studio — AI-Powered Career Intelligence Platform',
-    template: '%s | Talent Studio',
+    default: 'Taco — AI Job Search, Grounded in Your Experience',
+    template: '%s | Taco by TalentConsulting',
   },
-  description: 'AI career workspace for resumes, ATS checks, interview prep, job tracking, and Taco-guided application workflows. Start with free tools.',
-  keywords: [
-    'free AI humanizer',
-    'free AI text detector',
-    'AI writing detector',
-    'humanize AI text',
-    'AI text humanizer free',
-    'AI content detector',
-    'AI resume builder',
-    'ATS resume optimizer',
-    'AI interview practice',
-    'interview simulator',
-    'AI text detector',
-    'AI writing humanizer',
-    'career intelligence platform',
-    'job application tracker',
-    'resume morph',
-    'AI career coach',
-    'job description analyzer',
-    'resume templates',
-    'cover letter generator',
-    'market oracle salary data',
-    'skill gap analysis',
-    'ChatGPT detector',
-    'AI writing trust checker',
-    'AI checker free',
-    'free grammar checker',
-    'free paraphraser online',
-    'free ATS resume checker',
-    'ATS resume score free',
-    'free word counter',
-    'online word counter',
-    'talent studio',
-    'talentconsulting.io',
-  ],
+  description: 'Turn your experience into a focused job search. Taco helps you find suitable roles, prepare applications, and review your next move. Start with your resume.',
+  keywords: ['AI job search assistant', 'resume job match', 'resume tailoring', 'job application workspace', 'interview preparation', 'Taco', 'TalentConsulting'],
   authors: [{ name: BRAND_NAME, url: 'https://talentconsulting.io' }],
   creator: BRAND_NAME,
   publisher: BRAND_NAME,
@@ -94,21 +64,21 @@ export const metadata: Metadata = {
     locale: 'en_US',
     url: 'https://talentconsulting.io',
     siteName: BRAND_NAME,
-    title: 'Talent Studio — AI Career Intelligence Platform',
-    description: 'AI writing trust tools, ATS resume builder, AI interview simulator, and 22+ career intelligence tools.',
+    title: 'Taco — Your next chapter starts with you',
+    description: 'AI job search, grounded in your experience. Find suitable roles and prepare applications for your review.',
     images: [
       {
         url: BRAND_OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: 'TalentConsulting.io — AI Career Intelligence Platform',
+        alt: 'Taco by TalentConsulting — Your next chapter starts with you',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Free AI Humanizer & Text Detector — Talent Studio',
-    description: 'AI writing trust tools, ATS resume builder, AI interview simulator, and 22+ career intelligence tools.',
+    title: 'Taco — Your next chapter starts with you',
+    description: 'AI job search, grounded in your experience. Find suitable roles and prepare applications for your review.',
     images: [BRAND_OG_IMAGE],
     creator: '@talentconsulting',
   },
@@ -158,8 +128,9 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://firebaseinstallations.googleapis.com" />
         <link rel="dns-prefetch" href="https://generativelanguage.googleapis.com" />
 
-        {/* Material Symbols — loaded via stylesheet (not a font we can self-host via next/font) */}
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0" />
+        {/* Material Symbols is global in this App Router root layout. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font -- App Router root layout loads this icon font for every route. */}
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" />
 
         {/* Google Analytics 4 — deferred to not block first paint */}
         {/* FOUC prevention — set theme before first paint */}
@@ -207,7 +178,7 @@ export default function RootLayout({
                 },
                 {
                   '@type': 'WebSite',
-                  name: 'Talent Studio',
+                  name: 'Taco by TalentConsulting',
                   url: 'https://talentconsulting.io',
                 },
               ],

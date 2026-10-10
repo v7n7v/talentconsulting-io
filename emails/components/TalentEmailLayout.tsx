@@ -42,12 +42,12 @@ export function TalentEmailLayout({
         <Container style={styles.wrapper}>
           <Section style={styles.card}>
             <Section style={styles.header}>
-              <Link href={emailBrand.origin} aria-label="TalentConsulting.io home">
+              <Link href={emailBrand.origin} aria-label="Taco home">
                 <Img
                   src={emailBrand.logoUrl}
                   width="232"
-                  height="29"
-                  alt="TalentConsulting.io"
+                  height="56"
+                  alt="Taco by TalentConsulting"
                   style={styles.logo}
                 />
               </Link>

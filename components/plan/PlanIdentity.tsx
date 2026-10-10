@@ -44,10 +44,10 @@ export function PlanBadge({
   const { theme } = useTheme();
   const plan = getPlanIdentity(tier);
   const sizeClass = size === 'xs'
-    ? 'px-1.5 py-0.5 text-[8px]'
+    ? 'px-1.5 py-0.5 text-[11px]'
     : size === 'md'
       ? 'px-3 py-1 text-[11px]'
-      : 'px-2.5 py-0.5 text-[9px]';
+      : 'px-2.5 py-0.5 text-[11px]';
 
   return (
     <span
@@ -131,11 +131,11 @@ export function PlanStatusStrip({
 
   return (
     <div
-      className={`flex min-w-0 items-center gap-2 rounded-[14px] border bg-[var(--card-bg)] ${compact ? 'p-2' : 'p-3'} ${className}`}
+      className={`elevation-card flex min-w-0 items-center gap-2 rounded-[14px] border bg-[var(--card-bg)] ${compact ? 'p-2' : 'p-3'} ${className}`}
       style={{
         ...styleForTier(tier, theme),
         borderColor: 'var(--plan-border)',
-        background: `linear-gradient(135deg, color-mix(in srgb, var(--plan-accent) 7%, var(--card-bg)), var(--card-bg))`,
+        background: `color-mix(in srgb, var(--plan-accent) 7%, var(--card-bg))`,
       }}
     >
       <span
@@ -155,7 +155,7 @@ export function PlanStatusStrip({
           <PlanBadge tier={tier} active={plan.id !== 'free'} size="xs" className="shrink-0" />
         </span>
         {caption && (
-          <span className="mt-0.5 block truncate text-[10px] leading-tight text-[var(--text-muted)]">
+          <span className="mt-0.5 block truncate text-[11px] leading-tight text-[var(--text-muted)]">
             {caption}
           </span>
         )}
@@ -168,7 +168,7 @@ export function PlanStatusStrip({
             action.onClick();
           }}
           disabled={action.disabled || action.loading}
-          className="plan-focus shrink-0 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-hover)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] disabled:opacity-60"
+          className="plan-focus inline-flex min-h-11 shrink-0 items-center rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-hover)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] disabled:opacity-60"
         >
           {action.loading ? 'Opening...' : action.label}
         </button>
@@ -208,14 +208,11 @@ export function PlanIdentityCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className={`relative overflow-hidden rounded-[22px] border ${compact ? 'p-4' : 'p-5 lg:p-6'} ${className}`}
+      className={`${current ? 'elevation-raised' : 'elevation-card'} relative overflow-hidden rounded-[22px] border ${compact ? 'p-4' : 'p-5 lg:p-6'} ${className}`}
       style={{
         ...styleForTier(tier, theme),
         background: 'var(--plan-surface)',
         borderColor: 'var(--plan-border)',
-        boxShadow: current
-          ? '0 18px 48px color-mix(in srgb, var(--plan-accent) 10%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--plan-accent) 8%, transparent)'
-          : 'inset 0 0 0 1px color-mix(in srgb, var(--plan-accent) 4%, transparent)',
       }}
     >
       <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full blur-3xl opacity-20 plan-card-aura" />
@@ -236,7 +233,7 @@ export function PlanIdentityCard({
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <PlanBadge tier={tier} active={current || plan.id !== 'free'} />
                 {statusLabel && (
-                  <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+                  <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                     {statusLabel}
                   </span>
                 )}
@@ -255,7 +252,7 @@ export function PlanIdentityCard({
 
           {priceLabel && (
             <div className="shrink-0 text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Price</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Price</p>
               <p className="mt-1 whitespace-nowrap text-lg font-black tabular-nums text-[var(--text-primary)]">{priceLabel}</p>
             </div>
           )}
@@ -281,7 +278,7 @@ export function PlanIdentityCard({
                   primaryAction.onClick();
                 }}
                 disabled={primaryAction.disabled || primaryAction.loading}
-                className="plan-focus flex min-h-10 flex-1 items-center justify-center rounded-[13px] px-4 py-2 text-sm font-semibold transition hover:brightness-105 disabled:opacity-60"
+                className="plan-focus flex min-h-11 flex-1 items-center justify-center rounded-[13px] px-4 py-2 text-sm font-semibold transition hover:brightness-105 disabled:opacity-60"
                 style={{ background: 'var(--plan-accent)', color: 'var(--plan-button-text)' }}
               >
                 {primaryAction.loading ? 'Opening...' : primaryAction.label}
@@ -295,7 +292,7 @@ export function PlanIdentityCard({
                   secondaryAction.onClick();
                 }}
                 disabled={secondaryAction.disabled || secondaryAction.loading}
-                className="plan-focus flex min-h-10 flex-1 items-center justify-center rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-60"
+                className="plan-focus flex min-h-11 flex-1 items-center justify-center rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-60"
               >
                 {secondaryAction.loading ? 'Opening...' : secondaryAction.label}
               </button>

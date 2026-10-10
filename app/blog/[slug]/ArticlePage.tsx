@@ -1,5 +1,6 @@
 'use client';
 
+import { TacoName } from '@/components/BrandLogo';
 import BlogArticleLayout, { registerArticle } from './BlogArticleLayout';
 import Link from 'next/link';
 
@@ -411,7 +412,7 @@ registerArticle('ghost-jobs-how-to-spot-fake-listings', (
     <p>
       Reading 6 red flags is useful. Having AI check for them automatically is better. At <Link href="/tools/ats-analyzer">TalentConsulting.io</Link>, our fit workflow analyzes every job before you apply.
     </p>
-    <p>When you paste a job description, Taco doesn&apos;t just check your skill match. It runs a <strong>6-signal legitimacy assessment</strong>:</p>
+    <p>When you paste a job description, <TacoName /> doesn&apos;t just check your skill match. It runs a <strong>6-signal legitimacy assessment</strong>:</p>
     <ul>
       <li><strong>Tech Specificity Score</strong> — Counts unique technologies mentioned and evaluates against role expectations</li>
       <li><strong>Requirements Realism</strong> — Detects contradictions between title seniority and experience requirements</li>

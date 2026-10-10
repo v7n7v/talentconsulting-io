@@ -1,7 +1,7 @@
 /**
  * Taco AI — Vercel AI SDK Tool Definitions
  * Wraps the existing executeTool() function with Zod-schema tool definitions.
- * Tool execution logic remains in sona-tools.ts — this file only defines schemas.
+ * Tool execution logic remains in tools.ts — this file only defines schemas.
  */
 
 import { tool } from 'ai';
@@ -102,7 +102,7 @@ export function createSonaToolkit(uid: string) {
     }),
 
     queue_application: tool({
-      description: 'Save a prepared application to the user\'s "Ready to Submit" queue. This does NOT submit the application — the user reviews and submits manually. Use after morph_resume_for_job and draft_cover_letter to package everything together.',
+      description: 'Legacy compatibility tool. It cannot create a queue item or authorize preparation. Tell the user to choose a specific job in Job Search, select a confirmed resume, and use Prepare. Preparation creates internal drafts for review; the user controls any external submission.',
       inputSchema: z.object({
         company: z.string().describe('Company name'),
         role: z.string().describe('Job title'),

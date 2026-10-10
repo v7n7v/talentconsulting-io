@@ -63,7 +63,7 @@ test('export boundary restores protected education, employment, role, dates, and
     hasFullConsent: true,
   });
 
-  assert.deepEqual(prepared.resume.experience, original.experience);
+  assert.deepEqual(prepared.resume.experience.map(({ id, ...entry }) => entry), original.experience);
   assert.equal(prepared.resume.education[0].degree, original.education[0].degree);
   assert.equal(prepared.resume.education[0].institution, original.education[0].institution);
   assert.equal(prepared.resume.education[0].year, original.education[0].year);
@@ -113,7 +113,7 @@ test('an explicit user-confirmed source correction survives export validation', 
   assert.equal(canPersistPreparedResume(prepared), true);
 });
 
-test('automatic persistence stays off until education is complete', () => {
+test('incomplete education cannot persist and morph does not implicitly save', () => {
   const incomplete = prepareResumeForExport({
     mode: 'morph',
     originalResume: sourceResume('undefined'),
@@ -122,7 +122,8 @@ test('automatic persistence stays off until education is complete', () => {
   assert.equal(canPersistPreparedResume(incomplete), false);
 
   const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'suite', 'resume', 'page.tsx'), 'utf8');
-  assert.match(page, /if \(user && canPersistPreparedResume\(preparedMorph\)\)/);
+  const morphHandler = page.slice(page.indexOf('  const handleMorph ='), page.indexOf('  const getPreparedOutboundResume ='));
+  assert.doesNotMatch(morphHandler, /saveResumeVersion\(/);
 });
 
 test('create-mode export normalizes placeholders without applying morph locks', () => {
@@ -137,17 +138,33 @@ test('create-mode export normalizes placeholders without applying morph locks', 
 test('PDF and Word download paths consume the same prepared truth-locked resume', () => {
   const page = fs.readFileSync(path.join(__dirname, '..', 'app', 'suite', 'resume', 'page.tsx'), 'utf8');
 
-  assert.match(page, /const getPreparedOutboundResume = \(actionLabel: string\) =>/);
+  assert.match(page, /const getPreparedOutboundResume = \(actionLabel: string, candidateOverride\?: ResumeData\) =>/);
   assert.match(page, /prepareResumeForExport\(\{/);
   assert.match(page, /downloadResumePDF\(prepared\.resume,/);
   assert.match(page, /const resume = prepared\.resume as ResumeData;/);
   assert.match(page, /setOriginalResume\(prev => applyUpdate\(prev\)\);/);
-  assert.equal((page.match(/saveResumeVersion\(/g) || []).length, 4);
-  // Five, not six. The sixth call lived in `handleSave`, which was declared and never
-  // referenced - a dead outbound path. The five that remain are every real one:
-  // saveVersionOnly, confirmSave, handleCreateApplication, downloadPDF, downloadWord.
-  // The contract is "no outbound action bypasses the prepared resume", and it is now
-  // exactly satisfied rather than satisfied plus one corpse.
-  assert.equal((page.match(/const prepared = getPreparedOutboundResume\(/g) || []).length, 5);
+  assert.equal((page.match(/saveResumeVersion\(/g) || []).length, 3);
+  // Every outbound surface, including explicit cross-tool handoff, consumes the reviewed source.
+  const preparedActions = [...page.matchAll(/const prepared = getPreparedOutboundResume\('([^']+)'(?:, candidate)?\)/g)].map(match => match[1]).sort();
+  assert.deepEqual(preparedActions, ['writing handoff', 'saving', 'Save & Track', 'PDF export', 'Word export', 'tailoring'].sort());
+  assert.match(page, /const confirmSave = async \(\) => \{/);
+  assert.match(page, /saveResumeVersion\([\s\S]*?createJobApplication/);
   assert.match(page, /const preparedMorph = prepareResumeForExport\(\{/);
+});
+
+test('approved exact achievement reorders preserve numeric phrases through repeated export validation',()=>{
+  const source=sourceResume();
+  source.experience[0].achievements=['Improved activation by 18% through onboarding experiments.','Led quarterly roadmap planning across product, design, and engineering.','Interviewed 45 customers to prioritize the enterprise roadmap.'];
+  const candidate=structuredClone(source);
+  candidate.experience[0].achievements=[source.experience[0].achievements[1],source.experience[0].achievements[0],source.experience[0].achievements[2]];
+  const before=structuredClone(candidate);
+  const first=prepareResumeForExport({mode:'morph',originalResume:source,candidateResume:candidate});
+  assert.deepEqual(first.resume.experience[0].achievements,candidate.experience[0].achievements);
+  assert.equal(first.guardrailReport.blockedChangeCount,0);
+  const second=prepareResumeForExport({mode:'morph',originalResume:source,candidateResume:first.resume});
+  assert.deepEqual(second.resume,first.resume);assert.deepEqual(candidate,before);
+  const unsafe=structuredClone(candidate);unsafe.experience[0].achievements[1]='Improved activation by 180% through onboarding experiments.';
+  const blocked=prepareResumeForExport({mode:'morph',originalResume:source,candidateResume:unsafe});
+  assert.ok(!blocked.resume.experience[0].achievements.some(text=>text.includes('180%')));
+  assert.ok(blocked.guardrailReport.blockedChangeCount>0);
 });

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { TalentConsultingWordmark } from '@/components/BrandLogo';
+import { TacoWordmark, TacoName } from '@/components/BrandLogo';
 import JsonLd from '@/components/seo/JsonLd';
 import { PUBLIC_TOOLS } from '@/lib/tools-catalog';
 import { absoluteUrl, breadcrumbJsonLd, buildMetadata } from '@/lib/seo';
@@ -57,11 +57,11 @@ export default function ToolsIndexPage() {
             aria-label="TalentConsulting.io home"
             className="inline-flex min-h-[44px] min-w-0 items-center"
           >
-            <TalentConsultingWordmark className="w-[min(210px,48vw)]" />
+            <TacoWordmark className="w-[min(210px,48vw)]" />
           </Link>
           <Link
             href="/templates"
-            className="inline-flex min-h-[44px] items-center text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+            className="inline-flex min-h-[44px] items-center text-[12px] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
           >
             Templates
           </Link>
@@ -74,7 +74,7 @@ export default function ToolsIndexPage() {
             min-h-11 is now equally safe - tailwind.config.ts pins the 11 step to
             44px, so it no longer shrinks to 38.5px under the 14px root that
             globals.css sets below 640px. Either spelling works here. */}
-        <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-1 text-xs text-[var(--text-muted)]">
+        <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-1 text-[12px] text-[var(--text-muted)]">
           <Link
             href="/"
             className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center transition-colors hover:text-[var(--text-primary)]"
@@ -105,7 +105,7 @@ export default function ToolsIndexPage() {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold text-[var(--text-primary)]">{tool.name}</span>
-                  <span className="mt-1 block text-xs leading-5 text-[var(--text-secondary)]">{tool.summary}</span>
+                  <span className="mt-1 block text-[12px] leading-5 text-[var(--text-secondary)]">{tool.summary}</span>
                 </span>
               </Link>
             </li>
@@ -115,7 +115,7 @@ export default function ToolsIndexPage() {
         <section className="mt-12 max-w-2xl">
           <h2 className="text-lg font-semibold tracking-tight">The rest of the suite</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            Job tracking, packet preparation, story banks and Taco itself live inside the Studio,
+            Job tracking, packet preparation, story banks and <TacoName /> itself live inside the Studio,
             because they work from your saved resume rather than a single paste. Nothing is submitted
             anywhere without you approving it first.
           </p>

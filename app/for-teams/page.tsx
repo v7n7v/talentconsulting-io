@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { TalentConsultingWordmark } from '@/components/BrandLogo';
+import { TacoWordmark } from '@/components/BrandLogo';
 
 export default function ForTeamsPage() {
     const [formData, setFormData] = useState({
@@ -47,26 +47,11 @@ export default function ForTeamsPage() {
     ] as const;
 
     return (
-        // tc-dark-surface: this page is dark in both themes. Without it the
-        // global remaps resolve its ink to #010E2F on #0a0a0a. See globals.css.
-        <div className="tc-dark-surface min-h-dvh bg-[#0a0a0a] text-white">
+        <div className="min-h-dvh bg-[var(--bg-deep)] text-[var(--text-primary)]">
             {/* Hero */}
             <div className="relative overflow-hidden">
-                <div className="absolute inset-0">
-                    <motion.div
-                        animate={{ x: [0, 50, 0], y: [0, -30, 0] }}
-                        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-                        className="absolute top-20 right-20 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"
-                    />
-                    <motion.div
-                        animate={{ x: [0, -40, 0], y: [0, 60, 0] }}
-                        transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
-                        className="absolute bottom-0 left-10 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl"
-                    />
-                </div>
-
                 <div className="relative max-w-6xl mx-auto px-6 pt-16 pb-12">
-                    <Link href="/" className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors mb-8">
+                    <Link href="/" className="mb-8 inline-flex min-h-[44px] items-center gap-2 text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]">
                         ← Back to TalentConsulting.io
                     </Link>
 
@@ -75,20 +60,20 @@ export default function ForTeamsPage() {
                             leaves no vertical space and the inline-flex badge below
                             lands on the same line. The block wrapper owns the gap. */}
                         <div className="mb-8">
-                            <TalentConsultingWordmark darkSurface className="w-[min(420px,86vw)]" />
+                            <TacoWordmark className="w-[min(420px,86vw)]" />
                         </div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 mb-6">
-                            <span className="text-xs font-medium text-cyan-400">Enterprise & Education</span>
+                        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-1.5">
+                            <span className="text-xs font-medium text-[var(--accent)]">Enterprise & Education</span>
                         </div>
-                        <h1 className="text-4xl md:text-6xl font-bold mb-4 leading-tight">
-                            <span className="bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-400 bg-clip-text text-transparent">
+                        <h1 className="mb-4 text-4xl font-bold leading-tight md:text-6xl">
+                            <span className="text-[var(--accent)]">
                                 TalentConsulting.io
                             </span>
                             {' '}
                             <span className="block text-[var(--text-primary)]">for Teams</span>
                         </h1>
-                        <p className="text-lg text-[var(--text-muted)] max-w-2xl mb-8">
-                            AI-powered career readiness at scale. Equip your students, candidates, or employees with 
+                        <p className="mb-8 max-w-2xl text-lg text-[var(--text-secondary)]">
+                            AI-powered career readiness at scale. Equip your students, candidates, or employees with
                             resume intelligence, interview simulation, and skill development — all under one platform.
                         </p>
                     </motion.div>
@@ -101,7 +86,7 @@ export default function ForTeamsPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
-                    className="grid md:grid-cols-3 gap-6 mb-16"
+                    className="mb-16 grid gap-6 md:grid-cols-3"
                 >
                     {[
                         {
@@ -128,13 +113,13 @@ export default function ForTeamsPage() {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.3 + i * 0.1 }}
-                            className="p-6 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-white/20 transition-all"
+                            className="elevation-interactive rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 transition-all hover:border-[var(--border)]"
                         >
-                            <span className="material-symbols-rounded text-3xl block mb-4 text-cyan-400">{item.icon}</span>
-                            <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
-                            <p className="text-sm text-[var(--text-muted)] mb-4">{item.desc}</p>
-                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                                <span className="text-xs font-medium text-emerald-400">{item.stats}</span>
+                            <span className="material-symbols-rounded mb-4 block text-3xl text-[var(--accent)]">{item.icon}</span>
+                            <h3 className="mb-2 text-lg font-bold text-[var(--text-primary)]">{item.title}</h3>
+                            <p className="mb-4 text-sm text-[var(--text-secondary)]">{item.desc}</p>
+                            <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--accent-dim)] px-3 py-1">
+                                <span className="text-xs font-medium text-[var(--accent)]">{item.stats}</span>
                             </div>
                         </motion.div>
                     ))}
@@ -147,8 +132,8 @@ export default function ForTeamsPage() {
                     transition={{ delay: 0.5 }}
                     className="mb-16"
                 >
-                    <h2 className="text-2xl font-bold text-white mb-8 text-center">What Your Team Gets</h2>
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <h2 className="mb-8 text-center text-2xl font-bold text-[var(--text-primary)]">What Your Team Gets</h2>
+                    <div className="grid gap-4 md:grid-cols-2">
                         {[
                             { icon: 'description', title: 'AI Resume Morphing', desc: 'Dual-AI pipeline adapts resumes to any job description' },
                             { icon: 'swords', title: 'The Gauntlet', desc: '6 AI interviewer personas simulate real interviews with grading' },
@@ -157,11 +142,11 @@ export default function ForTeamsPage() {
                             { icon: 'lock', title: 'SSO & Compliance', desc: 'SAML/OIDC, data residency, and SOC 2 compliance (roadmap)' },
                             { icon: 'payments', title: 'Volume Pricing', desc: 'Per-seat pricing that makes enterprise tools affordable for education' },
                         ].map((f) => (
-                            <div key={f.title} className="flex items-start gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5">
-                                <span className="material-symbols-rounded text-xl flex-shrink-0 mt-0.5 text-cyan-400">{f.icon}</span>
+                            <div key={f.title} className="flex items-start gap-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                                <span className="material-symbols-rounded mt-0.5 flex-shrink-0 text-xl text-[var(--accent)]">{f.icon}</span>
                                 <div>
-                                    <h4 className="text-sm font-bold text-white mb-1">{f.title}</h4>
-                                    <p className="text-xs text-[var(--text-muted)]">{f.desc}</p>
+                                    <h4 className="mb-1 text-sm font-bold text-[var(--text-primary)]">{f.title}</h4>
+                                    <p className="text-xs text-[var(--text-secondary)]">{f.desc}</p>
                                 </div>
                             </div>
                         ))}
@@ -172,12 +157,12 @@ export default function ForTeamsPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.55 }}
-                    className="mb-16 rounded-2xl border border-white/10 bg-white/[0.03] p-6"
+                    className="mb-16 rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6"
                 >
                     <div className="grid gap-5 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                         <div>
-                            <h2 className="text-2xl font-bold text-white">Pilot the same tools your people will use</h2>
-                            <p className="mt-3 text-sm leading-7 text-[var(--text-muted)]">
+                            <h2 className="text-2xl font-bold text-[var(--text-primary)]">Pilot the same tools your people will use</h2>
+                            <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">
                                 TalentConsulting.io for teams builds on the public career tools and the signed-in suite. Career centers, workforce programs, staffing teams, and HR teams can review the product path before planning rollout, training, or custom onboarding.
                             </p>
                         </div>
@@ -191,10 +176,10 @@ export default function ForTeamsPage() {
                                 <Link
                                     key={item.href}
                                     href={item.href}
-                                    className="rounded-xl border border-white/10 bg-black/20 p-4 transition hover:border-cyan-500/35 hover:bg-white/[0.04]"
+                                    className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
                                 >
-                                    <span className="block text-sm font-bold text-white">{item.label}</span>
-                                    <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">{item.body}</span>
+                                    <span className="block text-sm font-bold text-[var(--text-primary)]">{item.label}</span>
+                                    <span className="mt-1 block text-xs leading-5 text-[var(--text-secondary)]">{item.body}</span>
                                 </Link>
                             ))}
                         </div>
@@ -209,30 +194,30 @@ export default function ForTeamsPage() {
                     className="max-w-2xl mx-auto"
                     id="contact"
                 >
-                    <div className="p-8 rounded-3xl bg-gradient-to-br from-white/[0.04] to-white/[0.01] border border-white/10">
+                    <div className="elevation-card rounded-3xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-8">
                         <AnimatePresence mode="wait">
                             {submitted ? (
                                 <motion.div
                                     key="success"
                                     initial={{ opacity: 0, scale: 0.9 }}
                                     animate={{ opacity: 1, scale: 1 }}
-                                    className="text-center py-12"
+                                    className="py-12 text-center"
                                 >
                                     <motion.div
                                         initial={{ scale: 0 }}
                                         animate={{ scale: 1 }}
                                         transition={{ type: 'spring', bounce: 0.5 }}
-                                        className="text-6xl mb-4"
+                                        className="mb-4"
                                     >
-                                        <span className="material-symbols-rounded text-6xl text-cyan-400">celebration</span>
+                                        <span className="material-symbols-rounded text-6xl text-[var(--accent)]">celebration</span>
                                     </motion.div>
-                                    <h3 className="text-2xl font-bold text-white mb-2">We&apos;ll be in touch!</h3>
-                                    <p className="text-[var(--text-muted)] mb-6">
+                                    <h3 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">We&apos;ll be in touch!</h3>
+                                    <p className="mb-6 text-[var(--text-secondary)]">
                                         Our team will reach out soon to discuss how TalentConsulting.io can work for {formData.organization}.
                                     </p>
                                     <Link
                                         href="/"
-                                        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-medium transition-all"
+                                        className="btn-secondary inline-flex min-h-[44px] items-center gap-2 rounded-xl px-6 py-3 font-medium"
                                     >
                                         ← Back to Home
                                     </Link>
@@ -243,81 +228,84 @@ export default function ForTeamsPage() {
                                     onSubmit={handleSubmit}
                                     className="space-y-5"
                                 >
-                                    <div className="text-center mb-6">
-                                        <h2 className="text-2xl font-bold text-white mb-1">Get Early Access</h2>
-                                        <p className="text-sm text-[var(--text-muted)]">Tell us about your organization — we&apos;ll build a custom plan.</p>
+                                    <div className="mb-6 text-center">
+                                        <h2 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">Get Early Access</h2>
+                                        <p className="text-sm text-[var(--text-secondary)]">Tell us about your organization — we&apos;ll build a custom plan.</p>
                                     </div>
 
-                                    <div className="grid md:grid-cols-2 gap-4">
+                                    <div className="grid gap-4 md:grid-cols-2">
                                         <div>
-                                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Your Name *</label>
+                                            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Your Name *</label>
                                             <input
                                                 type="text"
                                                 required
                                                 value={formData.name}
                                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                                className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all"
+                                                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-all focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)]"
                                                 placeholder="John Doe"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Work Email *</label>
+                                            <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Work Email *</label>
                                             <input
                                                 type="email"
                                                 required
                                                 value={formData.email}
                                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all"
+                                                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-all focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)]"
                                                 placeholder="john@university.edu"
                                             />
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Organization Name *</label>
+                                        <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Organization Name *</label>
                                         <input
                                             type="text"
                                             required
                                             value={formData.organization}
                                             onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
-                                            className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all"
+                                            className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-all focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)]"
                                             placeholder="State University Career Center"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">Organization Type *</label>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                            {orgTypes.map((org) => (
-                                                <button
-                                                    key={org.id}
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, orgType: org.id })}
-                                                    className={`p-3 rounded-xl border text-left transition-all ${
-                                                        formData.orgType === org.id
-                                                            ? 'bg-cyan-500/20 border-cyan-500/50 text-white'
-                                                            : 'bg-white/5 border-white/10 text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/10'
-                                                    }`}
-                                                >
-                                                    <span className="material-symbols-rounded text-base block mb-1" style={{ color: formData.orgType === org.id ? '#22d3ee' : 'rgba(255,255,255,0.4)' }}>{org.icon}</span>
-                                                    <span className="text-[11px] font-medium">{org.label}</span>
-                                                </button>
-                                            ))}
+                                        <label className="mb-2 block text-xs font-medium text-[var(--text-secondary)]">Organization Type *</label>
+                                        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                                            {orgTypes.map((org) => {
+                                                const active = formData.orgType === org.id;
+                                                return (
+                                                    <button
+                                                        key={org.id}
+                                                        type="button"
+                                                        onClick={() => setFormData({ ...formData, orgType: org.id })}
+                                                        className={`min-h-[44px] rounded-xl border p-3 text-left transition-all ${
+                                                            active
+                                                                ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
+                                                                : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                                                        }`}
+                                                    >
+                                                        <span className={`material-symbols-rounded mb-1 block text-base ${active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>{org.icon}</span>
+                                                        <span className="text-[11px] font-medium">{org.label}</span>
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-2">Expected Team Size</label>
+                                        <label className="mb-2 block text-xs font-medium text-[var(--text-secondary)]">Expected Team Size</label>
                                         <div className="flex gap-2">
                                             {['1-10', '11-50', '51-200', '200+'].map((size) => (
                                                 <button
                                                     key={size}
                                                     type="button"
                                                     onClick={() => setFormData({ ...formData, teamSize: size as any })}
-                                                    className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                                                    className={`min-h-[44px] flex-1 rounded-xl border text-sm font-medium transition-all ${
                                                         formData.teamSize === size
-                                                            ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-                                                            : 'bg-white/5 border-white/10 text-[var(--text-muted)] hover:text-[var(--text-muted)]'
+                                                            ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                                                            : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--border)]'
                                                     }`}
                                                 >
                                                     {size}
@@ -327,11 +315,11 @@ export default function ForTeamsPage() {
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Anything else? (optional)</label>
+                                        <label className="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]">Anything else? (optional)</label>
                                         <textarea
                                             value={formData.message}
                                             onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                                            className="w-full p-3 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all resize-none"
+                                            className="w-full resize-none rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] p-3 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition-all focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)]"
                                             rows={3}
                                             placeholder="Tell us about your use case, timeline, or specific needs..."
                                         />
@@ -340,19 +328,19 @@ export default function ForTeamsPage() {
                                     <button
                                         type="submit"
                                         disabled={loading || !formData.name || !formData.email || !formData.organization || !formData.orgType}
-                                        className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-emerald-500 text-white font-bold text-lg hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                                        className="btn-primary flex w-full min-h-[44px] items-center justify-center gap-3 rounded-2xl px-6 py-4 text-lg font-bold disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         {loading ? (
                                             <>
-                                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="h-5 w-5 rounded-full border-2 border-[var(--accent-on)]/30 border-t-[var(--accent-on)]" />
                                                 Sending...
                                             </>
                                         ) : (
-                                            <><span className="material-symbols-rounded text-lg align-middle mr-1">rocket_launch</span> Request Early Access</>
+                                            <><span className="material-symbols-rounded mr-1 align-middle text-lg">rocket_launch</span> Request Early Access</>
                                         )}
                                     </button>
 
-                                    <p className="text-center text-[10px] text-[var(--text-muted)]">
+                                    <p className="text-center text-[11px] text-[var(--text-muted)]">
                                         No commitment. We&apos;ll reach out to discuss pricing and onboarding.
                                     </p>
                                 </motion.form>

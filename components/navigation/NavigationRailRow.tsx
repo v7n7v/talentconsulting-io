@@ -160,7 +160,7 @@ export function NavigationRailRow({
 }: NavigationRailRowProps) {
     const rootClassName = [
         'group relative w-full border text-left transition-all duration-150',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--taco-coral)]',
         'focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--theme-bg-card)]',
         compact
             ? 'flex min-h-11 items-center justify-center gap-0 rounded-xl px-2 py-2'

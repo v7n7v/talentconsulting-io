@@ -217,7 +217,7 @@ test('ordinary unlinked debriefs remain backward compatible', async () => {
   assert.equal('applicationId' in globalThis.__applicationDebriefMocks.writes[0], false);
 });
 
-test('duplicate retries return the original write without duplicating data or stories', async () => {
+test('duplicate retries preserve the reflection without automatically promoting it to a factual story', async () => {
   const route = await routeModule;
   reset();
   const body = baseBody({
@@ -233,7 +233,7 @@ test('duplicate retries return the original write without duplicating data or st
   assert.equal(second.status, 200);
   assert.equal(duplicatePayload.duplicate, true);
   assert.equal(globalThis.__applicationDebriefMocks.writes.length, 1);
-  assert.equal(globalThis.__applicationDebriefMocks.storyCalls, 1);
+  assert.equal(globalThis.__applicationDebriefMocks.storyCalls, 0);
 });
 
 test('a reused idempotency key rejects changed content instead of confirming stale data', async () => {

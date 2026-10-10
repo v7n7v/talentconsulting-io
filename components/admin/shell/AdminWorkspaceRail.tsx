@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import {
-  TalentConsultingMark,
-  TalentConsultingWordmark,
+  TacoMark,
+  TacoWordmark,
 } from '@/components/BrandLogo';
 import { useTheme } from '@/components/ThemeProvider';
 
@@ -161,12 +161,11 @@ export function AdminWorkspaceRail() {
         inert={mobile && !open ? true : undefined}
       >
         <header className="admin-workspace-rail-brand">
-          <TalentConsultingMark className="h-8 w-8 rounded-[10px]" />
+          <TacoMark className="h-8 w-8 rounded-[10px]" />
           <span>
-            <TalentConsultingWordmark
+            <TacoWordmark
               className="w-[132px]"
-              transparent={theme === 'light'}
-              darkSurface={theme === 'dark'}
+              light={theme === 'dark'}
             />
             <small>Admin command</small>
           </span>

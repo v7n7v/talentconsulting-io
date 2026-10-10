@@ -76,7 +76,14 @@ function trimTrailingSlash(value) {
 }
 
 function normalizeSiteUrl(siteUrl) {
-  const parsed = new URL(siteUrl);
+  let parsed;
+  try {
+    rawAbsoluteUrlPath(siteUrl, 'SEO audit site URL');
+    parsed = new URL(siteUrl);
+  } catch { throw new Error('SEO audit site URL must be a safe HTTP(S) origin.'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || (parsed.pathname && parsed.pathname !== '/')) {
+    throw new Error('SEO audit site URL must be an HTTP(S) origin without credentials, path, query, or fragment.');
+  }
   parsed.hash = '';
   parsed.search = '';
   parsed.pathname = trimTrailingSlash(parsed.pathname || '/');
@@ -304,6 +311,180 @@ function parseRobots(text = '') {
   return rules;
 }
 
+const POLICY_BODY_CLASSES = new Set(['public-content', 'safe-shell', 'protected-error', 'not-found']);
+const SAFE_HEADER_NAMES = new Set(['content-type', 'x-robots-tag', 'cache-control', 'x-content-type-options', 'strict-transport-security', 'content-security-policy', 'referrer-policy', 'x-frame-options']);
+
+function validateSafePath(rawPath, label = 'path') {
+  if (typeof rawPath !== 'string' || !rawPath.startsWith('/') || rawPath.startsWith('//') || /[?#\\\u0000-\u001f]/.test(rawPath)) {
+    throw new Error(`${label} must be a safe root-relative path.`);
+  }
+  let decoded = rawPath;
+  for (let round = 0; round < 4; round += 1) {
+    if (/%(?:25)*(?:2f|5c)/i.test(decoded)) throw new Error(`${label} cannot contain encoded path separators.`);
+    let next;
+    try { next = decodeURIComponent(decoded); } catch { throw new Error(`${label} has invalid encoding.`); }
+    if (next === decoded) break;
+    decoded = next;
+  }
+  if (/%[0-9a-f]{2}/i.test(decoded) || decoded.startsWith('//') || decoded.includes('//') || decoded.includes('\\') || /[?#\u0000-\u001f]/.test(decoded) || decoded.split('/').some((part) => part === '.' || part === '..') || /[*]/.test(decoded)) {
+    throw new Error(`${label} cannot contain traversal, ambiguous separators, wildcards, or control characters.`);
+  }
+  if (/^\/(?:api|account|profile|users|user)(?:\/|$)/i.test(decoded)) throw new Error(`${label} cannot target private or API paths.`);
+  return decoded;
+}
+
+function rawAbsoluteUrlPath(value, label) {
+  const match = String(value).match(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(\/[^?#]*)?/i);
+  if (!match) throw new Error(`${label} must be an absolute HTTP(S) URL.`);
+  const pathname = match[1] || '/';
+  validateSafePath(pathname, `${label} path`);
+  return pathname;
+}
+
+function validateRedirectLocation(location, currentUrl) {
+  const raw = String(location);
+  if (/[?#\u0000-\u001f]/.test(raw) || raw.includes('\\')) throw new Error('Redirect target rejected by the anonymous audit origin policy.');
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+    rawAbsoluteUrlPath(raw, 'Redirect target');
+  } else if (raw.startsWith('//')) {
+    const match = raw.match(/^\/\/[^/]*(\/[^?#]*)?$/);
+    if (!match) throw new Error('Redirect target rejected by the anonymous audit origin policy.');
+    validateSafePath(match[1] || '/', 'Redirect target path');
+  } else if (raw.startsWith('/')) {
+    validateSafePath(raw, 'Redirect target path');
+  } else {
+    const current = new URL(currentUrl);
+    const parent = current.pathname.slice(0, current.pathname.lastIndexOf('/') + 1);
+    validateSafePath(`${parent}${raw}`, 'Redirect target path');
+  }
+}
+
+function validateRootPath(value, label = 'path') {
+  try { validateSafePath(value, `Route policy ${label}`); } catch (error) { throw new Error(error.message); }
+  return value === '/' ? '/' : value.replace(/\/+$/, '');
+}
+
+function validateRoutePolicies(policies) {
+  if (!Array.isArray(policies)) throw new Error('routePolicies must be an array.');
+  const seen = new Set();
+  return policies.map((policy, index) => {
+    const prefix = `routePolicies[${index}]`;
+    if (!policy || typeof policy !== 'object' || Array.isArray(policy)) throw new Error(`${prefix} must be an object.`);
+    const pathValue = validateRootPath(policy.path, 'path');
+    if (seen.has(pathValue)) throw new Error(`Duplicate route policy path: ${pathValue}`);
+    seen.add(pathValue);
+    if (!Array.isArray(policy.expectedStatus) || !policy.expectedStatus.length || policy.expectedStatus.some((status) => !Number.isInteger(status) || status < 100 || status > 599)) {
+      throw new Error(`${prefix}.expectedStatus must be a non-empty array of HTTP status codes.`);
+    }
+    if (!POLICY_BODY_CLASSES.has(policy.bodyClass)) throw new Error(`${prefix}.bodyClass is invalid.`);
+    if (!['allowed', 'blocked', 'either'].includes(policy.crawl)) throw new Error(`${prefix}.crawl must be allowed, blocked, or either.`);
+    if (!['index', 'noindex', 'none'].includes(policy.index)) throw new Error(`${prefix}.index must be index, noindex, or none.`);
+    if (!['self', 'omitted', 'ignore'].includes(policy.canonical)) {
+      validateRootPath(policy.canonical, 'canonical');
+    }
+    if (!['required', 'forbidden', 'optional'].includes(policy.sitemap)) throw new Error(`${prefix}.sitemap is invalid.`);
+    if (policy.requiredHeaders !== undefined) {
+      if (!policy.requiredHeaders || typeof policy.requiredHeaders !== 'object' || Array.isArray(policy.requiredHeaders)) throw new Error(`${prefix}.requiredHeaders must be an object.`);
+      for (const [name, tokens] of Object.entries(policy.requiredHeaders)) {
+        if (!SAFE_HEADER_NAMES.has(name.toLowerCase())) throw new Error(`${prefix}.requiredHeaders contains an unsupported or unsafe header name.`);
+        if (!Array.isArray(tokens) || !tokens.length || tokens.some((token) => typeof token !== 'string' || !token.trim())) throw new Error(`${prefix}.requiredHeaders values must be non-empty arrays of non-empty tokens.`);
+      }
+    }
+    const statuses = policy.expectedStatus;
+    if (policy.bodyClass === 'public-content' && statuses.some((status) => status < 200 || status >= 300)) throw new Error(`${prefix} public-content requires 2xx expected statuses.`);
+    if (policy.bodyClass === 'public-content' && policy.index === 'none') throw new Error(`${prefix} public-content cannot use index:none.`);
+    if (policy.bodyClass === 'safe-shell' && statuses.some((status) => status < 200 || status >= 300)) throw new Error(`${prefix} safe-shell requires 2xx expected statuses.`);
+    if (policy.bodyClass === 'safe-shell' && (policy.index !== 'noindex' || policy.sitemap !== 'forbidden')) throw new Error(`${prefix} safe-shell requires noindex and forbidden sitemap membership.`);
+    if (policy.bodyClass === 'protected-error' && statuses.some((status) => ![401, 403].includes(status))) throw new Error(`${prefix} protected-error requires expected status 401 or 403.`);
+    if (policy.bodyClass === 'protected-error' && (policy.index === 'index' || policy.sitemap === 'required')) throw new Error(`${prefix} protected-error cannot be indexable or required in the sitemap.`);
+    if (policy.bodyClass === 'not-found' && statuses.some((status) => ![404, 410].includes(status))) throw new Error(`${prefix} not-found requires expected status 404 or 410.`);
+    if (policy.bodyClass === 'not-found' && (policy.index === 'index' || policy.sitemap === 'required')) throw new Error(`${prefix} not-found cannot be indexable or required in the sitemap.`);
+    return { ...policy, path: pathValue, expectedStatus: [...new Set(statuses)].sort((a, b) => a - b) };
+  });
+}
+
+function validateRedirectChecks(checks, siteOrigin) {
+  if (!Array.isArray(checks)) throw new Error('redirectChecks must be an array.');
+  return checks.map((check, index) => {
+    if (!check || typeof check !== 'object' || Array.isArray(check)) throw new Error(`redirectChecks[${index}] must be an object.`);
+    let source;
+    let target;
+    try {
+      rawAbsoluteUrlPath(check.url, `redirectChecks[${index}] source`);
+      rawAbsoluteUrlPath(check.finalUrl, `redirectChecks[${index}] target`);
+      source = new URL(check.url);
+      target = new URL(check.finalUrl);
+    } catch { throw new Error(`redirectChecks[${index}] contains an invalid URL.`); }
+    const statuses = check.expectedRedirectStatus;
+    if (!['http:', 'https:'].includes(source.protocol) || !['http:', 'https:'].includes(target.protocol) || source.username || source.password || target.username || target.password || source.search || source.hash || target.search || target.hash || target.origin !== siteOrigin || !Array.isArray(statuses) || !statuses.length || statuses.some((status) => ![301, 308].includes(status))) {
+      throw new Error(`redirectChecks[${index}] is invalid or does not terminate at the audited site origin.`);
+    }
+    return { ...check, url: source.toString(), finalUrl: target.toString(), expectedRedirectStatus: [...new Set(statuses)] };
+  });
+}
+
+function policyIssue(category, message, page, ciFailure = true, severity = 'critical') {
+  return { ...makeIssue(severity, category, { url: page && (page.url || page.path) || '', message, impact: 'The route does not match its declared crawl or metadata policy.', recommendation: 'Correct the route policy or the route response so they agree.' }), ciFailure };
+}
+
+function buildRoutePolicyIssues(page, policy, context = {}) {
+  const issues = [];
+  const url = page.url || page.finalUrl || absoluteUrl(context.siteOrigin || 'https://invalid.local', policy.path);
+  const sitemapPaths = context.sitemapPaths || new Set();
+  const inSitemap = page.inSitemap === true || sitemapPaths.has(policy.path);
+  const actualStatus = Number(page.status || 0);
+  const statusExpected = policy.expectedStatus.includes(actualStatus);
+  if (!statusExpected) issues.push(policyIssue('route-status', `Expected HTTP ${policy.expectedStatus.join(' or ')}, received ${actualStatus}.`, { ...page, url }));
+
+  if (policy.sitemap === 'required' && !inSitemap) issues.push(policyIssue('sitemap-policy', 'Route is required in the sitemap but is absent.', { ...page, url }));
+  if (policy.sitemap === 'forbidden' && inSitemap) issues.push(policyIssue('sitemap-policy', 'Route is forbidden from the sitemap but is present.', { ...page, url }));
+  const isRedirected = (page.redirects || []).length > 0 || (page.finalUrl && canonicalizeUrl(page.finalUrl) !== canonicalizeUrl(page.url || page.finalUrl));
+  if (inSitemap && isRedirected) issues.push(policyIssue('sitemap-redirect', 'Sitemap route redirects before reaching its terminal response.', { ...page, url }));
+
+  const robots = context.robots || { allow: [], disallow: [] };
+  const blocked = isPathBlockedByRobots(policy.path, robots);
+  if (policy.crawl === 'allowed' && blocked) issues.push(policyIssue('crawl-policy', 'Route is blocked by robots.txt but crawl is allowed by policy.', { ...page, url }));
+  if (policy.crawl === 'blocked' && !blocked) issues.push(policyIssue('crawl-policy', 'Route is not blocked by robots.txt as required by policy.', { ...page, url }));
+  if (policy.index === 'noindex' && !page.noindex) issues.push(policyIssue('index-policy', 'Route is missing its required effective noindex directive.', { ...page, url }));
+  if (policy.index === 'index' && page.noindex && policy.bodyClass === 'public-content') issues.push(policyIssue('index-policy', 'Indexable public route has an effective noindex directive.', { ...page, url }));
+  if (policy.bodyClass === 'safe-shell' && policy.index === 'noindex' && blocked) {
+    issues.push(policyIssue('visibility-advisory', 'Robots blocking prevents crawlers from observing this route’s noindex directive.', { ...page, url }, false, 'low'));
+  }
+
+  const canonicalUrls = page.canonicalUrls || (page.canonical ? [page.canonical] : []);
+  const uniqueCanonicals = [...new Set(canonicalUrls.map((value) => {
+    try { return canonicalizeUrl(new URL(value, url).toString()); } catch { return value; }
+  }))];
+  if (page.canonicalConflict || uniqueCanonicals.length > 1) issues.push(policyIssue('canonical-policy', 'Conflicting canonical targets are present.', { ...page, url }));
+  else if (canonicalUrls.length > 1) issues.push(policyIssue('canonical-advisory', 'The same canonical target is repeated.', { ...page, url }, false, 'low'));
+  if (page.canonicalUnsafe && (policy.bodyClass === 'public-content' || policy.canonical === 'self')) issues.push(policyIssue('canonical-policy', 'Canonical target contains credentials or uses an unsupported scheme.', { ...page, url }));
+  if (policy.canonical !== 'ignore') {
+    const expectedCanonical = policy.canonical === 'self'
+      ? canonicalizeUrl(page.url || absoluteUrl(context.siteOrigin, policy.path))
+      : policy.canonical === 'omitted' ? '' : canonicalizeUrl(absoluteUrl(context.siteOrigin, policy.canonical));
+    const actualCanonical = uniqueCanonicals[0] || '';
+    if (policy.canonical === 'omitted' && actualCanonical) issues.push(policyIssue('canonical-policy', 'Route should omit its canonical link.', { ...page, url }));
+    else if (policy.canonical !== 'omitted' && (actualCanonical !== expectedCanonical || page.canonicalQueryPresent)) issues.push(policyIssue('canonical-policy', actualCanonical ? 'Canonical target does not match the configured route target.' : 'Route is missing its required canonical link.', { ...page, url }));
+    if (actualCanonical && context.siteOrigin && (policy.bodyClass === 'public-content' || policy.canonical === 'self')) {
+      let targetOrigin = '';
+      try { targetOrigin = new URL(actualCanonical).origin; } catch { /* the mismatch above already reports an invalid target */ }
+      if (targetOrigin !== context.siteOrigin) issues.push(policyIssue('canonical-policy', 'Public route canonical points off the audited site origin.', { ...page, url }));
+    }
+  }
+
+  const headers = page.headers || {};
+  for (const [name, tokens] of Object.entries(policy.requiredHeaders || {})) {
+    const actual = String(headers[name.toLowerCase()] || headers[name] || '');
+    const actualTokens = actual.toLowerCase().split(/[;,\s]+/).filter(Boolean);
+    if (tokens.some((token) => !actualTokens.includes(token.toLowerCase()))) issues.push(policyIssue('required-header', `Required header ${name} is missing a configured token.`, { ...page, url }));
+  }
+  return issues;
+}
+
+function shouldFailCi(results) {
+  return (results.issues || []).some((issue) => issue.severity === 'critical' || issue.ciFailure === true);
+}
+
 function robotPatternMatches(pattern, pathname) {
   if (!pattern) return false;
   const escaped = pattern
@@ -359,11 +540,116 @@ function isAnswerReady(page, query = '') {
   return true;
 }
 
-function parseHtmlPage(url, html, siteOrigin) {
-  const title = getTitle(html);
-  const description = getMetaContent(html, 'name', 'description');
-  const robotsMeta = getMetaContent(html, 'name', 'robots');
-  const canonical = getCanonical(html, url);
+function documentHtml(html = '') {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ');
+}
+
+function getCanonicalUrls(html, baseUrl) {
+  const urls = [];
+  for (const tag of getTags(html, 'link')) {
+    const attrs = getAttrs(tag);
+    const rel = (attrs.rel || '').toLowerCase().split(/\s+/);
+    if (!rel.includes('canonical') || !attrs.href) continue;
+    try {
+      const parsed = new URL(attrs.href, baseUrl);
+      parsed.username = '';
+      parsed.password = '';
+      parsed.search = '';
+      parsed.hash = '';
+      urls.push(canonicalizeUrl(parsed.toString()));
+    } catch {
+      urls.push('[invalid-canonical]');
+    }
+  }
+  return urls;
+}
+
+function getCanonicalState(html, baseUrl) {
+  const targets = [];
+  let queryPresent = false;
+  let unsafe = false;
+  for (const tag of getTags(html, 'link')) {
+    const attrs = getAttrs(tag);
+    if (!(attrs.rel || '').toLowerCase().split(/\s+/).includes('canonical') || !attrs.href) continue;
+    try {
+      const parsed = new URL(attrs.href, baseUrl);
+      queryPresent ||= Boolean(parsed.search);
+      unsafe ||= Boolean(parsed.username || parsed.password || !['http:', 'https:'].includes(parsed.protocol));
+      parsed.hash = '';
+      targets.push(canonicalizeUrl(parsed.toString()));
+    } catch {
+      targets.push(attrs.href);
+    }
+  }
+  return { queryPresent, unsafe, conflict: new Set(targets).size > 1 };
+}
+
+function parseDirectiveList(value) {
+  return String(value || '').toLowerCase().split(/[;,]/).map((part) => part.trim()).filter(Boolean);
+}
+
+function collectRobotsDirectives(html, xRobotsTag = '') {
+  const directives = [];
+  for (const tag of getTags(html, 'meta')) {
+    const attrs = getAttrs(tag);
+    const name = (attrs.name || '').toLowerCase();
+    if (name === 'robots' || name === 'googlebot') {
+      directives.push({ source: 'meta', agent: name, directives: parseDirectiveList(attrs.content) });
+    }
+  }
+  const headers = Array.isArray(xRobotsTag) ? xRobotsTag : [xRobotsTag];
+  for (const header of headers) {
+    for (const piece of String(header || '').split(/\r?\n/)) {
+      let activeAgent = '*';
+      let activeValues = [];
+      const flush = () => {
+        if (activeValues.length) directives.push({ source: 'header', agent: activeAgent, directives: activeValues });
+        activeValues = [];
+      };
+      for (const segment of piece.split(',')) {
+        const trimmed = segment.trim();
+        const scoped = trimmed.match(/^([a-z0-9_-]+)\s*:\s*(.*)$/i);
+        const parameterDirective = scoped && /^(max-snippet|max-image-preview|max-video-preview|unavailable_after)$/i.test(scoped[1]);
+        if (scoped && !parameterDirective) {
+          flush();
+          activeAgent = scoped[1].toLowerCase();
+          activeValues = parseDirectiveList(scoped[2]);
+        } else if (scoped) {
+          activeValues.push(`${scoped[1].toLowerCase()}: ${scoped[2].trim()}`);
+        } else {
+          activeValues.push(...parseDirectiveList(segment));
+        }
+      }
+      flush();
+    }
+  }
+  return directives;
+}
+
+function isEffectivelyNoindex(directives) {
+  return directives.some(({ agent, directives: values }) =>
+    (agent === '*' || agent === 'robots' || agent === 'googlebot') && values.some((item) => /^(noindex|none)$/.test(item))
+  );
+}
+
+function parseHtmlPage(url, html, siteOrigin, response = {}) {
+  const realHtml = documentHtml(html);
+  const title = getTitle(realHtml);
+  const description = getMetaContent(realHtml, 'name', 'description');
+  const canonicalUrls = getCanonicalUrls(realHtml, url);
+  const canonicalState = getCanonicalState(realHtml, url);
+  const canonical = canonicalUrls[0] || '';
+  const headerEntries = Object.entries(response.headers || {}).map(([key, value]) => [key.toLowerCase(), value]);
+  const xRobotsTag = response.headers && typeof response.headers.get === 'function'
+    ? response.headers.get('x-robots-tag') || ''
+    : (headerEntries.find(([key]) => key === 'x-robots-tag') || [])[1] || '';
+  const robotsDirectives = collectRobotsDirectives(realHtml, xRobotsTag);
+  const robotsMeta = getMetaContent(realHtml, 'name', 'robots');
+  const capturedHeaders = safeHeaders(response.headers);
+  if (response.contentType && !capturedHeaders['content-type']) capturedHeaders['content-type'] = response.contentType;
   const h1 = getHeadingTexts(html, 'h1');
   const paragraphs = getParagraphTexts(html);
   const jsonLd = parseJsonLd(html);
@@ -373,12 +659,22 @@ function parseHtmlPage(url, html, siteOrigin) {
   return {
     url: canonicalizeUrl(url),
     path: pathFromUrl(url),
-    status: 200,
+    status: response.status == null ? 200 : Number(response.status),
     title,
     description,
     robotsMeta,
-    noindex: /(^|,|\s)noindex(,|\s|$)/i.test(robotsMeta),
+    noindex: isEffectivelyNoindex(robotsDirectives),
     canonical,
+    canonicalUrls,
+    canonicalQueryPresent: canonicalState.queryPresent,
+    canonicalUnsafe: canonicalState.unsafe,
+    canonicalConflict: canonicalState.conflict,
+    robotsDirectives,
+    headers: capturedHeaders,
+    redirects: Array.isArray(response.redirects) ? response.redirects : [],
+    finalUrl: response.finalUrl || response.url || canonicalizeUrl(url),
+    inSitemap: Boolean(response.inSitemap),
+    bodyClass: response.bodyClass || '',
     h1,
     firstParagraph: paragraphs[0] || '',
     wordCount: getWordCount(text),
@@ -543,8 +839,8 @@ function buildPageIssues(page, context) {
       makeIssue('low', 'structured-data', {
         url: pageLabel,
         message: 'Priority page has no JSON-LD.',
-        impact: 'Structured data helps crawlers identify page type, breadcrumbs, FAQs, and software entities.',
-        recommendation: 'Add relevant JSON-LD, such as BreadcrumbList, FAQPage, Article, or SoftwareApplication.',
+        impact: 'Structured data can help crawlers identify page type and breadcrumbs.',
+        recommendation: 'Add relevant JSON-LD, such as BreadcrumbList, Article, or SoftwareApplication.',
       })
     );
   }
@@ -570,6 +866,8 @@ function analyzePriorityMappings(config, pageByPath, sitemapPaths, inboundCounts
     const targetPath = mapping.targetPath;
     const query = mapping.query;
     const page = pageByPath.get(targetPath);
+
+    if (page && page.bodyClass && page.bodyClass !== 'public-content') continue;
 
     if (!sitemapPaths.has(targetPath)) {
       issues.push(
@@ -623,7 +921,9 @@ function sortIssues(issues) {
     if (severityDelta) return severityDelta;
     const categoryDelta = a.category.localeCompare(b.category);
     if (categoryDelta) return categoryDelta;
-    return (a.url || '').localeCompare(b.url || '');
+    const urlDelta = (a.url || '').localeCompare(b.url || '');
+    if (urlDelta) return urlDelta;
+    return (a.message || '').localeCompare(b.message || '');
   });
 }
 
@@ -656,7 +956,7 @@ function renderMarkdownReport(results) {
   lines.push(`Site: ${summary.siteUrl}`);
   lines.push(`Pages crawled: ${summary.pageCount}`);
   lines.push('');
-  lines.push('This audit is deterministic and report-only. It does not call Codex, LLM APIs, search engines, or AI answer engines.');
+  lines.push('This audit is deterministic and uses anonymous HTTP requests only. It does not call Codex, LLM APIs, search engines, or AI answer engines.');
   lines.push('');
   lines.push('## Top Recommended Fix');
   lines.push('');
@@ -707,8 +1007,12 @@ function renderMarkdownReport(results) {
   lines.push('| URL | Status | Words | Internal Links | JSON-LD | Title |');
   lines.push('| --- | ---: | ---: | ---: | ---: | --- |');
   for (const page of results.pages) {
+    const words = Number.isFinite(page.wordCount) ? page.wordCount : '—';
+    const internalLinks = page.links ? page.links.internal.length : '—';
+    const jsonLdCount = page.jsonLd ? page.jsonLd.count : '—';
+    const title = (page.title || '—').replace(/\|/g, '\\|');
     lines.push(
-      `| ${page.url} | ${page.status} | ${page.wordCount || 0} | ${(page.links && page.links.internal.length) || 0} | ${(page.jsonLd && page.jsonLd.count) || 0} | ${(page.title || '').replace(/\|/g, '\\|')} |`
+      `| ${page.url} | ${page.status ?? '—'} | ${words} | ${internalLinks} | ${jsonLdCount} | ${title} |`
     );
   }
 
@@ -718,32 +1022,106 @@ function renderMarkdownReport(results) {
 async function readConfig(configPath) {
   try {
     const raw = await fs.readFile(configPath, 'utf8');
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.routePolicies)) {
+      throw new Error('SEO audit configuration must explicitly define routePolicies as an array.');
+    }
+    if (parsed.redirectChecks !== undefined && !Array.isArray(parsed.redirectChecks)) throw new Error('SEO audit redirectChecks must be an array.');
+    validateRoutePolicies(parsed.routePolicies);
+    const config = { ...DEFAULT_CONFIG, ...parsed };
+    const siteUrl = normalizeSiteUrl(config.siteUrl);
+    validateRedirectChecks(config.redirectChecks || [], new URL(siteUrl).origin);
+    return config;
   } catch (error) {
-    if (error.code === 'ENOENT') return DEFAULT_CONFIG;
+    if (error.code === 'ENOENT') throw new Error('SEO audit configuration file is missing.');
     throw error;
   }
 }
 
-async function fetchText(url, timeoutMs) {
+function safeHeaders(responseHeaders) {
+  const headers = {};
+  for (const name of SAFE_HEADER_NAMES) {
+    const value = responseHeaders && typeof responseHeaders.get === 'function'
+      ? responseHeaders.get(name)
+      : responseHeaders && Object.entries(responseHeaders).find(([key]) => key.toLowerCase() === name)?.[1];
+    if (value) headers[name] = String(value).slice(0, 2048);
+  }
+  return headers;
+}
+
+function checkedUrl(value, allowedOrigins) {
+  const raw = String(value);
+  const rawMatch = raw.match(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(\/[^?#]*)?/i);
+  const rawPath = rawMatch && rawMatch[1] ? rawMatch[1] : '/';
+  try { validateSafePath(rawPath, 'Redirect target path'); } catch { throw new Error('Redirect target rejected by the anonymous audit origin policy.'); }
+  let parsed;
+  try { parsed = new URL(value); } catch { throw new Error('Unsupported or invalid redirect URL.'); }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || !allowedOrigins.has(parsed.origin)) {
+    throw new Error('Redirect target rejected by the anonymous audit origin policy.');
+  }
+  return parsed;
+}
+
+async function fetchText(url, timeoutMs, options = {}) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timeoutReject;
+  const timeoutMsBounded = Math.max(1, Number(timeoutMs) || 15000);
+  const timeoutPromise = new Promise((_, reject) => { timeoutReject = reject; });
+  const timeout = setTimeout(() => {
+    controller.abort();
+    timeoutReject(new Error('Request timed out.'));
+  }, timeoutMsBounded);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  let allowedOrigins;
+  const maxRedirects = Math.min(5, Math.max(0, Number.isInteger(options.maxRedirects) ? options.maxRedirects : 5));
+  const redirects = [];
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'TalentConsulting-SEO-Audit/1.0 (+https://talentconsulting.io)',
-        Accept: 'text/html,application/xhtml+xml,application/xml,text/xml;q=0.9,*/*;q=0.8',
-      },
-    });
-    const text = await response.text();
+    allowedOrigins = new Set(options.allowedOrigins || [new URL(url).origin]);
+    let currentUrl = checkedUrl(url, allowedOrigins).toString();
+    const seen = new Set();
+    let response;
+    while (true) {
+      if (seen.has(currentUrl)) throw new Error('Redirect loop detected.');
+      seen.add(currentUrl);
+      response = await Promise.race([fetchImpl(currentUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        credentials: 'omit',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'TalentConsulting-SEO-Audit/1.0 (+https://talentconsulting.io)',
+          Accept: 'text/html,application/xhtml+xml,application/xml,text/xml;q=0.9,*/*;q=0.8',
+        },
+      }), timeoutPromise]);
+      const status = Number(response.status || 0);
+      if (![301, 302, 303, 307, 308].includes(status)) break;
+      const location = response.headers && response.headers.get && response.headers.get('location');
+      if (!location) throw new Error('Redirect response did not include Location.');
+      if (redirects.length >= maxRedirects) throw new Error('Redirect limit exceeded.');
+      validateRedirectLocation(location, currentUrl);
+      const nextUrl = new URL(location, currentUrl).toString();
+      // Validate before the next request so a hostile Location is never fetched.
+      checkedUrl(nextUrl, allowedOrigins);
+      redirects.push({ url: currentUrl, status, location: nextUrl });
+      if (response.body && typeof response.body.cancel === 'function') {
+        await Promise.race([Promise.resolve().then(() => response.body.cancel()).catch(() => {}), timeoutPromise]);
+      }
+      currentUrl = nextUrl;
+    }
+    const text = await Promise.race([response.text(), timeoutPromise]);
+    const headers = safeHeaders(response.headers);
     return {
-      ok: response.ok,
+      ok: response.ok === undefined ? response.status >= 200 && response.status < 300 : response.ok,
       status: response.status,
-      url: response.url,
-      contentType: response.headers.get('content-type') || '',
+      url: currentUrl,
+      contentType: headers['content-type'] || '',
+      headers,
+      redirects,
       text,
     };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('Request timed out.');
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -754,6 +1132,10 @@ async function crawlSite(options = {}) {
   const siteUrl = normalizeSiteUrl(options.site || config.siteUrl);
   const siteOrigin = new URL(siteUrl).origin;
   const timeoutMs = Number(options.timeoutMs || 15000);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const routePolicies = validateRoutePolicies(config.routePolicies === undefined ? [] : config.routePolicies);
+  const redirectChecks = validateRedirectChecks(config.redirectChecks === undefined ? [] : config.redirectChecks, siteOrigin);
+  const policyByPath = new Map(routePolicies.map((policy) => [policy.path, policy]));
   const issues = [];
   const pages = [];
 
@@ -763,7 +1145,7 @@ async function crawlSite(options = {}) {
   let sitemapUrls = [];
 
   try {
-    const robotsResponse = await fetchText(robotsUrl, timeoutMs);
+    const robotsResponse = await fetchText(robotsUrl, timeoutMs, { fetchImpl, allowedOrigins: [siteOrigin] });
     if (!robotsResponse.ok) {
       issues.push(
         makeIssue('critical', 'crawlability', {
@@ -790,7 +1172,7 @@ async function crawlSite(options = {}) {
     issues.push(
       makeIssue('critical', 'crawlability', {
         url: robotsUrl,
-        message: `Failed to fetch robots.txt: ${error.message}`,
+        message: `Failed to fetch robots.txt: ${String(error.message).slice(0, 180)}`,
         impact: 'Crawl policy could not be verified.',
         recommendation: 'Confirm the site is reachable and /robots.txt is served.',
       })
@@ -798,7 +1180,7 @@ async function crawlSite(options = {}) {
   }
 
   try {
-    const sitemapResponse = await fetchText(sitemapUrl, timeoutMs);
+    const sitemapResponse = await fetchText(sitemapUrl, timeoutMs, { fetchImpl, allowedOrigins: [siteOrigin] });
     if (!sitemapResponse.ok) {
       issues.push(
         makeIssue('critical', 'crawlability', {
@@ -809,22 +1191,32 @@ async function crawlSite(options = {}) {
         })
       );
     } else {
-      sitemapUrls = extractSitemapUrls(sitemapResponse.text)
-        .map((url) => {
-          try {
-            return canonicalizeUrl(url);
-          } catch {
-            return '';
-          }
-        })
-        .filter(Boolean)
-        .filter((url) => new URL(url).origin === siteOrigin);
+      const parsedUrls = extractSitemapUrls(sitemapResponse.text);
+      for (const rawUrl of parsedUrls) {
+        let parsed;
+        let clean;
+        try {
+          const rawPath = rawUrl.match(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*(\/[^?#]*)?/i)?.[1] || '/';
+          validateSafePath(rawPath, 'Sitemap path');
+          parsed = new URL(rawUrl);
+          if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('unsafe sitemap URL');
+          clean = canonicalizeUrl(parsed.toString());
+        } catch {
+          issues.push(policyIssue('sitemap-url', 'Sitemap contains an invalid URL entry.', { url: sitemapUrl }));
+          continue;
+        }
+        if (new URL(clean).origin !== siteOrigin) {
+          issues.push(policyIssue('sitemap-origin', `Sitemap contains an entry outside the audited origin (${new URL(clean).origin}).`, { url: sitemapUrl }));
+          continue;
+        }
+        if (!sitemapUrls.includes(clean)) sitemapUrls.push(clean);
+      }
     }
   } catch (error) {
     issues.push(
       makeIssue('critical', 'crawlability', {
         url: sitemapUrl,
-        message: `Failed to fetch sitemap.xml: ${error.message}`,
+        message: `Failed to fetch sitemap.xml: ${String(error.message).slice(0, 180)}`,
         impact: 'Public URL inventory could not be crawled.',
         recommendation: 'Confirm the site is reachable and /sitemap.xml is served.',
       })
@@ -832,46 +1224,69 @@ async function crawlSite(options = {}) {
   }
 
   const maxPages = Number(options.maxPages || 0);
-  const urlsToCrawl = maxPages > 0 ? sitemapUrls.slice(0, maxPages) : sitemapUrls;
+  const sampledSitemapUrls = maxPages > 0 ? sitemapUrls.slice(0, maxPages) : sitemapUrls;
+  const urlsToCrawl = [...sampledSitemapUrls];
+  for (const policy of routePolicies) {
+    if (!urlsToCrawl.includes(absoluteUrl(siteUrl, policy.path))) urlsToCrawl.push(absoluteUrl(siteUrl, policy.path));
+  }
   const priorityByPath = new Map((config.priorityMappings || []).map((item) => [item.targetPath, item.query]));
 
   for (const url of urlsToCrawl) {
+    const routePath = pathFromUrl(url);
+    const explicitPolicy = policyByPath.get(routePath);
+    const policy = explicitPolicy || {
+      path: routePath,
+      expectedStatus: [200],
+      bodyClass: 'public-content',
+      crawl: 'allowed',
+      index: 'index',
+      canonical: 'self',
+      sitemap: 'required',
+    };
+    const isSitemapSample = sampledSitemapUrls.includes(url);
     try {
-      const response = await fetchText(url, timeoutMs);
-      if (response.status !== 200) {
-        pages.push({ url, path: pathFromUrl(url), status: response.status });
-        issues.push(
-          makeIssue('critical', 'crawlability', {
-            url,
-            message: `Public sitemap URL returned HTTP ${response.status}.`,
-            impact: 'A public URL in the sitemap is not cleanly crawlable.',
-            recommendation: 'Fix the route response or remove the URL from the sitemap.',
-          })
-        );
-        continue;
+      const response = await fetchText(url, timeoutMs, { fetchImpl, allowedOrigins: [siteOrigin] });
+      const page = parseHtmlPage(url, response.text, siteOrigin, {
+        status: response.status,
+        finalUrl: response.url,
+        headers: response.headers,
+        contentType: response.contentType,
+        redirects: response.redirects,
+        inSitemap: sitemapUrls.includes(url),
+        bodyClass: policy.bodyClass,
+      });
+      if (policy.bodyClass !== 'public-content') {
+        for (const field of ['title', 'description', 'h1', 'firstParagraph', 'wordCount', 'text', 'jsonLd', 'links', 'dataHeavy', 'externalCitationCount']) delete page[field];
       }
-
-      const page = parseHtmlPage(url, response.text, siteOrigin);
-      page.status = response.status;
-      page.finalUrl = response.url;
+      pages.push(page);
+      if (explicitPolicy || isSitemapSample) {
+        issues.push(...buildRoutePolicyIssues(page, policy, { robots, sitemapPaths: new Set(sitemapUrls.map(pathFromUrl)), siteOrigin }));
+      }
+      if (policy.bodyClass === 'public-content' && response.status === 200) {
+        issues.push(...buildPageIssues(page, { config, robots, priorityQuery: priorityByPath.get(page.path) || '' }).filter((issue) => !['crawlability', 'indexation', 'canonical'].includes(issue.category)));
+      }
+    } catch (error) {
+      const page = { url, path: routePath, status: null, error: String(error.message).slice(0, 180), redirects: [], inSitemap: sitemapUrls.includes(url), bodyClass: policy.bodyClass };
       pages.push(page);
       issues.push(
-        ...buildPageIssues(page, {
-          config,
-          robots,
-          priorityQuery: priorityByPath.get(page.path) || '',
-        })
-      );
-    } catch (error) {
-      pages.push({ url, path: pathFromUrl(url), status: 0, error: error.message });
-      issues.push(
-        makeIssue('critical', 'crawlability', {
+        policyIssue('crawlability', `Failed to fetch route: ${String(error.message).slice(0, 180)}`, {
           url,
-          message: `Failed to fetch sitemap URL: ${error.message}`,
-          impact: 'A public URL in the sitemap could not be audited.',
-          recommendation: 'Confirm the route is reachable from CI and production.',
         })
       );
+    }
+  }
+
+  for (const check of redirectChecks) {
+    const source = new URL(check.url);
+    const target = new URL(check.finalUrl);
+    const allowedStatuses = check.expectedRedirectStatus;
+    try {
+      const probe = await fetchText(check.url, timeoutMs, { fetchImpl, allowedOrigins: [source.origin, siteOrigin] });
+      const terminal = canonicalizeUrl(probe.url) === canonicalizeUrl(check.finalUrl) && probe.status === 200;
+      const permanent = probe.redirects.length > 0 && probe.redirects.every((item) => allowedStatuses.includes(item.status));
+      if (!terminal || !permanent) issues.push(policyIssue('host-redirect', 'Declared host redirect did not follow the configured permanent redirect chain to the expected 200 URL.', { url: check.url }));
+    } catch (error) {
+      issues.push(policyIssue('host-redirect', `Declared host redirect probe failed: ${String(error.message).slice(0, 180)}`, { url: check.url }));
     }
   }
 
@@ -940,7 +1355,7 @@ async function main() {
   console.log(`Summary: ${paths.markdownPath}`);
   console.log(`JSON: ${paths.jsonPath}`);
 
-  if (args.ci && summary.counts.critical > 0) {
+  if (args.ci && shouldFailCi(results)) {
     process.exitCode = 1;
   }
 }
@@ -968,4 +1383,9 @@ module.exports = {
   renderMarkdownReport,
   summarize,
   tokenCoverage,
+  validateRoutePolicies,
+  validateRedirectChecks,
+  buildRoutePolicyIssues,
+  shouldFailCi,
+  fetchText,
 };

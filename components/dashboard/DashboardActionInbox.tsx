@@ -18,7 +18,7 @@ import { SuitePanel, SuiteToolIcon } from '@/components/suite/SuiteToolChrome';
 
 const EMPTY_INBOX = buildDashboardActionInbox({});
 
-export default function DashboardActionInbox() {
+export default function DashboardActionInbox({ className = '' }: { className?: string }) {
   const user = useStore(state => state.user);
   const [inbox, setInbox] = useState<DashboardActionInboxResult>(EMPTY_INBOX);
   const [loading, setLoading] = useState(true);
@@ -82,11 +82,12 @@ export default function DashboardActionInbox() {
   }, [user]);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => { void load(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   return (
-    <SuitePanel className="mb-6 overflow-hidden p-0">
+    <SuitePanel className={`mb-6 overflow-hidden p-0 ${className}`}>
       <div className="flex min-w-0 items-start justify-between gap-3 border-b border-[var(--border-subtle)] px-4 py-4 md:px-5">
         <div className="flex min-w-0 items-start gap-3">
           <SuiteToolIcon icon="inbox" size="sm" />
@@ -94,7 +95,7 @@ export default function DashboardActionInbox() {
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="premium-heading-wrap text-base font-semibold text-[var(--text-primary)]">Today</h2>
               {!loading && inbox.total > 0 && (
-                <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--text-secondary)]">
+                <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--text-secondary)]">
                   {inbox.total} action{inbox.total === 1 ? '' : 's'}
                 </span>
               )}
@@ -129,7 +130,7 @@ export default function DashboardActionInbox() {
             >
               <SuiteToolIcon icon={item.icon} size="sm" />
               <span className="min-w-0">
-                <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                   {item.eyebrow}
                 </span>
                 <span className="premium-heading-wrap mt-1 block text-sm font-semibold leading-5 text-[var(--text-primary)]">

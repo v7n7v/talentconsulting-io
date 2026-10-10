@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { TacoName } from '@/components/BrandLogo';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { completeOnboarding, type UserProfile } from '@/lib/database-suite';
 import { normalizeResume, type CanonicalResume } from '@/lib/resume-normalizer';
 import { runPostOnboardingPipeline } from '@/lib/onboarding-pipeline';
 import { useStore } from '@/lib/store';
 import { showToast } from '@/components/Toast';
-import { ResumeUploadError, uploadAndParseResume, validateResumeFile } from '@/lib/resume-upload';
+import { ResumeUploadError, startResumeUpload, validateResumeFile } from '@/lib/resume-upload';
+import { ResumeIntakeReview } from '@/components/resume-intake/ResumeIntakeReview';
 
 // ── Career field options ──
 const CAREER_FIELDS = [
@@ -50,7 +52,13 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
   const [resumeText, setResumeText] = useState('');
   const [resumeParsed, setResumeParsed] = useState<CanonicalResume | null>(null);
   const [resumeFileName, setResumeFileName] = useState('');
+  const [resumeConfirmed, setResumeConfirmed] = useState(false);
+  const [resumeConfirmedAt, setResumeConfirmedAt] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  const uploadRequestRef = useRef(0);
+
+  useEffect(() => () => uploadAbortRef.current?.abort(), []);
 
   // Step 2: Career goals
   const [careerFields, setCareerFields] = useState<string[]>([]);
@@ -79,12 +87,19 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
       return;
     }
 
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+    const requestId = ++uploadRequestRef.current;
     setParsing(true);
     try {
-      const data = await uploadAndParseResume(file);
+      const data = await startResumeUpload(file, { signal: controller.signal }).promise;
+      if (controller.signal.aborted || requestId !== uploadRequestRef.current) return;
 
       setResumeText(data.text);
       setResumeFileName(file.name);
+      setResumeConfirmed(false);
+      setResumeConfirmedAt(null);
 
       // Try to normalize into canonical structure
       try {
@@ -97,19 +112,18 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
 
       showToast('Resume uploaded successfully!', 'check_circle');
 
-      // Auto-advance to Step 2 after a brief pause
-      setTimeout(() => {
-        setDirection(1);
-        setStep(s => Math.min(s + 1, 3));
-      }, 1200);
     } catch (err: any) {
+      if (controller.signal.aborted || requestId !== uploadRequestRef.current) return;
       if (err instanceof ResumeUploadError && err.code === 'SCANNED_PDF') {
         showToast('This looks like a scanned PDF. Please upload a text-based PDF or Word file.', 'error');
       } else {
         showToast(err.message || 'Failed to process resume', 'error');
       }
     } finally {
-      setParsing(false);
+      if (requestId === uploadRequestRef.current) {
+        uploadAbortRef.current = null;
+        setParsing(false);
+      }
     }
   }, []);
 
@@ -147,7 +161,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
         .map(r => r.trim())
         .filter(Boolean);
 
-      const onboardingData = {
+      const onboardingData: Parameters<typeof completeOnboarding>[0] = {
         career_fields: careerFields,
         seniority_level: seniority,
         job_search_status: searchStatus,
@@ -157,8 +171,19 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
         // answer and must not be dropped the way `salaryMin &&` dropped it.
         salary_range:
           salaryMin !== null && salaryMax !== null ? { min: salaryMin, max: salaryMax } : undefined,
-        base_resume_text: resumeText || undefined,
-        base_resume_parsed: resumeParsed || undefined,
+        base_resume_text: resumeConfirmedAt ? resumeText || undefined : undefined,
+        base_resume_parsed: resumeConfirmedAt ? resumeParsed || undefined : undefined,
+        resume_provenance: resumeConfirmedAt ? {
+          verified: true,
+          origin: 'onboarding_upload' as const,
+          recordedAt: resumeConfirmedAt,
+        } : undefined,
+        resume_source_meta: resumeConfirmedAt ? {
+          fileName: resumeFileName,
+          sourceType: 'direct',
+          characterCount: resumeText.length,
+          confirmedAt: resumeConfirmedAt,
+        } : undefined,
       };
 
       const result = await completeOnboarding(onboardingData);
@@ -193,14 +218,25 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
   const [direction, setDirection] = useState(1);
 
   const goNext = () => { setDirection(1); setStep(s => Math.min(s + 1, 3)); };
+  const skipResume = () => {
+    uploadAbortRef.current?.abort();
+    uploadRequestRef.current += 1;
+    setParsing(false);
+    setResumeText('');
+    setResumeParsed(null);
+    setResumeFileName('');
+    setResumeConfirmed(false);
+    setResumeConfirmedAt(null);
+    goNext();
+  };
   const goBack = () => { setDirection(-1); setStep(s => Math.max(s - 1, 1)); };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-sm p-4" style={{ background: 'var(--modal-backdrop)' }}>
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full max-w-lg rounded-2xl overflow-hidden elevation-raised"
         style={{
           background: 'var(--card-bg)',
           border: '1px solid var(--border-subtle)',
@@ -230,7 +266,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
             {onClose && (
               <button
                 onClick={onClose}
-                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
+                className="w-11 h-11 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
                 style={{ color: 'var(--text-muted)' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -269,7 +305,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                 exit="exit"
                 transition={{ duration: 0.25, ease: 'easeInOut' }}
               >
-                {!resumeText ? (
+                {!resumeText || !resumeParsed ? (
                   <div
                     className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${dragOver ? 'scale-[1.02]' : ''}`}
                     style={{
@@ -327,8 +363,17 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                         </span>
                       </div>
                       <button
-                        onClick={() => { setResumeText(''); setResumeParsed(null); setResumeFileName(''); }}
-                        className="text-xs px-2 py-1 rounded-lg transition-colors"
+                        onClick={() => {
+                          uploadAbortRef.current?.abort();
+                          uploadRequestRef.current += 1;
+                          setParsing(false);
+                          setResumeText('');
+                          setResumeParsed(null);
+                          setResumeFileName('');
+                          setResumeConfirmed(false);
+                          setResumeConfirmedAt(null);
+                        }}
+                        className="inline-flex items-center min-h-[44px] text-xs px-2 py-1 rounded-lg transition-colors"
                         style={{ color: 'var(--text-muted)' }}
                       >
                         Replace
@@ -336,7 +381,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     </div>
                     <div
                       className="text-xs leading-relaxed max-h-32 overflow-y-auto rounded-lg p-3"
-                      style={{ color: 'var(--text-secondary)', background: 'var(--bg-primary)' }}
+                      style={{ color: 'var(--text-secondary)', background: 'var(--bg-input)' }}
                     >
                       {resumeText.substring(0, 500)}
                       {resumeText.length > 500 && '...'}
@@ -346,7 +391,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                         {resumeParsed.skills?.slice(0, 3).map((g, i) => (
                           <span
                             key={i}
-                            className="text-[10px] px-2 py-0.5 rounded-full"
+                            className="text-[11px] px-2 py-0.5 rounded-full"
                             style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
                           >
                             {g.category}: {g.items.slice(0, 3).join(', ')}
@@ -357,21 +402,44 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                   </div>
                 )}
 
+                {resumeParsed && !resumeConfirmed && (
+                  <ResumeIntakeReview
+                    resume={resumeParsed}
+                    fileName={resumeFileName}
+                    onChange={setResumeParsed}
+                    onReplace={() => {
+                      uploadAbortRef.current?.abort();
+                      uploadRequestRef.current += 1;
+                      setParsing(false);
+                      setResumeText('');
+                      setResumeParsed(null);
+                      setResumeFileName('');
+                      setResumeConfirmed(false);
+                      setResumeConfirmedAt(null);
+                    }}
+                    onConfirm={() => {
+                      setResumeConfirmed(true);
+                      setResumeConfirmedAt(new Date().toISOString());
+                      goNext();
+                    }}
+                  />
+                )}
+
                 <div className="flex justify-between items-center mt-6">
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={goNext}
-                      className="text-sm font-medium transition-colors hover:underline"
+                      onClick={skipResume}
+                      className="inline-flex items-center min-h-[44px] text-sm font-medium transition-colors hover:underline"
                       style={{ color: 'var(--text-secondary)' }}
                     >
                       Skip for now →
                     </button>
                     {onDismissPermanently && (
                       <>
-                        <span className="text-[10px]" style={{ color: 'var(--border)' }}>·</span>
+                        <span className="text-[11px]" style={{ color: 'var(--border)' }}>·</span>
                         <button
                           onClick={onDismissPermanently}
-                          className="text-xs transition-colors hover:underline"
+                          className="inline-flex items-center min-h-[44px] text-xs transition-colors hover:underline"
                           style={{ color: 'var(--text-secondary)' }}
                         >
                           Don&apos;t show again
@@ -379,7 +447,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                       </>
                     )}
                   </div>
-                  {resumeText && (
+                  {resumeText && resumeConfirmed && (
                     <button
                       onClick={goNext}
                       className="px-5 py-2.5 text-sm transition-all flex items-center gap-2 btn-primary"
@@ -412,10 +480,10 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     <button
                       key={field}
                       onClick={() => toggleField(field)}
-                      className="text-xs px-3 py-1.5 rounded-full transition-all"
+                      className="inline-flex items-center min-h-[44px] text-xs px-3 py-1.5 rounded-full transition-all"
                       style={{
                         background: careerFields.includes(field) ? 'var(--accent)' : 'var(--bg-hover)',
-                        color: careerFields.includes(field) ? 'var(--accent-on, #000)' : 'var(--text-secondary)',
+                        color: careerFields.includes(field) ? 'var(--accent-on)' : 'var(--text-secondary)',
                         border: `1px solid ${careerFields.includes(field) ? 'var(--accent)' : 'var(--border-subtle)'}`,
                       }}
                     >
@@ -432,7 +500,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     onChange={e => setCustomField(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addCustomField()}
                     placeholder="Don't see your field? Type it"
-                    className="flex-1 text-xs px-3 py-2 rounded-lg outline-none"
+                    className="flex-1 min-h-[44px] text-base px-3 py-2 rounded-lg outline-none"
                     style={{
                       background: 'var(--bg-input, var(--bg-hover))',
                       border: '1px solid var(--border-subtle)',
@@ -442,7 +510,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                   <button
                     onClick={addCustomField}
                     disabled={!customField.trim()}
-                    className="text-xs px-3 py-2 rounded-lg font-medium disabled:opacity-30"
+                    className="min-h-[44px] text-xs px-3 py-2 rounded-lg font-medium disabled:opacity-30"
                     style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}
                   >
                     Add
@@ -458,15 +526,15 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     <button
                       key={level.value}
                       onClick={() => setSeniority(level.value)}
-                      className="flex-1 text-center py-2 rounded-lg transition-all"
+                      className="flex-1 min-h-[44px] text-center py-2 rounded-lg transition-all"
                       style={{
                         background: seniority === level.value ? 'var(--accent)' : 'var(--bg-hover)',
-                        color: seniority === level.value ? 'var(--accent-on, #000)' : 'var(--text-secondary)',
+                        color: seniority === level.value ? 'var(--accent-on)' : 'var(--text-secondary)',
                         border: `1px solid ${seniority === level.value ? 'var(--accent)' : 'var(--border-subtle)'}`,
                       }}
                     >
                       <div className="text-xs font-medium">{level.label}</div>
-                      <div className="text-[9px] opacity-60">{level.desc}</div>
+                      <div className="text-[11px] opacity-60">{level.desc}</div>
                     </button>
                   ))}
                 </div>
@@ -480,7 +548,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     <button
                       key={status.value}
                       onClick={() => setSearchStatus(status.value)}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-left"
+                      className="flex items-center gap-2 min-h-[44px] px-3 py-2 rounded-lg transition-all text-left"
                       style={{
                         background: searchStatus === status.value ? 'var(--accent-dim)' : 'var(--bg-hover)',
                         border: `1px solid ${searchStatus === status.value ? 'var(--accent)' : 'var(--border-subtle)'}`,
@@ -502,7 +570,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                   value={targetRoles}
                   onChange={e => setTargetRoles(e.target.value)}
                   placeholder="e.g. Backend Engineer, ML Engineer"
-                  className="w-full text-xs px-3 py-2 rounded-lg outline-none mb-4"
+                  className="w-full min-h-[44px] text-base px-3 py-2 rounded-lg outline-none mb-4"
                   style={{
                     background: 'var(--bg-input, var(--bg-hover))',
                     border: '1px solid var(--border-subtle)',
@@ -512,7 +580,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
 
                 <div className="flex justify-between items-center gap-3 mt-2">
                   <div className="flex min-w-0 items-center gap-4">
-                    <button onClick={goBack} className="text-sm font-medium transition-colors hover:underline" style={{ color: 'var(--text-secondary)' }}>
+                    <button onClick={goBack} className="inline-flex items-center min-h-[44px] text-sm font-medium transition-colors hover:underline" style={{ color: 'var(--text-secondary)' }}>
                       ← Back
                     </button>
                     {/* Continue stays disabled until a career field is chosen,
@@ -533,8 +601,8 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     disabled={careerFields.length === 0}
                     className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
                       careerFields.length > 0
-                        ? 'btn-primary shadow-md'
-                        : 'text-[var(--text-muted)] opacity-40'
+                        ? 'btn-primary'
+                        : 'min-h-[44px] text-[var(--text-muted)] opacity-40'
                     }`}
                     style={careerFields.length === 0 ? { background: 'var(--border-subtle)' } : undefined}
                   >
@@ -557,7 +625,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                 transition={{ duration: 0.25, ease: 'easeInOut' }}
               >
                 <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-                  These help Taco give better recommendations. You can always change them later.
+                  These help <TacoName /> give better recommendations. You can always change them later.
                 </p>
 
                 {/* Location */}
@@ -569,7 +637,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                   value={location}
                   onChange={e => setLocation(e.target.value)}
                   placeholder="e.g. San Francisco, Remote, Hybrid NYC"
-                  className="w-full text-xs px-3 py-2.5 rounded-lg outline-none mb-5"
+                  className="w-full min-h-[44px] text-base px-3 py-2.5 rounded-lg outline-none mb-5"
                   style={{
                     background: 'var(--bg-input, var(--bg-hover))',
                     border: '1px solid var(--border-subtle)',
@@ -583,7 +651,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                 </label>
                 <div className="flex items-center gap-3 mb-2">
                   <div className="flex-1">
-                    <label className="text-[10px] mb-1 block" style={{ color: 'var(--text-muted)' }}>Min ($k)</label>
+                    <label className="text-[11px] mb-1 block" style={{ color: 'var(--text-muted)' }}>Min ($k)</label>
                     <input
                       type="number"
                       value={salaryMin ?? ''}
@@ -591,7 +659,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                       placeholder="—"
                       min={0}
                       max={500}
-                      className="w-full text-xs px-3 py-2 rounded-lg outline-none"
+                      className="w-full min-h-[44px] text-base px-3 py-2 rounded-lg outline-none"
                       style={{
                         background: 'var(--bg-input, var(--bg-hover))',
                         border: '1px solid var(--border-subtle)',
@@ -601,7 +669,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                   </div>
                   <span className="text-xs mt-4" style={{ color: 'var(--text-muted)' }}>—</span>
                   <div className="flex-1">
-                    <label className="text-[10px] mb-1 block" style={{ color: 'var(--text-muted)' }}>Max ($k)</label>
+                    <label className="text-[11px] mb-1 block" style={{ color: 'var(--text-muted)' }}>Max ($k)</label>
                     <input
                       type="number"
                       value={salaryMax ?? ''}
@@ -609,7 +677,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                       placeholder="—"
                       min={0}
                       max={1000}
-                      className="w-full text-xs px-3 py-2 rounded-lg outline-none"
+                      className="w-full min-h-[44px] text-base px-3 py-2 rounded-lg outline-none"
                       style={{
                         background: 'var(--bg-input, var(--bg-hover))',
                         border: '1px solid var(--border-subtle)',
@@ -620,9 +688,9 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                 </div>
                 {/* The wrapper keeps the gap below the inputs constant, so the
                     step does not reflow the moment a first digit is typed. */}
-                <div className="mb-6 min-h-[14px]">
+                <div className="mb-6 min-h-[16px]">
                   {salaryMin !== null && salaryMax !== null && (
-                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                       ${salaryMin}k – ${salaryMax}k / year
                     </p>
                   )}
@@ -631,9 +699,9 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                 {/* Summary of selections */}
                 <div
                   className="rounded-xl p-3 mb-5"
-                  style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)20' }}
+                  style={{ background: 'var(--accent-dim)', border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)' }}
                 >
-                  <p className="text-[10px] font-medium mb-1" style={{ color: 'var(--accent)' }}>Your profile summary</p>
+                  <p className="text-[11px] font-medium mb-1" style={{ color: 'var(--accent)' }}>Your profile summary</p>
                   <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                     {careerFields.length > 0 && `${careerFields.join(', ')} · `}
                     {SENIORITY_LEVELS.find(l => l.value === seniority)?.label} level ·{' '}
@@ -644,7 +712,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <button onClick={goBack} className="text-sm font-medium transition-colors hover:underline" style={{ color: 'var(--text-secondary)' }}>
+                  <button onClick={goBack} className="inline-flex items-center min-h-[44px] text-sm font-medium transition-colors hover:underline" style={{ color: 'var(--text-secondary)' }}>
                     ← Back
                   </button>
                   <button
@@ -660,7 +728,7 @@ export default function OnboardingModal({ onComplete, onClose, onDismissPermanen
                     ) : (
                       <>
                         <span className="material-symbols-rounded text-sm">rocket_launch</span>
-                        Launch with Taco
+                        Launch with <TacoName />
                       </>
                     )}
                   </button>

@@ -116,7 +116,7 @@ function SectionHeading({
   children,
   index,
 }: {
-  children: SectionName;
+  children: string;
   index: number;
 }) {
   return (
@@ -144,7 +144,7 @@ function ExperienceSection({
   return (
     <div className="curated-experience-list">
       {entries.map((entry, index) => (
-        <article className="curated-experience-entry" key={`${entry.company}-${entry.role}-${index}`}>
+        <article className="curated-experience-entry" key={entry.id || `${entry.company}-${entry.role}-${index}`}>
           <div className="curated-experience-heading">
             <div>
               {entry.role && <h3>{entry.role}</h3>}
@@ -173,7 +173,7 @@ function SkillsSection({ groups }: { groups: CanonicalSkillGroup[] }) {
   return (
     <div className="curated-skills-list">
       {groups.map((group, index) => (
-        <div className="curated-skill-group" key={`${group.category}-${index}`}>
+        <div className="curated-skill-group" key={group.id || `${group.category}-${index}`}>
           <h3>{group.category}</h3>
           <p>{group.items.join(' • ')}</p>
         </div>
@@ -187,7 +187,7 @@ function EducationSection({ entries }: { entries: CanonicalEducation[] }) {
   return (
     <div className="curated-education-list">
       {entries.map((entry, index) => (
-        <article className="curated-education-entry" key={`${entry.institution}-${entry.degree}-${index}`}>
+        <article className="curated-education-entry" key={entry.id || `${entry.institution}-${entry.degree}-${index}`}>
           <div className="curated-education-heading">
             <div>
               {entry.degree && <h3>{entry.degree}</h3>}
@@ -226,12 +226,14 @@ function CuratedDocument({
   const education = usableEducation(resume.education);
   const skills = usableSkills(resume.skills);
   const certifications = resume.certifications.map(present).filter(Boolean);
+  const additionalSections = (resume as CanonicalResume & { additionalSections?: { id: string; title: string; items: string[] }[] }).additionalSections || [];
   const contact = [
     present(resume.email),
     present(resume.phone),
     present(resume.location),
     present(resume.linkedin),
     present(resume.website),
+    ...(resume.links || []).map(present),
   ].filter(Boolean);
 
   const content: Partial<Record<SectionName, ReactNode>> = {
@@ -307,6 +309,7 @@ function CuratedDocument({
           )}
         </header>
         <div className="curated-content">
+          <p className="curated-preview-label">Editing preview · final PDF or Word controls page flow</p>
           {orderedNames.map((sectionName, index) => {
             const sectionContent = content[sectionName];
             if (!sectionContent) return null;
@@ -319,6 +322,11 @@ function CuratedDocument({
                 {sectionContent}
               </section>
             );
+          })}
+          {additionalSections.map((section, sectionIndex) => {
+            const items = (section.items || []).map(present).filter(Boolean);
+            if (!present(section.title) && items.length === 0) return null;
+            return <section className="curated-section" key={section.id || `${section.title}-${sectionIndex}`}><SectionHeading index={orderedNames.length + sectionIndex}>{present(section.title) || 'Additional information'}</SectionHeading><ul className="curated-certifications">{items.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ul></section>;
           })}
         </div>
       </article>
@@ -457,7 +465,7 @@ const CURATED_SIGNATURE_STYLES = `
   isolation: isolate;
   width: 210mm;
   min-height: 297mm;
-  overflow: hidden;
+  overflow: visible;
   padding: 15mm 16mm 17mm;
   background: #fff;
   color: var(--curated-text);
@@ -483,6 +491,7 @@ const CURATED_SIGNATURE_STYLES = `
 .curated-section-index { color: var(--curated-primary); font-size: 10px; font-weight: 800; }
 .curated-section-rule { height: 1px; background: var(--curated-primary); opacity: .42; }
 .curated-summary { max-width: 72em; font-size: 11px; line-height: 1.62; }
+.curated-preview-label { margin-bottom: 9px !important; color: var(--curated-text); font-size: 8px; font-style: italic; opacity: .72; }
 .curated-experience-list { display: grid; gap: 14px; }
 .curated-experience-entry, .curated-education-entry { break-inside: avoid; }
 .curated-experience-heading, .curated-education-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }

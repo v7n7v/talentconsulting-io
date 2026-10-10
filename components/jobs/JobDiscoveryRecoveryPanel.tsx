@@ -11,20 +11,20 @@ interface JobDiscoveryRecoveryPanelProps {
 function recoveryTone(recovery: JobDiscoveryRecovery) {
   if (recovery.code === 'suggestions_setup_required') {
     return {
-      panel: 'border-blue-400/25 bg-blue-500/5',
+      panel: 'border-[var(--taco-coral)] bg-[var(--accent-dim)]',
       icon: 'tune',
-      iconClass: 'text-blue-700 dark:text-blue-300',
+      iconClass: 'text-[var(--accent)] dark:text-[var(--accent)]',
     };
   }
   if (recovery.code.endsWith('_failed')) {
     return {
-      panel: 'border-rose-400/25 bg-rose-500/5',
+      panel: 'border-[var(--taco-coral)] bg-[var(--accent-dim)]',
       icon: 'sync_problem',
-      iconClass: 'text-rose-700 dark:text-rose-300',
+      iconClass: 'text-[var(--accent)] dark:text-[var(--accent)]',
     };
   }
   return {
-    panel: 'border-amber-400/25 bg-amber-500/5',
+    panel: 'border-[var(--taco-coral)] bg-[var(--accent-dim)]',
     icon: recovery.code.endsWith('_busy')
       ? 'hourglass_top'
       : recovery.action === 'create_account' || recovery.action === 'sign_in'
@@ -34,7 +34,7 @@ function recoveryTone(recovery: JobDiscoveryRecovery) {
           : recovery.code === 'suggestions_partial_results'
             ? 'rule_settings'
             : 'cloud_off',
-    iconClass: 'text-amber-700 dark:text-amber-300',
+    iconClass: 'text-[var(--accent)] dark:text-[var(--accent)]',
   };
 }
 
@@ -66,7 +66,7 @@ export default function JobDiscoveryRecoveryPanel({
           <button
             type="button"
             onClick={onAction}
-            className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 ${compact ? 'mt-3 w-full sm:mt-0 sm:w-auto' : 'mt-4 w-full sm:w-auto'}`}
+            className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--taco-coral)] ${compact ? 'mt-3 w-full sm:mt-0 sm:w-auto' : 'mt-4 w-full sm:w-auto'}`}
           >
             <span className="material-symbols-rounded text-[16px]" aria-hidden="true">
               {recovery.action === 'open_preferences'

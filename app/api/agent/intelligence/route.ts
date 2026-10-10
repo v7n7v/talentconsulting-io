@@ -6,10 +6,6 @@ import { buildSonaBrief } from '@/lib/assistant/context';
 import { monitor } from '@/lib/monitor';
 import { DEMO_USER_ID, getDemoIntelligenceResponse, isDemoModeEnabled } from '@/lib/demo-mode';
 
-// In-memory cache for recommendations (twin handles profile caching in Firestore)
-const recsCache = new Map<string, { recommendations: any; summary: string; cachedAt: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
 export async function GET(req: NextRequest) {
   const guard = await guardApiRoute(req, { rateLimit: 20, rateLimitWindow: 60_000 });
   if (guard.error) return guard.error;
@@ -55,25 +51,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Check recs cache
-    const cached = recsCache.get(uid);
-    let recommendations, summary;
-    if (cached && Date.now() - cached.cachedAt < CACHE_TTL) {
-      recommendations = cached.recommendations;
-      summary = cached.summary;
-    } else {
-      recommendations = generateRecommendations(twin);
-      summary = generateProfileSummary(twin);
-      recsCache.set(uid, { recommendations, summary, cachedAt: Date.now() });
-
-      // Evict old cache entries
-      if (recsCache.size > 500) {
-        const oldest = [...recsCache.entries()]
-          .sort(([, a], [, b]) => a.cachedAt - b.cachedAt)
-          .slice(0, 100);
-        oldest.forEach(([key]) => recsCache.delete(key));
-      }
-    }
+    const recommendations = generateRecommendations(twin);
+    const summary = generateProfileSummary(twin);
 
     return new Response(JSON.stringify({
       profile: twin,
@@ -87,7 +66,11 @@ export async function GET(req: NextRequest) {
         memory: twin.memory,
         exportable: twin.exportable,
       },
-      cached: !twin.stale,
+      cached: twin.cacheOrigin === 'persisted',
+      computedAt: twin.computedAt,
+      dataVersion: twin.version,
+      cacheOrigin: twin.cacheOrigin,
+      sourceReads: twin.sourceReads,
     }), { headers: { 'Content-Type': 'application/json' } });
   } catch (e: any) {
     console.error('Intelligence API error:', e);
@@ -111,7 +94,7 @@ export async function POST(req: NextRequest) {
   }
 
   await invalidateTwin(uid);
-  recsCache.delete(uid);
+
 
   return new Response(JSON.stringify({ success: true, message: 'Twin invalidated' }), {
     headers: { 'Content-Type': 'application/json' },

@@ -381,14 +381,14 @@ function joinFieldRuns(
 }
 
 function headingText(
-  section: CuratedResumeSection | 'Certifications',
+  section: string,
   profile: CuratedSignatureDocxProfile,
 ): string {
   return profile.headingTreatment === 'caps' ? section.toUpperCase() : section;
 }
 
 function sectionHeading(
-  section: CuratedResumeSection | 'Certifications',
+  section: string,
   profile: CuratedSignatureDocxProfile,
 ): Paragraph {
   return new Paragraph({
@@ -516,6 +516,15 @@ function buildCertifications(
   ];
 }
 
+function buildAdditionalSections(resume: CanonicalResume, profile: CuratedSignatureDocxProfile): Paragraph[] {
+  const sections = (resume as CanonicalResume & { additionalSections?: { id: string; title: string; items: string[] }[] }).additionalSections || [];
+  return sections.flatMap((section) => {
+    const items = (section.items || []).filter(isNonEmptyText);
+    if (!isNonEmptyText(section.title) && items.length === 0) return [];
+    return [sectionHeading(isNonEmptyText(section.title) ? section.title : 'Additional information', profile), ...items.map((item) => new Paragraph({ style: 'ResumeBullet', numbering: { reference: 'resume-bullets', level: 0 }, children: [new TextRun({ text: item })] }))];
+  });
+}
+
 /**
  * Builds the strict linear Word companion for one of the 17 curated signature
  * templates. Essential content is body-flow text only: no tables, text boxes,
@@ -525,6 +534,7 @@ function createCuratedSignatureDocxDocument(
   resume: CanonicalResume,
   templateId: string,
   colors?: TemplateColors,
+  pageSize: 'A4' | 'LETTER' = 'LETTER',
 ): Document {
   const profile = getCuratedSignatureDocxProfile(templateId);
   const primary = resolveReadableDocxTextColor(colors?.primary, profile.palette.primary);
@@ -562,6 +572,7 @@ function createCuratedSignatureDocxDocument(
     { value: resume.location },
     { value: resume.linkedin },
     { value: resume.website },
+    ...(resume.links || []).map((link) => ({ value: link })),
   ]);
   if (contactRuns.length > 0) {
     children.push(new Paragraph({
@@ -573,6 +584,7 @@ function createCuratedSignatureDocxDocument(
 
   for (const section of profile.sectionOrder) children.push(...bodySections[section]);
   children.push(...buildCertifications(resume, profile));
+  children.push(...buildAdditionalSections(resume, profile));
 
   const document = new Document({
     ...(isNonEmptyText(resume.name) ? { title: resume.name } : {}),
@@ -729,7 +741,7 @@ function createCuratedSignatureDocxDocument(
     sections: [{
       properties: {
         page: {
-          size: { width: 12240, height: 15840 },
+          size: pageSize === 'A4' ? { width: 11906, height: 16838 } : { width: 12240, height: 15840 },
           margin: {
             top: 1440,
             right: 1440,
@@ -751,14 +763,16 @@ export async function buildCuratedSignatureDocx(
   resume: CanonicalResume,
   templateId: string,
   colors?: TemplateColors,
+  pageSize: 'A4' | 'LETTER' = 'LETTER',
 ): Promise<Buffer> {
-  return Packer.toBuffer(createCuratedSignatureDocxDocument(resume, templateId, colors));
+  return Packer.toBuffer(createCuratedSignatureDocxDocument(resume, templateId, colors, pageSize));
 }
 
 export async function buildCuratedSignatureDocxBlob(
   resume: CanonicalResume,
   templateId: string,
   colors?: TemplateColors,
+  pageSize: 'A4' | 'LETTER' = 'LETTER',
 ): Promise<Blob> {
-  return Packer.toBlob(createCuratedSignatureDocxDocument(resume, templateId, colors));
+  return Packer.toBlob(createCuratedSignatureDocxDocument(resume, templateId, colors, pageSize));
 }

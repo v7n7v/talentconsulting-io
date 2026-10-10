@@ -27,18 +27,26 @@ export interface ToolIconPalette {
   shadow: string;
 }
 
+const sharedToolIconPalette: ToolIconPalette = {
+  bg: 'var(--accent-dim, var(--bg-elevated))',
+  bg2: 'var(--bg-elevated)',
+  icon: 'var(--accent)',
+  border: 'var(--accent-active)',
+  shadow: 'var(--elevation-card)',
+};
+
 export const toolIconPalettes: Record<ToolIconTone, ToolIconPalette> = {
-  emerald: { bg: '#a7e9bd', bg2: '#91ddae', icon: '#287a40', border: '#7bd397', shadow: 'rgba(40,122,64,0.18)' },
-  mint: { bg: '#a7eadf', bg2: '#87ddd0', icon: '#11766e', border: '#64d0c2', shadow: 'rgba(17,118,110,0.18)' },
-  cyan: { bg: '#9be8f5', bg2: '#7edcea', icon: '#087f9b', border: '#5bcfe1', shadow: 'rgba(8,127,155,0.18)' },
-  blue: { bg: '#8ec8f4', bg2: '#72b8ea', icon: '#4b5f73', border: '#5ba9e7', shadow: 'rgba(75,95,115,0.18)' },
-  indigo: { bg: '#ded8ff', bg2: '#d4cbff', icon: '#818cf8', border: '#bfb4ff', shadow: 'rgba(129,140,248,0.2)' },
-  violet: { bg: '#ead4ff', bg2: '#dfc3fb', icon: '#7c3aed', border: '#c9a8f5', shadow: 'rgba(124,58,237,0.18)' },
-  purple: { bg: '#efd1fa', bg2: '#e7bff5', icon: '#2563eb', border: '#dca8ef', shadow: 'rgba(37,99,235,0.18)' },
-  rose: { bg: '#ffc9d5', bg2: '#ffb4c4', icon: '#dc2626', border: '#ff93aa', shadow: 'rgba(220,38,38,0.18)' },
-  pink: { bg: '#f6c3e1', bg2: '#efa9d3', icon: '#db2777', border: '#e78fc4', shadow: 'rgba(219,39,119,0.18)' },
-  amber: { bg: '#ffd89a', bg2: '#ffc877', icon: '#d97706', border: '#f3b45c', shadow: 'rgba(217,119,6,0.18)' },
-  slate: { bg: '#dfe5ee', bg2: '#d2dae6', icon: '#475569', border: '#c0cad8', shadow: 'rgba(71,85,105,0.16)' },
+  emerald: sharedToolIconPalette,
+  mint: sharedToolIconPalette,
+  cyan: sharedToolIconPalette,
+  blue: sharedToolIconPalette,
+  indigo: sharedToolIconPalette,
+  violet: sharedToolIconPalette,
+  purple: sharedToolIconPalette,
+  rose: sharedToolIconPalette,
+  pink: sharedToolIconPalette,
+  amber: sharedToolIconPalette,
+  slate: sharedToolIconPalette,
 };
 
 interface AnimatedToolIconProps {
@@ -64,30 +72,8 @@ const iconSize: Record<AnimatedToolIconSize, number> = {
 };
 
 function toneFromColor(color?: string): ToolIconTone {
-  switch (color?.toLowerCase()) {
-    case '#10b981':
-    case '#22c55e':
-      return 'emerald';
-    case '#14b8a6':
-      return 'mint';
-    case '#06b6d4':
-      return 'cyan';
-    case '#3b82f6':
-      return 'blue';
-    case '#8b5cf6':
-      return 'indigo';
-    case '#a855f7':
-      return 'violet';
-    case '#f43f5e':
-      return 'rose';
-    case '#ec4899':
-      return 'pink';
-    case '#f59e0b':
-    case '#f97316':
-      return 'amber';
-    default:
-      return 'slate';
-  }
+  void color;
+  return 'slate';
 }
 
 export default function AnimatedToolIcon({
@@ -114,7 +100,7 @@ export default function AnimatedToolIcon({
               '--tool-accent': palette.icon,
               background: `linear-gradient(135deg, ${palette.bg} 0%, ${palette.bg2} 100%)`,
               borderColor: palette.border,
-              boxShadow: `0 12px 26px ${palette.shadow}, inset 0 1px 0 rgba(255,255,255,0.28)`,
+              boxShadow: 'var(--elevation-card)',
             } as CSSProperties)
           : undefined
       }

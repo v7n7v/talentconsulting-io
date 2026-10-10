@@ -35,7 +35,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: `Your morale has been ${profile.morale.trend === 'declining' ? 'declining' : 'low'} (${profile.morale.current}/5). Job searching is a marathon, not a sprint.`,
       action: 'Take a strategic pause — focus on top 3 highest-fit roles only',
       actionPath: '/suite/pulse',
-      color: '#ef4444',
+      color: 'var(--accent)',
       category: 'morale',
     });
   }
@@ -50,7 +50,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: 'Everything starts with your resume. Upload one to unlock all intelligence features.',
       action: 'Go to Resume Studio',
       actionPath: '/suite/resume',
-      color: '#f59e0b',
+      color: 'var(--accent)',
       category: 'resume',
     });
   }
@@ -71,7 +71,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: 'Most of what you have sent has not come back. If the older ones have gone quiet, your resume may not be passing ATS filters.',
       action: 'Run ATS Preview to check parsing',
       actionPath: '/suite/ats-preview',
-      color: '#6b7280',
+      color: 'var(--accent)',
       category: 'pipeline',
     });
   }
@@ -86,7 +86,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: 'Try morphing your resume per job description for better keyword matching.',
       action: 'Morph your resume in Resume Studio',
       actionPath: '/suite/resume',
-      color: '#ef4444',
+      color: 'var(--accent)',
       category: 'resume',
     });
   }
@@ -98,10 +98,10 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       priority: 'high',
       icon: 'school',
       title: `${profile.skills.gap.length} Skill Gaps Detected`,
-      description: `Jobs you're targeting need: ${profile.skills.gap.slice(0, 3).join(', ')}. These appear frequently in postings but are missing from your resume.`,
+      description: `Jobs you're targeting need: ${profile.skills.gap.slice(0, 3).join(', ')}. These were recorded as gaps in the roles you analyzed; they are not a market-wide demand estimate.`,
       action: 'Build a learning path with Skill Bridge',
       actionPath: '/suite/skill-bridge',
-      color: '#3b82f6',
+      color: 'var(--accent)',
       category: 'skill',
     });
   }
@@ -114,10 +114,10 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       priority: 'high',
       icon: 'psychology',
       title: `"${weakest.category}" is Your Weakest Interview Area`,
-      description: `Avg confidence: ${weakest.avgConfidence}% across ${weakest.count} questions. Focused practice here will have the highest ROI.`,
+      description: `Avg confidence: ${weakest.avgConfidence}% across ${weakest.count} questions. Consider practicing this area, using your self-reported confidence as a starting point.`,
       action: 'Practice with Interview Simulator',
       actionPath: '/suite/flashcards',
-      color: '#8b5cf6',
+      color: 'var(--accent)',
       category: 'interview',
     });
   }
@@ -132,7 +132,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: 'Your recent interviews show lower confidence than earlier ones. This could signal interview fatigue or escalating difficulty.',
       action: 'Review your debriefs for patterns',
       actionPath: '/suite/interview-debrief',
-      color: '#f59e0b',
+      color: 'var(--accent)',
       category: 'interview',
     });
   }
@@ -147,7 +147,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: `You're weak on "${profile.stories.coverageGaps[0]}" in interviews but have no prepared stories for it. Build your story bank.`,
       action: 'Create a story with Taco',
       actionPath: '/suite/agent',
-      color: '#10b981',
+      color: 'var(--accent)',
       category: 'story',
     });
   }
@@ -166,7 +166,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: `Over ${profile.daysActive} days you have sent ${profile.pipeline.appliedApps} ${profile.pipeline.appliedApps === 1 ? 'application' : 'applications'}. More tracked applications give the rest of this page something to measure.`,
       action: 'Find matching jobs in Job Search',
       actionPath: '/suite/job-search',
-      color: '#06b6d4',
+      color: 'var(--accent)',
       category: 'pipeline',
     });
   }
@@ -181,7 +181,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: 'You have applications in progress but no debriefs. Logging each interview helps Taco identify your patterns.',
       action: 'Log your first debrief',
       actionPath: '/suite/interview-debrief',
-      color: '#8b5cf6',
+      color: 'var(--accent)',
       category: 'interview',
     });
   }
@@ -196,7 +196,7 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       description: 'Your morale is up and trending positive. This is the best time to tackle stretch-goal applications.',
       action: 'Check your Career Pulse',
       actionPath: '/suite/pulse',
-      color: '#22c55e',
+      color: 'var(--accent)',
       category: 'morale',
     });
   }
@@ -208,10 +208,10 @@ export function generateRecommendations(profile: CareerProfile): Recommendation[
       priority: 'low',
       icon: 'trending_up',
       title: 'Interview Confidence is Rising!',
-      description: `Your confidence is trending up — your practice is paying off. Keep the momentum going.`,
+      description: `Your recent self-reported confidence is higher than the earlier comparison window.`,
       action: 'View your debrief insights',
       actionPath: '/suite/interview-debrief',
-      color: '#22c55e',
+      color: 'var(--accent)',
       category: 'interview',
     });
   }
@@ -254,7 +254,7 @@ export function generateProfileSummary(profile: CareerProfile): string {
       : `${profile.interviews.passRate}% pass rate across ${profile.interviews.resolvedOutcomeCount} resolved`}`);
     lines.push(`- Avg confidence: ${profile.interviews.questionCount === 0
       ? 'not measured — no questions logged on any debrief'
-      : `${profile.interviews.avgConfidence}% (${profile.interviews.confidenceTrend})`}`);
+      : `${profile.interviews.avgConfidence}% (${profile.interviews.confidenceTrend ?? 'trend not measured'})`}`);
     if (profile.interviews.weakCategories.length > 0) {
       lines.push(`- Weak areas: ${profile.interviews.weakCategories.map(c => `${c.category} (${c.avgConfidence}%)`).join(', ')}`);
     }

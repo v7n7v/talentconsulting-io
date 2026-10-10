@@ -1,0 +1,85 @@
+@font-face{font-family:'Inter';src:url('/fonts/resume/Inter-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Inter';src:url('/fonts/resume/Inter-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'Liberation Sans';src:url('/fonts/resume/LiberationSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Liberation Sans';src:url('/fonts/resume/LiberationSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'Liberation Serif';src:url('/fonts/resume/LiberationSerif-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Liberation Serif';src:url('/fonts/resume/LiberationSerif-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'Liberation Mono';src:url('/fonts/resume/LiberationMono-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Liberation Mono';src:url('/fonts/resume/LiberationMono-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'DejaVu Sans';src:url('/fonts/resume/DejaVuSans-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'DejaVu Sans';src:url('/fonts/resume/DejaVuSans-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+@font-face{font-family:'DejaVu Serif';src:url('/fonts/resume/DejaVuSerif-Regular.ttf') format('truetype');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'DejaVu Serif';src:url('/fonts/resume/DejaVuSerif-Bold.ttf') format('truetype');font-weight:700;font-style:normal;font-display:swap}
+
+.resume-flagship-page{
+  box-sizing:border-box;
+  width:var(--flagship-page-width);
+  min-height:var(--flagship-page-height);
+  margin:0 auto;
+  padding:var(--flagship-margin-top) var(--flagship-margin-right) var(--flagship-margin-bottom) var(--flagship-margin-left);
+  color:var(--flagship-ink);
+  background:var(--flagship-paper);
+  font-family:var(--flagship-body-font),sans-serif;
+  font-size:var(--flagship-body-size);
+  font-weight:var(--flagship-body-weight);
+  line-height:1.32;
+  overflow-wrap:normal;
+  hyphens:none;
+}
+.resume-flagship-page *{box-sizing:border-box;min-width:0}
+.resume-flagship-page h1,.resume-flagship-page h2,.resume-flagship-page p,.resume-flagship-page address,.resume-flagship-page ul{margin:0}
+.flagship-document-header{margin-bottom:var(--flagship-header-gap);padding-bottom:14pt;border-bottom:.75pt solid var(--flagship-accent)}
+.flagship-document-header h1{color:var(--flagship-heading);font-family:var(--flagship-name-font),serif;font-size:var(--flagship-name-size);font-weight:var(--flagship-name-weight);letter-spacing:var(--flagship-tracking);line-height:1.08;white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-document-title{margin-top:5pt!important;color:var(--flagship-accent);font-family:var(--flagship-heading-font),serif;font-size:var(--flagship-title-size);font-weight:var(--flagship-heading-weight);letter-spacing:var(--flagship-tracking);line-height:1.25;white-space:pre-line}
+.flagship-contact{margin-top:9pt!important;color:var(--flagship-ink);font-family:var(--flagship-body-font),sans-serif;font-size:var(--flagship-contact-size);font-style:normal;font-weight:var(--flagship-body-weight);letter-spacing:var(--flagship-tracking);line-height:1.45;white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-section{margin-bottom:var(--section-gap);color:var(--section-ink);font-family:var(--section-body-font),sans-serif;font-size:var(--section-body-size);font-weight:var(--section-body-weight);line-height:var(--section-line-height);letter-spacing:var(--section-tracking);break-inside:auto;page-break-inside:auto}
+.flagship-section-grid{display:grid;grid-template-columns:minmax(0,var(--flagship-gutter)) minmax(0,1fr);column-gap:var(--flagship-column-gap);align-items:start}
+.flagship-section-label{padding-top:1pt}
+.flagship-section-heading{color:var(--section-heading-ink);font-family:var(--section-heading-font),serif;font-size:var(--section-heading-size);font-weight:var(--section-heading-weight);letter-spacing:var(--section-tracking);line-height:1.25;overflow-wrap:normal;hyphens:none}
+.flagship-section-heading:after{display:block;width:20pt;margin-top:5pt;border-top:.65pt solid var(--section-accent);content:""}
+.flagship-label-button{display:inline;padding:0;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;letter-spacing:inherit;line-height:inherit;text-align:left;cursor:pointer}
+.flagship-label-button:focus-visible{outline:2px solid var(--section-accent);outline-offset:3px}
+.flagship-print-label{display:none}
+.flagship-section-content{min-width:0}
+.flagship-section-long-label>.flagship-section-heading{margin-bottom:9pt}
+.flagship-section-long-label .flagship-section-heading:after{width:28pt}
+.flagship-entry{position:relative;margin:0 0 var(--entry-gap);break-inside:auto;page-break-inside:auto}
+.flagship-additional-context{color:var(--section-accent);font-family:var(--section-heading-font),serif;font-size:7.5pt;font-weight:400;line-height:1.15}
+.flagship-additional-context.is-gutter{position:absolute;top:0;left:calc(-1 * (var(--flagship-gutter) + var(--flagship-column-gap)));width:var(--flagship-gutter)}
+.flagship-additional-context.is-inline{display:block;margin-bottom:3pt}
+.flagship-entry-meta{display:grid;grid-template-columns:minmax(0,1fr);gap:3pt;align-items:start}
+.flagship-entry-meta.is-inline-date{grid-template-columns:minmax(0,1fr) minmax(0,38%);column-gap:12pt}
+.flagship-entry-identifiers{min-width:0}
+.flagship-entry-primary{color:var(--section-heading-ink);font-family:var(--section-heading-font),serif;font-size:var(--section-role-size);font-weight:700;letter-spacing:var(--section-tracking);line-height:1.25;white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-entry-secondary{margin-top:2pt;color:var(--section-ink);font-weight:var(--section-body-weight);white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-entry-date{display:block;margin-top:3pt;color:var(--section-accent);font-size:var(--section-body-size);font-variant-numeric:tabular-nums;white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-entry-date.is-inline{margin-top:0;text-align:right;align-self:start}
+.flagship-entry-date.after-identifiers{margin-top:3pt}
+.flagship-entry-text{margin-top:4pt!important;white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-bullets{margin-top:4pt!important;padding-left:16pt;list-style-position:outside}
+.flagship-bullets li{margin-bottom:var(--bullet-gap);padding-left:1pt;white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-bullets.bullet-disc{list-style-type:disc}
+.flagship-bullets li::marker{color:var(--section-accent)}
+.flagship-bullets.bullet-none{padding-left:0;list-style:none}
+.flagship-bullets.bullet-dash{padding-left:0;list-style:none}
+.flagship-bullets.bullet-dash li:before{display:inline-block;width:13pt;color:var(--section-accent);content:"–"}
+.flagship-skill{margin-bottom:var(--entry-gap)!important;white-space:pre-line;overflow-wrap:normal;hyphens:none}
+.flagship-skill strong{color:var(--section-heading-ink);font-family:var(--section-heading-font),serif;font-size:var(--section-role-size);font-weight:700}
+.flagship-section.is-selectable{cursor:pointer}
+.flagship-section.is-selected{outline:1pt solid color-mix(in srgb,var(--section-accent) 54%,transparent);outline-offset:5pt}
+.flagship-entry-break,.flagship-section-break{break-before:page;page-break-before:always}
+.resume-flagship-page[data-page-size="LETTER"]{page:flagship-letter}
+@page{size:A4;margin:0}
+@page flagship-letter{size:letter;margin:0}
+
+@media print{
+  .resume-flagship-page{width:var(--flagship-page-width);min-height:var(--flagship-page-height);margin:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .flagship-label-button{display:none}
+  .flagship-print-label{display:inline}
+  .flagship-section.is-selected{outline:0}
+}
+
+.flagship-entry:last-child,.flagship-skill:last-child{margin-bottom:0!important}
+.flagship-section:last-child{margin-bottom:0}
+.mode-application .flagship-section-heading{margin-bottom:3pt;line-height:1.2}
+.mode-application .flagship-section-heading:after{display:none}

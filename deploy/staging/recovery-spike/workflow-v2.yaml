@@ -1,0 +1,81 @@
+main:
+  params: [args]
+  steps:
+    - require_v2:
+        switch:
+          - condition: ${args.version != "v2"}
+            raise: "workflow-v2 requires version v2"
+    - run_step_a:
+        try:
+          call: http.post
+          args:
+            url: ${args.baseUrl + "/step"}
+            auth:
+              type: OIDC
+              audience: ${args.baseUrl}
+            body:
+              runId: ${args.runId}
+              version: "v2"
+              step: "A"
+              deliveryId: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID") + "-A"}
+          result: step_a
+        retry:
+          predicate: ${retryable_step_error}
+          max_retries: 3
+          backoff:
+            initial_delay: 1
+            max_delay: 4
+            multiplier: 2
+    - require_a_commit:
+        switch:
+          - condition: ${step_a.body.disposition != "committed" and step_a.body.disposition != "replay"}
+            raise: "step A did not commit or replay; inspect run status and start a replacement run if required"
+    - run_step_b:
+        try:
+          call: http.post
+          args:
+            url: ${args.baseUrl + "/step"}
+            auth:
+              type: OIDC
+              audience: ${args.baseUrl}
+            body:
+              runId: ${args.runId}
+              version: "v2"
+              step: "B"
+              deliveryId: ${sys.get_env("GOOGLE_CLOUD_WORKFLOW_EXECUTION_ID") + "-B"}
+          result: step_b
+        retry:
+          predicate: ${retryable_step_error}
+          max_retries: 3
+          backoff:
+            initial_delay: 1
+            max_delay: 4
+            multiplier: 2
+    - require_b_commit:
+        switch:
+          - condition: ${step_b.body.disposition != "committed" and step_b.body.disposition != "replay"}
+            raise: "step B did not commit or replay; inspect run status and start a replacement run if required"
+    - done:
+        return: ${step_b.body}
+
+retryable_step_error:
+  params: [e]
+  steps:
+    - built_in_retry:
+        call: http.default_retry_predicate
+        args:
+          exception: ${e}
+        result: retry_by_default
+    - use_built_in:
+        switch:
+          - condition: ${retry_by_default}
+            return: true
+    - read_status_safely:
+        assign:
+          - status_code: ${default(map.get(e, "code"), 0)}
+    - retry_custom_status:
+        switch:
+          - condition: ${status_code == 409 or status_code >= 500}
+            return: true
+    - stop:
+        return: false

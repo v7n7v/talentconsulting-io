@@ -1,9 +1,19 @@
 import Link from 'next/link';
 import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import { ToolGuidanceBinding } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep } from '@/lib/tool-story-adapters';
 
 export default function NegotiationCompatibilityPage() {
   return (
     <div className="mobile-app-content min-h-dvh px-4 py-3 md:p-6">
+      <ToolGuidanceBinding config={buildToolStory({
+        toolId: 'negotiate', title: 'Offer planning', contextKey: 'applications-handoff',
+        purpose: 'Continue offer work inside the application record that actually reached the offer stage.',
+        work: [
+          storyStep('application', 'Open the real application', 'Use Applications to select an actual offer-stage record. This page does not capture or generate an offer.', 'offers-applications'),
+          storyStep('offers', 'Review your recorded offers', 'Review offers opens the tracker with its offer filter. Enter actual compensation and deadlines there; guidance does not choose or edit a record.', 'offers-review'),
+        ],
+      })} />
       <div className="mx-auto max-w-3xl space-y-4">
         <SuiteToolHeader
           tool="negotiate"
@@ -22,7 +32,7 @@ export default function NegotiationCompatibilityPage() {
               ['3', 'Act cleanly', 'Generate the brief, copy language, and record the result.'],
             ].map(([step, title, body]) => (
               <div key={step} className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
-                <span className="grid h-8 w-8 place-items-center rounded-[11px] border border-emerald-500/25 bg-emerald-500/10 text-sm font-bold text-emerald-600 dark:text-emerald-300">{step}</span>
+                <span className="grid h-8 w-8 place-items-center rounded-[11px] border border-[var(--taco-coral)] bg-[var(--accent-dim)] text-sm font-bold text-[var(--accent)] dark:text-[var(--accent)]">{step}</span>
                 <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{title}</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{body}</p>
               </div>
@@ -30,11 +40,11 @@ export default function NegotiationCompatibilityPage() {
           </div>
 
           <div className="mt-6 flex flex-wrap gap-2">
-            <Link href="/suite/applications" className="inline-flex items-center gap-2 rounded-[12px] border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-500/15 dark:text-emerald-300">
+            <Link data-guide="offers-applications" href="/suite/applications" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--taco-coral)] bg-[var(--accent-dim)] px-4 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent-dim)] dark:text-[var(--accent)]">
               <span className="material-symbols-rounded text-[18px]">work</span>
               Open Applications
             </Link>
-            <Link href="/suite/applications?status=offer" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+            <Link data-guide="offers-review" href="/suite/applications?status=offer" className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
               <span className="material-symbols-rounded text-[18px]">celebration</span>
               Review offers
             </Link>

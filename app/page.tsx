@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TalentLanding } from '@/components/landing/TalentLanding';
 import AuthModal from '@/components/modals/AuthModal';
 import { authHelpers } from '@/lib/firebase';
@@ -13,7 +13,7 @@ export default function Home() {
   const setUser = useStore((state) => state.setUser);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('signup');
-  const [postAuthRedirect, setPostAuthRedirect] = useState('/suite');
+  const [postAuthRedirect, setPostAuthRedirect] = useState('/suite/agent?intent=resume-upload');
 
   useEffect(() => {
     const unsubscribe = authHelpers.onAuthStateChanged((firebaseUser) => {
@@ -29,9 +29,9 @@ export default function Home() {
     setShowAuthModal(true);
   };
 
-  const closeAuth = () => {
+  const closeAuth = useCallback(() => {
     setShowAuthModal(false);
-  };
+  }, []);
 
   return (
     <>
@@ -41,11 +41,11 @@ export default function Home() {
           __html: JSON.stringify({
             '@context': 'https://schema.org',
             '@type': 'SoftwareApplication',
-            name: 'Talent Studio',
+            name: 'Taco by TalentConsulting',
             applicationCategory: 'BusinessApplication',
             operatingSystem: 'Web',
             url: 'https://talentconsulting.io',
-            description: 'A review-first career operating system for resume evidence, role discovery, application packets, interview preparation, and career intelligence.',
+            description: 'AI job search grounded in your experience. Find suitable roles, prepare application materials, and review every next step with Taco.',
             featureList: [
               'Resume Studio and ATS analysis',
               'Evidence-aware job discovery',

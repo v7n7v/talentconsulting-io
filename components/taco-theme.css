@@ -1,0 +1,40 @@
+/* Taco's fixed brand colors. The original blue identity lives in its image asset. */
+:root {
+  --taco-paper: #fffaf5;
+  --taco-ink: #151515;
+  --taco-muted: #6e6964;
+  --taco-line: #ded7cf;
+  --taco-soft: #f2ebe3;
+  --taco-coral: #ff5b35;
+  --taco-coral-ink: #a82c18;
+  --taco-shadow: #c6b6ff;
+  --taco-action: var(--taco-coral);
+  --taco-action-ink: var(--taco-ink);
+  --taco-coral-soft: color-mix(in srgb, var(--taco-coral) 12%, var(--taco-surface));
+}
+
+/* Dark mode uses charcoal surfaces and paper text from the same brand families. */
+:root,
+[data-theme="dark"] {
+  --taco-surface: var(--taco-ink);
+  --taco-surface-raised: #201e1c;
+  --taco-surface-hover: #34302c;
+  --taco-text: var(--taco-paper);
+  --taco-text-secondary: var(--taco-line);
+  --taco-text-muted: #c9bfb5;
+  --taco-border: #635b53;
+  --taco-border-strong: var(--taco-line);
+  --taco-accent-text: #ff9a83;
+}
+
+[data-theme="light"] {
+  --taco-surface: var(--taco-paper);
+  --taco-surface-raised: var(--taco-soft);
+  --taco-surface-hover: #ebe0d5;
+  --taco-text: var(--taco-ink);
+  --taco-text-secondary: #4d4741;
+  --taco-text-muted: var(--taco-muted);
+  --taco-border: var(--taco-line);
+  --taco-border-strong: var(--taco-ink);
+  --taco-accent-text: var(--taco-coral-ink);
+}

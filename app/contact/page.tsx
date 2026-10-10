@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { TalentConsultingWordmark } from '@/components/BrandLogo';
+import { TacoWordmark } from '@/components/BrandLogo';
 import JsonLd from '@/components/seo/JsonLd';
 import { breadcrumbJsonLd, buildMetadata } from '@/lib/seo';
 import ContactForm from './ContactForm';
@@ -36,7 +36,7 @@ export default function ContactPage() {
       <header className="border-b border-[var(--border-subtle)]">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link href="/" aria-label="TalentConsulting.io home" className="inline-flex min-h-[44px] min-w-0 items-center">
-            <TalentConsultingWordmark className="w-[min(210px,48vw)]" />
+            <TacoWordmark className="w-[min(210px,48vw)]" />
           </Link>
           <Link
             href="/help"

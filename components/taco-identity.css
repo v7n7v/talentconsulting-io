@@ -1,0 +1,17 @@
+/* The blue gradient in the source art is invariant across themes and states. */
+.taco-wordmark { display: inline-block; width: 150px; max-width: 100%; vertical-align: middle; }
+.taco-wordmark > img { display: block; width: 100%; height: auto; }
+.taco-wordmark > .taco-wordmark__light { display: none; }
+[data-theme="dark"] .taco-wordmark > .taco-wordmark__ink,
+.taco-wordmark.taco-wordmark--light > .taco-wordmark__ink { display: none; }
+[data-theme="dark"] .taco-wordmark > .taco-wordmark__light,
+.taco-wordmark.taco-wordmark--light > .taco-wordmark__light { display: block; }
+/* The marketing surface stays paper-coloured in either application theme. */
+.taco-landing .taco-wordmark > .taco-wordmark__ink { display: block; }
+.taco-landing .taco-wordmark > .taco-wordmark__light { display: none; }
+.taco-name { display: inline; white-space: nowrap; letter-spacing: inherit; }
+.taco-name__symbol { display: inline-block; width: 1.3em; height: 1em; margin-inline-end: .24em; vertical-align: -.12em; object-fit: contain; }
+
+/* Public paper surfaces keep ink lettering in either app theme. */
+:is(.taco-public-page, .premium-brand-page) .taco-wordmark > .taco-wordmark__ink { display: block; }
+:is(.taco-public-page, .premium-brand-page) .taco-wordmark > .taco-wordmark__light { display: none; }

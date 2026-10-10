@@ -85,6 +85,8 @@ export async function writingJSONCompletion<T = any>(options: {
   userTier?: string;
   qualityMode?: WritingQualityMode;
   title?: string;
+  /** Runtime schema check. Provider JSON is untrusted and must be validated before use. */
+  validateResult?: (result: unknown) => result is T;
 }): Promise<WritingCompletionResult<T>> {
   const started = Date.now();
   const models = modelPlanForTask(options.task, options.userTier, options.qualityMode);
@@ -107,12 +109,15 @@ export async function writingJSONCompletion<T = any>(options: {
             timeoutMs: candidate.model === WRITING_MODELS.verifier ? 18_000 : 26_000,
           });
 
+      if (options.validateResult && !options.validateResult(result)) {
+        throw new Error(`Invalid ${options.task} provider response`);
+      }
       const decision = options.qualityPolicy
         ? options.qualityPolicy(result, candidate)
         : ACCEPTED;
       lastDecision = decision;
 
-      if (decision.passed || index === models.length - 1) {
+      if (decision.passed) {
         return {
           result,
           engine: candidate.engine,
@@ -128,6 +133,9 @@ export async function writingJSONCompletion<T = any>(options: {
     }
   }
 
+  if (lastDecision && !lastDecision.passed) {
+    throw new Error('Writing model quality gates failed');
+  }
   if (lastError instanceof Error) throw lastError;
   throw new Error(lastDecision ? 'Writing model quality gates failed' : 'All writing models failed');
 }

@@ -36,7 +36,7 @@ export const promoConfig: PromoConfig = {
   headline: 'Founding pricing — Standard $7.99/mo · Max $14.99/mo',
   ctaText: 'See founding prices',
   ctaUrl: '/suite/upgrade',
-  accentColor: '#10b981',
+  accentColor: 'var(--taco-coral)',
   expiresAt: '2026-11-01T03:59:59Z',
 };
 

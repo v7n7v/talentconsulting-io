@@ -78,7 +78,8 @@ export default function PromoPopup() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 backdrop-blur-sm z-[100]"
+            style={{ background: 'color-mix(in srgb, var(--bg-deep) 70%, transparent)' }}
             onClick={handleClose}
           />
 
@@ -91,24 +92,19 @@ export default function PromoPopup() {
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[101] w-[90vw] max-w-md"
           >
             <div
-              className="relative rounded-3xl p-8 text-center overflow-hidden"
-              style={{
-                background: 'linear-gradient(135deg, #0a1a14 0%, #0d2818 50%, #0a1a14 100%)',
-                border: '1px solid rgba(16, 185, 129, 0.2)',
-                boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 80px rgba(16,185,129,0.1)',
-              }}
+              className="elevation-raised relative rounded-3xl p-8 text-center overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)]"
             >
               {/* Glow effects */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-32 bg-emerald-500/20 rounded-full blur-3xl" />
-              <div className="absolute bottom-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl" />
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-32 bg-[var(--accent-dim)] rounded-full blur-3xl" />
+              <div className="absolute bottom-0 right-0 w-48 h-48 bg-[var(--accent-dim)] rounded-full blur-3xl" />
 
               {/* Close X */}
               <button
                 onClick={handleClose}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors group"
+                className="absolute top-3 right-3 h-11 w-11 rounded-full bg-[var(--bg-hover)] hover:bg-[var(--bg-surface)] flex items-center justify-center transition-colors group"
                 aria-label="Close"
               >
-                <svg className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -116,7 +112,7 @@ export default function PromoPopup() {
               {/* Don't show again */}
               <button
                 onClick={handleDismiss}
-                className="absolute top-4 left-4 text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                className="absolute top-3 left-3 inline-flex min-h-[44px] items-center px-2 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
               >
                 Don&apos;t show again
               </button>
@@ -125,29 +121,25 @@ export default function PromoPopup() {
               <div className="relative z-10">
                 {/* Sparkle icon */}
                 <div className="icon-shell-neutral w-16 h-16 rounded-2xl border flex items-center justify-center mx-auto mb-5">
-                  <span className="material-symbols-rounded text-3xl">local_offer</span>
+                  <span className="material-symbols-rounded icon-neutral text-3xl">local_offer</span>
                 </div>
 
-                <h3 className="text-xl font-bold text-white mb-2">
+                <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2">
                   {promo.headline}
                 </h3>
 
-                <p className="text-sm text-gray-400 mb-5">
+                <p className="text-sm text-[var(--text-secondary)] mb-5">
                   Founding members keep the discounted rate while their subscription stays active. Available to eligible new subscribers through October 31.
                 </p>
 
                 {/* Code pill */}
                 <div
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl mb-6 group"
-                  style={{
-                    background: 'rgba(16, 185, 129, 0.1)',
-                    border: '1px dashed rgba(16, 185, 129, 0.3)',
-                  }}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl mb-6 group border border-dashed border-[var(--accent)] bg-[var(--accent-dim)]"
                 >
-                  <span className="text-lg font-bold tracking-widest text-emerald-400">
+                  <span className="text-lg font-bold tracking-widest text-[var(--accent)]">
                     {promo.automatic ? 'AUTO-APPLIED' : promo.code}
                   </span>
-                  <span className="text-[10px] text-emerald-500/60">
+                  <span className="text-[11px] text-[var(--text-muted)]">
                     {promo.automatic ? 'in secure checkout' : 'at checkout'}
                   </span>
                 </div>
@@ -157,12 +149,12 @@ export default function PromoPopup() {
                   <Link
                     href="/suite/upgrade"
                     onClick={handleClose}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold text-sm hover:shadow-lg hover:shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    className="btn-primary w-full py-3 rounded-xl font-semibold text-sm text-center transition-all hover:scale-[1.02] active:scale-[0.98]"
                   >
                     {promo.ctaText} →
                   </Link>
 
-                  <p className="text-[11px] text-gray-500">
+                  <p className="text-[11px] text-[var(--text-muted)]">
                     Eligible new subscribers get a 7-day trial · Cancel anytime
                   </p>
                 </div>

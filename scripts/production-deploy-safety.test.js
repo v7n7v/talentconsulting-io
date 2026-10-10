@@ -23,6 +23,7 @@ const {
   isExpectedHostingConflict,
   pruneBuildCaches,
   restoreProductionRollbackPoint,
+  promoteDeployedRevision,
 } = require('../deploy-fix');
 
 const publicEnv = Object.fromEntries(PUBLIC_BUILD_KEYS.map(key => [key, `${key.toLowerCase()}_approved_value`]));
@@ -461,6 +462,23 @@ test('rollback capture ignores tag-only revisions that carry no percent', () => 
   ]) {
     assert.throws(() => captureProductionRollbackPoint(stub(invalid)), /invalid resolved traffic assignment/);
   }
+});
+
+test('post-deploy promotion routes traffic to the exact latest ready revision', () => {
+  const calls = [];
+  const revision = promoteDeployedRevision({ runGcloud: args => {
+    calls.push(args);
+    if (args[0] === 'functions') return { status: 0, stdout: JSON.stringify({ state: 'ACTIVE', serviceConfig: { revision: 'ssrtalentconsultingacf1-00169-fuy' } }), stderr: '' };
+    return { status: 0, stdout: '', stderr: '' };
+  } });
+  assert.equal(revision, 'ssrtalentconsultingacf1-00169-fuy');
+  assert.ok(calls.some(args => args.includes('--to-revisions=ssrtalentconsultingacf1-00169-fuy=100')));
+});
+
+test('post-deploy promotion fails closed when latest revision is not ready', () => {
+  assert.throws(() => promoteDeployedRevision({ runGcloud: args => args[0] === 'functions'
+    ? { status: 0, stdout: JSON.stringify({ state: 'DEPLOYING', serviceConfig: { revision: 'ssrtalentconsultingacf1-00169-fuy' } }), stderr: '' }
+    : { status: 0, stdout: '', stderr: '' } }), /not active or valid/);
 });
 
 test('Firebase deployment stages validated runtime values without reserved Firebase keys', () => {

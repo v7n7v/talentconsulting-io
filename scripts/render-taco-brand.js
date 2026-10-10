@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const sharp = require('sharp');
+const { renderTacoWordmark } = require('./render-taco-wordmark');
 
 const repoRoot = path.join(__dirname, '..');
 const publicDirectory = path.join(repoRoot, 'public');
@@ -28,12 +29,6 @@ async function extractMarkForeground(buffer) {
 
 function markSvg(mark, { title, description }) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description"><title id="title">${title}</title><desc id="description">${description}</desc><image href="${encodeDataUrl('image/png', mark)}" x="0" y="0" width="512" height="512" preserveAspectRatio="xMidYMid meet"/></svg>`;
-}
-
-function wordmarkSvg(mark, { white = false } = {}) {
-  const foreground = white ? '#fff' : '#102746';
-  const detail = white ? '#c8d8e8' : '#4b607c';
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180" role="img" aria-labelledby="title description"><title id="title">Taco wordmark${white ? ' in white' : ''}</title><desc id="description">Taco, the TalentConsulting career assistant, represented by the canonical blue A mark.</desc><image href="${encodeDataUrl('image/png', mark)}" x="10" y="10" width="160" height="160"/><text x="190" y="102" fill="${foreground}" font-family="Inter,Arial,sans-serif" font-size="86" font-weight="800" letter-spacing="5">TACO</text><text x="194" y="145" fill="${detail}" font-family="Inter,Arial,sans-serif" font-size="23" font-weight="600" letter-spacing="1.4">TALENTCONSULTING CAREER ASSISTANT</text></svg>`;
 }
 
 async function darkSurfaceWordmark() {
@@ -71,8 +66,7 @@ async function render() {
   fs.writeFileSync(path.join(brandDirectory, 'taco-mark.svg'), brandIcon);
   fs.writeFileSync(path.join(brandDirectory, 'taco-mark-white.svg'), whiteIcon);
   fs.writeFileSync(path.join(brandDirectory, 'taco-mark-monochrome.svg'), monochromeIcon);
-  fs.writeFileSync(path.join(brandDirectory, 'taco-wordmark.svg'), wordmarkSvg(brandMark));
-  fs.writeFileSync(path.join(brandDirectory, 'taco-wordmark-white.svg'), wordmarkSvg(brandMark, { white: true }));
+  await renderTacoWordmark(brandMark);
 
   for (const size of [16, 24, 32, 48, 64, 192, 512, 1024]) {
     await sharp(brandMark).resize(size, size).png({ compressionLevel: 9 }).toFile(path.join(brandDirectory, `taco-mark-${size}.png`));

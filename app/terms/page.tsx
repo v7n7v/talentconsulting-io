@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { TalentConsultingMark } from '@/components/BrandLogo';
+import { TacoMark } from '@/components/BrandLogo';
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
@@ -48,8 +48,8 @@ export default function TermsPage() {
         </Link>
         <header className="mb-8">
           <div className="flex items-center gap-3">
-            <TalentConsultingMark className="h-9 w-9 rounded-[12px] border border-[var(--border-subtle)]" />
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-400">Talent Studio</p>
+            <TacoMark className="h-9 w-9 rounded-[12px] border border-[var(--border-subtle)]" />
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">Talent Studio</p>
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight">Terms of Service</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">Last updated May 14, 2026. These terms keep the product clear, responsible, and fair to use.</p>

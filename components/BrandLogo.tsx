@@ -1,11 +1,45 @@
 import type { CSSProperties } from 'react';
+import Image from 'next/image';
 
 export const TALENT_CONSULTING_WORDMARK = '/brand/talentconsulting-logo-white.png';
 export const TALENT_CONSULTING_WORDMARK_TRANSPARENT = '/brand/talentconsulting-logo.png';
 export const TALENT_CONSULTING_WORDMARK_DARK_SURFACE = '/brand/talentconsulting-logo-dark-surface.png';
 export const TALENT_CONSULTING_MARK = '/brand/talentconsulting-mark-512.png';
 export const TACO_MARK = '/taco-icon-512.png';
+export const TACO_SYMBOL = '/brand/taco/taco-symbol.svg';
 export const TALENT_CONSULTING_BRAND_NAME = 'TalentConsulting.io';
+
+interface TacoWordmarkProps {
+  className?: string;
+  light?: boolean;
+  priority?: boolean;
+  sizes?: string;
+}
+
+/** The original blue A stays identical; only the surrounding letters adapt. */
+export function TacoWordmark({ className = '', light = false, priority = false, sizes = '150px' }: TacoWordmarkProps) {
+  return (
+    <span className={`taco-wordmark ${light ? 'taco-wordmark--light' : ''} ${className}`} role="img" aria-label="Taco">
+      <Image className="taco-wordmark__ink" src="/brand/taco/taco-folded-ink.svg" alt="" aria-hidden="true" width={1188} height={288} sizes={sizes} priority={priority} />
+      <Image className="taco-wordmark__light" src="/brand/taco/taco-folded-light.svg" alt="" aria-hidden="true" width={1188} height={288} sizes={sizes} priority={priority} />
+    </span>
+  );
+}
+
+/** A single blue gradient symbol for standalone and inline brand placements. */
+export function TacoBrandSymbol({ className = '', decorative = false }: { className?: string; decorative?: boolean }) {
+  return <Image className={className} src={TACO_SYMBOL} alt={decorative ? '' : 'Taco'} aria-hidden={decorative || undefined} width={374} height={288} sizes="36px" />;
+}
+
+/** Keep the symbol and name together without repeating the accessible name. */
+export function TacoName({ name = 'Taco', showSymbol = true }: { name?: 'Taco' | 'TACO'; showSymbol?: boolean }) {
+  return <span className="taco-name">{showSymbol && <TacoBrandSymbol className="taco-name__symbol" decorative />}<span>{name}</span></span>;
+}
+
+/** Brand only application-owned copy; callers retain their original strings. */
+export function TacoText({ text }: { text: string }) {
+  return <>{text.split(/(\bTaco\b|\bTACO\b)/g).map((part, index) => part === 'Taco' || part === 'TACO' ? <TacoName key={index} name={part} /> : part)}</>;
+}
 
 interface BrandLogoProps {
   className?: string;

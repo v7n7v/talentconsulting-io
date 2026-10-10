@@ -1,3 +1,4 @@
+import { normalizeApplicationRecord } from '@/lib/application-records';
 /**
  * Database operations for Talent Suite features
  * Primary: Firestore (cloud, syncs across devices)
@@ -20,17 +21,25 @@ import {
   isDemoModeEnabled,
   saveDemoCoverLetter,
   saveDemoResumeVersion,
+  updateDemoResumeVersion,
   updateDemoJobApplication,
   updateDemoQueueItem,
   updateDemoStudyProgress,
 } from './demo-mode';
 import {
   doc, setDoc, getDoc, updateDoc, deleteDoc,
-  collection, getDocs, addDoc, query, where, limit, deleteField,
+  collection, getDocs, addDoc, query, where, limit, deleteField, runTransaction,
 } from 'firebase/firestore';
 import type { Resume } from './ai/resume-morpher';
 import { normalizeVerifiedResumeProvenance } from './resume-provenance';
 import { authFetch } from './auth-fetch';
+import { createWorkspaceMetadata, stableWorkspaceContentHash, type CreateWorkspaceMetadataInput, buildResumeIdempotencyKey } from './resume-workspace';
+
+/** Best-effort invalidation; the server TTL bounds freshness if this request fails. */
+async function invalidateCareerSummary() {
+  await authFetch('/api/agent/intelligence', { method: 'POST' }).catch(error => console.error('Career summary refresh failed', error));
+}
+
 
 // ============================================
 // HELPERS
@@ -58,6 +67,22 @@ function withTimeout<T>(promise: Promise<T>, ms = 5000): Promise<T> {
   ]);
 }
 
+function resumePayloadForIdentity(data: any) {
+  return {
+    version_name: data?.version_name || '',
+    content: data?.content || null,
+    skill_graph: data?.skill_graph || null,
+    mode: data?.mode || null,
+    source: data?.source || null,
+    provenance: data?.provenance || null,
+    metadata: data?.metadata || {},
+  };
+}
+
+async function resumePayloadFingerprint(data: any): Promise<string> {
+  return stableWorkspaceContentHash(resumePayloadForIdentity(data));
+}
+
 // ============================================
 // RESUME VERSIONS
 // ============================================
@@ -76,38 +101,71 @@ export interface ResumeVersion {
   updated_at: string;
 }
 
+export interface ResumeSaveOptions {
+  idempotencyKey?: string;
+  workspace?: CreateWorkspaceMetadataInput;
+}
+
 export async function saveResumeVersion(
   versionName: string,
   content: Resume,
   skillGraph: any,
   mode: 'technical' | 'leadership' = 'technical',
   metadata: Record<string, any> = {},
-  options: { idempotencyKey?: string } = {},
+  options: ResumeSaveOptions = {},
 ): Promise<{ success: boolean; data?: ResumeVersion; error?: string }> {
   try {
-    if (isDemoModeEnabled()) {
+    const demoMode = isDemoModeEnabled();
+    const ownerId = demoMode ? DEMO_USER_ID : getUserId();
+    const storedContent = stripUndefined(content);
+    const rawWorkspace = options.workspace || (metadata?.workspace && typeof metadata.workspace === 'object' ? metadata.workspace as CreateWorkspaceMetadataInput : null);
+    const workspaceMetadata = rawWorkspace
+      ? createWorkspaceMetadata({
+          ...rawWorkspace,
+          content: storedContent,
+          contentHash: await stableWorkspaceContentHash(storedContent),
+        })
+      : null;
+    const persistedMetadata = {
+      ...metadata,
+      ...(workspaceMetadata ? { workspace: workspaceMetadata } : {}),
+    };
+    if (!demoMode && getUserId() !== ownerId) return { success: false, error: 'Account changed while preparing resume save.' };
+    if (demoMode) {
       const now = new Date().toISOString();
+      const idempotencyId = typeof options.idempotencyKey === 'string' && /^[a-f0-9]{40}$/.test(options.idempotencyKey)
+        ? `handoff_${options.idempotencyKey}` : null;
+      if (idempotencyId) {
+        const prior = (getDemoResumeVersions() as ResumeVersion[]).find(version => version.id === idempotencyId);
+        if (prior) {
+          const priorFingerprint = await resumePayloadFingerprint(prior);
+          const nextFingerprint = await resumePayloadFingerprint({ version_name: versionName, content: storedContent, skill_graph: skillGraph, mode, metadata: persistedMetadata });
+          if (priorFingerprint !== nextFingerprint) return { success: false, error: 'Idempotency key is already bound to different resume payload.' };
+          return { success: true, data: prior };
+        }
+      }
       const data = saveDemoResumeVersion({
+        ...(idempotencyId ? { id: idempotencyId } : {}),
         version_name: versionName,
-        content,
+        content: storedContent,
         skill_graph: skillGraph,
         mode,
         is_active: true,
-        metadata,
+        metadata: persistedMetadata,
         created_at: now,
         updated_at: now,
       });
       return { success: true, data: data as ResumeVersion };
     }
 
-    const userId = getUserId();
+    const userId = ownerId;
     const now = new Date().toISOString();
     const verifiedProvenance = normalizeVerifiedResumeProvenance(metadata?.resumeProvenance, now);
     const colRef = collection(db, 'users', userId, 'resume_versions');
     const docData = {
       user_id: userId,
       version_name: versionName,
-      content: stripUndefined(content),
+      content: storedContent,
       skill_graph: stripUndefined(skillGraph),
       mode,
       source: verifiedProvenance?.origin || String(metadata?.savedFrom || 'resume_studio_draft').slice(0, 80),
@@ -115,7 +173,7 @@ export async function saveResumeVersion(
         provenance: verifiedProvenance,
       } : {}),
       is_active: true,
-      metadata: stripUndefined(metadata),
+      metadata: stripUndefined(persistedMetadata),
       created_at: now,
       updated_at: now,
     };
@@ -125,10 +183,25 @@ export async function saveResumeVersion(
       : null;
     if (idempotencyKey) {
       const docRef = doc(colRef, `handoff_${idempotencyKey}`);
-      await withTimeout(setDoc(docRef, docData));
-      return { success: true, data: { id: docRef.id, ...docData } as ResumeVersion };
+      const payloadFingerprint = await resumePayloadFingerprint(docData);
+      if (getUserId() !== ownerId) return { success: false, error: 'Account changed while preparing resume save.' };
+      const transactionResult = await withTimeout(runTransaction(db, async transaction => {
+        const existing = await transaction.get(docRef);
+        if (existing.exists()) {
+          const existingData = existing.data() || {};
+          const existingFingerprint = await resumePayloadFingerprint(existingData);
+          if (existingFingerprint !== payloadFingerprint) throw new Error('Idempotency key is already bound to different resume payload.');
+          return { id: existing.id, data: existingData };
+        }
+        if (getUserId() !== ownerId) throw new Error('Account changed while saving resume.');
+        transaction.set(docRef, docData);
+        return { id: docRef.id, data: docData };
+      }));
+      void invalidateCareerSummary();
+      return { success: true, data: { id: transactionResult.id, ...transactionResult.data } as ResumeVersion };
     }
     const createdRef = await withTimeout(addDoc(colRef, docData));
+    void invalidateCareerSummary();
     return { success: true, data: { id: createdRef.id, ...docData } as ResumeVersion };
   } catch (error: any) {
     console.error('saveResumeVersion error:', error.message);
@@ -148,19 +221,20 @@ function stripUndefined(obj: any): any {
   return clean;
 }
 
-export async function getResumeVersions(): Promise<{
+export async function getResumeVersions(options: { limit?: number } = {}): Promise<{
   success: boolean;
   data?: ResumeVersion[];
   error?: string;
 }> {
   try {
     if (isDemoModeEnabled()) {
-      return { success: true, data: getDemoResumeVersions() as ResumeVersion[] };
+      const versions = getDemoResumeVersions() as ResumeVersion[];
+      return { success: true, data: typeof options.limit === 'number' && options.limit > 0 ? versions.slice(0, Math.floor(options.limit)) : versions };
     }
 
     const userId = getUserId();
     const colRef = collection(db, 'users', userId, 'resume_versions');
-    const snapshot = await withTimeout(getDocs(colRef));
+    const snapshot = await withTimeout(getDocs(options.limit && options.limit > 0 ? query(colRef, limit(Math.floor(options.limit))) : colRef));
     const data = snapshot.docs
       .map(d => ({ id: d.id, ...d.data() } as ResumeVersion))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -177,16 +251,16 @@ export async function updateResumeVersion(
 ): Promise<{ success: boolean; data?: ResumeVersion; error?: string }> {
   try {
     if (isDemoModeEnabled()) {
-      const versions = getDemoResumeVersions();
-      const found = versions.find((version: ResumeVersion) => version.id === id);
+      const found = updateDemoResumeVersion(id, updates as Record<string, unknown>);
       return found
-        ? { success: true, data: { ...found, ...updates, updated_at: new Date().toISOString() } as ResumeVersion }
+        ? { success: true, data: found as ResumeVersion }
         : { success: false, error: 'Resume version not found' };
     }
 
     const userId = getUserId();
     const docRef = doc(db, 'users', userId, 'resume_versions', id);
     await withTimeout(updateDoc(docRef, { ...updates, updated_at: new Date().toISOString() }));
+    void invalidateCareerSummary();
     const snap = await withTimeout(getDoc(docRef));
     return { success: true, data: { id: snap.id, ...snap.data() } as ResumeVersion };
   } catch (error: any) {
@@ -200,6 +274,7 @@ export async function deleteResumeVersion(id: string): Promise<{ success: boolea
 
     const userId = getUserId();
     await withTimeout(deleteDoc(doc(db, 'users', userId, 'resume_versions', id)));
+    void invalidateCareerSummary();
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -228,6 +303,12 @@ export interface UserProfile {
     verified: boolean;
     origin: 'onboarding_upload' | 'user_save' | 'unknown';
     recordedAt: string;
+  };
+  resume_source_meta?: {
+    fileName?: string;
+    sourceType?: string;
+    characterCount?: number;
+    confirmedAt?: string;
   };
   target_roles?: string[];
   location_preference?: string;
@@ -283,6 +364,8 @@ export async function completeOnboarding(data: {
   salary_range?: { min: number; max: number };
   base_resume_text?: string;
   base_resume_parsed?: any;
+  resume_provenance?: UserProfile['resume_provenance'];
+  resume_source_meta?: UserProfile['resume_source_meta'];
 }): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
   try {
     if (isDemoModeEnabled()) {
@@ -318,11 +401,11 @@ export async function completeOnboarding(data: {
     const profileData = {
       ...existing,
       ...answered,
-      ...((data.base_resume_parsed || data.base_resume_text) ? {
+      ...((data.resume_provenance || data.base_resume_parsed || data.base_resume_text) ? {
         resume_provenance: {
-          verified: true,
-          origin: 'onboarding_upload',
-          recordedAt: now,
+          verified: data.resume_provenance?.verified ?? true,
+          origin: data.resume_provenance?.origin || 'onboarding_upload',
+          recordedAt: data.resume_provenance?.recordedAt || now,
         },
       } : {}),
       onboarding_completed: true,
@@ -487,6 +570,8 @@ export interface JobApplication {
 }
 
 export interface OfferDetails {
+  currency?: string;
+  period?: 'year' | 'month' | 'hour';
   base?: number | null;
   total?: number | null;
   bonus?: number | null;
@@ -501,6 +586,8 @@ export interface OfferDetails {
 }
 
 export interface NegotiationBrief {
+  method?: 'entered_offer_v1';
+  sourceOfferSignature?: string;
   marketRange?: { low: number; mid: number; high: number };
   verdict?: 'below_market' | 'at_market' | 'above_market';
   verdictMessage?: string;
@@ -529,6 +616,12 @@ export async function createJobApplication(data: {
     }
 
     const userId = getUserId();
+    if (data.resumeVersionId) {
+      const response = await authFetch('/api/applications/from-resume', { method: 'POST', body: JSON.stringify(data) });
+      const result = await response.json();
+      if (getUserId() !== userId) return { success: false, error: 'Account changed while saving the tracker.' };
+      return response.ok ? result : { success: false, error: result.error || 'Tracker could not be saved.' };
+    }
     const now = new Date().toISOString();
     const docData = {
       user_id: userId,
@@ -540,7 +633,7 @@ export async function createJobApplication(data: {
       job_description: data.jobDescription || null,
       resume_version_id: data.resumeVersionId || null,
       morphed_resume_name: data.morphedResumeName,
-      talent_density_score: data.talentDensityScore || null,
+      talent_density_score: data.talentDensityScore ?? null,
       gap_analysis: data.gapAnalysis || null,
       application_link: data.applicationLink || null,
       status: 'not_applied' as const,
@@ -551,32 +644,6 @@ export async function createJobApplication(data: {
       updatedAt: now,
     };
     const colRef = collection(db, 'users', userId, 'applications');
-    if (data.resumeVersionId) {
-      const existingSnap = await withTimeout(getDocs(query(colRef, where('resume_version_id', '==', data.resumeVersionId), limit(1))));
-      if (!existingSnap.empty) {
-        const existingDoc = existingSnap.docs[0];
-        const existingData = existingDoc.data();
-        const updateData = stripUndefined({
-          company_name: docData.company_name,
-          companyName: docData.companyName,
-          company: docData.company,
-          job_title: docData.job_title,
-          jobTitle: docData.jobTitle,
-          job_description: docData.job_description,
-          morphed_resume_name: docData.morphed_resume_name,
-          talent_density_score: docData.talent_density_score,
-          gap_analysis: docData.gap_analysis,
-          application_link: docData.application_link || existingData.application_link || null,
-          last_updated: now,
-          updatedAt: now,
-        });
-        await withTimeout(updateDoc(doc(db, 'users', userId, 'applications', existingDoc.id), updateData));
-        return {
-          success: true,
-          data: { id: existingDoc.id, ...existingData, ...updateData } as JobApplication,
-        };
-      }
-    }
     const docRef = await withTimeout(addDoc(colRef, docData));
     return { success: true, data: { id: docRef.id, ...docData } as JobApplication };
   } catch (error: any) {
@@ -599,7 +666,7 @@ export async function getJobApplications(): Promise<{
     const colRef = collection(db, 'users', userId, 'applications');
     const snapshot = await withTimeout(getDocs(colRef));
     const data = snapshot.docs
-      .map(d => ({ id: d.id, ...d.data() } as JobApplication))
+      .map(d => normalizeApplicationRecord(d.data(), d.id) as JobApplication)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return { success: true, data };
   } catch (error: any) {
@@ -657,9 +724,29 @@ export async function updateApplicationStatus(
   }
 }
 
+/** Saving notes must never replay a status captured by an older drawer. */
+export async function updateApplicationNotes(id: string, notes: string): Promise<{ success: boolean; data?: JobApplication; error?: string }> {
+  try {
+    const userId = getUserId();
+    if (!/^[A-Za-z0-9_-]{1,180}$/.test(id) || notes.length > 50000) throw new Error('Notes are too long or the application is invalid.');
+    const patch = { notes, last_updated: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    if (isDemoModeEnabled()) {
+      const data = updateDemoJobApplication(id, patch);
+      return data ? { success: true, data: data as JobApplication } : { success: false, error: 'Application not found' };
+    }
+    const ref = doc(db, 'users', userId, 'applications', id);
+    await withTimeout(updateDoc(ref, patch));
+    if (getUserId() !== userId) return { success: false, error: 'Account changed while saving notes.' };
+    const snapshot = await withTimeout(getDoc(ref));
+    if (getUserId() !== userId) return { success: false, error: 'Account changed while loading notes.' };
+    return { success: true, data: { ...snapshot.data(), id: snapshot.id } as JobApplication };
+  } catch (error: any) { return { success: false, error: error.message || 'Notes could not be saved.' }; }
+}
+
 export async function updateApplicationOffer(
   id: string,
   updates: {
+    expectedOfferSignature?: string;
     offerDetails?: OfferDetails | null;
     negotiationBrief?: NegotiationBrief | null;
     negotiationStatus?: JobApplication['negotiation_status'];
@@ -677,7 +764,10 @@ export async function updateApplicationOffer(
         updateData.negotiation_brief = updates.negotiationBrief;
         updateData.negotiation_generated_at = updates.negotiationBrief ? new Date().toISOString() : null;
       }
-      if (updates.negotiationStatus) updateData.negotiation_status = updates.negotiationStatus;
+      if (updates.negotiationStatus) { updateData.negotiation_status = updates.negotiationStatus;
+        if (updates.negotiationStatus === 'accepted') updateData.status = 'accepted';
+        if (updates.negotiationStatus === 'declined') updateData.status = 'withdrawn';
+      }
       const updated = updateDemoJobApplication(id, updateData);
       return updated
         ? { success: true, data: updated as JobApplication }
@@ -685,28 +775,10 @@ export async function updateApplicationOffer(
     }
 
     const userId = getUserId();
-    const docRef = doc(db, 'users', userId, 'applications', id);
-    const updateData: any = {
-      last_updated: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (updates.offerDetails !== undefined) {
-      updateData.offer_details = stripUndefined(updates.offerDetails);
-      const amount = updates.offerDetails?.base || updates.offerDetails?.total;
-      if (amount) updateData.offer_amount = amount;
-    }
-    if (updates.negotiationBrief !== undefined) {
-      updateData.negotiation_brief = stripUndefined(updates.negotiationBrief);
-      updateData.negotiation_generated_at = updates.negotiationBrief ? new Date().toISOString() : null;
-    }
-    if (updates.negotiationStatus) {
-      updateData.negotiation_status = updates.negotiationStatus;
-    }
-
-    await withTimeout(updateDoc(docRef, updateData));
-    const snap = await withTimeout(getDoc(docRef));
-    return { success: true, data: { id: snap.id, ...snap.data() } as JobApplication };
+    const response = await authFetch('/api/applications/offer', { method: 'POST', body: JSON.stringify({ applicationId: id, ...updates }) });
+    const result = await response.json();
+    if (getUserId() !== userId) return { success: false, error: 'Account changed while saving.' };
+    return response.ok ? result : { success: false, error: result.error || 'Offer could not be saved.' };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -816,7 +888,7 @@ export async function getPendingOutcomeChecks(): Promise<{ success: boolean; dat
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
     const pending = snapshot.docs
-      .map(d => ({ id: d.id, ...d.data() } as JobApplication))
+      .map(d => normalizeApplicationRecord(d.data(), d.id) as JobApplication)
       .filter(app => {
         if (app.outcome_response) return false;
         if (app.status !== 'applied') return false;
@@ -932,7 +1004,11 @@ export interface AgentQueueItem {
     firstSeenAt?: string;
     lastSeenAt?: string;
   } | null;
-  packetStatus?: 'prepared' | 'needs_review' | 'approved' | 'applied' | 'dismissed' | 'expired' | 'assist_apply';
+  packetStatus?: 'prepared' | 'needs_review' | 'needs_attention' | 'approved' | 'applied' | 'dismissed' | 'expired' | 'assist_apply';
+  review_revision?: string;
+  review_ready?: boolean;
+  review_status?: 'needs_review' | 'blocked' | 'stale' | 'approved';
+  review_error?: string | null;
   fitSignals?: string[];
   riskSignals?: string[];
   sourceNotes?: string[];
@@ -967,9 +1043,12 @@ function normalizeLegacySonaQueueItem(id: string, data: any): AgentQueueItem {
     match_reason: data.resumeSummary || data.match_reason || 'Queued by Taco for your review.',
     morphed_resume: data.morphed_resume || null,
     cover_letter: data.coverLetterPreview || data.cover_letter || '',
-    status: data.status === 'queued' ? 'pending' : (data.status || 'pending'),
+    status: ['dismissed', 'expired'].includes(data.status) ? data.status : 'pending',
     source: 'legacy_sona',
     packetStatus: 'needs_review',
+    review_ready: false,
+    review_status: 'blocked',
+    review_error: 'This older packet needs fresh source-checked drafts before approval.',
     fitSignals: data.fitSignals || [],
     riskSignals: data.riskSignals || ['Legacy Taco packet may need a fresh resume or cover letter pass.'],
     nextAction: 'Review the packet and ask Taco to refine it before applying.',
@@ -986,18 +1065,27 @@ export async function getAgentQueue(
 ): Promise<{ success: boolean; data?: AgentQueueItem[]; error?: string }> {
   try {
     if (isDemoModeEnabled()) {
-      return { success: true, data: getDemoAgentQueue(statusFilter) as AgentQueueItem[] };
+      const exampleSource = getDemoResumeVersions()[0]?.content || null;
+      return { success: true, data: getDemoAgentQueue(statusFilter).map((item: AgentQueueItem) => ({
+        ...item,
+        review_revision: 'preview',
+        review_source: exampleSource,
+        review_resume: exampleSource && item.morphed_resume ? { ...exampleSource, ...item.morphed_resume } : null,
+        review_ready: Boolean(exampleSource && item.morphed_resume && item.cover_letter),
+        review_status: item.status === 'approved' ? 'approved' : 'needs_review',
+      })) as AgentQueueItem[] };
     }
 
     const userId = getUserId();
-    const colRef = collection(db, 'users', userId, 'agent_queue');
     const legacyRef = collection(db, 'users', userId, 'applicationQueue');
-    const [snapshot, legacySnapshot] = await Promise.all([
-      withTimeout(getDocs(colRef)),
+    const [response, legacySnapshot] = await Promise.all([
+      authFetch('/api/agent/packet-review?kind=queue', { cache: 'no-store' }),
       withTimeout(getDocs(legacyRef)).catch(() => ({ docs: [] as any[] })),
     ]);
-
-    const canonicalItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AgentQueueItem));
+    const payload = await response.json();
+    if (!response.ok || !payload.success) throw new Error(payload.error || 'Packet review could not load.');
+    if (getUserId() !== userId) throw new Error('The signed-in account changed. Reload your queue.');
+    const canonicalItems = payload.data as AgentQueueItem[];
     const canonicalKeys = new Set(canonicalItems.map(i => `${i.company?.toLowerCase()?.trim()}|${i.job_title?.toLowerCase()?.trim()}`));
     const legacyItems = legacySnapshot.docs
       .map((d: any) => normalizeLegacySonaQueueItem(d.id, d.data()))
@@ -1029,7 +1117,8 @@ export async function getAgentQueue(
 
 export async function updateQueueItem(
   id: string,
-  action: 'approve' | 'dismiss'
+  action: 'approve' | 'dismiss',
+  revision?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (isDemoModeEnabled()) {
@@ -1047,27 +1136,20 @@ export async function updateQueueItem(
       return updated ? { success: true } : { success: false, error: 'Queue item not found' };
     }
 
-    const userId = getUserId();
-    const docRef = doc(db, 'users', userId, 'agent_queue', id);
-    const snap = await withTimeout(getDoc(docRef));
-    if (!snap.exists()) return { success: false, error: 'Queue item not found' };
-    const item = snap.data() as AgentQueueItem;
-    if (item.source === 'legacy_sona') return { success: false, error: 'Legacy queue items cannot be changed here' };
-    if (item.status !== 'pending') return { success: false, error: 'Only pending review packets can be changed' };
-    const now = new Date().toISOString();
-    await withTimeout(updateDoc(docRef, {
-      status: action === 'approve' ? 'approved' : 'dismissed',
-      packetStatus: action === 'approve' ? 'approved' : 'dismissed',
-      reviewed_at: now,
-      last_action_at: now,
-    }));
-    return { success: true };
+    getUserId();
+    const response = await authFetch('/api/agent/packet-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'queue', id, action, revision }),
+    });
+    const payload = await response.json();
+    return response.ok && payload.success ? { success: true } : { success: false, error: payload.error || 'The review could not be saved.' };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
 
-export async function applyFromQueue(id: string): Promise<{ success: boolean; applicationId?: string; error?: string }> {
+export async function applyFromQueue(id: string, revision?: string): Promise<{ success: boolean; applicationId?: string; error?: string }> {
   try {
     if (isDemoModeEnabled()) {
       const item = getDemoAgentQueue().find((queueItem: AgentQueueItem) => queueItem.id === id);
@@ -1080,80 +1162,16 @@ export async function applyFromQueue(id: string): Promise<{ success: boolean; ap
         : { success: false, error: 'Queue item not found' };
     }
 
-    const userId = getUserId();
-    const queueRef = doc(db, 'users', userId, 'agent_queue', id);
-    const snap = await withTimeout(getDoc(queueRef));
-    if (!snap.exists()) return { success: false, error: 'Queue item not found' };
-
-    const item = snap.data() as AgentQueueItem;
-    if (item.status !== 'approved') return { success: false, error: 'Approve this packet before tracking it' };
-    const now = new Date().toISOString();
-    if (item.application_id) {
-      const linkedApp = await withTimeout(getDoc(doc(db, 'users', userId, 'applications', item.application_id)));
-      if (linkedApp.exists()) return { success: false, error: 'This packet already has a tracker entry' };
-      await withTimeout(updateDoc(queueRef, {
-        status: 'approved',
-        packetStatus: 'approved',
-        application_id: deleteField(),
-        last_action_at: now,
-      }));
-      item.application_id = undefined;
-      item.packetStatus = 'approved';
-    } else if (item.packetStatus === 'assist_apply') {
-      await withTimeout(updateDoc(queueRef, {
-        status: 'approved',
-        packetStatus: 'approved',
-        last_action_at: now,
-      }));
-      item.packetStatus = 'approved';
-    }
-
-    // Create application from queue item
-    const applicationId = `agent_queue_${id}`;
-    const appRef = doc(db, 'users', userId, 'applications', applicationId);
-    const existingApp = await withTimeout(getDoc(appRef));
-    if (existingApp.exists()) {
-      await updateDoc(queueRef, {
-        status: 'approved',
-        packetStatus: 'assist_apply',
-        assisted_at: now,
-        last_action_at: now,
-        application_id: appRef.id,
-      });
-      return { success: true, applicationId: appRef.id };
-    }
-
-    const appData = {
-      user_id: userId,
-      company_name: item.company,
-      job_title: item.job_title,
-      job_description: item.job_description,
-      resume_version_id: item.resume_version_id || null,
-      morphed_resume_name: `${item.company} — ${item.job_title}`,
-      talent_density_score: item.match_score,
-      application_link: item.job_url,
-      status: 'not_applied' as const,
-      morphed_at: item.created_at,
-      applied_at: null,
-      last_updated: now,
-      created_at: now,
-      source: 'agent_queue',
-      source_meta: { queue_id: id, packet_status: item.packetStatus || null },
-      packet_status: 'tracker_draft',
-    };
-
-    await withTimeout(setDoc(appRef, appData));
-
-    // Update queue item
-    await updateDoc(queueRef, {
-      status: 'approved',
-      packetStatus: 'assist_apply',
-      assisted_at: now,
-      last_action_at: now,
-      application_id: appRef.id,
+    getUserId();
+    const response = await authFetch('/api/agent/packet-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'queue', id, action: 'track', revision }),
     });
-
-    return { success: true, applicationId: appRef.id };
+    const payload = await response.json();
+    return response.ok && payload.success
+      ? { success: true, applicationId: payload.applicationId }
+      : { success: false, error: payload.error || 'The tracker entry could not be created.' };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -1248,22 +1266,36 @@ export async function saveJDTemplate(
     first_90_days?: any;
     culture_pulse?: any;
     bias_flags?: any;
-  }
+  },
+  id?: string
 ): Promise<{ success: boolean; data?: JDTemplate; error?: string }> {
   try {
     const userId = getUserId();
-    const now = new Date().toISOString();
-    const docData = {
-      user_id: userId,
-      title,
-      content,
-      ...(metadata || {}),
-      created_at: now,
-      updated_at: now,
-    };
-    const colRef = collection(db, 'users', userId, 'jd_templates');
-    const docRef = await withTimeout(addDoc(colRef, docData));
-    return { success: true, data: { id: docRef.id, ...docData } as JDTemplate };
+    if (!title.trim() || title.length > 200) throw new Error('Enter a title of 1–200 characters.');
+    if (id && !/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error('Invalid template identifier.');
+    const allowed = ['talent_density_score', 'first_90_days', 'culture_pulse', 'bias_flags'];
+    if (metadata && Object.keys(metadata).some(key => !allowed.includes(key))) {
+      throw new Error('Unsupported template metadata.');
+    }
+    const safeMetadata = Object.fromEntries(Object.entries(metadata || {}).filter(([, value]) => value !== undefined));
+    const ref = id ? doc(db, 'users', userId, 'jd_templates', id)
+      : doc(collection(db, 'users', userId, 'jd_templates'));
+    const data = await withTimeout(runTransaction(db, async transaction => {
+      const existing = id ? await transaction.get(ref) : null;
+      if (getUserId() !== userId) throw new Error('Account changed. Reopen this template before saving.');
+      if (id && (!existing?.exists() || existing.data()?.user_id !== userId)) {
+        throw new Error('This template is unavailable for this account.');
+      }
+      const now = new Date().toISOString();
+      const next = {
+        user_id: userId, title: title.trim(), content, ...safeMetadata,
+        created_at: existing?.data()?.created_at || now, updated_at: now,
+      };
+      transaction.set(ref, next);
+      return { id: ref.id, ...next } as JDTemplate;
+    }));
+    if (getUserId() !== userId) return { success: false, error: 'Account changed while saving.' };
+    return { success: true, data };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -1695,6 +1727,7 @@ export async function markDayComplete(
 
     await withTimeout(updateDoc(docRef, updates));
     const updated = await withTimeout(getDoc(docRef));
+    void invalidateCareerSummary();
     return { success: true, data: { id: updated.id, ...updated.data() } as StudyProgress };
   } catch (error: any) {
     return { success: false, error: error.message };

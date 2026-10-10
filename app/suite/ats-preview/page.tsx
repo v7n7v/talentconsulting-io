@@ -141,5 +141,5 @@ export default async function ATSPreviewPage({
       </div>
     );
   }
-  redirect('/suite/ats-analyzer');
+  redirect('/suite/ats-analyzer?tab=preview');
 }

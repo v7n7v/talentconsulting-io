@@ -23,7 +23,9 @@
 .security-cve/**
 .seo-audit/**
 coverage/**
+docs/**
+tmp/**
+.codex/**
 node_modules/**
 *.log
 *.tsbuildinfo
-

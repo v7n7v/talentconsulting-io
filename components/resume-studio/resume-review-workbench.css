@@ -291,7 +291,7 @@
 .resume-review-document.is-tailored .is-selected-line {
   border-color: color-mix(in srgb, var(--accent) 58%, transparent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: #1555bd;
+  color: var(--taco-coral-ink);
 }
 
 .resume-review-bridge {

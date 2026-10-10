@@ -40,20 +40,29 @@ function section(source, start, end) {
 test('target submission runs read-only preflight instead of the mutating harness', () => {
   const submit = section(page, 'const submitTargetBrief', 'const useExampleTarget');
   assert.match(submit, /runActivationPreflight\(/);
-  assert.match(submit, /source:\s*'target_brief'/);
+  assert.match(submit, /source:\s*["']target_brief["']/);
   assert.doesNotMatch(submit, /sendMessage\(/);
-  assert.match(page, /authFetch\('\/api\/agent\/harness\/preflight'/);
+  assert.match(page, /authFetch\(\s*["']\/api\/agent\/harness\/preflight["']/);
 });
 
-test('post-upload matching also pauses at preflight for user confirmation', () => {
-  const sharedUpload = section(page, 'const processExtractedResume', 'const handleResumeUpload');
+test('confirmed uploads run read-only preflight before the scout launch', () => {
+  const sharedUpload = section(page, 'const processExtractedResume', 'const confirmResumeIntake');
+  const confirmedUpload = section(page, 'const confirmResumeIntake', 'const handleResumeUpload');
   const uploadEntrypoints = section(page, 'const handleResumeUpload', 'const pConfig');
-  assert.match(sharedUpload, /runActivationPreflight\(/);
-  assert.match(sharedUpload, /source:\s*'resume_upload'/);
-  assert.doesNotMatch(sharedUpload, /await sendMessage\(/);
-  assert.match(sharedUpload, /Checking safe matches before using scout quota/);
-  assert.match(uploadEntrypoints, /processExtractedResume\(upload, 'sona_agent_upload'\)/);
-  assert.match(uploadEntrypoints, /processExtractedResume\(pending, 'landing_resume_handoff'\)/);
+  assert.match(sharedUpload, /setPendingResumeIntake\(/);
+  assert.match(sharedUpload, /setResumeUploadStage\(\s*["']review["']\s*\)/);
+  assert.doesNotMatch(sharedUpload, /saveResumeVersion\(|runActivationPreflight\(/);
+  assert.doesNotMatch(sharedUpload, /sendMessage\(/);
+  assert.match(confirmedUpload, /runActivationPreflight\(/);
+  assert.match(confirmedUpload, /source:\s*["']resume_upload["']/);
+  assert.match(confirmedUpload, /resumeVersionId:\s*saved\.data\.id/);
+  assert.doesNotMatch(confirmedUpload, /sendMessage\(/);
+  const saveAt = confirmedUpload.indexOf('saveResumeVersion(');
+  const preflightAt = confirmedUpload.indexOf('runActivationPreflight(');
+  assert.ok(saveAt >= 0 && preflightAt > saveAt, 'bind preflight to the confirmed, saved resume');
+  assert.match(panel, /No scout quota is used/);
+  assert.match(uploadEntrypoints, /processExtractedResume\(\s*upload,\s*["']sona_agent_upload["'],\s*requestId,?\s*\)/);
+  assert.match(uploadEntrypoints, /processExtractedResume\(\s*pending,\s*["']landing_resume_handoff["'],\s*requestId,?\s*\)/);
 });
 
 test('resume source prompt mode is stable across intent, selection and desktop boundaries', async () => {
@@ -65,16 +74,16 @@ test('resume source prompt mode is stable across intent, selection and desktop b
   assert.match(page, /const searchParams = useSearchParams\(\)/);
   assert.match(page, /\{shouldShowResumeSourcePrompt && \(/);
   assert.ok(page.indexOf('{shouldShowResumeSourcePrompt && (') < page.indexOf('id="sona-target-brief"'));
-  assert.match(page, /resumeSourcePromptMode === 'mobile' \? 'lg:hidden'/);
-  assert.match(page, /showResumeUploadIntent\s*\? suggestedPrompts\.filter\(\(prompt\) => prompt\.action !== 'resumeUpload'\)/);
-  assert.match(page, /p\.action === 'resumeUpload' && resumeSourcePromptMode === 'mobile' \? 'hidden lg:flex'/);
-  assert.match(page, /resumeSourcePromptMode === 'mobile' \? 'hidden lg:inline-flex'/);
+  assert.match(page, /resumeSourcePromptMode\s*===\s*["']mobile["']\s*\?\s*["']lg:hidden["']/);
+  assert.match(page, /showResumeUploadIntent\s*\?\s*suggestedPrompts\.filter\(\(prompt\)\s*=>\s*prompt\.action\s*!==\s*["']resumeUpload["']\)/);
+  assert.match(page, /p\.action\s*===\s*["']resumeUpload["']\s*&&\s*resumeSourcePromptMode\s*===\s*["']mobile["']\s*\?\s*["']hidden lg:flex["']/);
+  assert.match(page, /resumeSourcePromptMode\s*===\s*["']mobile["']\s*\?\s*["']hidden lg:inline-flex["']/);
 });
 
 test('only the named launch action starts the harness and degraded proof stays scout-only', () => {
   const launch = section(page, 'const launchActivationProof', 'const editActivationTarget');
   assert.match(launch, /activationProofState\.result\.canScout/);
-  assert.match(launch, /mode:\s*'scout'/);
+  assert.match(launch, /mode:\s*["']scout["']/);
   assert.match(launch, /notify:\s*false/);
   assert.match(launch, /resumeVersionId:\s*proof\.resume\.id/);
   assert.match(launch, /targetRole:\s*proof\.target\.role/);
@@ -93,9 +102,9 @@ test('free-form model tools cannot bypass the visible preflight confirmation', (
 test('a failed signed launch respects typed pre-consumption recovery and otherwise requires a fresh preview', () => {
   assert.match(page, /options\?\.harnessRequest\?\.activationReceipt/);
   assert.match(page, /activationPreviewConsumedRecovery\(\)/);
-  assert.match(page, /err\?\.recovery \|\| \(options\?\.harnessRequest\?\.activationReceipt/);
+  assert.match(page, /err\?\.recovery\s*\|\|\s*\(\s*options\?\.harnessRequest\?\.activationReceipt/);
   assert.match(page, /error\.requiresFreshPreflight = data\.requiresFreshPreflight/);
-  assert.match(page, /recovery\.action === 'retry'/);
+  assert.match(page, /recovery\.action\s*===\s*["']retry["']/);
   assert.match(chatRoute, /const recovery = activationPreviewConsumedRecovery\(\)/);
 });
 
@@ -124,7 +133,7 @@ test('proof UI exposes top-three evidence and the no-side-effect receipt on mobi
   assert.match(panel, /Start Taco scout/);
   assert.match(panel, /Packet generation configured/);
   assert.match(panel, /Scout only · packet AI offline/);
-  assert.match(panel, /Taco launch unavailable/);
+  assert.match(panel, /(?:Taco|<TacoName\s*\/>)\s+launch unavailable/);
   assert.match(panel, /launchBlockedByGeneration = generationUnavailable && result\.topPicks\.length > 0/);
   assert.match(panel, /launchBlockedByGeneration \? onEditTarget : onRetry/);
   assert.match(panel, /launchBlockedByGeneration \? 'Edit target' : 'Retry preview'/);
@@ -140,6 +149,8 @@ test('editing the target or selected resume invalidates stale proof', () => {
   assert.match(page, /const loadConversation[\s\S]*?invalidateActivationProof\(\)/);
   assert.match(page, /activationProofAbortRef\.current\?\.abort\(\)/);
   const upload = section(page, 'const handleResumeUpload', 'const pConfig');
-  assert.ok(upload.indexOf('invalidateActivationProof();') < upload.indexOf("setResumeUploadStage('extracting')"));
+  const invalidateAt = upload.indexOf('invalidateActivationProof();');
+  const extractionAt = upload.search(/setResumeUploadStage\(\s*["']extracting["']\s*\)/);
+  assert.ok(invalidateAt >= 0 && extractionAt > invalidateAt, 'invalidate the proof before resume extraction begins');
   assert.match(page, /launching=\{loading \|\| isResumeUploadBusy\}/);
 });

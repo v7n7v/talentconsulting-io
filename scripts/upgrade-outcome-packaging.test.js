@@ -32,7 +32,7 @@ test('in-workflow upgrade presents Standard and Max as outcome choices', () => {
   assert.match(modal, /type PlanOption = 'pro' \| 'studio'/);
   assert.match(modal, /\(\['pro', 'studio'\] as PlanOption\[\]\)\.map/);
   assert.match(modal, /aria-pressed=\{active\}/);
-  assert.match(modal, /Standard gives you hands-on career tools\. Max adds proactive, review-first Taco preparation\./);
+  assert.match(modal, /Standard gives you hands-on career tools\. Max adds proactive, review-first\s+(?:Taco|<TacoName\s*\/>)\s+preparation\./);
   assert.match(modal, /Tailor active applications/);
   assert.match(modal, /Let Taco scout/);
   assert.match(modal, /Nothing is submitted or sent without your approval\./);

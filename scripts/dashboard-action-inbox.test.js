@@ -206,7 +206,7 @@ test('dashboard UI is mobile-first, named and replaces duplicate queue widgets',
   assert.match(component, /Applications \(\{inbox\.total - inbox\.counts\.packet\}\)/);
   assert.match(component, /Packet queue \(\{inbox\.counts\.packet\}\)/);
   assert.match(component, /requestId !== requestIdRef\.current/);
-  assert.match(dashboard, /<DashboardActionInbox key=\{user\.uid\} \/>/);
+  assert.match(dashboard, /<DashboardActionInbox key=\{user\.uid\}(?: className="[^"]*")? \/>/);
   assert.doesNotMatch(dashboard, /<OutcomeCheckWidget \/>/);
   assert.doesNotMatch(dashboard, /<AgentQueueWidget \/>/);
   /* The parallel assertions against components/dashboard/UnifiedDashboard.tsx were dropped

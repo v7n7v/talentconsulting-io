@@ -3,6 +3,7 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { ORACLE_COLORS } from '../palette';
 
 // ═══════════════════════════════════════════════════════
 // 1. FAR STARS — Distant twinkling star field
@@ -37,7 +38,7 @@ export function FarStars({ count = 3000 }: { count?: number }) {
       </bufferGeometry>
       <pointsMaterial
         size={0.25}
-        color="#c8d6e5"
+        color={ORACLE_COLORS.paper}
         transparent
         opacity={0.7}
         sizeAttenuation
@@ -82,10 +83,10 @@ function NebulaCloud({ position, color, scale, speed }: {
 
 export function NebulaClouds() {
   const clouds = useMemo(() => [
-    { position: [-15, 8, -35] as [number, number, number], color: '#06d6a0', scale: 40, speed: 0.4 },
-    { position: [20, -5, -45] as [number, number, number], color: '#0ea5e9', scale: 50, speed: 0.3 },
-    { position: [-8, -12, -30] as [number, number, number], color: '#8b5cf6', scale: 35, speed: 0.5 },
-    { position: [12, 15, -40] as [number, number, number], color: '#06d6a0', scale: 45, speed: 0.35 },
+    { position: [-15, 8, -35] as [number, number, number], color: ORACLE_COLORS.coral, scale: 40, speed: 0.4 },
+    { position: [20, -5, -45] as [number, number, number], color: ORACLE_COLORS.coralInk, scale: 50, speed: 0.3 },
+    { position: [-8, -12, -30] as [number, number, number], color: ORACLE_COLORS.soft, scale: 35, speed: 0.5 },
+    { position: [12, 15, -40] as [number, number, number], color: ORACLE_COLORS.coral, scale: 45, speed: 0.35 },
   ], []);
 
   return (
@@ -133,7 +134,7 @@ export function ParticleDust({ count = 400 }: { count?: number }) {
       </bufferGeometry>
       <pointsMaterial
         size={0.06}
-        color="#06d6a0"
+        color={ORACLE_COLORS.coral}
         transparent
         opacity={0.4}
         sizeAttenuation
@@ -153,7 +154,7 @@ export function GridFloor() {
   return (
     <gridHelper
       ref={ref}
-      args={[60, 30, '#06d6a0', '#06d6a0']}
+      args={[60, 30, ORACLE_COLORS.coral, ORACLE_COLORS.coralInk]}
       position={[0, -10, 0]}
       rotation={[0, 0, 0]}
       material-transparent

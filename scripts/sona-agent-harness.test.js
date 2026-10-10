@@ -233,7 +233,9 @@ function healthyPrimarySupply() {
   };
 }
 
-test('runSonaAgentHarness writes a prepared packet with fit, risk and source evidence', async () => {
+test('runSonaAgentHarness writes a prepared packet with fit, risk and source evidence', async t => {
+  // The July fixture must stay fresh; posting-risk policy uses the actual clock.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-07-10T12:00:00.000Z') });
   const { runSonaAgentHarness } = await loadAgentHarness();
   const db = createFakeFirestore({
     'users/user-123': {
@@ -1176,7 +1178,9 @@ test('Pro daily workload stops the eleventh run before model or provider work', 
   assert.equal(searchCalls, 10);
 });
 
-test('failed Max asset generation stays needs_attention instead of prepared', async () => {
+test('failed Max asset generation stays needs_attention instead of prepared', async t => {
+  // Reach the generation-failure branch with the same eligible July posting.
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-07-10T12:00:00.000Z') });
   const { runSonaAgentHarness } = await loadAgentHarness();
   const db = createFakeFirestore({ 'users/max-failure': { email: 'max@example.com' } });
 

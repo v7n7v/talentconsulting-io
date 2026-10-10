@@ -22,7 +22,7 @@ export default function CanvasWrapper({ children, className, camera, ...rest }: 
         alpha: false,
       }}
       dpr={[1, 1.5]}
-      style={{ background: '#060612' }}
+      style={{ background: '#151515' }}
       {...rest}
     >
       {children}

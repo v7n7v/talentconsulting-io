@@ -46,8 +46,10 @@ export function extractProtectedTerms(text: string, manualTerms: string[] = []):
     /https?:\/\/[^\s)]+/gi,
     /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
     /\$[\d,.]+(?:\s?[kKmMbB])?\b/g,
-    /\b\d+(?:\.\d+)?%\b/g,
+    /\b\d+(?:\.\d+)?%(?!\w)/g,
     /\b\d+(?:\.\d+)?\s?(?:x|X|k|K|m|M|b|B|hrs?|hours?|days?|weeks?|months?|years?|users?|customers?|devices?|engineers?|people|reports?|pipelines?|seconds?|minutes?)\b/g,
+    /\b\d+(?:\.\d+)?(?:\s?(?:ms|µs|ns|GB|MB|TB|GHz|MHz))?\b/g,
+    /["“][^"”\r\n]+["”]/g,
     /\b(?:19|20)\d{2}\b/g,
     /\[[^\]]+\]/g,
     /\([A-Z][A-Za-z]+,\s*(?:19|20)\d{2}\)/g,
@@ -79,9 +81,30 @@ export function missingProtectedTerms(text: string, protectedTerms: string[]): s
   return protectedTerms.filter(term => {
     const compactTerm = term.trim();
     if (!compactTerm) return false;
-    const pattern = new RegExp(escapeRegExp(compactTerm), 'i');
+    // Match complete terms. `$10` must not be considered preserved by `$100`.
+    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(compactTerm)}(?![\\p{L}\\p{N}])`, 'iu');
     return !pattern.test(text);
   });
+}
+
+function factualTokens(text: string): string[] {
+  return [
+    ...(text.match(/(?:[$€£¥]\s*)?\d[\d,.]*(?:%|\s?(?:ms|mins?|hours?|days?|weeks?|months?|years?))?/gi) || []),
+    ...(text.match(/\b(?:not|never|no|without|didn't|can't|cannot|won't|isn't|wasn't)\b/gi) || []),
+    ...(text.match(/\b[A-Z][A-Za-z0-9&.-]*(?:\s+[A-Z][A-Za-z0-9&.-]*){0,3}\b/g) || []),
+  ].map(value => value.trim().toLowerCase());
+}
+
+function meaningReviewGate(original: string, rewritten: string): QualityGate {
+  if (original === rewritten) return {id:'meaning_review',label:'Meaning review',status:'pass',detail:'Source text is unchanged.'};
+  const source=factualTokens(original), output=factualTokens(rewritten), remaining=[...output];
+  const changed=source.filter(token=>{const index=remaining.indexOf(token);if(index<0)return true;remaining.splice(index,1);return false;});
+  // Token retention cannot establish who did what, causality, or equivalent meaning.
+  // Every rewrite requires review even when the limited checks find no changes.
+  return {id:'meaning_review',label:'Meaning review',status:'warn',detail:
+    changed.length || remaining.length
+      ? `Review changed factual tokens (removed: ${changed.slice(0,4).join(', ') || 'none'}; added: ${remaining.slice(0,4).join(', ') || 'none'}). Meaning is not verified.`
+      : 'Compare this rewrite with your source. Retained tokens do not verify meaning or the roles of named people.'};
 }
 
 function lengthGate(original: string, rewritten: string, mode: LengthMode): QualityGate {
@@ -90,7 +113,7 @@ function lengthGate(original: string, rewritten: string, mode: LengthMode): Qual
   const ratio = originalWords > 0 ? rewrittenWords / originalWords : 1;
 
   if (mode === 'condense') {
-    const ok = ratio >= 0.65 && ratio <= 0.95;
+    const ok = ratio >= 0.75 && ratio <= 0.85;
     return {
       id: 'length',
       label: 'Length target',
@@ -100,7 +123,7 @@ function lengthGate(original: string, rewritten: string, mode: LengthMode): Qual
   }
 
   if (mode === 'expand') {
-    const ok = ratio >= 1.05 && ratio <= 1.55;
+    const ok = ratio >= 1.2 && ratio <= 1.35;
     return {
       id: 'length',
       label: 'Length target',
@@ -109,7 +132,7 @@ function lengthGate(original: string, rewritten: string, mode: LengthMode): Qual
     };
   }
 
-  const ok = ratio >= 0.8 && ratio <= 1.2;
+  const ok = Math.abs(rewrittenWords - originalWords) <= Math.max(1, originalWords * 0.05);
   return {
     id: 'length',
     label: 'Length target',
@@ -119,17 +142,18 @@ function lengthGate(original: string, rewritten: string, mode: LengthMode): Qual
 }
 
 function phraseGate(text: string): QualityGate {
-  const lower = text.toLowerCase();
+  const unquoted = text.replace(/["“][^"”\r\n]+["”]/g, '');
+  const lower = unquoted.toLowerCase();
   const bannedWords = getBannedWordList().split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
   const phraseHits = AI_PHRASES.filter(phrase => lower.includes(phrase.toLowerCase()));
-  const wordHits = bannedWords.filter(word => new RegExp(`\\b${escapeRegExp(word)}\\b`, 'i').test(text));
+  const wordHits = bannedWords.filter(word => new RegExp(`\\b${escapeRegExp(word)}\\b`, 'i').test(unquoted));
   const hits = [...phraseHits, ...wordHits].slice(0, 8);
 
   return {
     id: 'ai_artifacts',
-    label: 'AI artifacts',
-    status: hits.length === 0 ? 'pass' : hits.length <= 2 ? 'warn' : 'fail',
-    detail: hits.length === 0 ? 'No major banned phrase residue' : `Found: ${hits.join(', ')}`,
+    label: 'Common phrasing',
+    status: hits.length === 0 ? 'pass' : 'warn',
+    detail: hits.length === 0 ? 'No common phrases flagged by this limited check' : `Review in context: ${hits.join(', ')}. Conventional phrasing may be appropriate.`,
   };
 }
 
@@ -143,25 +167,21 @@ function protectedGate(text: string, protectedTerms: string[]): QualityGate {
   };
 }
 
-function trustGate(originalDetection: DetectionResult | null, finalDetection: DetectionResult | null): QualityGate {
-  if (!finalDetection) {
-    return { id: 'trust_score', label: 'Trust movement', status: 'warn', detail: 'No final score available' };
-  }
-  const original = originalDetection?.humanScore ?? finalDetection.humanScore;
-  const delta = finalDetection.humanScore - original;
-  const ok = finalDetection.humanScore >= 60 || delta >= 6;
-  const status: QualityGateStatus = ok ? 'pass' : finalDetection.humanScore >= 50 ? 'warn' : 'fail';
+function styleObservationGate(originalDetection: DetectionResult | null, finalDetection: DetectionResult | null): QualityGate {
+  const delta = originalDetection && finalDetection ? finalDetection.humanScore - originalDetection.humanScore : null;
   return {
     id: 'trust_score',
-    label: 'Trust movement',
-    status,
-    detail: `${original} → ${finalDetection.humanScore} (${delta >= 0 ? '+' : ''}${delta})`,
+    label: 'Style observation',
+    status: 'warn',
+    detail: delta == null
+      ? 'No comparable style reading. This does not verify authorship or writing quality.'
+      : `Heuristic style movement: ${delta >= 0 ? '+' : ''}${delta}. This is not a quality target or evidence of authorship.`,
   };
 }
 
 function mechanicsGate(text: string): QualityGate {
   const duplicateWords = /\b(\w+)\s+\1\b/i.test(text);
-  const empty = countPlainWords(text) < 10;
+  const empty = text.trim().length === 0;
   const brokenPunctuation = /[,.!?;:]{3,}/.test(text);
   const fail = empty || duplicateWords || brokenPunctuation;
   return {
@@ -185,7 +205,8 @@ export function evaluateHumanizationQuality(options: {
     protectedGate(options.rewrittenText, options.protectedTerms),
     lengthGate(options.originalText, options.rewrittenText, options.lengthMode),
     phraseGate(options.rewrittenText),
-    trustGate(options.originalDetection || null, options.finalDetection || null),
+    styleObservationGate(options.originalDetection || null, options.finalDetection || null),
+    meaningReviewGate(options.originalText, options.rewrittenText),
   ];
   const failures = gates.filter(gate => gate.status === 'fail');
   const warnings = gates.filter(gate => gate.status === 'warn');
@@ -199,14 +220,13 @@ export function evaluateHumanizationQuality(options: {
 }
 
 export function mergeParagraphPatches(originalText: string, patches: HumanizePatch[]): string {
-  if (patches.length === 0) return originalText;
-  const paragraphs = splitParagraphs(originalText);
-  for (const patch of patches) {
-    if (patch.paragraphIndex >= 0 && patch.paragraphIndex < paragraphs.length && patch.rewritten.trim()) {
-      paragraphs[patch.paragraphIndex] = patch.rewritten.trim();
-    }
-  }
-  return paragraphs.join('\n\n');
+  const chunks = originalText.split(/(\r?\n[\t ]*\r?\n(?:[\t ]*\r?\n)*)/);
+  let paragraphIndex = 0;
+  return chunks.map((chunk,index) => {
+    if (index % 2 || !chunk.trim()) return chunk;
+    const patch=patches.find(value=>value.paragraphIndex===paragraphIndex++);
+    return patch ? patch.rewritten : chunk;
+  }).join('');
 }
 
 export function buildFallbackPatches(originalText: string, rewrittenText: string, paragraphIndices: number[] = []): HumanizePatch[] {
@@ -214,12 +234,14 @@ export function buildFallbackPatches(originalText: string, rewrittenText: string
   const rewritten = splitParagraphs(rewrittenText);
   const indices = paragraphIndices.length ? paragraphIndices : originals.map((_, index) => index);
 
+  if (paragraphIndices.length && rewritten.length !== paragraphIndices.length) return [];
+  if (!paragraphIndices.length && rewritten.length !== originals.length) return [];
   return indices
     .map(index => ({
       original: originals[index] || '',
-      rewritten: rewritten[index] || rewrittenText,
+      rewritten: rewritten[index] || '',
       paragraphIndex: index,
-      reason: paragraphIndices.length ? 'Targeted trust-signal rewrite' : 'Full-document rewrite',
+      reason: paragraphIndices.length ? 'Selected-paragraph rewrite' : 'Full-document rewrite',
     }))
     .filter(patch => patch.original && patch.rewritten);
 }

@@ -1,4 +1,5 @@
 const fs = require('fs');
+const { createHash } = require('node:crypto');
 const { execFileSync, spawnSync } = require('child_process');
 
 const firebaseJsonPath = './firebase.json';
@@ -75,8 +76,8 @@ function buildStaticFallbackConfig(original) {
   };
 }
 
-function runFirebase(args) {
-  const cliArgs = ['--yes', 'firebase-tools@15.24.0', ...args];
+function runFirebase(args, options = {}) {
+  const cliArgs = ['--yes', '--package', 'firebase-tools@15.24.0', 'node', 'scripts/firebase-cli-wrapper.js', ...args];
   const executable = process.platform === 'win32'
     ? (process.env.ComSpec || 'cmd.exe')
     : 'npx';
@@ -88,7 +89,7 @@ function runFirebase(args) {
     executableArgs,
     { encoding: 'utf8' },
   );
-  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stdout && !options.quiet) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   if (result.error) {
     process.stderr.write(`Firebase CLI launch failed: ${result.error.code || result.error.name || 'unknown_error'}\n`);
@@ -204,6 +205,132 @@ function restoreProductionRollbackPoint(rollback, dependencies = {}) {
   ]), 'Cloud Run rollback');
 }
 
+function promoteDeployedRevision(dependencies = {}) {
+  const gcloud = dependencies.runGcloud || runGcloud;
+  const result = gcloud([
+    'functions',
+    'describe',
+    PRODUCTION_SSR_SERVICE,
+    '--gen2',
+    '--region',
+    PRODUCTION_REGION,
+    '--project',
+    PRODUCTION_FIREBASE_PROJECT,
+    '--format=json(state,serviceConfig.revision)',
+  ]);
+  assertSucceeded(result, 'Cloud Function deployed revision lookup');
+  let descriptor;
+  try {
+    descriptor = JSON.parse(String(result.stdout || ''));
+  } catch {
+    throw new Error('Cloud Function deployed revision lookup returned invalid JSON.');
+  }
+  const state = String(descriptor.state || '').trim();
+  const created = String(descriptor.serviceConfig?.revision || '').trim();
+  if (state !== 'ACTIVE' || !created.startsWith(`${PRODUCTION_SSR_SERVICE}-`) || !/^[a-z][a-z0-9-]{0,62}$/.test(created)) {
+    throw new Error('Cloud Function deployed revision is not active or valid.');
+  }
+  assertSucceeded(gcloud([
+    'run',
+    'services',
+    'update-traffic',
+    PRODUCTION_SSR_SERVICE,
+    '--to-revisions=' + created + '=100',
+    '--region', PRODUCTION_REGION, '--project', PRODUCTION_FIREBASE_PROJECT, '--quiet',
+  ]), 'Cloud Run deployed revision promotion');
+  return created;
+}
+
+// Hosting's pinTag conversion uses Cloud Run's latestReadyRevisionName, which
+// can still describe the previous function when Hosting finalizes. Default
+// traffic promotion does not change a tagged rewrite. Retarget only this new
+// Hosting version's own tag; the captured rollback version must stay untouched.
+function pinPublishedHostingRevision(revision, dependencies = {}) {
+  if (!revision.startsWith(`${PRODUCTION_SSR_SERVICE}-`) || !/^[a-z][a-z0-9-]{0,62}$/.test(revision)) {
+    throw new Error('Hosting revision binding received an invalid deployed revision.');
+  }
+  const run = dependencies.runFirebase || runFirebase;
+  const gcloud = dependencies.runGcloud || runGcloud;
+  const result = run([
+    'hosting:channel:list', '--project', PRODUCTION_FIREBASE_PROJECT, '--json', '--non-interactive',
+  ], { quiet: true });
+  assertSucceeded(result, 'Firebase Hosting published version lookup');
+  let channels;
+  try { channels = JSON.parse(result.stdout).result.channels; } catch {
+    throw new Error('Firebase Hosting published version lookup returned invalid JSON.');
+  }
+  if (!Array.isArray(channels)) throw new Error('Firebase Hosting channel lookup returned no channels.');
+  const channelRoot = `projects/${PRODUCTION_FIREBASE_PROJECT}/sites/${PRODUCTION_FIREBASE_PROJECT}/channels/`;
+  const versionRoot = `projects/${PRODUCTION_FIREBASE_PROJECT}/sites/${PRODUCTION_FIREBASE_PROJECT}/versions/`;
+  const versionFor = channel => {
+    const matches = channels.filter(entry => entry.name === channelRoot + channel);
+    if (matches.length !== 1) throw new Error(`Firebase Hosting ${channel} channel is ambiguous or absent.`);
+    const version = matches[0].release?.version;
+    if (version?.status !== 'FINALIZED' || !version.name?.startsWith(versionRoot)
+      || !/^[a-f0-9]{16}$/.test(version.name.slice(versionRoot.length))) {
+      throw new Error(`Firebase Hosting ${channel} version is not a valid finalized production version.`);
+    }
+    return version;
+  };
+  const live = versionFor('live');
+  const rollback = versionFor(ROLLBACK_CHANNEL);
+  if (live.name === rollback.name) throw new Error('Hosting revision binding cannot modify the rollback version.');
+  const expectedTag = `fh-${live.name.slice(versionRoot.length)}`;
+  if (!Array.isArray(rollback.config?.rewrites)
+    || rollback.config.rewrites.some(rewrite => rewrite.run?.tag === expectedTag)) {
+    throw new Error('Hosting revision binding cannot modify a tag used by the rollback version.');
+  }
+  const rewrites = live.config?.rewrites;
+  if (!Array.isArray(rewrites) || rewrites.length !== 1 || rewrites[0].glob !== '**'
+    || rewrites[0].run?.serviceId !== PRODUCTION_SSR_SERVICE
+    || rewrites[0].run.region !== PRODUCTION_REGION
+    || (rewrites[0].run.tag !== undefined && rewrites[0].run.tag !== expectedTag)) {
+    throw new Error('Hosting revision binding requires the new production version\'s own SSR tag.');
+  }
+  // The bounded ALREADY_EXISTS fallback deliberately uses the default service
+  // route. It needs the same exact-revision check but no tag mutation.
+  const tag = rewrites[0].run.tag === undefined ? null : expectedTag;
+  const readTraffic = () => {
+    const lookup = gcloud([
+      'run', 'services', 'describe', PRODUCTION_SSR_SERVICE,
+      '--region', PRODUCTION_REGION, '--project', PRODUCTION_FIREBASE_PROJECT, '--format=json(status.traffic)',
+    ]);
+    assertSucceeded(lookup, 'Cloud Run Hosting tag lookup');
+    let traffic;
+    try { traffic = JSON.parse(lookup.stdout).status.traffic; } catch {
+      throw new Error('Cloud Run Hosting tag lookup returned invalid JSON.');
+    }
+    const routes = Array.isArray(traffic) ? traffic.filter(entry => Number(entry.percent) > 0) : [];
+    if (!routes.length || routes.some(entry => entry.revisionName !== revision || !Number.isInteger(entry.percent))
+      || routes.reduce((sum, entry) => sum + entry.percent, 0) !== 100) {
+      throw new Error('Hosting revision binding requires 100% traffic to the exact deployed revision.');
+    }
+    const tags = new Map();
+    for (const entry of traffic) {
+      if (!entry.tag) continue;
+      if (tags.has(entry.tag)) throw new Error('Cloud Run Hosting tags are ambiguous.');
+      tags.set(entry.tag, entry.revisionName);
+    }
+    if (tag && !tags.has(tag)) throw new Error('The new Hosting version\'s SSR tag is absent.');
+    return tags;
+  };
+  const before = readTraffic();
+  if (tag && before.get(tag) !== revision) {
+    assertSucceeded(gcloud([
+      'run', 'services', 'update-traffic', PRODUCTION_SSR_SERVICE,
+      `--update-tags=${tag}=${revision}`,
+      '--region', PRODUCTION_REGION, '--project', PRODUCTION_FIREBASE_PROJECT, '--quiet',
+    ]), 'Cloud Run exact Hosting revision binding');
+    const after = readTraffic();
+    if (after.size !== before.size || after.get(tag) !== revision
+      || [...before].some(([name, target]) => name !== tag && after.get(name) !== target)) {
+      throw new Error('Cloud Run Hosting revision binding did not preserve the other revision tags.');
+    }
+  }
+  console.log(`Hosting version ${live.name.slice(versionRoot.length)} is bound to ${revision}.`);
+  return { hostingVersion: live.name, hostingTag: tag, revision };
+}
+
 function isExpectedHostingConflict(result) {
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
   return result.status !== 0
@@ -315,6 +442,7 @@ function primeAdminAggregates() {
 }
 
 function runPostDeploySmoke() {
+  execFileSync(process.execPath, ['scripts/resume-production-smoke.js'], { stdio: 'inherit' });
   execFileSync(
     process.execPath,
     ['scripts/admin-public-production-smoke.js'],
@@ -331,11 +459,76 @@ function runPostDeploySmoke() {
   );
 }
 
-function main() {
+function extractSsrBuildId(html) {
+  const payloads = [];
+  const identities = new Set();
+  for (const match of html.matchAll(/self\.__next_f\.push\((\[[\s\S]*?\])\);?<\/script>/g)) {
+    try {
+      const payload = JSON.parse(match[1]);
+      if (payload[0] === 1 && typeof payload[1] === 'string') payloads.push(payload[1]);
+    } catch { /* Unrelated or incomplete scripts do not establish build identity. */ }
+  }
+  for (const line of payloads.join('').split('\n')) {
+    const row = line.trimStart();
+    if (!row.startsWith('0:')) continue;
+    try {
+      const root = JSON.parse(row.slice(2));
+      if (typeof root.b === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(root.b)) identities.add(root.b);
+    } catch { /* Fail closed when the server payload is incomplete. */ }
+  }
+  return identities.size === 1 ? [...identities][0] : null;
+}
+
+async function waitForPublishedBuild(options = {}) {
+  const expectedBuildId = options.expectedBuildId || fs.readFileSync('.next/BUILD_ID', 'utf8').trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(expectedBuildId)) throw new Error('Invalid final production build identity.');
+  const manifest = options.manifest || fs.readFileSync(`.firebase/${PRODUCTION_FIREBASE_PROJECT}/hosting/_next/static/${expectedBuildId}/_buildManifest.js`);
+  const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+  const expectedHash = hash(manifest);
+  const fetchImpl = options.fetchImpl || fetch;
+  const sleep = options.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms)));
+  const now = options.now || Date.now;
+  const deadline = now() + (options.timeoutMs ?? 180_000);
+  let attempt = 0;
+  do {
+    attempt++;
+    try {
+      let actualBuildId = null;
+      let serverReady = true;
+      for (const route of ['/suite/resume', '/templates']) {
+        const response = await fetchImpl(`https://talentconsulting.io${route}?release_build=${expectedBuildId}&attempt=${attempt}`, {
+          headers: { Accept: 'text/html', 'Cache-Control': 'no-cache' }, cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(20_000),
+        });
+        actualBuildId = response.status === 200 ? extractSsrBuildId(await response.text()) : null;
+        if (actualBuildId !== expectedBuildId) { serverReady = false; break; }
+      }
+      if (serverReady) {
+        const asset = await fetchImpl(`https://talentconsulting.io/_next/static/${expectedBuildId}/_buildManifest.js`, {
+          cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(20_000),
+        });
+        if (asset.status === 200 && hash(Buffer.from(await asset.arrayBuffer())) === expectedHash) {
+          console.log(`Published SSR and Hosting assets verified for build ${expectedBuildId}.`);
+          return { buildId: expectedBuildId, attempts: attempt };
+        }
+      }
+      if (attempt === 1 || attempt % 10 === 0) console.log(`Waiting for Hosting to serve build ${expectedBuildId}; observed ${actualBuildId || 'an incomplete response'}.`);
+    } catch {
+      if (attempt === 1 || attempt % 10 === 0) console.log(`Waiting for Hosting publication of build ${expectedBuildId}.`);
+    }
+    if (now() >= deadline) break;
+    await sleep(Math.min(options.intervalMs ?? 3_000, deadline - now()));
+  } while (now() < deadline);
+  throw new Error(`Hosting did not publish the final SSR/assets build ${expectedBuildId} before the release deadline.`);
+}
+
+async function main() {
   runProductionPreflight();
   const rollback = captureProductionRollbackPoint();
   try {
     deployFirebase({ runPreflight: () => {} });
+    const revision = promoteDeployedRevision();
+    pinPublishedHostingRevision(revision);
+    await waitForPublishedBuild();
     primeAdminAggregates();
     runPostDeploySmoke();
   } catch (error) {
@@ -352,12 +545,10 @@ function main() {
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (error) {
+  main().catch(error => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
-  }
+  });
 }
 
 module.exports = {
@@ -372,8 +563,12 @@ module.exports = {
   pruneBuildCaches,
   PRODUCTION_FIREBASE_PROJECT,
   restoreProductionRollbackPoint,
+  promoteDeployedRevision,
+  pinPublishedHostingRevision,
   runFirebase,
   runGcloud,
   runPostDeploySmoke,
   runProductionPreflight,
+  extractSsrBuildId,
+  waitForPublishedBuild,
 };

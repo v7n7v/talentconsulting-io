@@ -7,7 +7,7 @@
  * baseline. It is a ratchet, not a cliff: you are never asked to fix everything
  * at once, only to avoid adding more.
  *
- * Pure Node, no dependencies, no shell calls — so it behaves identically on
+ * Node with the project's PostCSS parser, no shell calls — it behaves identically on
  * Windows, macOS and Linux, and inside CI.
  *
  *   node scripts/design-audit.js              # human-readable report
@@ -43,6 +43,8 @@ const SKIP_DIRS = new Set([
 const EXCLUDE_PATHS = [
   'components/resume-templates',
   'lib/resume-templates',
+  // Social preview is a standalone raster render; ImageResponse cannot inherit page CSS tokens.
+  'app/opengraph-image.tsx',
 ];
 
 /**
@@ -56,6 +58,11 @@ const EXCLUDE_PATHS = [
  */
 const TOKEN_DEF_FILES = [
   'app/globals.css',
+  'components/taco-theme.css', // canonical app-wide color families and theme roles
+  'app/suite/market-oracle/palette.ts', // fixed WebGL colors cannot resolve CSS variables
+  'app/global-error.tsx', // standalone fallback must work without the root stylesheet
+  'components/landing/talent-landing.css', // isolated marketing palette
+  'components/workspace/workspace-frame.css', // scoped paper workspace and accessible light/dark tokens
 ];
 
 /**
@@ -104,24 +111,41 @@ function contrast(a, b) {
 }
 
 function accentContrastFailures(root) {
+  const postcss = require('postcss');
   const fails = [];
-  for (const file of TOKEN_DEF_FILES) {
-    let css;
-    try { css = fs.readFileSync(path.join(root, file), 'utf8'); } catch { continue; }
-    for (const theme of ['dark', 'light']) {
-      const i = css.indexOf(`[data-theme="${theme}"]`);
-      if (i < 0) continue;
-      const end = css.indexOf('}', css.indexOf('color-scheme', i));
-      const block = css.slice(i, end < 0 ? undefined : end);
-      const tok = {};
-      for (const m of block.matchAll(/(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\b/g)) tok[m[1]] = m[2];
-      if (!tok['--accent']) continue;
-      for (const su of ACCENT_SURFACES) {
-        if (!tok[su]) continue;
-        const r = contrast(tok['--accent'], tok[su]);
-        if (r < 4.5) fails.push(`${theme} ${su} ${tok[su]} = ${r.toFixed(2)}:1`);
-      }
+  for (const theme of ['dark', 'light']) {
+    const tokens = {};
+    for (const file of ['app/globals.css', 'components/taco-theme.css']) {
+      let css;
+      try { css = fs.readFileSync(path.join(root, file), 'utf8'); } catch { continue; }
+      postcss.parse(css).walkRules(rule => {
+        const selectors = rule.selector.split(',').map(s => s.trim());
+        if (!selectors.some(s => s === ':root' || s === '[data-theme]' || s === `[data-theme="${theme}"]`)) return;
+        rule.walkDecls(d => { if (d.prop.startsWith('--')) tokens[d.prop] = d.value; });
+      });
     }
+    const resolve = (name, visited = new Set()) => {
+      if (visited.has(name) || !tokens[name]) return null;
+      visited.add(name);
+      const value = tokens[name].trim();
+      if (/^#[0-9a-f]{6}$/i.test(value)) return value;
+      const alias = value.match(/^var\((--[a-z0-9-]+)\)$/);
+      return alias ? resolve(alias[1], visited) : null;
+    };
+    const accent = resolve('--accent');
+    if (!accent) {
+      fails.push(`${theme} accent is unresolved`);
+      continue;
+    }
+    for (const surface of ACCENT_SURFACES) {
+      const bg = resolve(surface);
+      if (!bg) { fails.push(`${theme} ${surface} is unresolved`); continue; }
+      const ratio = contrast(accent, bg);
+      if (ratio < 4.5) fails.push(`${theme} ${surface} ${bg} = ${ratio.toFixed(2)}:1`);
+    }
+    const action = resolve('--taco-action'), actionInk = resolve('--taco-action-ink');
+    if (!action || !actionInk) fails.push(`${theme} action colors are unresolved`);
+    else if (contrast(action, actionInk) < 4.5) fails.push(`${theme} action contrast below 4.5:1`);
   }
   return fails;
 }
@@ -157,12 +181,31 @@ const PROHIBITED = [
   // spelling, and "make it look premium" reliably reaches for the CSS one instead.
   { key: 'css-gradient',  re: /(?:linear|radial|conic)-gradient\s*\(/g,
                           why: 'decorative gradient in CSS; surfaces are flat',
+                          // components/landing: the brand marketing register.
+                          // AnimatedShimmerBackground: an ambient orb effect whose
+                          // gradients are functional (soft radial glow) and whose
+                          // colours are tokens (color-mix of var(--accent) at low alpha),
+                          // so it flips per theme — a documented decorative-effect exception.
+                          // Workspace gradients draw the approved 1px paper grid, not color washes.
+                          allowIn: ['components/landing', 'components/AnimatedShimmerBackground', 'components/workspace/workspace-frame.css'] },
+  // Elevation is now a first-class part of the language (owner decision,
+  // Aug 2026 — the Proof Engine card), but ONLY through tokens: a shadow must
+  // read var(--elevation-*). A raw literal still fails, so "make it pop" can't
+  // reintroduce arbitrary shadows and the elevation scale stays one source.
+  { key: 'css-shadow',    re: /box-shadow\s*:\s*(?!\s*none(?:\s*!important)?\s*(?:[;}]))(?![^;}]*var\(--elevation)[^;}]+/g,
+                          why: 'raw shadow literal; use box-shadow: var(--elevation-*)',
+                          // User-authorized paper/card landing uses hard decorative offset shadows.
                           allowIn: ['components/landing'] },
-  { key: 'css-shadow',    re: /box-shadow\s*:\s*(?!none)[^;}]+/g,
-                          why: 'elevation is expressed with borders, not shadows' },
   { key: 'css-backdrop',  re: /backdrop-filter\s*:\s*(?!none)[^;}]+/g,
                           allowIn: ['components/landing'],
                           why: 'glass is banned by the design system' },
+
+  // Readability floor (owner decision, Aug 2026): no text below 11px. Catches
+  // both the Tailwind arbitrary spelling and the CSS one (0-10px).
+  { key: 'font-too-small-tw',  re: /\btext-\[(?:10|[0-9])px\]/g,
+                          why: 'text below 11px is unreadable; 11px floor' },
+  { key: 'font-too-small-css', re: /font-size\s*:\s*(?:10|[0-9])px\b/g,
+                          why: 'text below 11px is unreadable; 11px floor' },
 ];
 
 const METRICS = [
@@ -193,7 +236,7 @@ function walk(dir, out = []) {
       if (EXCLUDE_PATHS.some((p) => rel === p || rel.startsWith(p + '/'))) continue;
       walk(full, out);
     } else if (EXTS.has(path.extname(e.name))) {
-      if (EXCLUDE_PATHS.some((p) => rel.startsWith(p + '/'))) continue;
+      if (EXCLUDE_PATHS.some((p) => rel === p || rel.startsWith(p + '/'))) continue;
       out.push({ full, rel });
     }
   }
@@ -290,7 +333,8 @@ function audit() {
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     return /from\s+['"]next\/navigation['"]/.test(code)
       && /\bredirect\s*\(/.test(code)
-      && !/<[A-Za-z]/.test(code);
+      // Generic TypeScript annotations such as Promise<Query> are not rendered JSX.
+      && !/<[A-Za-z][\w.:-]*(?:\s[^>]*|)\s*\/?>(?:[\s\S]*<\/|)/.test(code.replace(/Promise<[^>]+>/g, 'Promise'));
   };
   const suiteDir = path.join(ROOT, 'app', 'suite');
   const suitePages = walk(suiteDir).filter((f) => /[\\/]page\.tsx$/.test(f.full));
@@ -440,4 +484,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { audit };
+module.exports = { audit, accentContrastFailures };

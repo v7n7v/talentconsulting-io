@@ -1,42 +1,41 @@
 /* Talent Admin Command Grid
-   All visual decisions are scoped so the existing global light-mode remaps
-   cannot change Admin contrast or status semantics. */
+   Admin color roles follow the shared, mode-aware application palette. */
 
 .admin-command-grid {
-  --admin-canvas: #050d1c;
-  --admin-header: #050b19;
-  --admin-surface-panel: #081429;
-  --admin-surface-elevated: #0c1a32;
-  --admin-surface-row: #0d1b34;
-  --admin-surface-hover: #112443;
-  --admin-surface-selected: #122a53;
-  --admin-border: #1d2d4a;
-  --admin-border-strong: #2b4168;
-  --admin-text-primary: #f7faff;
-  --admin-text-secondary: #a6b3cb;
-  --admin-text-muted: #93a2be;
-  --admin-cobalt: #315cff;
-  --admin-cobalt-hover: #4b70ff;
-  --admin-cobalt-soft: rgba(49, 92, 255, 0.15);
-  --admin-violet: #7063ff;
-  --admin-violet-soft: rgba(112, 99, 255, 0.15);
-  --admin-healthy: #2ed190;
-  --admin-healthy-soft: rgba(46, 209, 144, 0.14);
-  --admin-degraded: #ff9b2f;
-  --admin-degraded-soft: rgba(255, 155, 47, 0.14);
-  --admin-critical: #ff4d65;
-  --admin-critical-soft: rgba(255, 77, 101, 0.14);
-  --admin-info: #4b9cff;
-  --admin-info-soft: rgba(75, 156, 255, 0.14);
-  --admin-focus: #77a0ff;
-  --admin-shadow-panel: 0 18px 42px rgba(0, 4, 17, 0.28);
-  --admin-shadow-overlay: 0 24px 68px rgba(0, 4, 17, 0.5);
+  --admin-canvas: var(--taco-surface);
+  --admin-header: var(--taco-surface-raised);
+  --admin-surface-panel: var(--taco-surface);
+  --admin-surface-elevated: var(--taco-surface-raised);
+  --admin-surface-row: var(--taco-surface);
+  --admin-surface-hover: var(--taco-surface-hover);
+  --admin-surface-selected: var(--taco-coral-soft);
+  --admin-border: var(--taco-border);
+  --admin-border-strong: var(--taco-border-strong);
+  --admin-text-primary: var(--taco-text);
+  --admin-text-secondary: var(--taco-text-secondary);
+  --admin-text-muted: var(--taco-text-muted);
+  --admin-cobalt: var(--taco-action);
+  --admin-cobalt-hover: var(--taco-coral);
+  --admin-cobalt-soft: var(--taco-coral-soft);
+  --admin-violet: var(--taco-accent-text);
+  --admin-violet-soft: var(--taco-coral-soft);
+  --admin-healthy: var(--success);
+  --admin-healthy-soft: color-mix(in srgb, var(--success) 12%, var(--taco-surface));
+  --admin-degraded: var(--warning);
+  --admin-degraded-soft: color-mix(in srgb, var(--warning) 12%, var(--taco-surface));
+  --admin-critical: var(--danger);
+  --admin-critical-soft: color-mix(in srgb, var(--danger) 12%, var(--taco-surface));
+  --admin-info: var(--taco-accent-text);
+  --admin-info-soft: var(--taco-coral-soft);
+  --admin-focus: var(--taco-action);
+  --admin-shadow-panel: var(--elevation-card);
+  --admin-shadow-overlay: var(--elevation-raised);
   --admin-topbar-height: 64px;
   --admin-module-nav-height: 52px;
   min-height: 100dvh;
   background: var(--admin-canvas);
   color: var(--admin-text-primary);
-  color-scheme: dark;
+  color-scheme: inherit;
   font-family: var(--font-inter), Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   isolation: isolate;
 }
@@ -50,11 +49,11 @@
   min-height: calc(100dvh - 12px);
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--theme-border);
+  border: 1px solid var(--taco-border);
   border-radius: 16px;
-  background: var(--theme-bg-card);
-  box-shadow: var(--theme-shadow);
-  color: var(--text-primary);
+  background: var(--taco-surface-raised);
+  box-shadow: var(--elevation-card);
+  color: var(--taco-text);
 }
 
 .admin-workspace-rail-brand {
@@ -63,7 +62,7 @@
   align-items: center;
   gap: 10px;
   padding: 10px;
-  border-bottom: 1px solid var(--theme-border);
+  border-bottom: 1px solid var(--taco-border);
 }
 
 .admin-workspace-rail-brand > span:nth-child(2) {
@@ -75,8 +74,8 @@
 }
 
 .admin-workspace-rail-brand small {
-  color: var(--text-tertiary);
-  font-size: 10px;
+  color: var(--taco-text-muted);
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: .08em;
   text-transform: uppercase;
@@ -89,10 +88,10 @@
   height: 44px;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--theme-border);
+  border: 1px solid var(--taco-border);
   border-radius: 12px;
-  background: var(--theme-bg-card);
-  color: var(--text-secondary);
+  background: var(--taco-surface-raised);
+  color: var(--taco-text-secondary);
 }
 
 .admin-workspace-rail nav {
@@ -106,13 +105,13 @@
   display: grid;
   gap: 5px;
   padding: 8px;
-  border-top: 1px solid var(--theme-border);
+  border-top: 1px solid var(--taco-border);
 }
 
 .admin-workspace-rail-section {
   margin: 12px 8px 6px;
-  color: var(--text-tertiary);
-  font-size: 10px;
+  color: var(--taco-text-muted);
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: .14em;
   text-transform: uppercase;
@@ -129,21 +128,21 @@
   border: 1px solid transparent;
   border-radius: 12px;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--taco-text-secondary);
   text-align: left;
   transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
 .admin-workspace-rail-link:hover {
-  border-color: var(--theme-border);
-  background: var(--theme-surface-hover);
-  color: var(--text-primary);
+  border-color: var(--taco-border);
+  background: var(--taco-surface-hover);
+  color: var(--taco-text);
 }
 
 .admin-workspace-rail-link:focus-visible,
 .admin-workspace-rail-brand button:focus-visible,
 .admin-workspace-rail-opener:focus-visible {
-  outline: 2px solid var(--admin-focus, #5d7dff);
+  outline: 2px solid var(--admin-focus);
   outline-offset: 2px;
 }
 
@@ -175,8 +174,8 @@
 
 .admin-workspace-rail-link small {
   margin-top: 2px;
-  color: var(--text-tertiary);
-  font-size: 10px;
+  color: var(--taco-text-muted);
+  font-size: 11px;
 }
 
 .admin-workspace-rail-link > i {
@@ -184,14 +183,14 @@
   height: 30px;
   flex: 0 0 5px;
   border-radius: 999px;
-  background: var(--admin-cobalt, #315cff);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--admin-cobalt, #315cff) 50%, transparent);
+  background: var(--admin-cobalt);
+  box-shadow: var(--elevation-card);
 }
 
 .admin-workspace-rail-link.is-active {
-  border-color: color-mix(in srgb, var(--admin-cobalt, #315cff) 45%, var(--theme-border));
-  background: color-mix(in srgb, var(--admin-cobalt, #315cff) 11%, var(--theme-bg-card));
-  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--admin-cobalt) 45%, var(--taco-border));
+  background: color-mix(in srgb, var(--admin-cobalt) 11%, var(--taco-surface-raised));
+  color: var(--taco-text);
 }
 
 .admin-workspace-rail-opener {
@@ -199,7 +198,7 @@
   top: 8px;
   left: 10px;
   z-index: 61;
-  box-shadow: var(--theme-shadow);
+  box-shadow: var(--elevation-card);
 }
 
 .admin-workspace-rail-backdrop {
@@ -207,7 +206,7 @@
   inset: 0;
   z-index: 49;
   border: 0;
-  background: rgb(1 5 15 / 58%);
+  background: color-mix(in srgb, var(--taco-ink) 58%, transparent);
   backdrop-filter: blur(2px);
 }
 
@@ -249,37 +248,6 @@
   font-family: var(--font-mono), "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 }
 
-[data-theme="light"] .admin-command-grid {
-  --admin-canvas: #f3f6fc;
-  --admin-header: #ffffff;
-  --admin-surface-panel: #ffffff;
-  --admin-surface-elevated: #f8faff;
-  --admin-surface-row: #f8fafe;
-  --admin-surface-hover: #eef4ff;
-  --admin-surface-selected: #e5edff;
-  --admin-border: #dce4f1;
-  --admin-border-strong: #c4d0e3;
-  --admin-text-primary: #0b1530;
-  --admin-text-secondary: #48566f;
-  --admin-text-muted: #52627d;
-  --admin-cobalt: #2457ff;
-  --admin-cobalt-hover: #1747e8;
-  --admin-cobalt-soft: rgba(36, 87, 255, 0.1);
-  --admin-violet: #654fe8;
-  --admin-violet-soft: rgba(101, 79, 232, 0.1);
-  --admin-healthy: #066b4d;
-  --admin-healthy-soft: rgba(8, 127, 91, 0.1);
-  --admin-degraded: #a95000;
-  --admin-degraded-soft: rgba(169, 80, 0, 0.1);
-  --admin-critical: #c6283d;
-  --admin-critical-soft: rgba(198, 40, 61, 0.1);
-  --admin-info: #175fb8;
-  --admin-info-soft: rgba(31, 111, 209, 0.1);
-  --admin-focus: #2457ff;
-  --admin-shadow-panel: 0 16px 38px rgba(33, 49, 79, 0.08);
-  --admin-shadow-overlay: 0 24px 68px rgba(33, 49, 79, 0.2);
-  color-scheme: light;
-}
 
 .admin-command-grid *,
 .admin-command-grid *::before,
@@ -355,7 +323,7 @@
   min-height: var(--admin-topbar-height);
   border-bottom: 1px solid var(--admin-border);
   background: color-mix(in srgb, var(--admin-header) 96%, transparent);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+  box-shadow: var(--elevation-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -399,12 +367,12 @@
 
 .admin-connection.is-ready .admin-connection-dot {
   background: var(--admin-healthy);
-  box-shadow: 0 0 0 4px var(--admin-healthy-soft);
+  box-shadow: inset 0 0 0 1px var(--admin-border-strong);
 }
 
 .admin-connection.is-denied .admin-connection-dot {
   background: var(--admin-critical);
-  box-shadow: 0 0 0 4px var(--admin-critical-soft);
+  box-shadow: inset 0 0 0 1px var(--admin-border-strong);
 }
 
 .admin-connection.is-loading .admin-connection-dot {
@@ -475,7 +443,7 @@
   background: var(--admin-surface-row);
   color: var(--admin-text-muted);
   font-family: inherit;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
   pointer-events: none;
@@ -500,7 +468,7 @@
   margin: 0;
   padding: 6px 8px;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -525,7 +493,7 @@
 }
 
 .admin-search-result > .material-symbols-rounded:first-child {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 20px;
 }
 
@@ -630,7 +598,7 @@
 
 .admin-menu-eyebrow {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -693,7 +661,7 @@
 }
 
 .admin-menu-option .material-symbols-rounded {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 18px;
 }
 
@@ -726,7 +694,7 @@
 
 .admin-density-option[aria-checked="true"] {
   background: var(--admin-surface-selected);
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
 }
 
 .admin-theme-toggle {
@@ -799,10 +767,10 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--admin-violet) 70%, white);
+  border: 1px solid color-mix(in srgb, var(--admin-violet) 70%, var(--taco-surface));
   border-radius: 999px;
   background: var(--admin-violet);
-  color: #ffffff;
+  color: var(--taco-action-ink);
   font-size: 12px;
   font-weight: 800;
 }
@@ -829,7 +797,7 @@
 .admin-profile-copy small {
   margin-top: 2px;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-profile-popover {
@@ -863,7 +831,7 @@
   background: var(--admin-violet-soft);
   color: var(--admin-violet);
   padding: 4px 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -886,7 +854,7 @@
 }
 
 .admin-profile-link .material-symbols-rounded {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 19px;
 }
 
@@ -965,7 +933,7 @@
 }
 
 .admin-module-link.is-active .material-symbols-rounded {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
 }
 
@@ -1022,7 +990,7 @@
 .admin-panel-eyebrow {
   margin-bottom: 3px;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1101,7 +1069,7 @@
 .admin-button.is-primary {
   border-color: var(--admin-cobalt);
   background: var(--admin-cobalt);
-  color: #ffffff;
+  color: var(--taco-action-ink);
 }
 
 .admin-button.is-primary:hover:not(:disabled) {
@@ -1129,11 +1097,11 @@
 .admin-button.is-danger {
   border-color: var(--admin-critical);
   background: var(--admin-critical);
-  color: #ffffff;
+  color: var(--taco-action-ink);
 }
 
 .admin-button.is-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--admin-critical) 86%, black);
+  background: color-mix(in srgb, var(--admin-critical) 86%, var(--taco-ink));
 }
 
 .admin-button .material-symbols-rounded {
@@ -1161,7 +1129,7 @@
   background: transparent;
   color: var(--admin-text-muted);
   padding: 0 9px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 720;
   cursor: pointer;
 }
@@ -1173,7 +1141,7 @@
 
 .admin-segmented-option[aria-checked="true"] {
   background: var(--admin-surface-selected);
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--admin-cobalt) 45%, var(--admin-border));
 }
 
@@ -1213,7 +1181,7 @@
   background: var(--admin-surface-elevated);
   color: var(--admin-text-secondary);
   padding: 3px 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   line-height: 1;
 }
@@ -1299,7 +1267,7 @@
 }
 
 .admin-metric-icon {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 19px;
 }
 
@@ -1334,7 +1302,7 @@
   align-items: center;
   justify-content: center;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-sparkline-tooltip {
@@ -1344,7 +1312,7 @@
   background: var(--admin-surface-panel);
   color: var(--admin-text-primary);
   padding: 4px 6px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   box-shadow: var(--admin-shadow-panel);
 }
@@ -1356,7 +1324,7 @@
 
 .admin-metric-change,
 .admin-metric-detail {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -1392,12 +1360,12 @@
   justify-content: space-between;
   gap: 10px;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-freshness-copy strong {
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 720;
 }
 
@@ -1408,7 +1376,7 @@
   border: 0;
   border-radius: 999px;
   background: var(--admin-border);
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   appearance: none;
 }
 
@@ -1587,7 +1555,7 @@
   background: var(--admin-surface-panel);
   color: var(--admin-text-muted);
   padding: 0 13px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1708,7 +1676,7 @@
   width: 100%;
   height: 100%;
   border: 0;
-  background: rgba(0, 6, 20, 0.7);
+  background: color-mix(in srgb, var(--taco-ink) 70%, transparent);
   cursor: default;
 }
 
@@ -1804,7 +1772,7 @@
   border: 1px solid color-mix(in srgb, var(--admin-cobalt) 36%, var(--admin-border));
   border-radius: 10px;
   background: var(--admin-cobalt-soft);
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
 }
 
 .admin-confirmation-icon.is-danger {

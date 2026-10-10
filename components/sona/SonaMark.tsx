@@ -28,23 +28,23 @@ const ringInset: Record<SonaMarkSize, string> = {
 };
 
 const stateGlow: Record<SonaMarkState, string> = {
-  idle: '0 10px 26px rgba(56,189,248,0.14), 0 7px 20px rgba(124,58,237,0.08)',
-  listening: '0 13px 32px rgba(14,165,233,0.24), 0 8px 24px rgba(16,185,129,0.14)',
-  thinking: '0 15px 38px rgba(14,165,233,0.28), 0 10px 30px rgba(124,58,237,0.18), 0 5px 18px rgba(236,72,153,0.12)',
-  responding: '0 13px 34px rgba(59,130,246,0.24), 0 9px 24px rgba(236,72,153,0.13)',
-  success: '0 12px 30px rgba(16,185,129,0.22), 0 7px 20px rgba(14,165,233,0.1)',
-  error: '0 10px 24px rgba(148,163,184,0.12)',
-  locked: '0 10px 24px rgba(148,163,184,0.12)',
+  idle: '0 10px 26px rgba(198,182,255,0.18)',
+  listening: '0 13px 32px rgba(198,182,255,0.3)',
+  thinking: '0 15px 38px rgba(198,182,255,0.34)',
+  responding: '0 13px 34px rgba(198,182,255,0.3)',
+  success: '0 12px 30px rgba(198,182,255,0.3)',
+  error: '0 10px 24px rgba(198,182,255,0.14)',
+  locked: '0 10px 24px rgba(198,182,255,0.14)',
 };
 
 const stateAccent: Record<SonaMarkState, string> = {
-  idle: 'rgba(14,165,233,0.46)',
-  listening: 'rgba(16,185,129,0.64)',
-  thinking: 'rgba(14,165,233,0.78)',
-  responding: 'rgba(59,130,246,0.68)',
-  success: 'rgba(16,185,129,0.72)',
-  error: 'rgba(239,68,68,0.58)',
-  locked: 'rgba(148,163,184,0.5)',
+  idle: 'rgba(255,91,53,0.46)',
+  listening: 'rgba(255,91,53,0.64)',
+  thinking: 'rgba(255,91,53,0.78)',
+  responding: 'rgba(255,91,53,0.68)',
+  success: 'rgba(255,91,53,0.72)',
+  error: 'rgba(168,44,24,0.7)',
+  locked: 'rgba(110,105,100,0.5)',
 };
 
 export default function SonaMark({ state = 'idle', size = 'md', className = '', title }: SonaMarkProps) {
@@ -65,17 +65,14 @@ export default function SonaMark({ state = 'idle', size = 'md', className = '', 
     : state === 'thinking'
       ? {
           scale: [1, 1.035, 1],
-          filter: ['saturate(1.04) brightness(1)', 'saturate(1.18) brightness(1.045)', 'saturate(1.04) brightness(1)'],
         }
       : state === 'listening'
         ? {
             scale: [1, 1.025, 1],
-            filter: ['saturate(1.06)', 'saturate(1.2)', 'saturate(1.06)'],
           }
         : state === 'responding'
           ? {
               scale: [1, 1.02, 1],
-              filter: ['saturate(1.05) brightness(1)', 'saturate(1.14) brightness(1.035)', 'saturate(1.05) brightness(1)'],
             }
           : undefined;
 
@@ -96,7 +93,7 @@ export default function SonaMark({ state = 'idle', size = 'md', className = '', 
         <motion.span
           className={`pointer-events-none absolute ${ringInset[size]} rounded-[inherit] opacity-80`}
           style={{
-            background: `conic-gradient(from 0deg, transparent 0deg, ${stateAccent[state]} 82deg, rgba(236,72,153,0.34) 138deg, transparent 220deg, transparent 360deg)`,
+            background: `conic-gradient(from 0deg, transparent 0deg, ${stateAccent[state]} 82deg, rgba(168,44,24,0.34) 138deg, transparent 220deg, transparent 360deg)`,
           }}
           animate={prefersReducedMotion ? undefined : { rotate: 360, opacity: [0.58, 0.95, 0.58] }}
           transition={{ duration: state === 'thinking' ? 2.2 : 3.4, repeat: Infinity, ease: 'linear' }}
@@ -106,7 +103,7 @@ export default function SonaMark({ state = 'idle', size = 'md', className = '', 
       <span
         className="relative z-10 block h-full w-full overflow-hidden rounded-[inherit] border"
         style={{
-          borderColor: muted ? 'rgba(148,163,184,0.32)' : stateAccent[state],
+          borderColor: muted ? 'rgba(110,105,100,0.42)' : stateAccent[state],
           background: 'var(--bg-surface)',
         }}
       >
@@ -117,7 +114,7 @@ export default function SonaMark({ state = 'idle', size = 'md', className = '', 
           draggable={false}
           className="h-full w-full select-none object-cover"
           style={{
-            filter: muted ? 'grayscale(0.86) saturate(0.34) opacity(0.74)' : undefined,
+            // Keep the blue identity even when an operation fails or is locked.
           }}
           animate={imageMotion}
           transition={{ duration: state === 'thinking' ? 2.3 : 3.1, repeat: active ? Infinity : 0, ease: 'easeInOut' }}
@@ -126,7 +123,7 @@ export default function SonaMark({ state = 'idle', size = 'md', className = '', 
           <motion.span
             className="pointer-events-none absolute inset-0 rounded-[inherit]"
             style={{
-              background: 'linear-gradient(110deg, transparent 20%, rgba(255,255,255,0.72) 44%, rgba(125,211,252,0.36) 56%, transparent 78%)',
+              background: 'linear-gradient(110deg, transparent 20%, rgba(255,250,245,0.72) 44%, rgba(255,91,53,0.24) 56%, transparent 78%)',
             }}
             animate={prefersReducedMotion ? undefined : { x: ['-125%', '125%'] }}
             transition={{ duration: state === 'thinking' ? 1.7 : 2.5, repeat: Infinity, ease: 'easeInOut' }}

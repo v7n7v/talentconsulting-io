@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 
+const TACO_CONFETTI_COLORS = ['#ff5b35', '#a82c18', '#151515', '#fffaf5', '#f2ebe3'];
+
 // Hook to trigger confetti celebration
 export function useConfetti() {
     const fire = (options?: confetti.Options) => {
@@ -10,7 +12,7 @@ export function useConfetti() {
             particleCount: 100,
             spread: 70,
             origin: { y: 0.6 },
-            colors: ['#00f5ff', '#0099ff', '#a855f7', '#22c55e', '#f59e0b'],
+            colors: TACO_CONFETTI_COLORS,
         };
 
         confetti({
@@ -41,7 +43,7 @@ export function useConfetti() {
                     x: Math.random(),
                     y: Math.random() - 0.2,
                 },
-                colors: ['#00f5ff', '#0099ff', '#a855f7', '#22c55e'],
+                colors: TACO_CONFETTI_COLORS,
             });
         }, 250);
     };
@@ -52,14 +54,14 @@ export function useConfetti() {
             angle: 60,
             spread: 55,
             origin: { x: 0 },
-            colors: ['#00f5ff', '#0099ff', '#a855f7'],
+            colors: TACO_CONFETTI_COLORS,
         });
         confetti({
             particleCount: 50,
             angle: 120,
             spread: 55,
             origin: { x: 1 },
-            colors: ['#00f5ff', '#0099ff', '#a855f7'],
+            colors: TACO_CONFETTI_COLORS,
         });
     };
 
@@ -72,6 +74,6 @@ export const celebrateSuccess = () => {
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ['#00f5ff', '#0099ff', '#a855f7', '#22c55e', '#f59e0b'],
+        colors: TACO_CONFETTI_COLORS,
     });
 };

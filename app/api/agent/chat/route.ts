@@ -11,6 +11,8 @@
  */
 
 import { NextRequest } from 'next/server';
+import { randomUUID } from 'node:crypto';
+import { reserveChatMessage, finishChatMessage, stageChatResponse, chatRequestFingerprint } from '@/lib/assistant/chat-message-quota';
 import { guardApiRoute } from '@/lib/api-auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { SONA_TOOLS, executeTool } from '@/lib/assistant/tools';
@@ -44,7 +46,7 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MODEL = 'qwen/qwen3.6-plus'; // Qwen 3.6 Plus — 1M ctx, $0.325/$1.95 per M tokens
 
 const BASE_SYSTEM = `
-You have access to tools that can fetch the user's resume, job applications, preferences, search for jobs, analyze job fit, morph resumes, draft cover letters, generate tailored resume PDFs, save interview stories, and queue prepared applications. Use these tools when you need real data — don't guess or make up information about the user.
+You have access to tools that can fetch the user's resume, job applications, preferences, search for jobs, analyze job fit, morph resumes, draft cover letters, generate tailored resume PDFs, and save interview stories. Use these tools when you need real data — don't guess or make up information about the user. Internal preparation creates drafts for the user's review; it is separate from any external submission, email, or contact.
 
 CORE RULES
 1. NEVER fabricate information about the user's resume, skills, or applications. Always use tools to check.
@@ -99,13 +101,7 @@ NEVER skip the Fit Gate. Quality over quantity.
 APPLICATION PREP WORKFLOW
 If the user gives a broad career target like "$120k hybrid jobs in New Jersey", "find me better roles", or "prepare applications for my target", direct them to the Target brief and its Preview scout action. Free-form chat must not launch the career harness before that visible, read-only checkpoint.
 
-When the user wants to apply to a job they've been scored on:
-1. Ask if they want a tailored resume: Call generate_tailored_resume for an ATS-optimized PDF.
-2. Call draft_cover_letter to generate a personalized 3-paragraph letter.
-3. Present both drafts for review. Mention keyword coverage percentage.
-4. Ask "Want me to queue this application?"
-5. If approved, call queue_application to save to their "Ready to Submit" queue.
-The user reviews and submits manually. We NEVER submit on their behalf.
+When the user wants a packet for a specific job, direct them to choose that job in Job Search, select a confirmed resume, and use its existing Prepare action. That action creates internal drafts for review; preparation is not approval to submit. The legacy queue_application tool cannot create queue items or authorize preparation: if called, follow its returned Job Search guidance and do not claim that anything was queued. The user reviews the packet and takes any external action themselves. NEVER submit, email, or contact anyone on their behalf.
 
 STAR STORY BANK PROTOCOL
 1. When the user shares a professional achievement in conversation (built something, solved a problem, led a team, hit a metric), AUTOMATICALLY save it as a STAR story using save_star_story. Don't ask permission — just save it and mention "I've added this to your Story Bank for interview prep."
@@ -172,71 +168,6 @@ ANTI-HALLUCINATION RULES
 
 You are part of the TalentConsulting.io platform which includes: Resume Studio (morphing), Interview Simulator (The Gauntlet), Skill Bridge, Market Oracle, Job Search, Application Tracker, AI Writing Tools, and the STAR Story Bank.
 `;
-
-// ── Taco Usage Gating ──
-async function checkSonaAccess(uid: string, tier: string): Promise<{ allowed: boolean; reason?: string; used?: number; cap?: number }> {
-  const db = getAdminDb();
-
-  // Max / God: unlimited
-  if (tier === 'studio' || tier === 'god') {
-    return { allowed: true };
-  }
-
-  const usageRef = db.collection('users').doc(uid).collection('usage').doc('sona');
-  const snap = await usageRef.get();
-  const data = snap.exists ? snap.data()! : { lifetimeCount: 0, weeklyCount: 0, weekStart: '' };
-
-  const currentWeek = getWeekKey();
-
-  if (tier === 'pro') {
-    // Pro: 1 per week
-    const weeklyCount = data.weekStart === currentWeek ? (data.weeklyCount || 0) : 0;
-    if (weeklyCount >= 1) {
-      return { allowed: false, reason: 'You used your weekly Taco check-in. Unlock Max for more Taco room.', used: weeklyCount, cap: 1 };
-    }
-    return { allowed: true, used: weeklyCount, cap: 1 };
-  }
-
-  // Free: 2 lifetime
-  const lifetimeCount = data.lifetimeCount || 0;
-  if (lifetimeCount >= 2) {
-    return { allowed: false, reason: 'You used both Taco demo sessions. Compare Standard for hands-on search work or Max for proactive scouting and prepared packets.', used: lifetimeCount, cap: 2 };
-  }
-  return { allowed: true, used: lifetimeCount, cap: 2 };
-}
-
-async function incrementSonaUsage(uid: string, tier: string): Promise<void> {
-  const db = getAdminDb();
-  const usageRef = db.collection('users').doc(uid).collection('usage').doc('sona');
-  const currentWeek = getWeekKey();
-
-  if (tier === 'studio' || tier === 'god') return; // No tracking for unlimited
-
-  const snap = await usageRef.get();
-  const data = snap.exists ? snap.data()! : {};
-
-  if (tier === 'pro') {
-    await usageRef.set({
-      ...data,
-      weeklyCount: data.weekStart === currentWeek ? ((data.weeklyCount || 0) + 1) : 1,
-      weekStart: currentWeek,
-      lastUsed: new Date().toISOString(),
-    }, { merge: true });
-  } else {
-    await usageRef.set({
-      ...data,
-      lifetimeCount: (data.lifetimeCount || 0) + 1,
-      lastUsed: new Date().toISOString(),
-    }, { merge: true });
-  }
-}
-
-function getWeekKey(): string {
-  const now = new Date();
-  const start = new Date(now);
-  start.setDate(start.getDate() - start.getDay()); // Sunday
-  return `${start.getFullYear()}-W${String(Math.ceil((start.getDate()) / 7)).padStart(2, '0')}-${String(start.getMonth() + 1).padStart(2, '0')}`;
-}
 
 async function readOpenRouterJson(response: Response) {
   const data = await response.json().catch(() => ({}));
@@ -349,7 +280,38 @@ async function upsertConversationMeta(uid: string, conversationId: string, first
 export async function POST(req: NextRequest) {
   const guard = await guardApiRoute(req, { rateLimit: 10, rateLimitWindow: 60_000 });
   if (guard.error) return guard.error;
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: 'Invalid request body' }, 400); }
+  if (!body || !Array.isArray(body.messages) || !body.messages.length) return json({ error: 'Messages required' }, 400);
+  const requestId = body.requestId || randomUUID();
+  if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) return json({ error: 'Invalid message request ID' }, 400);
+  const { requestId: omitted, ...input } = body;
+  const db = getAdminDb();
+  let reserved = false;
+  try {
+    const reservation = await reserveChatMessage(db, guard.user.uid, guard.user.tier, requestId, chatRequestFingerprint(input));
+    if (reservation.kind === 'replay') return new Response(reservation.response.body, { status: reservation.response.status, headers: { 'Content-Type': 'application/json' } });
+    if (reservation.kind === 'denied') return json({ error: reservation.reason, gated: true, used: reservation.used, cap: reservation.cap }, 403);
+    if (reservation.kind !== 'reserved') return json({ error: reservation.kind === 'conflict' ? 'This request ID belongs to another message.' : reservation.kind === 'interrupted' ? 'This message was interrupted and its outcome is unknown. Check conversation history and saved work before deliberately sending a new message. This request will not run again.' : 'This message is still processing. Retry the same message shortly.', code: 'MESSAGE_' + reservation.kind.toUpperCase(), retryable: reservation.kind === 'pending' }, 409);
+    reserved = true;
+    let response: Response;
+    try { response = await handleChatMessage(input, guard); }
+    catch (error) { await finishChatMessage(db, guard.user.uid, requestId, null, false, reservation.operationId); reserved = false; throw error; }
+    const text = await response.clone().text();
+    const payload = JSON.parse(text);
+    if (response.ok) await stageChatResponse(db, guard.user.uid, requestId, reservation.operationId, { body: text, status: response.status });
+    const finalized = await finishChatMessage(db, guard.user.uid, requestId, response.ok ? { body: text, status: response.status } : null, payload.harnessResult?.success !== false, reservation.operationId);
+    if (!finalized) return json({ error: 'This message exceeded its recovery window. Check conversation history and saved work before sending a new message.', code: 'MESSAGE_INTERRUPTED', retryable: false }, 409);
+    return response;
+  } catch (error) {
+    // If finalization itself failed, retain the reservation: never repeat completed external work blindly.
+    if (reserved) console.error('[sona/chat] Request incomplete; retained receipt', requestId, error);
+    return json({ error: 'Taco could not confirm this message. Retry the same message to check its receipt.', code: 'MESSAGE_UNCONFIRMED', retryable: true }, 503);
+  }
+}
 
+async function handleChatMessage(body: any, guard: any) {
   if (!OPENROUTER_API_KEY) {
     const recovery = sonaServiceUnavailableRecovery();
     return new Response(JSON.stringify({
@@ -363,13 +325,6 @@ export async function POST(req: NextRequest) {
   const uid = guard.user.uid;
   const tier = guard.user.tier;
 
-  // Check access
-  const access = await checkSonaAccess(uid, tier);
-  if (!access.allowed) {
-    return new Response(JSON.stringify({ error: access.reason, gated: true, used: access.used, cap: access.cap }), { status: 403, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  const body = await req.json();
   const { messages, personality = 'coach', conversationId: incomingConvId, resumeVersionId, applicationId, jobContext, harnessRequest } = body;
   const activeResumeVersionId = resumeVersionId
     || (typeof harnessRequest?.resumeVersionId === 'string' ? harnessRequest.resumeVersionId : null);
@@ -515,7 +470,6 @@ export async function POST(req: NextRequest) {
         saveMessage(uid, conversationId, 'assistant', assistantMessage),
         upsertConversationMeta(uid, conversationId, isNew ? userMessage : undefined, personality),
       ];
-      if (result.success) persistence.push(incrementSonaUsage(uid, tier));
       await Promise.all(persistence);
 
       return new Response(JSON.stringify({
@@ -606,7 +560,6 @@ export async function POST(req: NextRequest) {
       saveMessage(uid, conversationId, 'user', userMessage),
       saveMessage(uid, conversationId, 'assistant', assistantMessage),
       upsertConversationMeta(uid, conversationId, isNew ? userMessage : undefined, personality),
-      incrementSonaUsage(uid, tier),
     ]);
 
     return new Response(JSON.stringify({

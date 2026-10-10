@@ -11,6 +11,8 @@
 
 'use client';
 
+import { currentMicrophoneStream } from '@/lib/practice-live-lifecycle';
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { authFetch } from '@/lib/auth-fetch';
 import {
@@ -20,6 +22,7 @@ import {
 } from '@/lib/audio-level';
 
 interface AvatarLiveConfig {
+  sessionId?: string;
   persona?: string;
   jobDescription?: string;
   interviewStyle?: string;
@@ -81,6 +84,7 @@ export function useGeminiLiveAvatar() {
   const inputLevelRef = useRef(0);
   const outputLevelRef = useRef(0);
   const lastLevelPublishRef = useRef({ inputLevel: 0, outputLevel: 0 });
+  const connectAttemptRef = useRef(0);
 
   // Mic gating — prevents echo feedback loop where AI hears its own audio
   const isSpeakingRef = useRef(false);
@@ -115,10 +119,12 @@ export function useGeminiLiveAvatar() {
   }, []);
 
   useEffect(() => {
-    return () => { cleanup(); };
+    return () => { connectAttemptRef.current += 1; cleanup(); };
   }, []);
 
   const connect = useCallback(async (config: AvatarLiveConfig) => {
+    const attempt = ++connectAttemptRef.current;
+    cleanup();
     inputLevelRef.current = 0;
     outputLevelRef.current = 0;
     setState(s => ({ ...s, isConnecting: true, error: null, errorUpgradeUrl: null, inputLevel: 0, outputLevel: 0 }));
@@ -143,10 +149,12 @@ export function useGeminiLiveAvatar() {
       }
 
       const { token } = await tokenRes.json();
+      if (connectAttemptRef.current !== attempt) return;
       const ws = new WebSocket(`${GEMINI_WS_URL}?access_token=${token}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (connectAttemptRef.current !== attempt || wsRef.current !== ws) { ws.close(); return; }
         ws.send(JSON.stringify({ setup: {} }));
       };
 
@@ -164,7 +172,7 @@ export function useGeminiLiveAvatar() {
           } else {
             return;
           }
-          if (!text || text.length === 0) return;
+          if (connectAttemptRef.current !== attempt || wsRef.current !== ws || !text || text.length === 0) return;
           const msg = JSON.parse(text);
           handleServerMessage(msg);
         } catch (e) {
@@ -173,10 +181,13 @@ export function useGeminiLiveAvatar() {
       };
 
       ws.onerror = () => {
-        setState(s => ({ ...s, error: 'WebSocket connection error', isConnecting: false }));
+        if (connectAttemptRef.current !== attempt || wsRef.current !== ws) return;
+        cleanup();
+        setState(s => ({ ...s, error: 'WebSocket connection error', isConnecting: false, isConnected: false, isListening: false, isSpeaking: false }));
       };
 
       ws.onclose = () => {
+        if (connectAttemptRef.current !== attempt || wsRef.current !== ws) return;
         cleanup();
         setState(s => ({
           ...s,
@@ -188,6 +199,8 @@ export function useGeminiLiveAvatar() {
       };
 
     } catch (error: any) {
+      if (connectAttemptRef.current !== attempt) return;
+      cleanup();
       setState(s => ({
         ...s,
         isConnecting: false,
@@ -267,6 +280,7 @@ export function useGeminiLiveAvatar() {
 
   const handleServerMessage = useCallback((msg: any) => {
     if (msg.setupComplete) {
+      if (timerRef.current) return;
       setState(s => ({ ...s, isConnected: true, isConnecting: false }));
       startMicCapture();
       // Start elapsed timer
@@ -343,8 +357,10 @@ export function useGeminiLiveAvatar() {
   }, [appendTranscript, playAudioChunk, publishAudioLevel]);
 
   const startMicCapture = useCallback(async () => {
+    const attempt = connectAttemptRef.current;
+    const socket = wsRef.current;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await currentMicrophoneStream(navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 16000,
           channelCount: 1,
@@ -352,7 +368,8 @@ export function useGeminiLiveAvatar() {
           noiseSuppression: true,
           autoGainControl: true,
         },
-      });
+      }), () => connectAttemptRef.current === attempt && wsRef.current === socket && socket?.readyState === WebSocket.OPEN);
+      if (!stream) return;
       mediaStreamRef.current = stream;
 
       const ctx = new AudioContext({ sampleRate: 16000 });
@@ -389,12 +406,15 @@ export function useGeminiLiveAvatar() {
 
       setState(s => ({ ...s, isListening: true }));
     } catch {
+      if (connectAttemptRef.current !== attempt || wsRef.current !== socket) return;
+      cleanup();
       inputLevelRef.current = 0;
-      setState(s => ({ ...s, error: 'Microphone access denied', inputLevel: 0 }));
+      setState(s => ({ ...s, isConnected: false, isConnecting: false, isListening: false, isSpeaking: false, error: 'Microphone access denied', inputLevel: 0 }));
     }
   }, [publishAudioLevel]);
 
   const disconnect = useCallback(() => {
+    connectAttemptRef.current += 1;
     cleanup();
     // Return the full transcript for grading
     const transcript = state.fullTranscript;
@@ -435,8 +455,10 @@ export function useGeminiLiveAvatar() {
       timerRef.current = null;
     }
     if (wsRef.current) {
-      wsRef.current.close();
+      const socket = wsRef.current;
       wsRef.current = null;
+      socket.onopen = null; socket.onmessage = null; socket.onerror = null; socket.onclose = null;
+      socket.close();
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach(t => t.stop());

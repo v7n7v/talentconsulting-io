@@ -1,5 +1,6 @@
 'use client';
 
+import { TacoName, TacoText } from '@/components/BrandLogo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
@@ -73,7 +74,7 @@ function TrustGate({
       <Icon name={icon} className={`${toneClass} mt-0.5 shrink-0 text-[17px]`} />
       <span className="min-w-0">
         <span className="block text-xs font-semibold text-[var(--text-primary)]">{label}</span>
-        <span className="premium-copy-wrap block text-[10px] leading-4 text-[var(--text-muted)]">{value}</span>
+        <span className="premium-copy-wrap block text-[11px] leading-4 text-[var(--text-muted)]">{value}</span>
       </span>
     </div>
   );
@@ -82,7 +83,7 @@ function TrustGate({
 function TwinMiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-2">
-      <span className="block text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
+      <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
       <span className="mt-0.5 block truncate text-xs font-bold text-[var(--text-primary)]">{value}</span>
     </div>
   );
@@ -109,8 +110,8 @@ function CareerTwinRail({
         <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">Career Twin</h3>
         <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
           <p className="text-xs font-semibold text-[var(--text-primary)]">Memory locked</p>
-          <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">
-            Sign in to let Taco use saved resume, goals, applications, and story context.
+          <p className="premium-copy-wrap mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
+            Sign in to let <TacoName /> use saved resume, goals, applications, and story context.
           </p>
         </div>
       </section>
@@ -138,20 +139,20 @@ function CareerTwinRail({
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">Career Twin</h3>
           {error && (
-            <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+            <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
               unavailable
             </span>
           )}
         </div>
         <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
           <p className="text-xs font-semibold text-[var(--text-primary)]">Add trusted career data</p>
-          <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">
-            Upload a resume, set target roles, and track applications so Taco can work from memory.
+          <p className="premium-copy-wrap mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
+            Upload a resume, set target roles, and track applications so <TacoName /> can work from memory.
           </p>
           <button
             type="button"
             onClick={onOpenIntelligence}
-            className="mt-3 inline-flex min-h-8 w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
           >
             <Icon name="memory" className="text-[15px]" />
             Open memory
@@ -168,19 +169,19 @@ function CareerTwinRail({
       <section>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">Career Twin</h3>
-          <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+          <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
             partial
           </span>
         </div>
         <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
           <p className="text-xs font-semibold text-[var(--text-primary)]">Memory is syncing</p>
-          <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">
-            Taco is rebuilding missing career memory fields. You can keep working while this refreshes.
+          <p className="premium-copy-wrap mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
+            <TacoName /> is rebuilding missing career memory fields. You can keep working while this refreshes.
           </p>
           <button
             type="button"
             onClick={onOpenIntelligence}
-            className="mt-3 inline-flex min-h-8 w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
           >
             <Icon name="memory" className="text-[15px]" />
             Open memory
@@ -218,7 +219,7 @@ function CareerTwinRail({
     <section>
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">Career Twin</h3>
-        <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+        <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
           {completeness}%
         </span>
       </div>
@@ -230,7 +231,7 @@ function CareerTwinRail({
             <span className="premium-heading-wrap block text-xs font-bold text-[var(--text-primary)]">
               {compactList(goals.targetRoles, 'Target roles not set', 2)}
             </span>
-            <span className="premium-copy-wrap mt-1 block text-[10px] leading-4 text-[var(--text-muted)]">
+            <span className="premium-copy-wrap mt-1 block text-[11px] leading-4 text-[var(--text-muted)]">
               {/* percentOrDash on the rate: it is null until something has
                   been sent, and "0% response rate" is a different claim. */}
               {metricValue(activeSearch.totalApplications)} applications ({metricValue(activeSearch.sentApplications)} sent), {metricValue(activeSearch.queuedApplications)} queued packets, {percentOrDash(activeSearch.responseRate)} response rate.
@@ -248,11 +249,11 @@ function CareerTwinRail({
         {topAction ? (
           <div className="mt-3 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2.5">
             <p className="premium-heading-wrap text-xs font-semibold text-[var(--text-primary)]">{topAction.label}</p>
-            <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">{topAction.reason}</p>
+            <p className="premium-copy-wrap mt-1 text-[11px] leading-4 text-[var(--text-muted)]">{topAction.reason}</p>
             <button
               type="button"
               onClick={() => onAskSona(`Prepare this Career Twin action for review: ${topAction.label}. Reason: ${topAction.reason}. Do not submit, message, or change anything externally.`, topAction.label)}
-              className="mt-2 inline-flex min-h-8 w-full items-center justify-center gap-2 rounded-[10px] bg-[var(--text-primary)] px-3 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
+              className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[10px] bg-[var(--text-primary)] px-3 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
             >
               <Icon name="auto_awesome" className="text-[15px]" />
               Prepare action
@@ -262,7 +263,7 @@ function CareerTwinRail({
           <button
             type="button"
             onClick={onOpenIntelligence}
-            className="mt-3 inline-flex min-h-8 w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
           >
             <Icon name="open_in_new" className="text-[15px]" />
             Review memory
@@ -453,7 +454,7 @@ export default function SonaContextPanel() {
         <SonaMark size="sm" state={user ? 'idle' : 'locked'} />
         {/* The count is the reason to open it: it says there is something in there. */}
         {contextLines.length > 0 && (
-          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1 text-[10px] font-semibold text-[var(--text-primary)]">
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1 text-[11px] font-semibold text-[var(--text-primary)]">
             {contextLines.length}
           </span>
         )}
@@ -474,13 +475,13 @@ export default function SonaContextPanel() {
             <SonaMark size="sm" state={user ? 'idle' : 'locked'} />
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                Taco context
+                <TacoName /> context
               </p>
               <h2 className="premium-heading-wrap mt-1 text-base font-bold text-[var(--text-primary)]">
                 {pageLabel}
               </h2>
               <p className="premium-copy-wrap mt-1 text-xs leading-5 text-[var(--text-secondary)]">
-                {user ? 'Next actions, evidence, and approval gates stay visible.' : 'Sign in to give Taco memory and saved workflow context.'}
+                <TacoText text={user ? 'Next actions, evidence, and approval gates stay visible.' : 'Sign in to give Taco memory and saved workflow context.'} />
               </p>
             </div>
           </div>
@@ -492,7 +493,7 @@ export default function SonaContextPanel() {
               onClick={collapse}
               aria-expanded
               aria-controls="taco-context-panel"
-              className="inline-grid h-9 w-9 place-items-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-muted)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+              className="inline-grid h-11 w-11 place-items-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-muted)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
               aria-label="Minimise Taco context"
             >
               <Icon name="close_fullscreen" className="text-[18px]" />
@@ -500,7 +501,7 @@ export default function SonaContextPanel() {
             <button
               type="button"
               onClick={() => router.push('/suite/agent')}
-              className="inline-grid h-9 w-9 place-items-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-muted)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+              className="inline-grid h-11 w-11 place-items-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-muted)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
               aria-label="Open full Taco agent"
             >
               <Icon name="open_in_full" className="text-[18px]" />
@@ -513,14 +514,14 @@ export default function SonaContextPanel() {
         <section>
           <div className="mb-2 flex items-center justify-between gap-2">
             <h3 className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">Evidence loaded</h3>
-            <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+            <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
               {contextLines.length || 0}
             </span>
           </div>
           {contextLines.length > 0 ? (
             <div className="space-y-1.5">
               {contextLines.map((line, index) => (
-                <div key={`${line || 'context-line'}-${index}`} className="wrap-anywhere rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-[10px] leading-4 text-[var(--text-secondary)]">
+                <div key={`${line || 'context-line'}-${index}`} className="wrap-anywhere rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-[11px] leading-4 text-[var(--text-secondary)]">
                   {line}
                 </div>
               ))}
@@ -528,8 +529,8 @@ export default function SonaContextPanel() {
           ) : (
             <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
               <p className="text-xs font-semibold text-[var(--text-primary)]">No page evidence yet</p>
-              <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">
-                Add a resume, role, job description, application, or story so Taco can ground the next action.
+              <p className="premium-copy-wrap mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
+                Add a resume, role, job description, application, or story so <TacoName /> can ground the next action.
               </p>
             </div>
           )}
@@ -592,7 +593,7 @@ export default function SonaContextPanel() {
               }
               openSonaPrompt('Review my current Talent Studio context and tell me the next best action.', 'Taco context', twinContext);
             }}
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
           >
             <SonaMark size="xs" state={canBackground ? 'thinking' : 'idle'} />
             Run next move
@@ -600,7 +601,7 @@ export default function SonaContextPanel() {
           <button
             type="button"
             onClick={() => router.push('/suite/agent/queue')}
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
           >
             <Icon name="view_list" className="text-[18px]" />
             Review packets

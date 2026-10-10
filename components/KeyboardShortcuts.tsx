@@ -63,7 +63,7 @@ export default function KeyboardShortcuts() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => setIsOpen(false)}
-                        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50"
+                        className="fixed inset-0 z-50 bg-[color-mix(in_srgb,var(--bg-deep)_82%,transparent)] backdrop-blur-sm"
                     />
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95, y: -20 }}
@@ -71,21 +71,22 @@ export default function KeyboardShortcuts() {
                         exit={{ opacity: 0, scale: 0.95, y: -20 }}
                         className="fixed top-[15%] left-1/2 -translate-x-1/2 w-full max-w-lg z-50"
                     >
-                        <div className="mx-4 rounded-2xl bg-slate-900/95 border border-white/10 shadow-2xl overflow-hidden backdrop-blur-xl">
+                        <div className="elevation-raised mx-4 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)]">
                             {/* Header */}
-                            <div className="flex items-center justify-between p-6 border-b border-white/10">
+                            <div className="flex items-center justify-between p-6 border-b border-[var(--border-subtle)]">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center">
-                                        <span className="text-xl"><span className="material-symbols-rounded">keyboard</span></span>
-                                    </div>
+                                    <span className="icon-shell-neutral inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl border">
+                                        <span className="material-symbols-rounded icon-neutral text-xl">keyboard</span>
+                                    </span>
                                     <div>
-                                        <h2 className="text-lg font-bold text-white">Keyboard Shortcuts</h2>
-                                        <p className="text-sm text-slate-400">Navigate like a pro</p>
+                                        <h2 className="text-lg font-bold text-[var(--text-primary)]">Keyboard Shortcuts</h2>
+                                        <p className="text-sm text-[var(--text-secondary)]">Navigate like a pro</p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setIsOpen(false)}
-                                    className="p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-colors"
+                                    className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                    aria-label="Close keyboard shortcuts"
                                 >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -97,21 +98,21 @@ export default function KeyboardShortcuts() {
                             <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
                                 {Object.entries(groupedShortcuts).map(([category, categoryShortcuts]) => (
                                     <div key={category} className="mb-6 last:mb-0">
-                                        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-2">
+                                        <h3 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3 px-2">
                                             {category}
                                         </h3>
                                         <div className="space-y-1">
                                             {categoryShortcuts.map((shortcut, i) => (
                                                 <div
                                                     key={i}
-                                                    className="flex items-center justify-between p-3 rounded-xl hover:bg-white/5 transition-colors"
+                                                    className="flex items-center justify-between p-3 rounded-xl transition-colors hover:bg-[var(--bg-hover)]"
                                                 >
-                                                    <span className="text-sm text-slate-300">{shortcut.description}</span>
+                                                    <span className="text-sm text-[var(--text-secondary)]">{shortcut.description}</span>
                                                     <div className="flex items-center gap-1">
                                                         {shortcut.keys.map((key, j) => (
                                                             <kbd
                                                                 key={j}
-                                                                className="min-w-[28px] h-7 px-2 flex items-center justify-center rounded-lg bg-white/10 border border-white/10 text-xs font-mono text-slate-300"
+                                                                className="min-w-[28px] h-7 px-2 flex items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-xs font-mono text-[var(--text-secondary)]"
                                                             >
                                                                 {key}
                                                             </kbd>
@@ -125,9 +126,9 @@ export default function KeyboardShortcuts() {
                             </div>
 
                             {/* Footer */}
-                            <div className="p-4 border-t border-white/10 bg-white/5">
-                                <p className="text-xs text-slate-500 text-center">
-                                    Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-slate-400">?</kbd> anytime to show this menu
+                            <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+                                <p className="text-xs text-[var(--text-muted)] text-center">
+                                    Press <kbd className="px-1.5 py-0.5 rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]">?</kbd> anytime to show this menu
                                 </p>
                             </div>
                         </div>

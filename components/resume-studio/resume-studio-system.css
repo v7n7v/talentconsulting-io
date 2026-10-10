@@ -1,6 +1,6 @@
 .resume-studio-system-shell {
   --resume-studio-blue: var(--accent);
-  --resume-studio-blue-soft: var(--accent-hover);
+  --resume-studio-blue-soft: color-mix(in srgb, var(--taco-coral) 13%, transparent);
   --resume-studio-green: var(--success);
   --resume-studio-rule: color-mix(in srgb, var(--border-subtle) 78%, transparent);
 }
@@ -24,7 +24,7 @@
 }
 
 @media (min-width: 1024px) {
-  .mobile-app-content.resume-studio-system-shell:not(.resume-source-shell):not(.resume-studio-create-shell) {
+  .mobile-app-content.resume-studio-system-shell:not(.resume-source-shell):not(.resume-studio-create-shell):not(.experience-workspace) {
     transform: translateX(calc(var(--suite-sidebar-content-offset, 0px) / 2));
   }
 }
@@ -153,9 +153,9 @@
 }
 
 .resume-studio-header__primary {
-  border: 1px solid color-mix(in srgb, var(--resume-studio-blue) 78%, white);
-  background: var(--accent);
-  color: var(--accent-on);
+  border: 1px solid color-mix(in srgb, var(--taco-coral) 78%, var(--taco-paper));
+  background: var(--taco-coral);
+  color: var(--taco-ink);
 }
 
 .resume-studio-header__primary:hover:not(:disabled) {
@@ -232,8 +232,8 @@
 
 .resume-studio-progress li.is-current .resume-studio-progress__marker {
   border-color: var(--resume-studio-blue);
-  background: var(--resume-studio-blue);
-  color: var(--accent-on);
+  background: var(--taco-coral);
+  color: var(--taco-ink);
 }
 
 .resume-studio-progress li.is-complete {
@@ -443,7 +443,24 @@
   }
 
   .resume-studio-progress__label {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .resume-studio-progress .is-current .resume-studio-progress__label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+    font-size: 11px;
   }
 
   .resume-studio-progress li:not(:last-child)::after {
@@ -474,4 +491,16 @@
   .resume-studio-ship-stage > .grid > .lg\:col-span-2 > div {
     padding-inline: 0;
   }
+}
+
+.resume-design-workbench { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 24px; }
+.resume-design-workbench__controls, .resume-design-workbench__preview { min-width: 0; }
+.resume-design-workbench__preview { border: 1px solid var(--resume-studio-rule); padding: 16px; background: var(--taco-paper); }
+.resume-design-workbench__preview-heading { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.resume-design-workbench__preview-heading h2 { margin: 3px 0 0; font-size: 18px; font-weight: 800; }
+.resume-design-workbench__preview-heading > span { align-self: center; font-size: 11px; font-weight: 700; }
+.resume-design-workbench__paper { max-height: 760px; overflow: auto; border: 1px solid var(--resume-studio-rule); background: white; }
+@media (min-width: 1100px) {
+  .resume-design-workbench { grid-template-columns: minmax(340px, 380px) minmax(0, 1fr); }
+  .resume-design-workbench__preview { position: sticky; top: 20px; }
 }

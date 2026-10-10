@@ -33,8 +33,8 @@ export default function PromoBanner() {
     <div
       className="relative z-10 w-full py-2.5 px-4 text-center text-sm font-medium"
       style={{
-        background: `linear-gradient(135deg, ${promoConfig.accentColor}22 0%, ${promoConfig.accentColor}11 50%, ${promoConfig.accentColor}22 100%)`,
-        borderBottom: `1px solid ${promoConfig.accentColor}33`,
+        background: 'var(--taco-coral-soft)',
+        borderBottom: '1px solid var(--border-subtle)',
       }}
     >
       <div className="flex items-center justify-center gap-3 flex-wrap">
@@ -46,9 +46,9 @@ export default function PromoBanner() {
         <span
           className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold tracking-wider"
           style={{
-            background: `${promoConfig.accentColor}20`,
-            border: `1px solid ${promoConfig.accentColor}55`,
-            color: promoConfig.accentColor,
+            background: 'var(--taco-coral-soft)',
+            border: '1px solid var(--taco-coral)',
+            color: 'var(--accent)',
           }}
         >
           {promoConfig.automatic ? 'AUTO-APPLIED' : promoConfig.code}
@@ -58,7 +58,7 @@ export default function PromoBanner() {
         <Link
           href={promoConfig.ctaUrl}
           className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold text-black transition-all hover:scale-105"
-          style={{ background: promoConfig.accentColor }}
+          style={{ background: promoConfig.accentColor, color: 'var(--taco-action-ink)' }}
         >
           {promoConfig.ctaText}
           <svg className="ml-1 w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

@@ -2,6 +2,7 @@ import { detectAI, type DetectionResult } from './ai-detection';
 import type { HumanizeTone, LengthMode, WritingDomain } from './writing-prompts';
 
 export const WRITING_TRUST_DRAFT_KEY = 'talent-writing-trust-draft';
+export const WRITING_TRUST_HANDOFF_KEY = 'talent-writing-trust-handoff:v2';
 
 export type PipelineStep = 'scan' | 'diagnose' | 'humanize' | 'verify' | 'export';
 
@@ -12,7 +13,7 @@ export type RewriteMode =
   | 'academic_integrity'
   | 'creative_rewrite';
 
-export type ConfidenceBand = 'High confidence' | 'Needs deep scan' | 'Not enough text';
+export type ConfidenceBand = 'Enough text for a style reading' | 'Limited style signal' | 'Not enough text';
 
 export interface WritingPipelineSession {
   id?: string;
@@ -31,7 +32,7 @@ export interface WritingPipelineSession {
 
 export interface WritingTrustReport {
   humanScore: number;
-  trustLabel: 'Low Trust' | 'Mixed Signals' | 'Strong Trust';
+  trustLabel: 'Repetitive writing patterns' | 'Mixed Signals' | 'Varied writing patterns';
   confidenceBand: ConfidenceBand;
   verdict: DetectionResult['verdict'];
   breakdown: DetectionResult['breakdown'];
@@ -74,7 +75,7 @@ export const REWRITE_MODES: Array<{
   },
   {
     value: 'voice_match',
-    label: 'Voice Match',
+    label: 'Natural Voice',
     description: 'More natural cadence while preserving meaning.',
     icon: 'record_voice_over',
     settings: { domain: 'general', tone: 'casual', lengthMode: 'exact' },
@@ -82,13 +83,13 @@ export const REWRITE_MODES: Array<{
   {
     value: 'recruiter_ready',
     label: 'Recruiter Ready',
-    description: 'Career writing with stronger evidence and flow.',
+    description: 'Clear career writing without adding experience.',
     icon: 'work',
     settings: { domain: 'resume', tone: 'confident', lengthMode: 'exact' },
   },
   {
     value: 'academic_integrity',
-    label: 'Academic Integrity',
+    label: 'Academic Style',
     description: 'Formal revision without hiding authorship cues.',
     icon: 'school',
     settings: { domain: 'academic', tone: 'academic', lengthMode: 'exact' },
@@ -96,7 +97,7 @@ export const REWRITE_MODES: Array<{
   {
     value: 'creative_rewrite',
     label: 'Creative Rewrite',
-    description: 'More personality, surprise, and sentence variation.',
+    description: 'More expressive wording, with the same facts.',
     icon: 'palette',
     settings: { domain: 'creative', tone: 'creative', lengthMode: 'expand' },
   },
@@ -107,15 +108,15 @@ export function mapModeToSettings(mode: RewriteMode) {
 }
 
 export function getTrustLabel(score: number): WritingTrustReport['trustLabel'] {
-  if (score >= 72) return 'Strong Trust';
+  if (score >= 72) return 'Varied writing patterns';
   if (score >= 45) return 'Mixed Signals';
-  return 'Low Trust';
+  return 'Repetitive writing patterns';
 }
 
 export function getTrustColor(score: number): string {
-  if (score >= 72) return '#059669';
-  if (score >= 45) return '#d97706';
-  return '#dc2626';
+  if (score >= 72) return 'var(--text-primary)';
+  if (score >= 45) return 'var(--accent)';
+  return 'var(--accent)';
 }
 
 export function countWords(text: string): number {
@@ -138,11 +139,11 @@ export function buildReadability(text: string): WritingTrustReport['readability'
 export function getConfidenceBand(text: string, detection: DetectionResult): ConfidenceBand {
   const words = countWords(text);
   if (words < 50) return 'Not enough text';
-  if (detection.humanScore >= 45 && detection.humanScore <= 72) return 'Needs deep scan';
+  if (detection.humanScore >= 45 && detection.humanScore <= 72) return 'Limited style signal';
   if (detection.flags.filter(flag => flag.type === 'critical' || flag.type === 'high').length >= 6) {
-    return 'Needs deep scan';
+    return 'Limited style signal';
   }
-  return 'High confidence';
+  return 'Enough text for a style reading';
 }
 
 export function buildTrustReport(

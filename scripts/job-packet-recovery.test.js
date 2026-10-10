@@ -438,10 +438,7 @@ test('apply pipeline and Job Search preserve partial work as a typed recovery', 
   assert.match(route, /source_resume_hash: baseResumeHash/);
   assert.match(route, /packetStatus: finalPacketPrepared \? 'ready_for_review' : 'needs_attention'/);
   assert.match(route, /recovery: finalPacketRecovery/);
-  assert.match(page, /const responseReady = data\.packetStatus === 'ready_for_review'/);
-  assert.match(page, /typeof data\.applicationId === 'string'/);
-  assert.match(page, /typeof data\.morphedVersionId === 'string'/);
-  assert.match(page, /typeof data\.coverLetter === 'string'/);
+  assert.match(page, /const responseReady = readPreparedPacketResponse\(data\)\.ready/);
   assert.match(page, /Number\.isFinite\(atsScore\)/);
   assert.match(page, /const atsScore = data\.atsResult\?\.overallScore/);
   assert.doesNotMatch(page, /data\.atsResult\?\.overallScore \?\? data\.matchScore/);
@@ -465,4 +462,15 @@ test('apply pipeline and Job Search preserve partial work as a typed recovery', 
       < page.indexOf('const responseReady'),
     'account binding must be checked before applying a packet response',
   );
+});
+
+
+test('shared packet response reader never promotes partial HTTP success or malformed artifacts', async () => {
+  const { readPreparedPacketResponse } = await recoveryModule;
+  const valid = { success: true, packetStatus: 'ready_for_review', applicationId: 'app-one', morphedVersionId: 'resume-one', coverLetter: 'A real draft.', atsResult: { overallScore: 0 } };
+  assert.equal(readPreparedPacketResponse(valid).ready, true);
+  for (const patch of [{ packetStatus: 'needs_attention' }, { applicationId: null }, { morphedVersionId: '' }, { coverLetter: ' ' }, { atsResult: { overallScore: NaN } }, { atsResult: { overallScore: 110 } }, { success: false }]) {
+    const result = readPreparedPacketResponse({ ...valid, ...patch });
+    assert.equal(result.ready, false); assert.ok(result.recovery);
+  }
 });

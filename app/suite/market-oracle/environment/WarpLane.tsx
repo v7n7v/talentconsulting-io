@@ -4,6 +4,7 @@ import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
+import { ORACLE_COLORS } from '../palette';
 
 interface WarpLaneProps {
   startPosition: [number, number, number];
@@ -70,7 +71,7 @@ export default function WarpLane({ startPosition, endPosition, skillName, active
       {/* Warp Lane Tube */}
       <mesh ref={tubeRef} geometry={tubeGeo}>
         <meshBasicMaterial
-          color="#8b5cf6"
+          color={ORACLE_COLORS.coral}
           transparent
           opacity={0.6 * progressRef.current}
           depthWrite={false}
@@ -81,7 +82,7 @@ export default function WarpLane({ startPosition, endPosition, skillName, active
       {/* Outer glow tube (wider, dimmer) */}
       <mesh geometry={new THREE.TubeGeometry(curve, 48, 0.12, 8, false)}>
         <meshBasicMaterial
-          color="#8b5cf6"
+          color={ORACLE_COLORS.coralInk}
           transparent
           opacity={0.1 * progressRef.current}
           depthWrite={false}
@@ -93,8 +94,8 @@ export default function WarpLane({ startPosition, endPosition, skillName, active
       <mesh ref={ghostRef} position={endPosition}>
         <icosahedronGeometry args={[0.35, 1]} />
         <meshStandardMaterial
-          color="#8b5cf6"
-          emissive="#8b5cf6"
+          color={ORACLE_COLORS.coral}
+          emissive={ORACLE_COLORS.coral}
           emissiveIntensity={1.5}
           transparent
           opacity={0.5 * progressRef.current}
@@ -106,9 +107,9 @@ export default function WarpLane({ startPosition, endPosition, skillName, active
       <Html position={labelPos} center>
         <div
           style={{
-            background: 'rgba(15, 15, 30, 0.85)',
+            background: `color-mix(in srgb, ${ORACLE_COLORS.ink} 90%, transparent)`,
             backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(139, 92, 246, 0.4)',
+            border: `1px solid ${ORACLE_COLORS.coral}`,
             borderRadius: 8,
             padding: '4px 10px',
             whiteSpace: 'nowrap',
@@ -116,7 +117,7 @@ export default function WarpLane({ startPosition, endPosition, skillName, active
             pointerEvents: 'none',
           }}
         >
-          <span style={{ color: '#a78bfa', fontSize: 11, fontWeight: 600 }}>+{skillName}</span>
+          <span style={{ color: ORACLE_COLORS.coral, fontSize: 11, fontWeight: 600 }}>+{skillName}</span>
         </div>
       </Html>
     </group>

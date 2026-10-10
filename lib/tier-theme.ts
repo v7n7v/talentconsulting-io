@@ -1,9 +1,9 @@
 /**
  * Tier Theme Engine — Mode-Neutral Color System
  *
- * Provides curated accent palettes for Free / Standard / Max tiers.
- * Uses dual accent text colors (light-safe & dark-safe) to guarantee
- * readability in both modes without any forceDark hacks.
+ * Provides mode-aware shared accent tokens for Free / Standard / Max tiers.
+ * Tier identity comes from labels and features while the palette stays
+ * consistent across light and dark modes.
  */
 
 import { getPlanIdentity } from './plan-identity';

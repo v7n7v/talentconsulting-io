@@ -4,11 +4,15 @@ import {
   resolveTemplateIdForSelection,
   type TemplateColors,
 } from './catalog';
+import { readResumeDesign, type ResumeDesignConfig } from '../resume-design';
+import type { CanonicalResume } from '../resume-normalizer';
 
 export interface PersistedResumeTemplateCarrier {
   template?: unknown;
   content?: unknown;
   metadata?: {
+    designConfig?: unknown;
+    workspace?: { presentation?: { design?: unknown } };
     template?: unknown;
     paletteId?: unknown;
     paletteColors?: unknown;
@@ -18,6 +22,11 @@ export interface PersistedResumeTemplateCarrier {
     paletteId?: unknown;
     paletteColors?: unknown;
   } | null;
+}
+
+export function getPersistedResumeDesign(carrier: PersistedResumeTemplateCarrier, resume?: CanonicalResume): ResumeDesignConfig | null {
+  const design = readResumeDesign(carrier.metadata?.workspace?.presentation?.design ?? carrier.metadata?.designConfig, resume);
+  return design?.templateId === getPersistedResumeTemplateId(carrier) ? design : null;
 }
 
 function nonEmptyString(value: unknown): string | undefined {

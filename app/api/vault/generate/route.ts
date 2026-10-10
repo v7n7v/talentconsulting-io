@@ -63,6 +63,7 @@ Keep it under 450 words. Do not invent certifications, credentials, or external 
       title: topic,
       topic,
       content: summary,
+      ...(type === 'flashcards' ? { cards: items.filter((item: any) => typeof item.question === 'string' && typeof item.answer === 'string').map((item: any) => ({ question: item.question, answer: item.answer })) } : {}),
       summary,
       excerpt: buildPrepMemoryExcerpt(summary, topic),
       skill,

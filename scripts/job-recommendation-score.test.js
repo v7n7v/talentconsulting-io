@@ -522,7 +522,7 @@ test('search and automated preparation paths use the versioned composite contrac
   const ledgerRoute = fs.readFileSync(path.join(repoRoot, 'app/api/jobs/ledger/route.ts'), 'utf8');
   const notifyRoute = fs.readFileSync(path.join(repoRoot, 'app/api/jobs/notify/route.ts'), 'utf8');
   const emailTemplates = fs.readFileSync(path.join(repoRoot, 'lib/email-templates.ts'), 'utf8');
-  const weeklyPicks = fs.readFileSync(path.join(repoRoot, 'app/suite/job-search/WeeklyPicksSection.tsx'), 'utf8');
+  const activePicks = fs.readFileSync(path.join(repoRoot, 'components/JobFeedWidget.tsx'), 'utf8');
 
   assert.doesNotMatch(searchRoute, /matchScore:\s*evidenceScore/);
   assert.match(searchRoute, /scoreVersion: TALENT_FIT_SCORE_VERSION/);
@@ -543,5 +543,5 @@ test('search and automated preparation paths use the versioned composite contrac
   assert.match(weeklyCron, /getTrustedTalentJobApplyUrl\(job\)/);
   assert.match(emailTemplates, /trustedJobDigestUrl\(job\.sourceName, job\.viewUrl \|\| job\.url\)/);
   assert.doesNotMatch(emailTemplates, /safeHttpUrl\(viewUrl\)/);
-  assert.match(weeklyPicks, /jobs\.filter\(job => job\.outboundLinkVerified && job\.url\)/);
+  assert.match(activePicks, /job\.outboundLinkVerified === true && job\.url/);
 });

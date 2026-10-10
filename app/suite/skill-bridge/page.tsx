@@ -1,5 +1,10 @@
 'use client';
 
+import PageHelp from '@/components/PageHelp';
+import { ToolGuidanceBinding } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep } from '@/lib/tool-story-adapters';
+
+import { TacoName, TacoText } from '@/components/BrandLogo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
@@ -8,12 +13,16 @@ import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile'
 import { AssistantMark } from '@/components/assistant';
 import { SuiteToolHeader, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import { useUserTier } from '@/hooks/use-user-tier';
+import { skillAssessmentSummary } from '@/lib/skill-assessment';
+import { versionLearningPlan, learningCompletion } from '@/lib/learning-plan';
+import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { openSona } from '@/lib/assistant/execution-context';
 import { getPlanIdentity } from '@/lib/plan-identity';
 import MemoryPanel from './MemoryPanel';
 import {
   getAllStudyProgress,
+  getJobApplications,
   getSkillVerifications,
   markCourseComplete,
   markCourseIncomplete,
@@ -65,6 +74,7 @@ interface SkillRecord {
 }
 
 interface ProofDraft {
+  challengeId?: string;
   challengeType: ChallengeType;
   prompt: string;
   response: string;
@@ -204,48 +214,34 @@ function sortSkillRecords(records: SkillRecord[], sortMode: SkillSortMode): Skil
   });
 }
 
+/*
+ * Category and state carry their meaning through the glyph SHAPE first: technical
+ * / soft / domain sit in a neutral shell (code / forum / public tell them apart),
+ * and only the three real statuses take hue — success (verified), warning (review
+ * due) and accent (ready to prove). Accent is the product's blue interaction
+ * colour; it is deliberately reused for the "prove it" action rather than a
+ * separate purple, so hue never means more than one thing.
+ */
 function categoryShell(category: SkillCategory | 'proof' | 'review' | 'verified' | 'locked') {
+  const neutral = 'bg-[var(--icon-shell-bg)] border-[var(--icon-shell-border)] text-[var(--text-secondary)]';
   const shells = {
-    technical: {
-      bg: 'bg-cyan-100 dark:bg-cyan-500/14',
-      border: 'border-cyan-200 dark:border-cyan-400/30',
-      text: 'text-cyan-700 dark:text-cyan-300',
-      icon: 'code',
-    },
-    soft: {
-      bg: 'bg-amber-100 dark:bg-amber-500/14',
-      border: 'border-amber-200 dark:border-amber-400/30',
-      text: 'text-amber-700 dark:text-amber-300',
-      icon: 'forum',
-    },
-    domain: {
-      bg: 'bg-blue-100 dark:bg-blue-500/14',
-      border: 'border-blue-200 dark:border-blue-400/30',
-      text: 'text-blue-700 dark:text-blue-300',
-      icon: 'public',
-    },
+    technical: { shell: neutral, icon: 'code' },
+    soft: { shell: neutral, icon: 'forum' },
+    domain: { shell: neutral, icon: 'public' },
     proof: {
-      bg: 'bg-violet-100 dark:bg-violet-500/14',
-      border: 'border-violet-200 dark:border-violet-400/30',
-      text: 'text-violet-700 dark:text-violet-300',
+      shell: 'bg-[var(--accent-dim)] border-[color-mix(in_srgb,var(--accent)_30%,transparent)] text-[var(--accent)]',
       icon: 'verified',
     },
     review: {
-      bg: 'bg-orange-100 dark:bg-orange-500/14',
-      border: 'border-orange-200 dark:border-orange-400/30',
-      text: 'text-orange-700 dark:text-orange-300',
+      shell: 'bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] border-[color-mix(in_srgb,var(--warning)_30%,transparent)] text-[var(--warning)]',
       icon: 'replay',
     },
     verified: {
-      bg: 'bg-emerald-100 dark:bg-emerald-500/14',
-      border: 'border-emerald-200 dark:border-emerald-400/30',
-      text: 'text-emerald-700 dark:text-emerald-300',
+      shell: 'bg-[color-mix(in_srgb,var(--success)_14%,transparent)] border-[color-mix(in_srgb,var(--success)_30%,transparent)] text-[var(--success)]',
       icon: 'workspace_premium',
     },
     locked: {
-      bg: 'bg-slate-100 dark:bg-slate-500/14',
-      border: 'border-slate-200 dark:border-slate-400/24',
-      text: 'text-slate-600 dark:text-slate-300',
+      shell: 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-muted)]',
       icon: 'lock',
     },
   };
@@ -260,29 +256,36 @@ function IconShell({ kind, icon, size = 'md' }: { kind: SkillCategory | 'proof' 
     lg: 'h-16 w-16 rounded-[20px]',
   };
   return (
-    <div className={`${sizes[size]} ${shell.bg} ${shell.border} ${shell.text} flex shrink-0 items-center justify-center border shadow-sm shadow-slate-900/5`}>
+    <div className={`${sizes[size]} ${shell.shell} flex shrink-0 items-center justify-center border`}>
       <span className="material-symbols-rounded text-[1.45rem]">{icon || shell.icon}</span>
     </div>
   );
 }
 
+// Hue maps to the three real statuses plus accent; green=done, amber=due,
+// blue/violet=actionable (accent), red=destructive, neutral=inert. The token
+// cascade flips light/dark, so there are no per-theme branches here.
 function Pill({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'neutral' | 'green' | 'blue' | 'amber' | 'violet' | 'red' }) {
   const tones = {
     neutral: 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)]',
-    green: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300',
-    blue: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/25 dark:bg-blue-500/10 dark:text-blue-300',
-    amber: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300',
-    violet: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-300',
-    red: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300',
+    green: 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]',
+    blue: 'border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]',
+    amber: 'border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)]',
+    violet: 'border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]',
+    red: 'border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]',
   };
   return <span className={`inline-flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
 }
 
-function ProgressBar({ value, color = 'bg-emerald-500' }: { value: number; color?: string }) {
+// `color` is a token-backed CSS colour (e.g. `var(--success)`), applied inline so
+// no per-status palette class is needed. Callers only render this for a value
+// that was actually measured; the null path is a labelled absence, not a 0 bar.
+function ProgressBar({ value, color = 'var(--accent)' }: { value: number; color?: string }) {
   return (
     <div className="h-2 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
       <motion.div
-        className={`h-full rounded-full ${color}`}
+        className="h-full rounded-full"
+        style={{ background: color }}
         initial={{ width: 0 }}
         animate={{ width: `${Math.max(0, Math.min(100, value))}%` }}
         transition={{ duration: 0.45, ease: 'easeOut' }}
@@ -294,6 +297,9 @@ function ProgressBar({ value, color = 'bg-emerald-500' }: { value: number; color
 export default function SkillBridgePage() {
   const router = useRouter();
   const { isPro, loading: tierLoading, tier } = useUserTier();
+  const uid = useStore(state => state.user?.uid);
+  const ownerRef = useRef(uid); ownerRef.current = uid;
+  const dataSequence = useRef(0);
 
   const [gaps, setGaps] = useState<SkillGap[]>([]);
   const [progress, setProgress] = useState<StudyProgress[]>([]);
@@ -304,6 +310,7 @@ export default function SkillBridgePage() {
   const [loadingPlans, setLoadingPlans] = useState<Record<string, boolean>>({});
   const [proofDrafts, setProofDrafts] = useState<Record<string, ProofDraft>>({});
   const [loadingData, setLoadingData] = useState(true);
+  const [storyFailure, setStoryFailure] = useState(false);
   const [jobTitle, setJobTitle] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [jobDescription, setJobDescription] = useState('');
@@ -313,51 +320,45 @@ export default function SkillBridgePage() {
   const [sortMode, setSortMode] = useState<SkillSortMode>('next_action');
   const [visibleLimit, setVisibleLimit] = useState(INITIAL_QUEUE_LIMIT);
 
+  useEffect(() => { setStoryFailure(false); }, [uid, view, selectedSkill]);
+
   const applicationId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('applicationId') : null;
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('tc_skill_gaps');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const gapData: SkillGap[] = (parsed.gaps || []).map((gap: any, index: number) => ({
-          skill: String(gap.skill || '').trim(),
-          confidence: gap.confidence || 'ai-added',
-          category: gap.category || 'technical',
-          priority: index + 1,
-          reason: gap.reason || '',
-        })).filter((gap: SkillGap) => gap.skill);
-        if (parsed.jdTitle) setJobTitle(parsed.jdTitle);
-        if (parsed.companyName) setCompanyName(parsed.companyName);
-        if (parsed.jd) setJobDescription(parsed.jd);
-        if (gapData.length > 0) {
-          setGaps(gapData);
-          setSelectedGapSkills(new Set(gapData.slice(0, 3).map(g => g.skill)));
-        }
-      }
-    } catch {
-      // Unreadable storage means we know nothing about this user's gaps.
-      // The empty state is the honest answer; there is nothing to fall back to.
-    }
-  }, []);
+  // Unscoped legacy browser storage cannot establish an owned role context.
+
 
   const loadData = useCallback(async () => {
-    setLoadingData(true);
+    const sequence = ++dataSequence.current; const owner = uid;
+    setLoadingData(true); setStoryFailure(false);
     try {
       const [progressResult, proofResult] = await Promise.all([
         getAllStudyProgress(),
         getSkillVerifications(),
       ]);
+      if (sequence !== dataSequence.current || ownerRef.current !== owner) return;
+      if (!progressResult.success || !proofResult.success) throw new Error('Learning records could not be loaded. Refresh to retry.');
       if (progressResult.success && progressResult.data) setProgress(progressResult.data);
       if (proofResult.success && proofResult.data) setProofs(proofResult.data);
-    } catch {
-      // The preview is still useful without an authenticated Firestore session.
-    } finally {
+    } catch (error: any) { if (ownerRef.current === owner) { setStoryFailure(true); showToast(error.message || 'Could not load learning records', 'cancel'); } } finally {
       setLoadingData(false);
     }
-  }, []);
+  }, [uid]);
+
+  useEffect(() => { setGaps([]); setProgress([]); setProofs([]); setProofDrafts({}); setSelectedSkill(null); setJobTitle(''); setCompanyName(''); setJobDescription(''); }, [uid, applicationId]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!uid || !applicationId) return;
+    let active = true;
+    getJobApplications().then(result => {
+      if (!active || ownerRef.current !== uid) return;
+      const application = result.data?.find(record => record.id === applicationId);
+      if (!result.success || !application) { showToast('The selected application could not be loaded. Open Applications to choose a target.', 'cancel'); return; }
+      setJobTitle(application.job_title || ''); setCompanyName(application.company_name || ''); setJobDescription(application.job_description || '');
+    });
+    return () => { active = false; };
+  }, [uid, applicationId]);
 
   const records = useMemo<SkillRecord[]>(() => {
     const bySkill = new Map<string, SkillRecord>();
@@ -407,14 +408,16 @@ export default function SkillBridgePage() {
     progress.forEach(item => {
       const category = (item.category || 'technical') as SkillCategory;
       const totalDays = item.total_days || getTrainingDays(item.skill, category);
-      const completedDays = item.completed_days || [];
+      let versionedPlan: ReturnType<typeof versionLearningPlan> | null = null;
+      try { if (item.plan_data) versionedPlan = versionLearningPlan(item.plan_data); } catch { /* Invalid legacy plans stay uncompleted until replaced. */ }
+      const completedDays = versionedPlan ? learningCompletion(versionedPlan, (item as any).completed_task_ids).completed_days : [];
       const progressPct = totalDays > 0 ? Math.round((completedDays.length / totalDays) * 100) : 0;
       upsert(item.skill, category, {
         progress: item,
         completedDays,
         totalDays,
         progressPct,
-        schedule: item.plan_data?.schedule || [],
+        schedule: versionedPlan?.schedule || [],
         applicationLinked: Boolean(item.application_ids?.length || applicationId),
         sourceLabel: item.job_title || item.company_name ? `${item.job_title || 'Role'}${item.company_name ? ` at ${item.company_name}` : ''}` : 'Study progress',
       });
@@ -429,39 +432,19 @@ export default function SkillBridgePage() {
     });
 
     return Array.from(bySkill.values()).map(record => {
-      const sortedProofs = [...record.proofs].sort((a, b) => b.score - a.score);
-      const highestProofScore = sortedProofs[0]?.score || 0;
-      const verified = record.progress?.readiness_status === 'verified' || sortedProofs.some(p => p.verdict === 'verified');
-      const reviewDue = isReviewDue(record.progress);
-      const readyToVerify = !verified && (record.progressPct >= 60 || highestProofScore >= 70 || record.progress?.readiness_status === 'ready_to_verify');
-      /*
-       * Readiness is a graded-proof number or it is nothing.
-       *
-       * `Math.round(record.progressPct * 0.72)` used to be folded in: 0.72 had
-       * no derivation anywhere, and ticking your own study-plan checkboxes is
-       * self-reported activity, not proven readiness.
-       *
-       * The `Math.max(85, ...)` floor on the verified branch is gone for the
-       * same reason — it could only ever round a real 82 up to a fabricated 85.
-       *
-       * One caveat, so nobody reads a clean invariant here that does not exist
-       * yet: `readiness_score` is written only from a graded score FROM NOW
-       * ON. Scores the deleted `fallbackGrade` already wrote are still in
-       * users/{uid}/study_progress, and verify/route.ts persists
-       * `Math.max(existing, score)` — monotonic — so a pre-cutoff fabricated 78
-       * is a floor a later genuine 55 cannot lower. Those rows need a one-off
-       * cleanup; until then this number can still be inherited rather than
-       * earned.
-       */
-      const gradedScores: number[] = [
-        ...sortedProofs.map(p => p.score).filter((s): s is number => typeof s === 'number'),
-        ...(typeof record.progress?.readiness_score === 'number' ? [record.progress.readiness_score] : []),
-      ];
-      const readinessScore: number | null = gradedScores.length ? Math.max(...gradedScores) : null;
+      const sortedProofs = [...record.proofs].sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
+      const assessment = skillAssessmentSummary(sortedProofs);
+      const highestProofScore = assessment.best ?? 0;
+      const verified = assessment.verified;
+      const reviewDue = assessment.reviewDue;
+      const readyToVerify = !verified && (record.progressPct >= 60 || (assessment.latest?.score ?? 0) >= 70);
+      const readinessScore: number | null = assessment.latest?.score ?? null;
 
       let nextAction = 'Create plan';
       let nextActionDetail = 'Generate a focused bridge plan before practicing.';
-      if (verified) {
+      if (reviewDue) {
+        nextAction = 'Review due'; nextActionDetail = 'Your last assessed practice is over seven days old. Repeat a challenge.';
+      } else if (verified) {
         nextAction = 'Maintain proof';
         nextActionDetail = 'Save the proof to Memory or review it before interviews.';
       } else if (reviewDue) {
@@ -585,6 +568,7 @@ export default function SkillBridgePage() {
   }, []);
 
   const handleGeneratePlan = useCallback(async (record: SkillRecord) => {
+    const owner = ownerRef.current;
     if (!requirePro('Upgrade to Standard to generate durable Skill Bridge plans.')) return false;
     setLoadingPlans(prev => ({ ...prev, [record.skill]: true }));
     try {
@@ -605,17 +589,16 @@ export default function SkillBridgePage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      await saveStudyProgress(
-        record.skill,
-        record.category,
-        data,
-        applicationId || undefined,
-        jobTitle || companyName ? { jobTitle, companyName } : undefined
-      );
+      if (ownerRef.current !== owner) return false;
+      const saved = await authFetch('/api/skill-bridge/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', skill: record.skill, category: record.category, plan: data, requestId: crypto.randomUUID(), applicationId: applicationId || null }) });
+      const result = await saved.json();
+      if (!saved.ok) throw new Error(result.error || 'The generated plan could not be saved. Your previous plan is unchanged.');
+      if (ownerRef.current !== owner) return false;
       showToast(`${record.skill} bridge plan created`, 'route');
       await loadData();
       return true;
     } catch (error: any) {
+      if (ownerRef.current === uid) setStoryFailure(true);
       showToast(error.message || 'Failed to create plan', 'cancel');
       return false;
     } finally {
@@ -634,43 +617,22 @@ export default function SkillBridgePage() {
     }
   };
 
-  const handleDayToggle = async (record: SkillRecord, day: number, isDone: boolean) => {
+  const savePlanProgress = async (record: SkillRecord, complete: boolean, dayId?: string) => {
     if (!requirePro('Upgrade to Standard to save Skill Bridge progress.')) return;
+    const owner = ownerRef.current;
     try {
-      if (!record.progress) {
-        await saveStudyProgress(
-          record.skill,
-          record.category,
-          undefined,
-          applicationId || undefined,
-          jobTitle || companyName ? { jobTitle, companyName } : undefined
-        );
-      }
-      const result = isDone ? await unmarkDayComplete(record.skill, day) : await markDayComplete(record.skill, day);
-      if (result.success) {
-        showToast(isDone ? `Day ${day} unmarked` : `Day ${day} complete`, isDone ? 'undo' : 'check_circle');
-        await loadData();
-      }
-    } catch (error: any) {
-      showToast(error.message || 'Failed to update progress', 'cancel');
-    }
+      if (!record.progress?.plan_data) throw new Error('Generate a plan before marking progress.');
+      const plan = versionLearningPlan(record.progress.plan_data);
+      const response = await authFetch('/api/skill-bridge/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'progress', skill: record.skill, planVersion: plan.planVersion, dayId, complete }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Progress could not be saved');
+      if (ownerRef.current !== owner) return;
+      showToast(complete ? 'Learning progress saved' : 'Learning progress reopened', 'check_circle');
+      await loadData();
+    } catch (error: any) { if (ownerRef.current === owner) showToast(error.message || 'Progress could not be saved', 'cancel'); }
   };
-
-  const handleMarkComplete = async (record: SkillRecord, complete: boolean) => {
-    if (!requirePro('Upgrade to Standard to save Skill Bridge progress.')) return;
-    try {
-      if (!record.progress) await saveStudyProgress(record.skill, record.category, undefined, applicationId || undefined);
-      const result = complete
-        ? await markCourseComplete(record.skill, record.totalDays)
-        : await markCourseIncomplete(record.skill);
-      if (result.success) {
-        showToast(complete ? `${record.skill} marked complete` : `${record.skill} reopened`, complete ? 'check_circle' : 'replay');
-        await loadData();
-      }
-    } catch (error: any) {
-      showToast(error.message || 'Failed to update course', 'cancel');
-    }
-  };
+  const handleDayToggle = (record: SkillRecord, dayId: string, done: boolean) => savePlanProgress(record, !done, dayId);
+  const handleMarkComplete = (record: SkillRecord, complete: boolean) => savePlanProgress(record, complete);
 
   const updateProofDraft = (skill: string, patch: Partial<ProofDraft>) => {
     const emptyDraft: ProofDraft = { challengeType: 'quick_check', prompt: '', response: '' };
@@ -706,8 +668,9 @@ export default function SkillBridgePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate challenge');
-      updateProofDraft(record.skill, { prompt: data.challenge?.prompt || '', response: '', grade: undefined, loading: undefined });
+      updateProofDraft(record.skill, { challengeId: data.challenge?.id, prompt: data.challenge?.prompt || '', response: '', grade: undefined, loading: undefined });
     } catch (error: any) {
+      if (ownerRef.current === uid) setStoryFailure(true);
       showToast(error.message || 'Failed to generate challenge', 'cancel');
       updateProofDraft(record.skill, { loading: undefined });
     }
@@ -727,6 +690,7 @@ export default function SkillBridgePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'grade',
+          challengeId: draft.challengeId,
           challengeType: draft.challengeType,
           skill: record.skill,
           category: record.category,
@@ -745,6 +709,7 @@ export default function SkillBridgePage() {
       showToast(data.grade?.verdict === 'verified' ? `${record.skill} verified` : 'Proof reviewed', 'verified');
       await loadData();
     } catch (error: any) {
+      if (ownerRef.current === uid) setStoryFailure(true);
       showToast(error.message || 'Failed to grade proof', 'cancel');
       updateProofDraft(record.skill, { loading: undefined });
     }
@@ -771,6 +736,7 @@ export default function SkillBridgePage() {
       window.dispatchEvent(new CustomEvent('prep-memory:refresh'));
       showToast('Plan saved to Memory', 'inventory_2');
     } catch (error: any) {
+      if (ownerRef.current === uid) setStoryFailure(true);
       showToast(error.message || 'Failed to save plan', 'cancel');
     }
   };
@@ -801,6 +767,7 @@ export default function SkillBridgePage() {
       window.dispatchEvent(new CustomEvent('prep-memory:refresh'));
       showToast('Proof note saved to Memory', 'inventory_2');
     } catch (error: any) {
+      if (ownerRef.current === uid) setStoryFailure(true);
       showToast(error.message || 'Failed to save proof', 'cancel');
     } finally {
       updateProofDraft(record.skill, { loading: undefined });
@@ -808,19 +775,23 @@ export default function SkillBridgePage() {
   };
 
   const handlePractice = (record: SkillRecord) => {
-    sessionStorage.setItem('tc_interview_setup', JSON.stringify({
-      interviewType: 'quick-drill',
-      drillCategory: record.category === 'soft' ? 'behavioral' : 'technical',
-      drillRole: record.skill,
-      targetRole: jobTitle,
-      companyName,
-      jobDescription,
-    }));
-    window.open(`/suite/interview-sim?mode=quick_drill&skill=${encodeURIComponent(record.skill)}`, '_blank');
+    const params = new URLSearchParams({ mode: 'quick_drill', skill: record.skill, role: jobTitle, company: companyName, returnTo: '/suite/skill-bridge' });
+    if (applicationId) params.set('applicationId', applicationId);
+    window.open(`/suite/interview-sim?${params}`, '_blank', 'noopener');
   };
+
+  const toolStory = buildToolStory({
+    toolId: 'skill-bridge', title: 'Skill Bridge', contextKey: JSON.stringify([view, selectedSkill || 'skill-list', applicationId || null]), modalSurface: selectedRecord ? 'bridge-detail' : undefined,
+    purpose: 'Choose genuine learning work and inspect saved practice evidence with its source.',
+    failed: storyFailure, pending: loadingData || Object.values(loadingPlans).some(Boolean) || Boolean(selectedSkill && proofDrafts[selectedSkill]?.loading), hasResult: Boolean(selectedRecord),
+    work: [storyStep('view', 'Choose the learning view', 'Plans, proofs and Memory show different real records. Choosing a view is your action.', 'bridge-views'), storyStep('find', 'Choose a genuine skill goal', 'Search the loaded skills and inspect where the gap came from. Missing assessment is not a score of zero.', 'bridge-search', 'Search is in the plans and proofs lists; use the current view controls yourself to reach it.'), storyStep('plan', 'Build useful work when ready', 'Open a skill and choose Build plan yourself. Review the actual plan entitlement before starting.', 'bridge-plan', 'Build plan appears on a skill card or its drawer. Select a real skill first.')],
+    recovery: [storyStep('retry', 'Keep your learning work and choose recovery', 'A failed plan, proof or record read does not establish saved progress or a new assessment. Inspect the current skill and choose the existing action yourself when ready.', selectedRecord ? 'bridge-detail' : 'bridge-views')],
+    result: [storyStep('skill', 'Review this skill and plan', 'Inspect the source, scheduled work and saved evidence for this skill. Task completion is user reported.', 'bridge-detail'), storyStep('practice', 'Complete an actual proof attempt', 'Generate a challenge, answer it and choose Grade and save yourself when useful. Help never claims certification or adds a resume fact.', 'bridge-grade', 'Proof practice requires the existing plan entitlement and a generated challenge.'), storyStep('evidence', 'Choose your next work', 'Read actual assessed practice and provenance. A practice score cannot establish a credential or employer outcome.', 'bridge-detail')],
+  });
 
   return (
     <SuiteToolShell variant="workbench">
+      {view !== 'memory' && <ToolGuidanceBinding config={toolStory} />}
         <SuiteToolHeader
           tool="skill-bridge"
           subtitle="Close the gap, prove the skill, and walk into interviews ready to defend it."
@@ -835,16 +806,16 @@ export default function SkillBridgePage() {
               <button
                 type="button"
                 onClick={() => askSona('Help me choose the highest leverage Skill Bridge gaps to verify this week.')}
-                className="inline-flex items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3.5 py-2 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3.5 py-2 text-sm font-semibold text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
               >
                 <AssistantMark size="xs" state="idle" />
-                Ask Taco
+                Ask <TacoName />
               </button>
               {!isPro && (
                 <button
                   type="button"
                   onClick={openUpgrade}
-                  className="inline-flex items-center gap-2 rounded-[14px] bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-[oklch(0.99_0.004_160)] transition-colors hover:bg-emerald-700"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-[14px] bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-[var(--accent-on)] transition-colors hover:bg-[var(--accent-active)]"
                 >
                   <span className="material-symbols-rounded text-[18px]">bolt</span>
                   Unlock proofs
@@ -855,7 +826,7 @@ export default function SkillBridgePage() {
         />
 
         {!isPro && !tierLoading && (
-          <div className="rounded-[20px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+          <div className="elevation-card rounded-[20px] border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-4 text-sm text-[var(--text-primary)]">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex items-start gap-3">
                 <IconShell kind="locked" icon="lock" size="sm" />
@@ -864,10 +835,10 @@ export default function SkillBridgePage() {
                       system". With the invented sample gaps gone, a free account
                       with no morph history sees an empty page — so it wasn't. */}
                   <p className="font-bold">You are on the free plan.</p>
-                  <p className="mt-0.5 text-amber-800/80 dark:text-amber-100/70">Memory is yours to review. Standard unlocks new bridge plans, graded proofs, and saved progress.</p>
+                  <p className="mt-0.5 text-[var(--text-secondary)]">Memory is yours to review. Standard unlocks new bridge plans, graded proofs, and saved progress.</p>
                 </div>
               </div>
-              <button type="button" onClick={openUpgrade} className="rounded-[12px] bg-amber-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_80)] hover:bg-amber-700">
+              <button type="button" onClick={openUpgrade} className="min-h-[44px] rounded-[12px] bg-[var(--accent)] px-4 py-2 text-sm font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">
                 Upgrade to Standard
               </button>
             </div>
@@ -902,14 +873,14 @@ export default function SkillBridgePage() {
           </>
         )}
 
-        <div className="flex flex-col gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3 lg:flex-row lg:items-center lg:justify-between">
+        <div data-guide="bridge-views" className="elevation-card flex flex-col gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {VIEWS.map(item => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setView(item.id)}
-                className={`inline-flex items-center gap-2 rounded-[12px] px-3 py-2 text-sm font-semibold transition-colors ${
+                className={`inline-flex min-h-[44px] items-center gap-2 rounded-[12px] px-3 py-2 text-sm font-semibold transition-colors ${
                   view === item.id
                     ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] ring-1 ring-[var(--border)]'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
@@ -930,7 +901,7 @@ export default function SkillBridgePage() {
                 type="button"
                 onClick={handleGenerateSelected}
                 disabled={Object.values(loadingPlans).some(Boolean)}
-                className="inline-flex items-center gap-2 rounded-[12px] bg-emerald-600 px-3.5 py-2 text-sm font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-[12px] bg-[var(--accent)] px-3.5 py-2 text-sm font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="material-symbols-rounded text-[18px]">auto_awesome</span>
                 Build selected
@@ -1060,15 +1031,17 @@ export default function SkillBridgePage() {
 function TodayTile({ icon, label, value, detail, tone, onClick }: {
   icon: string; label: string; value: number; detail: string; tone: 'amber' | 'violet' | 'blue' | 'green' | 'cyan'; onClick: () => void;
 }) {
+  // amber=due (warning), violet/blue=actionable (accent), green=verified
+  // (success), cyan=linked (neutral — a count, not a status).
   const toneMap = {
-    amber: 'text-amber-700 bg-amber-100 border-amber-200 dark:text-amber-300 dark:bg-amber-500/12 dark:border-amber-500/25',
-    violet: 'text-violet-700 bg-violet-100 border-violet-200 dark:text-violet-300 dark:bg-violet-500/12 dark:border-violet-500/25',
-    blue: 'text-blue-700 bg-blue-100 border-blue-200 dark:text-blue-300 dark:bg-blue-500/12 dark:border-blue-500/25',
-    green: 'text-emerald-700 bg-emerald-100 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-500/12 dark:border-emerald-500/25',
-    cyan: 'text-cyan-700 bg-cyan-100 border-cyan-200 dark:text-cyan-300 dark:bg-cyan-500/12 dark:border-cyan-500/25',
+    amber: 'text-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] border-[color-mix(in_srgb,var(--warning)_25%,transparent)]',
+    violet: 'text-[var(--accent)] bg-[var(--accent-dim)] border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
+    blue: 'text-[var(--accent)] bg-[var(--accent-dim)] border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
+    green: 'text-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] border-[color-mix(in_srgb,var(--success)_25%,transparent)]',
+    cyan: 'text-[var(--text-secondary)] bg-[var(--icon-shell-bg)] border-[var(--icon-shell-border)]',
   };
   return (
-    <button type="button" onClick={onClick} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-surface)]">
+    <button type="button" onClick={onClick} className="elevation-interactive min-h-[44px] rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-surface)]">
       <div className="flex items-start justify-between gap-3">
         <div className={`flex h-11 w-11 items-center justify-center rounded-[15px] border ${toneMap[tone]}`}>
           <span className="material-symbols-rounded text-[22px]">{icon}</span>
@@ -1084,7 +1057,7 @@ function TodayTile({ icon, label, value, detail, tone, onClick }: {
 function MetricCard({ icon, label, value, detail, tone }: { icon: string; label: string; value: string | number; detail: string; tone: 'green' | 'blue' | 'violet' }) {
   const kind = tone === 'green' ? 'verified' : tone === 'blue' ? 'domain' : 'proof';
   return (
-    <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+    <div className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="flex items-center gap-3">
         <IconShell kind={kind} icon={icon} size="sm" />
         <div className="min-w-0">
@@ -1105,7 +1078,7 @@ function NeedsAttention({ records, onOpen, onGeneratePlan, onVerify }: {
 }) {
   if (!records.length) return null;
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+    <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">Needs Attention</h2>
@@ -1125,11 +1098,11 @@ function NeedsAttention({ records, onOpen, onGeneratePlan, onVerify }: {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Pill tone={record.reviewDue ? 'amber' : record.readyToVerify ? 'violet' : 'blue'}>{record.nextAction}</Pill>
-              <button type="button" onClick={() => onOpen(record.skill)} className="rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Open</button>
+              <button type="button" onClick={() => onOpen(record.skill)} className="min-h-[44px] rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Open</button>
               {record.readyToVerify ? (
-                <button type="button" onClick={() => onVerify(record)} className="rounded-[12px] bg-violet-600 px-3 py-2 text-xs font-bold text-[oklch(0.99_0.004_300)] hover:bg-violet-700">Verify</button>
+                <button type="button" onClick={() => onVerify(record)} className="min-h-[44px] rounded-[12px] bg-[var(--accent)] px-3 py-2 text-xs font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">Verify</button>
               ) : (
-                <button type="button" onClick={() => onGeneratePlan(record)} className="rounded-[12px] bg-emerald-600 px-3 py-2 text-xs font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">Build plan</button>
+                <button data-guide="bridge-plan" type="button" onClick={() => onGeneratePlan(record)} className="min-h-[44px] rounded-[12px] bg-[var(--accent)] px-3 py-2 text-xs font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">Build plan</button>
               )}
             </div>
           </div>
@@ -1148,7 +1121,7 @@ function GapIntake({ records, selectedGapSkills, setSelectedGapSkills, onOpen }:
   const gapRecords = records.filter(record => record.gap).slice(0, 8);
   if (!gapRecords.length) return null;
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+    <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="mb-3">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">Gap Intake</h2>
         <p className="text-sm text-[var(--text-secondary)]">Select the gaps to turn into durable bridge plans.</p>
@@ -1167,9 +1140,9 @@ function GapIntake({ records, selectedGapSkills, setSelectedGapSkills, onOpen }:
                 setSelectedGapSkills(next);
               }}
               onDoubleClick={() => onOpen(record.skill)}
-              className={`text-left rounded-[18px] border p-4 transition-colors ${
+              className={`text-left min-h-[44px] rounded-[18px] border p-4 transition-colors ${
                 selected
-                  ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10'
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                   : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border)]'
               }`}
             >
@@ -1178,9 +1151,9 @@ function GapIntake({ records, selectedGapSkills, setSelectedGapSkills, onOpen }:
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <p className="wrap-natural text-sm font-bold text-[var(--text-primary)]">{record.skill}</p>
-                    <span className="material-symbols-rounded text-[18px] text-emerald-600">{selected ? 'check_circle' : 'radio_button_unchecked'}</span>
+                    <span className={`material-symbols-rounded text-[18px] ${selected ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>{selected ? 'check_circle' : 'radio_button_unchecked'}</span>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-[var(--text-secondary)]">{record.gap?.reason || record.sourceLabel}</p>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">{record.gap?.reason || record.sourceLabel}</p>
                 </div>
               </div>
             </button>
@@ -1260,17 +1233,17 @@ function SkillQueue({
         </p>
       </div>
 
-      <div className="sticky top-3 z-20 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)]/95 p-3 shadow-sm shadow-slate-900/5 backdrop-blur">
+      <div className="elevation-card sticky top-3 z-20 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)]/95 p-3 backdrop-blur">
         <div className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_auto_auto] xl:items-center">
           <label className="relative block">
             <span className="sr-only">Search skills</span>
             <span className="material-symbols-rounded pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[20px] text-[var(--text-muted)]">search</span>
-            <input
+            <input data-guide="bridge-search"
               type="search"
               value={searchQuery}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Search skill, action, role, source..."
-              className="h-11 w-full rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] pl-10 pr-3 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-emerald-500"
+              className="h-11 w-full rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] pl-10 pr-3 text-base text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
             />
           </label>
 
@@ -1280,7 +1253,7 @@ function SkillQueue({
                 key={item.id}
                 type="button"
                 onClick={() => onCategoryChange(item.id)}
-                className={`rounded-[11px] px-2.5 py-2 text-xs font-bold transition-colors ${
+                className={`inline-flex min-h-[44px] items-center rounded-[11px] px-2.5 py-2 text-xs font-bold transition-colors ${
                   categoryFilter === item.id
                     ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] ring-1 ring-[var(--border)]'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
@@ -1291,13 +1264,13 @@ function SkillQueue({
             ))}
           </div>
 
-          <label className="flex items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
+          <label className="flex min-h-[44px] items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
             <span className="material-symbols-rounded text-[18px] text-[var(--text-muted)]">sort</span>
             <span className="sr-only">Sort skills</span>
             <select
               value={sortMode}
               onChange={(event) => onSortChange(event.target.value as SkillSortMode)}
-              className="min-w-[132px] bg-transparent text-sm font-semibold text-[var(--text-primary)] outline-none"
+              className="min-w-[132px] bg-transparent text-base font-semibold text-[var(--text-primary)] outline-none"
             >
               {SORT_OPTIONS.map(item => (
                 <option key={item.id} value={item.id}>{item.label}</option>
@@ -1312,9 +1285,9 @@ function SkillQueue({
               key={item.id}
               type="button"
               onClick={() => onStatusChange(item.id)}
-              className={`inline-flex items-center gap-1.5 rounded-[11px] px-2.5 py-1.5 text-xs font-bold transition-colors ${
+              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-[11px] px-2.5 py-1.5 text-xs font-bold transition-colors ${
                 statusFilter === item.id
-                  ? 'bg-emerald-500/12 text-emerald-700 ring-1 ring-emerald-500/25 dark:text-emerald-300'
+                  ? 'bg-[var(--accent-dim)] text-[var(--accent)] ring-1 ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
               }`}
             >
@@ -1332,12 +1305,12 @@ function SkillQueue({
             <IconShell kind="domain" icon="manage_search" size="md" />
           </div>
           <h3 className="text-lg font-bold text-[var(--text-primary)]">No skills match this search</h3>
-          <p className="mx-auto mt-1 max-w-lg text-sm text-[var(--text-secondary)]">Clear the filters or ask Taco to help identify the next best skill action from your current goals.</p>
+          <p className="mx-auto mt-1 max-w-lg text-sm text-[var(--text-secondary)]">Clear the filters or ask <TacoName /> to help identify the next best skill action from your current goals.</p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <button type="button" onClick={onClearFilters} className="rounded-[12px] border border-[var(--border-subtle)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Clear filters</button>
-            <button type="button" onClick={onAskSonaEmpty} className="inline-flex items-center gap-2 rounded-[12px] bg-emerald-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">
+            <button type="button" onClick={onClearFilters} className="min-h-[44px] rounded-[12px] border border-[var(--border-subtle)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Clear filters</button>
+            <button type="button" onClick={onAskSonaEmpty} className="inline-flex min-h-[44px] items-center gap-2 rounded-[12px] bg-[var(--accent)] px-4 py-2 text-sm font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">
               <AssistantMark size="xs" state="idle" />
-              Ask Taco
+              Ask <TacoName />
             </button>
           </div>
         </div>
@@ -1361,7 +1334,7 @@ function SkillQueue({
 
       {filteredCount > records.length && (
         <div className="flex justify-center pt-2">
-          <button type="button" onClick={onShowMore} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+          <button type="button" onClick={onShowMore} className="min-h-[44px] rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
             Show 12 more
           </button>
         </div>
@@ -1380,18 +1353,20 @@ function SkillQueueRow({ record, selected, loadingPlan, onOpen, onGeneratePlan, 
   onVerify: () => void;
   onAskSona: () => void;
 }) {
+  // The primary action is always the accent (interaction) fill; the label and
+  // glyph carry which action it is, so hue is not asked to encode status here.
   const primary = record.reviewDue
-    ? { label: 'Review', icon: 'replay', onClick: onOpen, className: 'bg-orange-600 hover:bg-orange-700 text-[oklch(0.99_0.004_60)]' }
+    ? { label: 'Review', icon: 'replay', onClick: onOpen }
     : record.readyToVerify
-      ? { label: 'Verify', icon: 'verified', onClick: onVerify, className: 'bg-violet-600 hover:bg-violet-700 text-[oklch(0.99_0.004_300)]' }
+      ? { label: 'Verify', icon: 'verified', onClick: onVerify }
       : record.verified
-        ? { label: 'Open proof', icon: 'workspace_premium', onClick: onOpen, className: 'bg-emerald-600 hover:bg-emerald-700 text-[oklch(0.99_0.004_160)]' }
+        ? { label: 'Open proof', icon: 'workspace_premium', onClick: onOpen }
         : record.progress
-          ? { label: 'Continue', icon: 'play_arrow', onClick: onOpen, className: 'bg-blue-600 hover:bg-blue-700 text-[oklch(0.99_0.004_250)]' }
-          : { label: loadingPlan ? 'Building' : 'Build plan', icon: 'route', onClick: onGeneratePlan, className: 'bg-emerald-600 hover:bg-emerald-700 text-[oklch(0.99_0.004_160)]' };
+          ? { label: 'Continue', icon: 'play_arrow', onClick: onOpen }
+          : { label: loadingPlan ? 'Building' : 'Build plan', icon: 'route', onClick: onGeneratePlan };
 
   return (
-    <article className={`rounded-[18px] border bg-[var(--card-bg)] p-3 transition-colors ${selected ? 'border-emerald-400 ring-2 ring-emerald-500/15' : 'border-[var(--border-subtle)] hover:border-[var(--border)]'}`}>
+    <article className={`elevation-card rounded-[18px] border bg-[var(--card-bg)] p-3 transition-colors ${selected ? 'border-[var(--accent)] ring-2 ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]' : 'border-[var(--border-subtle)] hover:border-[var(--border)]'}`}>
       <div className="grid gap-3 lg:grid-cols-[minmax(240px,1.3fr)_minmax(180px,0.8fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-start gap-3">
           <IconShell kind={record.verified ? 'verified' : record.readyToVerify ? 'proof' : record.reviewDue ? 'review' : record.category} size="sm" />
@@ -1415,7 +1390,7 @@ function SkillQueueRow({ record, selected, loadingPlan, onOpen, onGeneratePlan, 
             </span>
           </div>
           {record.readinessScore !== null && (
-            <ProgressBar value={record.readinessScore} color={record.verified ? 'bg-emerald-500' : record.readyToVerify ? 'bg-violet-500' : record.reviewDue ? 'bg-orange-500' : 'bg-cyan-500'} />
+            <ProgressBar value={record.readinessScore} color={record.verified ? 'var(--success)' : record.readyToVerify ? 'var(--accent)' : record.reviewDue ? 'var(--warning)' : 'var(--accent)'} />
           )}
           {/* `totalDays` falls back to getTrainingDays() — a per-skill table
               nobody sourced. That is a fine default length for a plan we are
@@ -1434,14 +1409,14 @@ function SkillQueueRow({ record, selected, loadingPlan, onOpen, onGeneratePlan, 
             type="button"
             onClick={primary.onClick}
             disabled={loadingPlan && !record.progress && !record.verified}
-            className={`inline-flex min-w-[108px] items-center justify-center gap-1.5 rounded-[12px] px-3 py-2 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${primary.className}`}
+            className="inline-flex min-h-[44px] min-w-[108px] items-center justify-center gap-1.5 rounded-[12px] bg-[var(--accent)] px-3 py-2 text-xs font-black text-[var(--accent-on)] transition-colors hover:bg-[var(--accent-active)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <span className="material-symbols-rounded text-[16px]">{primary.icon}</span>
             {primary.label}
           </button>
-          <button type="button" onClick={onOpen} className="rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Open</button>
-          <button type="button" onClick={onPractice} className="rounded-[12px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-500/15 dark:text-amber-300">Practice</button>
-          <button type="button" onClick={onAskSona} aria-label={`Ask Taco about ${record.skill}`} className="inline-flex items-center justify-center rounded-[12px] border border-[var(--border-subtle)] px-2 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+          <button type="button" onClick={onOpen} className="min-h-[44px] rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Open</button>
+          <button type="button" onClick={onPractice} className="min-h-[44px] rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-3 py-2 text-xs font-bold text-[var(--warning)] hover:bg-[color-mix(in_srgb,var(--warning)_18%,transparent)]">Practice</button>
+          <button type="button" onClick={onAskSona} aria-label={`Ask Taco about ${record.skill}`} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[12px] border border-[var(--border-subtle)] px-2 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
             <AssistantMark size="xs" state="idle" />
           </button>
         </div>
@@ -1454,7 +1429,7 @@ function QueueStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-[10px] bg-[var(--bg-surface)] px-2 py-1.5 text-center">
       <p className="truncate text-xs font-black tabular-nums text-[var(--text-primary)]">{value}</p>
-      <p className="truncate text-[9px] font-semibold text-[var(--text-secondary)]">{label}</p>
+      <p className="truncate text-[11px] font-semibold text-[var(--text-secondary)]">{label}</p>
     </div>
   );
 }
@@ -1463,14 +1438,14 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[12px] bg-[var(--bg-surface)] p-2">
       <p className="whitespace-nowrap text-sm font-black tabular-nums text-[var(--text-primary)]">{value}</p>
-      <p className="text-[10px] font-medium text-[var(--text-secondary)]">{label}</p>
+      <p className="text-[11px] font-medium text-[var(--text-secondary)]">{label}</p>
     </div>
   );
 }
 
 function ProofLadderPreview({ isPro, onUpgrade }: { isPro: boolean; onUpgrade: () => void }) {
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+    <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">Proof Ladder</h2>
         {!isPro && <Pill tone="amber"><span className="material-symbols-rounded text-[14px]">lock</span>Standard</Pill>}
@@ -1490,7 +1465,7 @@ function ProofLadderPreview({ isPro, onUpgrade }: { isPro: boolean; onUpgrade: (
         ))}
       </div>
       {!isPro && (
-        <button type="button" onClick={onUpgrade} className="mt-4 w-full rounded-[12px] bg-emerald-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">
+        <button type="button" onClick={onUpgrade} className="mt-4 min-h-[44px] w-full rounded-[12px] bg-[var(--accent)] px-4 py-2 text-sm font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">
           Unlock proof engine
         </button>
       )}
@@ -1505,12 +1480,12 @@ function SonaCoachPanel({ onAskSona }: { onAskSona: (prompt: string) => void }) 
     'Create a 30 minute study sprint from my active gaps.',
   ];
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-      <h2 className="text-lg font-semibold text-[var(--text-primary)]">Taco coaching</h2>
-      <p className="mt-1 text-sm text-[var(--text-secondary)]">Use Taco for study strategy, but Skill Bridge owns the proof record.</p>
+    <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+      <h2 className="text-lg font-semibold text-[var(--text-primary)]"><TacoName /> coaching</h2>
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">Use <TacoName /> for study strategy, but Skill Bridge owns the proof record.</p>
       <div className="mt-3 space-y-2">
         {prompts.map(prompt => (
-          <button key={prompt} type="button" onClick={() => onAskSona(prompt)} className="w-full rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+          <button key={prompt} type="button" onClick={() => onAskSona(prompt)} className="min-h-[44px] w-full rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-left text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
             {prompt}
           </button>
         ))}
@@ -1521,7 +1496,7 @@ function SonaCoachPanel({ onAskSona }: { onAskSona: (prompt: string) => void }) 
 
 function SettingsPanel({ isPro, onUpgrade }: { isPro: boolean; onUpgrade: () => void }) {
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
+    <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
       <div className="flex items-start gap-3">
         <IconShell kind="domain" icon="tune" />
         <div>
@@ -1535,7 +1510,7 @@ function SettingsPanel({ isPro, onUpgrade }: { isPro: boolean; onUpgrade: () => 
         <SettingRow icon="lock" title="Access" body={isPro ? 'Plans and proofs are unlocked.' : 'Preview is visible. Durable work requires Standard.'} />
       </div>
       {!isPro && (
-        <button type="button" onClick={onUpgrade} className="mt-5 rounded-[12px] bg-emerald-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">
+        <button type="button" onClick={onUpgrade} className="mt-5 min-h-[44px] rounded-[12px] bg-[var(--accent)] px-4 py-2 text-sm font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">
           Unlock Skill Bridge
         </button>
       )}
@@ -1546,7 +1521,7 @@ function SettingsPanel({ isPro, onUpgrade }: { isPro: boolean; onUpgrade: () => 
 function SettingRow({ icon, title, body }: { icon: string; title: string; body: string }) {
   return (
     <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
-      <span className="material-symbols-rounded text-[22px] text-emerald-600">{icon}</span>
+      <span className="material-symbols-rounded text-[22px] text-[var(--text-secondary)]">{icon}</span>
       <p className="mt-2 text-sm font-bold text-[var(--text-primary)]">{title}</p>
       <p className="mt-1 text-xs text-[var(--text-secondary)]">{body}</p>
     </div>
@@ -1561,7 +1536,7 @@ function SettingRow({ icon, title, body }: { icon: string; title: string; body: 
  */
 function EmptyBridgeState({ onOpenResume, onAskSona }: { onOpenResume: () => void; onAskSona: () => void }) {
   return (
-    <div className="rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-8 text-center md:p-10">
+    <div className="elevation-card rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-8 text-center md:p-10">
       <div className="mx-auto mb-4 flex justify-center">
         <IconShell kind="technical" icon="route" size="lg" />
       </div>
@@ -1572,12 +1547,12 @@ function EmptyBridgeState({ onOpenResume, onAskSona }: { onOpenResume: () => voi
         Nothing is guessed on your behalf.
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        <button type="button" onClick={onOpenResume} className="rounded-[12px] bg-emerald-600 px-4 py-2 text-sm font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">
+        <button type="button" onClick={onOpenResume} className="min-h-[44px] rounded-[12px] bg-[var(--accent)] px-4 py-2 text-sm font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">
           Open Resume Studio
         </button>
-        <button type="button" onClick={onAskSona} className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--border-subtle)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+        <button type="button" onClick={onAskSona} className="inline-flex min-h-[44px] items-center gap-2 rounded-[12px] border border-[var(--border-subtle)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
           <AssistantMark size="xs" state="idle" />
-          Ask Taco
+          Ask <TacoName />
         </button>
       </div>
     </div>
@@ -1607,7 +1582,7 @@ function SkillDrawer({
   draft?: ProofDraft;
   onClose: () => void;
   onGeneratePlan: (record: SkillRecord) => void;
-  onDayToggle: (record: SkillRecord, day: number, done: boolean) => void;
+  onDayToggle: (record: SkillRecord, day: string, done: boolean) => void;
   onMarkComplete: (record: SkillRecord, complete: boolean) => void;
   onGenerateChallenge: (record: SkillRecord) => void;
   onGradeChallenge: (record: SkillRecord) => void;
@@ -1640,16 +1615,16 @@ function SkillDrawer({
 
   return (
     <AnimatePresence>
-      <motion.div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35 backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      <motion.div className="fixed inset-0 z-50 flex justify-end bg-[color-mix(in_srgb,var(--bg-deep)_55%,transparent)] backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
         <motion.aside
           role="dialog"
-          aria-label={`${record.skill} Skill Bridge drawer`}
+          data-guide="bridge-detail" data-guide-surface="bridge-detail" aria-label={`${record.skill} Skill Bridge drawer`}
           aria-modal="true"
           initial={{ x: 420 }}
           animate={{ x: 0 }}
           exit={{ x: 420 }}
           transition={{ duration: 0.22, ease: 'easeOut' }}
-          className="flex h-full w-full max-w-[560px] flex-col border-l border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl"
+          className="elevation-raised flex h-full w-full max-w-[560px] flex-col border-l border-[var(--border-subtle)] bg-[var(--card-bg)]"
         >
           <div className="border-b border-[var(--border-subtle)] p-5">
             <div className="flex items-start justify-between gap-3">
@@ -1660,26 +1635,28 @@ function SkillDrawer({
                   <p className="mt-1 text-sm text-[var(--text-secondary)]">{record.nextActionDetail}</p>
                 </div>
               </div>
-              <button ref={closeRef} type="button" onClick={onClose} aria-label="Close Skill Bridge drawer" className="rounded-[12px] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+              <PageHelp toolId="skill-bridge" />
+              <button ref={closeRef} type="button" onClick={onClose} aria-label="Close Skill Bridge drawer" className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-[12px] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
                 <span className="material-symbols-rounded">close</span>
               </button>
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <MiniStat label="Readiness" value={record.readinessScore === null ? 'Not proven' : `${record.readinessScore}%`} />
+              <MiniStat label="Latest practice" value={record.readinessScore === null ? 'Not proven' : `${record.readinessScore}%`} />
               <MiniStat label="Proof score" value={record.highestProofScore ? `${record.highestProofScore}` : 'New'} />
+              <MiniStat label="Best assessed practice" value={skillAssessmentSummary(record.proofs).best == null ? 'Not assessed' : String(skillAssessmentSummary(record.proofs).best)} />
               <MiniStat label="Plan" value={record.progress ? `${record.completedDays.length}/${record.totalDays}` : 'None yet'} />
             </div>
           </div>
 
           <div className="flex-1 space-y-4 overflow-y-auto p-5">
             {!isPro && (
-              <section className="rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
+              <section className="rounded-[18px] border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-4 text-sm text-[var(--text-primary)]">
                 <div className="flex items-start gap-3">
                   <IconShell kind="locked" size="sm" />
                   <div className="min-w-0">
                     <p className="font-bold">Proofs are locked in preview mode.</p>
-                    <p className="mt-1 text-xs opacity-80">You can inspect the workflow, but generated plans and durable verification require Standard.</p>
-                    <button type="button" onClick={onUpgrade} className="mt-3 rounded-[12px] bg-amber-600 px-3 py-2 text-xs font-bold text-[oklch(0.99_0.004_80)] hover:bg-amber-700">Upgrade</button>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">You can inspect the workflow, but generated plans and durable verification require Standard.</p>
+                    <button type="button" onClick={onUpgrade} className="mt-3 min-h-[44px] rounded-[12px] bg-[var(--accent)] px-3 py-2 text-xs font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">Upgrade</button>
                   </div>
                 </div>
               </section>
@@ -1700,7 +1677,7 @@ function SkillDrawer({
                     reason="Readiness comes from a graded proof. Nothing on this skill has been graded, so there is no score — not a score of zero."
                   />
                 ) : (
-                  <ProgressBar value={record.readinessScore} color={record.verified ? 'bg-emerald-500' : record.readyToVerify ? 'bg-violet-500' : 'bg-cyan-500'} />
+                  <ProgressBar value={record.readinessScore} color={record.verified ? 'var(--success)' : record.readyToVerify ? 'var(--accent)' : 'var(--accent)'} />
                 )}
               </div>
             </section>
@@ -1712,10 +1689,10 @@ function SkillDrawer({
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">{record.schedule.length ? 'Complete the plan, then prove the skill.' : 'Generate a focused plan from the current gap.'}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onGeneratePlan(record)} disabled={loadingPlan} className="rounded-[12px] border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-500/15 disabled:opacity-60 dark:text-emerald-300">
+                  <button data-guide="bridge-plan" type="button" onClick={() => onGeneratePlan(record)} disabled={loadingPlan} className="min-h-[44px] rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-60">
                     {loadingPlan ? 'Building' : record.schedule.length ? 'Refresh' : 'Generate'}
                   </button>
-                  <button type="button" onClick={() => onSavePlanToVault(record)} className="rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Save</button>
+                  <button type="button" onClick={() => onSavePlanToVault(record)} className="min-h-[44px] rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Save</button>
                 </div>
               </div>
               <div className="mt-4 space-y-2">
@@ -1724,14 +1701,16 @@ function SkillDrawer({
                   const done = record.completedDays.includes(dayNum);
                   return (
                     <div key={`${record.skill}-${dayNum}`} className="flex gap-3 rounded-[14px] bg-[var(--card-bg)] p-3">
-                      <button type="button" onClick={() => onDayToggle(record, dayNum, done)} aria-label={`${done ? 'Unmark' : 'Mark'} day ${dayNum}`} className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border ${done ? 'border-emerald-500 bg-emerald-500 text-[oklch(0.99_0.004_160)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>
-                        <span className="material-symbols-rounded text-[16px]">{done ? 'check' : 'radio_button_unchecked'}</span>
+                      <button type="button" onClick={() => onDayToggle(record, day.id, done)} aria-label={`${done ? 'Unmark' : 'Mark'} day ${dayNum}`} className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border ${done ? 'border-[var(--success)] bg-[var(--success)] text-[var(--accent-on)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}>
+                        <span className="material-symbols-rounded text-[18px]">{done ? 'check' : 'radio_button_unchecked'}</span>
                       </button>
                       <div className="min-w-0 flex-1">
                         <p className={`wrap-natural text-sm font-semibold ${done ? 'text-[var(--text-secondary)] line-through' : 'text-[var(--text-primary)]'}`}>Day {dayNum}: {day.focus || 'Focused practice'}</p>
+                        {day.timeEstimate && <p className="mt-1 text-xs text-[var(--text-secondary)]">Estimated effort: {day.timeEstimate}</p>}
                         {Array.isArray(day.tasks) && day.tasks.length > 0 && (
-                          <p className="mt-1 line-clamp-2 text-xs text-[var(--text-secondary)]">{day.tasks.slice(0, 2).join(' ')}</p>
+                          <p className="mt-1 text-xs text-[var(--text-secondary)]">{day.tasks.join(' • ')}</p>
                         )}
+                        {Array.isArray(day.resources) && day.resources.map((resource: any, resourceIndex: number) => <p key={resourceIndex} className="mt-2 text-xs">{typeof resource === 'string' ? resource : <>{/^https?:\/\//.test(resource.url || '') ? <a href={resource.url} target="_blank" rel="noreferrer" className="underline">{resource.title || resource.name || resource.url}</a> : <strong>{resource.title || resource.name || 'Suggested resource'}</strong>}{resource.description ? ` — ${resource.description}` : ''}{resource.searchFor ? ` — Search for: ${resource.searchFor}` : ''}</>}</p>)}
                       </div>
                     </div>
                   );
@@ -1740,10 +1719,10 @@ function SkillDrawer({
                 )}
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={() => onMarkComplete(record, !isDone)} className="rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+                <button type="button" onClick={() => onMarkComplete(record, !isDone)} className="min-h-[44px] rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
                   {isDone ? 'Reopen plan' : 'Mark complete'}
                 </button>
-                <button type="button" onClick={() => onPractice(record)} className="rounded-[12px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-700 hover:bg-amber-500/15 dark:text-amber-300">Practice in Interview Studio</button>
+                <button type="button" onClick={() => onPractice(record)} className="min-h-[44px] rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-3 py-2 text-xs font-bold text-[var(--warning)] hover:bg-[color-mix(in_srgb,var(--warning)_18%,transparent)]">Practice in Interview Studio</button>
               </div>
             </section>
 
@@ -1751,15 +1730,15 @@ function SkillDrawer({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--text-primary)]">Verification</h3>
-                  <p className="mt-1 text-xs text-[var(--text-secondary)]">Quick checks build confidence. Applied challenges can verify the skill.</p>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">Quick checks build confidence. Applied challenges assess demonstrated practice; they do not certify mastery.</p>
                 </div>
                 <div className="flex rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-1">
                   {(['quick_check', 'applied_challenge'] as ChallengeType[]).map(type => (
                     <button
                       key={type}
                       type="button"
-                      onClick={() => onUpdateDraft(record.skill, { challengeType: type, grade: undefined })}
-                      className={`rounded-[10px] px-2.5 py-1.5 text-xs font-bold ${activeDraft.challengeType === type ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                      onClick={() => onUpdateDraft(record.skill, { challengeType: type, challengeId: undefined, prompt: '', grade: undefined })}
+                      className={`inline-flex min-h-[44px] items-center rounded-[10px] px-2.5 py-1.5 text-xs font-bold ${activeDraft.challengeType === type ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                     >
                       {type === 'quick_check' ? 'Quick' : 'Applied'}
                     </button>
@@ -1768,38 +1747,38 @@ function SkillDrawer({
               </div>
 
               <div className="mt-4 space-y-3">
-                <button type="button" onClick={() => onGenerateChallenge(record)} disabled={activeDraft.loading === 'generate'} className="rounded-[12px] border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-500/15 disabled:opacity-60 dark:text-violet-300">
+                <button type="button" onClick={() => onGenerateChallenge(record)} disabled={activeDraft.loading === 'generate'} className="min-h-[44px] rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-60">
                   {activeDraft.loading === 'generate' ? 'Generating challenge' : 'Generate challenge'}
                 </button>
                 <textarea
                   value={activeDraft.prompt}
-                  onChange={(event) => onUpdateDraft(record.skill, { prompt: event.target.value })}
-                  placeholder="Generate or paste a proof prompt."
-                  className="min-h-[96px] w-full resize-y rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-emerald-500"
+                  readOnly
+                  placeholder="Generate a challenge to begin."
+                  className="min-h-[96px] w-full resize-y rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-base text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
                 <textarea
                   value={activeDraft.response}
                   onChange={(event) => onUpdateDraft(record.skill, { response: event.target.value, grade: undefined })}
                   placeholder="Write the answer you would give an interviewer. Include the situation, steps, trade-offs, and result."
-                  className="min-h-[148px] w-full resize-y rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm text-[var(--text-primary)] outline-none focus:border-emerald-500"
+                  className="min-h-[148px] w-full resize-y rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-base text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onGradeChallenge(record)} disabled={activeDraft.loading === 'grade'} className="rounded-[12px] bg-violet-600 px-3 py-2 text-xs font-bold text-[oklch(0.99_0.004_300)] hover:bg-violet-700 disabled:opacity-60">
+                  <button data-guide="bridge-grade" type="button" onClick={() => onGradeChallenge(record)} disabled={activeDraft.loading === 'grade'} className="min-h-[44px] rounded-[12px] bg-[var(--accent)] px-3 py-2 text-xs font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)] disabled:opacity-60">
                     {activeDraft.loading === 'grade' ? 'Grading proof' : 'Grade and save proof'}
                   </button>
-                  <button type="button" onClick={() => onAskSona(`Help me improve my ${record.skill} proof answer before I submit it.`, 'Skill Bridge')} className="inline-flex items-center gap-2 rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+                  <button type="button" onClick={() => onAskSona(`Help me improve my ${record.skill} proof answer before I submit it.`, 'Skill Bridge')} className="inline-flex min-h-[44px] items-center gap-2 rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
                     <AssistantMark size="xs" state="idle" />
-                    Ask Taco
+                    Ask <TacoName />
                   </button>
                 </div>
               </div>
 
               {activeDraft.grade && (
-                <div className="mt-4 rounded-[16px] border border-violet-500/20 bg-violet-500/10 p-4">
+                <div className="mt-4 rounded-[16px] border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] bg-[var(--accent-dim)] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-bold text-[var(--text-primary)]">Proof reviewed</p>
-                      <p className="text-xs text-[var(--text-secondary)]">{activeDraft.grade.summary || 'Taco reviewed your proof attempt.'}</p>
+                      <p className="text-xs text-[var(--text-secondary)]"><TacoText text={activeDraft.grade.summary || 'Taco reviewed your proof attempt.'} /></p>
                     </div>
                     <Pill tone={activeDraft.grade.verdict === 'verified' ? 'green' : 'violet'}>{activeDraft.grade.score}%</Pill>
                   </div>
@@ -1813,16 +1792,16 @@ function SkillDrawer({
                   <h3 className="text-sm font-bold text-[var(--text-primary)]">Proof history</h3>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">{record.proofs.length ? 'Saved verification attempts for this skill.' : 'No proof attempts yet.'}</p>
                 </div>
-                <button type="button" onClick={() => onSaveProofToVault(record)} disabled={activeDraft.loading === 'vault'} className="rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-60">Save proof</button>
+                <button type="button" onClick={() => onSaveProofToVault(record)} disabled={activeDraft.loading === 'vault'} className="min-h-[44px] rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-60">Save proof</button>
               </div>
               <div className="mt-3 space-y-2">
                 {record.proofs.slice(0, 4).map(proof => (
                   <div key={proof.id} className="rounded-[14px] bg-[var(--card-bg)] p-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-bold text-[var(--text-primary)]">{proof.challengeType === 'applied_challenge' ? 'Applied Challenge' : 'Quick Check'}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{(proof as any).assessmentVersion ? `Assessed practice · ${new Date(proof.createdAt).toLocaleDateString()}` : 'Legacy practice record — provenance unavailable; excluded from current assessment'}</p><p className="text-sm font-bold text-[var(--text-primary)]">{proof.challengeType === 'applied_challenge' ? 'Applied Challenge' : 'Quick Check'}</p>
                       <Pill tone={proof.verdict === 'verified' ? 'green' : proof.verdict === 'ready' ? 'violet' : 'amber'}>{proof.score}%</Pill>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-xs text-[var(--text-secondary)]">{proof.prompt}</p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">{proof.prompt}</p>
                   </div>
                 ))}
               </div>

@@ -9,10 +9,12 @@ import { normalizeText } from './sanitize';
 import { splitSentences } from './ai-detection';
 
 export interface DeepDetectionResult {
-  predictabilityScore: number; // 0-100 (higher = more predictable = more likely AI)
-  humanConfidence: number;     // 0-100 (inverse: higher = more likely human)
+  predictabilityScore: number | null; // diagnostic signal only
+  humanConfidence: number | null; // legacy compatibility; never inferred when unavailable
   sentenceSamples: SentenceSample[];
-  verdict: 'likely_ai' | 'mixed' | 'likely_human';
+  verdict: 'likely_ai' | 'mixed' | 'likely_human' | 'unavailable';
+  status: 'analyzed' | 'unavailable';
+  reason?: 'insufficient_sentences' | 'provider_unavailable' | 'invalid_provider_response';
 }
 
 interface SentenceSample {
@@ -36,10 +38,10 @@ export async function deepDetect(text: string): Promise<DeepDetectionResult> {
 
   if (sentences.length < 3) {
     return {
-      predictabilityScore: 50,
-      humanConfidence: 50,
+      predictabilityScore: null,
+      humanConfidence: null,
       sentenceSamples: [],
-      verdict: 'mixed',
+      verdict: 'unavailable', status: 'unavailable', reason: 'insufficient_sentences',
     };
   }
 
@@ -69,9 +71,13 @@ export async function deepDetect(text: string): Promise<DeepDetectionResult> {
       temperature: 0.1,
       maxTokens: 512,
       title: 'TalentConsulting.io Deep Writing Detection',
+      validateResult: (value): value is { completions: string[] } => Boolean(value && typeof value === 'object' && Array.isArray((value as any).completions) && (value as any).completions.every((item: unknown) => typeof item === 'string')),
     });
 
-    const completions = result.completions || [];
+    const completions = result.completions;
+    if (!Array.isArray(completions) || completions.length !== maskedSentences.length || completions.some(item => typeof item !== 'string' || (!/[\p{L}\p{N}]/u.test(item) || item.trim().split(/\s+/).filter(Boolean).length > 4))) {
+      return { predictabilityScore: null, humanConfidence: null, sentenceSamples: [], verdict: 'unavailable', status: 'unavailable', reason: 'invalid_provider_response' };
+    }
 
     // Score overlap between predictions and actual text
     const samples: SentenceSample[] = maskedSentences.map((m, i) => {
@@ -105,15 +111,15 @@ export async function deepDetect(text: string): Promise<DeepDetectionResult> {
       predictabilityScore >= 35 ? 'mixed' :
       'likely_human';
 
-    return { predictabilityScore, humanConfidence, sentenceSamples: samples, verdict };
+    return { predictabilityScore, humanConfidence, sentenceSamples: samples, verdict, status: 'analyzed' };
 
   } catch (error) {
     console.error('[deepDetect] OpenRouter error:', error);
     return {
-      predictabilityScore: 50,
-      humanConfidence: 50,
+      predictabilityScore: null,
+      humanConfidence: null,
       sentenceSamples: [],
-      verdict: 'mixed',
+      verdict: 'unavailable', status: 'unavailable', reason: 'provider_unavailable',
     };
   }
 }

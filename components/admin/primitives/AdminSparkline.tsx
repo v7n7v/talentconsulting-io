@@ -18,7 +18,7 @@ interface AdminSparklineProps {
 }
 
 const TONE_VARIABLES: Record<AdminSparklineTone, string> = {
-  cobalt: 'var(--admin-cobalt)',
+  cobalt: 'var(--taco-accent-text)',
   healthy: 'var(--admin-healthy)',
   degraded: 'var(--admin-degraded)',
   critical: 'var(--admin-critical)',

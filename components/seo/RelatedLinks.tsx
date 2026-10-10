@@ -42,7 +42,7 @@ export function RelatedLinks({
   links?: RelatedLink[];
 }) {
   return (
-    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+    <section className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
       <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {links.map((link) => (

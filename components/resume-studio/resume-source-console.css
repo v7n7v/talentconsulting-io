@@ -31,7 +31,7 @@
     --source-line-strong: color-mix(in srgb, var(--border) 34%, transparent);
     --source-text: var(--text-primary);
     --source-muted: var(--text-secondary);
-    --source-subtle: var(--text-tertiary);
+    --source-subtle: var(--text-muted);
     --source-blue: var(--accent);
     --source-blue-strong: var(--accent-active);
     --source-green: var(--success);
@@ -634,7 +634,7 @@
     border-radius: 11px;
     background: var(--bg-surface);
     color: var(--source-text);
-    font-size: 13px;
+    font-size: 16px;
     line-height: 1.55;
   }
 

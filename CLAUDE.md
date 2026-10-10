@@ -139,14 +139,13 @@ Counterpoint: **8,101 `var()` calls** — the token habit is strong. Infrastruct
 
 `DESIGN.md` and `UI_DESIGN_GUIDE.md` **contradict each other** (cyan/emerald, gradients, card background, sidebar width) and `.glass-card` is named for a treatment both documents ban. Resolve against `docs/design-system-v2-plan.md`, not against either older document.
 
-**Direction is decided** — see `docs/design-system-v2-plan.md`:
+**Current direction — owner update October 7, 2026:** the app-wide palette in `docs/taco-brand-system.md` supersedes the older color decisions in `docs/design-system-v2-plan.md`, `DESIGN.md` and `UI_DESIGN_GUIDE.md`.
 
-1. **Evidence-first semantics.** Color encodes epistemic status: verified / inferred / draft / missing.
-2. **Accent — DONE, do not reopen.** Cyan/teal `#00C2CD` dark / `#00787F` light, shipped 26 July 2026. Chosen against the brand mark, not against a contrast table: the mark and wordmark are electric blue, and an accent from a different family would have made the logo and the buttons disagree. The old Google-blue token and the unbacked emerald are both retired. `design-audit.js` gates it via `accentContrastFails`, which must stay 0.
-3. **Admin folds into the main system**, keeping its density via a modifier rather than a 30-token fork.
-4. **TACO = assistant, TC = company.** Retire the `brand-*` and Sona mark systems.
-
-Do not start the design work until the repo is recovered, committed **and pushed** (§4 — the push is outstanding). It touches every file.
+1. Paper/ink surfaces, coral actions and readable coral text, original blue Taco identity, lavender exclusively for decorative offset shadows.
+2. `components/taco-theme.css` is canonical; legacy semantic, workspace, admin and public aliases consume it. Preserve light/dark controls. No independent feature or tier palettes.
+3. Evidence status stays explicit through labels and icons; do not rely on unrelated hues.
+4. The owner explicitly authorized this local app-wide implementation before recovery/push. That authorization supersedes the earlier design-work prerequisite; deployment remains separate.
+5. `design-audit.js` must keep accent and filled action contrast failures at zero; `scripts/taco-palette-contrast.test.js` verifies the guard fails on unreadable or unresolved aliases.
 
 A method lesson worth carrying, now that the arithmetic is automated: **validate contrast per surface, never per mode.** Measured against the old Google-grey scale, no accent candidate cleared 4.5:1 on all seven surfaces — hover and active always failed. The brand rebuild replaced those surfaces with navy and paper, and one step per mode now clears everything. Both facts were true; only the surfaces changed. That is why `design-audit.js` computes `accentContrastFails` across every theme × surface pair rather than trusting a recorded verdict — a number measured against retired inputs is worse than no number.
 
@@ -208,38 +207,32 @@ Bannered as superseded on 25 July 2026:
 
 ## 9b. The landing page — `components/landing/`
 
-`app/page.tsx` renders `TalentLanding`. `GuidedCareerLanding` and `LandingPage`
-are retired to `_to_delete/`. Four things about it are deliberate and will look
-like mistakes if you do not know why:
+The isolated Taco upgrade replaces the former dark landing. `app/page.tsx`
+renders `TalentLanding` and owns the existing authentication modal. The component
+preserves `isAuthenticated` and `onOpenAuth(mode, redirect)`; resume CTAs target
+`/suite/agent?intent=resume-upload` after account creation or sign-in.
 
-- **`talent-landing.css` is a plain global stylesheet, not a CSS module**, with
-  every selector mechanically scoped under `.tcl`. Converting it to a module
-  breaks the page: `talentLandingMotion.ts` finds elements by those exact class
-  names, and a module would hash them apart.
-- **It contains no colour literals.** The palette is the `.tcl` block in
-  `app/globals.css`, which also re-points the token names the app itself uses
-  (`--bg-input`, `--text-primary`, …) for that subtree. That is not redundancy:
-  `globals.css` styles bare `textarea` with
-  `background: var(--bg-input) !important`, and !important cannot be outranked
-  by specificity. Anything that leaks in now leaks in wearing the right colour.
-- **The landing is dark-only by product decision** — choosing a theme belongs to
-  signed-in people, inside the product. `color-scheme: dark` on `.tcl` keeps the
-  textarea, scrollbars and focus rings dark when the app is in light mode.
-- **Three regions use `dangerouslySetInnerHTML` with module-owned constants**
-  (`#res`, `#rwText`, `#chatLog`). The motion module rewrites their innerHTML;
-  marking them opaque stops React reconciling children it did not write. No user
-  input reaches any of them — the results panel is assembled from a fixed phrase
-  list and integer counts and never echoes the textarea at all.
+- `talent-landing.css` defines its own paper/ink/coral tokens. Every selector is
+  scoped under `.taco-landing`; do not let marketing styles leak into the suite
+  or auth dialog. Explicit heading colors avoid inherited dark-theme text.
+- React owns the example state and markup. The old `talentLandingMotion.ts`
+  imperative HTML writer was removed. Do not restore its `.tcl` selector or
+  `html.js` reveal requirements.
+- The hero writes its full example once on entry and again after a role change.
+  The journey and review stamp follow scroll position; the closing ticker loops
+  while visible. At the user's request there are no visible motion controls or
+  status indicators. Reduced motion preserves static content; ticker hover or
+  footer keyboard focus pauses the loop. Example tabs support arrows, Home/End,
+  roving focus, and associated panels. Full semantic/static text remains present.
+- The labeled fictional sample shares the same source facts throughout. Never
+  add unsupported numbers or present mock scores, employers, or outcomes as real.
+- The user-authorized redesign uses decorative hard offset shadows on this
+  marketing surface. The design audit permits these only under
+  `components/landing`; product UI rules remain unchanged.
 
-No `box-shadow` anywhere in it. `scripts/design-audit.js` bans it, and the
-`components/landing` exception is documented as covering gradients and
-`backdrop-filter` only. Elevation there is a solid fill, an accent-tinted border
-and an `outline` ring of page background.
-
-Two audit mechanics to understand before you "fix" a metric: `TOKEN_DEF_FILES`
-exempts token-defining files from the hex counts *only*, and `EXTERNAL_TOKENS`
-tells the scanner that next/font emits `--font-*` at build time. Neither is a
-way to switch a rule off.
+The implementation plan is `docs/upgrade-plan.md`; continuation state is
+`.codex/long-horizon/taco-upgrade.md`. Validate claims against the plan catalogue,
+not older strategy docs. Automated prepared packets require Max.
 
 ---
 

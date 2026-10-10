@@ -1,8 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep } from '@/lib/tool-story-adapters';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
+import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { sanitizeHtml } from '@/lib/sanitize';
 import {
@@ -30,21 +34,21 @@ const TYPE_CONFIG: Record<PrepMemoryType, { label: string; icon: string; tone: s
   'skill-bridge': {
     label: 'Skill Bridge',
     icon: 'route',
-    tone: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-300',
+    tone: 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--taco-coral)] dark:text-[var(--accent)]',
     actionLabel: 'Continue bridge',
     actionPath: '/suite/skill-bridge',
   },
   interview: {
     label: 'Interview',
     icon: 'mic',
-    tone: 'bg-violet-500/10 text-violet-600 border-violet-500/20 dark:text-violet-300',
-    actionLabel: 'Practice again',
+    tone: 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--taco-coral)] dark:text-[var(--accent)]',
+    actionLabel: 'Start new practice',
     actionPath: '/suite/interview-sim?mode=quick_drill',
   },
   flashcards: {
     label: 'Flashcards',
     icon: 'edit_document',
-    tone: 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20 dark:text-cyan-300',
+    tone: 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--taco-coral)] dark:text-[var(--accent)]',
     actionLabel: 'Review cards',
     actionPath: '/suite/interview-sim?mode=study_cards',
   },
@@ -52,6 +56,7 @@ const TYPE_CONFIG: Record<PrepMemoryType, { label: string; icon: string; tone: s
 
 function renderMarkdown(text: string) {
   let html = text
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="underline">$1</a>')
     .replace(/^### (.*$)/gim, '<h3 class="text-base font-semibold text-[var(--text-primary)] mt-5 mb-2">$1</h3>')
     .replace(/^## (.*$)/gim, '<h2 class="text-lg font-bold text-[var(--text-primary)] mt-6 mb-3 border-b border-[var(--border-subtle)] pb-2">$1</h2>')
     .replace(/^# (.*$)/gim, '<h1 class="text-xl font-black text-[var(--text-primary)] mt-6 mb-4">$1</h1>')
@@ -59,7 +64,7 @@ function renderMarkdown(text: string) {
     .replace(/\*(.*?)\*/gim, '<em class="text-[var(--text-secondary)] italic">$1</em>')
     .replace(/^\s*-\s+(.*$)/gim, '<li class="ml-5 list-disc text-[var(--text-secondary)] mb-1.5 marker:text-[var(--accent)] pl-1">$1</li>')
     .replace(/\[ \]/gim, '<span class="inline-block h-3.5 w-3.5 rounded border border-[var(--border)] mr-1.5 align-middle"></span>')
-    .replace(/\[x\]/gim, '<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-emerald-500/30 border border-emerald-500/50 mr-1.5 align-middle text-emerald-500 text-[9px]">✓</span>')
+    .replace(/\[x\]/gim, '<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-[var(--accent-dim)] border border-[var(--border-subtle)] mr-1.5 align-middle text-[var(--success)] text-[11px]">✓</span>')
     .replace(/\n\n/gim, '</p><p class="text-[var(--text-secondary)] leading-relaxed mb-4 mt-2">')
     .replace(/\n(?!\s*<)/gim, '<br/>');
 
@@ -76,6 +81,10 @@ function formatDate(value?: string | null) {
 
 export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; onOpenSkill: (skill: string) => void }) {
   const router = useRouter();
+  const uid = useStore(state => state.user?.uid);
+  const ownerRef = useRef(uid); ownerRef.current = uid;
+  const listSequence = useRef(0);
+  const detailSequence = useRef(0);
   const [filter, setFilter] = useState<MemoryFilter>('all');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -84,6 +93,7 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
   const [activeResume, setActiveResume] = useState<ResumeVersion | null>(null);
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [storyFailure, setStoryFailure] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resumes, setResumes] = useState<ResumeVersion[]>([]);
@@ -91,24 +101,30 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
   const [jobApps, setJobApps] = useState<JobApplication[]>([]);
   const [resumeDataLoaded, setResumeDataLoaded] = useState(false);
 
+  useEffect(() => { setStoryFailure(false); }, [uid, filter]);
+
+  useEffect(() => { listSequence.current++; detailSequence.current++; setItems([]); setActiveItem(null); setActiveResume(null); setNextCursor(null); setResumes([]); setStudyProgress([]); setJobApps([]); setResumeDataLoaded(false); }, [uid]);
+
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 220);
     return () => window.clearTimeout(t);
   }, [search]);
 
-  const loadItems = useCallback(async (mode: 'replace' | 'append' = 'replace') => {
+  const loadItems = useCallback(async (mode: 'replace' | 'append' = 'replace', cursor?: string | null) => {
     if (filter === 'resumes') return;
-    setLoading(true);
+    const sequence = ++listSequence.current; const owner = uid;
+    setLoading(true); setStoryFailure(false);
     try {
       const params = new URLSearchParams({
         limit: '20',
         type: filter,
       });
       if (debouncedSearch) params.set('search', debouncedSearch);
-      if (mode === 'append' && nextCursor) params.set('cursor', nextCursor);
+      if (mode === 'append' && cursor) params.set('cursor', cursor);
       const res = await authFetch(`/api/vault/list?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load memory');
+      if (sequence !== listSequence.current || ownerRef.current !== owner) return;
       const nextItems = (data.items || data.notes || []) as PrepMemoryItem[];
       setItems(prev => mode === 'append' ? [...prev, ...nextItems] : nextItems);
       setNextCursor(data.nextCursor || null);
@@ -117,11 +133,12 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
         setActiveResume(null);
       }
     } catch (error: any) {
+      if (sequence === listSequence.current && ownerRef.current === owner) setStoryFailure(true);
       showToast(error.message || 'Could not load Skill Bridge Memory', 'cancel');
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filter, nextCursor]);
+  }, [debouncedSearch, filter, uid]);
 
   const loadResumeData = useCallback(async () => {
     if (resumeDataLoaded) return;
@@ -182,16 +199,18 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
   }, [jobApps, studyProgress]);
 
   const selectItem = async (item: PrepMemoryItem) => {
+    const sequence = ++detailSequence.current; const owner = uid;
     setActiveResume(null);
     setActiveItem(item);
     if (item.content) return;
-    setDetailLoading(true);
+    setDetailLoading(true); setStoryFailure(false);
     try {
       const res = await authFetch(`/api/vault/item/${encodeURIComponent(item.id)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load memory item');
-      setActiveItem(data.item);
+      if (sequence === detailSequence.current && ownerRef.current === owner) setActiveItem(data.item);
     } catch (error: any) {
+      if (sequence === detailSequence.current && ownerRef.current === owner) setStoryFailure(true);
       showToast(error.message || 'Could not load memory item', 'cancel');
     } finally {
       setDetailLoading(false);
@@ -199,6 +218,7 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
   };
 
   const deleteItem = async (id: string) => {
+    if (!window.confirm('Delete this saved note? This cannot be undone.')) return;
     setDeletingId(id);
     try {
       const res = await authFetch('/api/vault/delete', {
@@ -225,6 +245,15 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
     router.push(TYPE_CONFIG[item.type].actionPath);
   };
 
+  useToolGuidance(buildToolStory({
+    toolId: 'skill-bridge', title: 'Skill Bridge Memory', contextKey: JSON.stringify(['memory', filter, activeItem?.id || activeResume?.id || 'memory-list']),
+    purpose: 'Find and reopen real saved plans, proofs, interview notes, cards and resume context.',
+    pending: loading || detailLoading, hasResult: Boolean(activeItem || activeResume), failed: storyFailure,
+    work: [storyStep('search', 'Find your saved work', 'Search and filter the saved items. An empty result does not mean no experience; it means no saved item matches this view.', 'memory-search'), storyStep('open', 'Open the actual item', 'Choose a saved item yourself. It retains its type and source; opening it does not generate new work.', 'memory-list')],
+    recovery: [storyStep('retry', 'Review the failed read', 'The last memory read failed. Retained list or item details may be partial; choose another item or repeat your search yourself when ready.', activeItem || activeResume ? 'memory-detail' : 'memory-search')],
+    result: [storyStep('detail', 'Inspect the stored evidence', 'Read this actual item and its provenance. Saved practice is not an automatic resume fact or credential.', 'memory-detail'), storyStep('use', 'Choose where to continue', 'Use the existing Open action when useful. Deleting and editing remain explicit choices; Help never performs them.', 'memory-detail')],
+  }));
+
   return (
     <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -235,7 +264,7 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
           </p>
         </div>
         {!isPro && (
-          <span className="inline-flex items-center gap-1.5 rounded-[12px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-700 dark:text-amber-300">
+          <span className="inline-flex items-center gap-1.5 rounded-[12px] border border-[var(--taco-coral)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] dark:text-[var(--accent)]">
             <span className="material-symbols-rounded text-[14px]">visibility</span>
             Read-only
           </span>
@@ -262,11 +291,11 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
         </div>
         <div className="relative min-w-0 lg:w-[320px]">
           <span className="material-symbols-rounded pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-[var(--text-muted)]">search</span>
-          <input
+          <input data-guide="memory-search"
             value={search}
             onChange={event => setSearch(event.target.value)}
             placeholder="Search memory..."
-            className="w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-emerald-500/60"
+            className="w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--taco-coral)]"
           />
         </div>
       </div>
@@ -289,11 +318,11 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
               <button
                 key={resume.id}
                 type="button"
-                onClick={() => { setActiveResume(resume); setActiveItem(null); }}
-                className={`w-full rounded-[16px] border p-4 text-left transition-colors ${active ? 'border-emerald-500/35 bg-emerald-500/10' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border)]'}`}
+                data-guide="memory-list" onClick={() => { setActiveResume(resume); setActiveItem(null); }}
+                className={`w-full rounded-[16px] border p-4 text-left transition-colors ${active ? 'border-[var(--taco-coral)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border)]'}`}
               >
                 <div className="flex items-start gap-3">
-                  <span className="material-symbols-rounded mt-0.5 text-[22px] text-blue-500">description</span>
+                  <span className="material-symbols-rounded mt-0.5 text-[22px] text-[var(--accent)]">description</span>
                   <div className="min-w-0 flex-1">
                     <p className="wrap-natural text-sm font-bold text-[var(--text-primary)]">{resume.version_name || 'Resume'}</p>
                     <p className="mt-1 text-xs text-[var(--text-secondary)]">{linked.length} linked skill{linked.length === 1 ? '' : 's'} in training</p>
@@ -306,8 +335,8 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
             const cfg = TYPE_CONFIG[item.type];
             const active = activeItem?.id === item.id;
             return (
-              <article key={item.id} className={`rounded-[16px] border transition-colors ${active ? 'border-emerald-500/35 bg-emerald-500/10' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border)]'}`}>
-                <button type="button" onClick={() => selectItem(item)} className="w-full p-4 text-left">
+              <article key={item.id} className={`rounded-[16px] border transition-colors ${active ? 'border-[var(--taco-coral)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border)]'}`}>
+                <button data-guide="memory-list" type="button" onClick={() => selectItem(item)} className="w-full p-4 text-left">
                   <div className="mb-2 flex items-center gap-2">
                     <span className={`inline-flex items-center gap-1 rounded-[9px] border px-2 py-1 text-[11px] font-bold ${cfg.tone}`}>
                       <span className="material-symbols-rounded text-[13px]">{cfg.icon}</span>
@@ -325,7 +354,7 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
           {filter !== 'resumes' && nextCursor && (
             <button
               type="button"
-              onClick={() => loadItems('append')}
+              onClick={() => loadItems('append', nextCursor)}
               disabled={loading}
               className="w-full rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
             >
@@ -334,7 +363,7 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
           )}
         </div>
 
-        <div className="min-h-[420px] rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+        <div data-guide="memory-detail" className="min-h-[420px] rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
           <AnimatePresence mode="wait">
             {activeResume ? (
               <ResumeMemoryReader key={activeResume.id} resume={activeResume} linked={linkedProgress(activeResume)} router={router} />
@@ -347,16 +376,16 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
                       <p className="mt-1 text-xs text-[var(--text-muted)]">{TYPE_CONFIG[activeItem.type].label} · {formatDate(activeItem.createdAt)}</p>
                     </div>
                     <div className="flex flex-wrap justify-end gap-2">
-                      <button type="button" onClick={() => openItemAction(activeItem)} className="rounded-[12px] bg-emerald-600 px-3 py-2 text-xs font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">
+                      {activeItem.type !== 'flashcards' && <button type="button" onClick={() => openItemAction(activeItem)} className="rounded-[12px] bg-[var(--accent-active)] px-3 py-2 text-xs font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">
                         {TYPE_CONFIG[activeItem.type].actionLabel}
-                      </button>
+                      </button>}
                       <button type="button" onClick={() => deleteItem(activeItem.id)} disabled={deletingId === activeItem.id} className="rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-60">
                         {deletingId === activeItem.id ? 'Deleting' : 'Delete'}
                       </button>
                     </div>
                   </div>
                   {activeItem.skill && (
-                    <span className="mt-3 inline-flex items-center gap-1.5 rounded-[10px] border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                    <span className="mt-3 inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--taco-coral)] bg-[var(--accent-dim)] px-2.5 py-1 text-xs font-bold text-[var(--accent)] dark:text-[var(--accent)]">
                       <span className="material-symbols-rounded text-[14px]">psychology</span>
                       {activeItem.skill}
                     </span>
@@ -370,7 +399,7 @@ export default function MemoryPanel({ isPro, onOpenSkill }: { isPro: boolean; on
                       <div className="h-4 w-5/6 animate-pulse rounded bg-[var(--bg-elevated)]" />
                     </div>
                   ) : (
-                    <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderMarkdown(activeItem.content || activeItem.excerpt)) }} />
+                    <><p className="mb-3 text-xs text-[var(--text-muted)]">Saved material — reopened without generating new content.</p>{activeItem.cards?.map((card,index)=><details key={index} className="mb-2 rounded-xl border p-3"><summary className="cursor-pointer font-semibold">{card.question}</summary><p className="mt-2 whitespace-pre-wrap">{card.answer}</p></details>)}<div dangerouslySetInnerHTML={{ __html: sanitizeHtml(renderMarkdown(activeItem.content || activeItem.excerpt)) }} /></>
                   )}
                 </div>
               </motion.div>
@@ -417,7 +446,7 @@ function ResumeMemoryReader({ resume, linked, router }: { resume: ResumeVersion;
             <h3 className="wrap-natural text-lg font-bold text-[var(--text-primary)]">{resume.version_name || 'Resume'}</h3>
             <p className="mt-1 text-xs text-[var(--text-muted)]">{resume.mode} resume · {formatDate(resume.created_at)}</p>
           </div>
-          <button type="button" onClick={() => router.push('/suite/resume')} className="rounded-[12px] bg-emerald-600 px-3 py-2 text-xs font-bold text-[oklch(0.99_0.004_160)] hover:bg-emerald-700">
+          <button type="button" onClick={() => router.push('/suite/resume')} className="rounded-[12px] bg-[var(--accent-active)] px-3 py-2 text-xs font-bold text-[var(--accent-on)] hover:bg-[var(--accent-active)]">
             Open Studio
           </button>
         </div>
@@ -444,7 +473,7 @@ function ResumeMemoryReader({ resume, linked, router }: { resume: ResumeVersion;
                     <span className="text-xs font-black tabular-nums text-[var(--text-primary)]">{pct}%</span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                    <div className="h-full rounded-full bg-[var(--accent-active)]" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );

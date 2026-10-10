@@ -55,6 +55,8 @@ export function buildTruthLockedCoverLetter(input: {
   company: string;
   sourceResumeId: string;
   sourceResumeHash: string;
+  tone?: string;
+  template?: string;
 }) {
   const jobTitle = normalizeJobPacketLabel(input.jobTitle);
   const company = normalizeJobPacketLabel(input.company);
@@ -62,12 +64,21 @@ export function buildTruthLockedCoverLetter(input: {
   const name = clean(input.resume.name) || 'Candidate';
   const evidence = collectEvidence(input.resume);
   if (evidence.length === 0) throw new Error('No verified resume evidence is available for the cover letter');
+  const openings: Record<string, string> = {
+    professional: 'Please consider my application for the open role. My resume documents:',
+    conversational: 'Thank you for considering my application. Here is experience from my resume that I would welcome discussing:',
+    confident: 'I would welcome the opportunity to discuss the open role. My documented experience includes:',
+    storytelling: 'These examples from my resume offer a starting point for a conversation about the open role:',
+  };
+  const ordered = input.template === 'impact' ? [...evidence].reverse() : evidence;
+  const formatted = input.template === 'classic' || input.template === 'pain_point'
+    ? ordered.join('\n\n') : ordered.map(item => `- ${item}`).join('\n');
   const content = [
     'Dear Hiring Team,',
     '',
-    'I am interested in the open role described in the attached posting. For your review, my resume documents:',
+    openings[input.tone || ''] || 'I am interested in the open role described in the attached posting. For your review, my resume documents:',
     '',
-    ...evidence.map(item => `- ${item}`),
+    formatted,
     '',
     'I would welcome a conversation about the role and how this documented experience may fit your needs.',
     '',

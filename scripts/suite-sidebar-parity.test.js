@@ -22,7 +22,7 @@ test('main navigation and account settings share the same reference row', () => 
 
   assert.match(sidebar, /import \{ NavigationRailRow \}/);
   assert.match(settings, /import \{ NavigationRailRow \}/);
-  assert.match(sidebar, /<NavigationRailRow[\s\S]*label="Dashboard"/);
+  assert.match(sidebar, /<NavigationRailRow[\s\S]*label=\{item.label\}/);
   assert.match(settings, /<NavigationRailRow[\s\S]*markerLayoutId="activeTab"/);
 
   assert.match(row, /min-h-\[62px\]/);
@@ -45,9 +45,9 @@ test('sidebar is one continuous settings-style sheet without nested navigation c
   assert.match(sidebar, /width: shellWidth/);
   assert.match(sidebar, /getSidebarPresentation\(isMobile, isCollapsed, suppressDynamicBadges\)/);
   assert.match(sidebar, /rounded-2xl border border-\[var\(--theme-border\)\] bg-\[var\(--theme-bg-card\)\]/);
-  assert.match(sidebar, /className="scrollbar-hide min-h-0 flex-1 space-y-1\.5 overflow-y-auto overflow-x-hidden p-2"/);
+  assert.match(sidebar, /className="workspace-sidebar__nav scrollbar-hide min-h-0 flex-1 space-y-1\.5 overflow-y-auto overflow-x-hidden p-2"/);
   assert.match(sidebar, /<\/nav>\s*<SidebarUtilityRows/);
-  assert.match(sidebar, /className="shrink-0 space-y-1\.5 px-2 pb-2"/);
+  assert.match(sidebar, /className="workspace-sidebar__utility shrink-0 space-y-1\.5 px-2 pb-2"/);
   assert.doesNotMatch(sidebar, /SidebarDensity|sidebarItemClass|iconShell|SidebarUpgradeCTA|SidebarCommandDock|AccountCapsule/);
   assert.doesNotMatch(sidebar, /layoutId="sidebarActiveIndicator"|bg-cyan-500\/15|rounded-\[16px\][^"]*bg-\[var\(--card-bg\)\]/);
 });
@@ -56,12 +56,14 @@ test('route ownership and active state remain unambiguous', () => {
   const sidebar = read('components/SuiteSidebar.tsx');
   const { getSidebarUpgradeRouteOwner } = loadTypeScriptModule('lib/sidebar-navigation.ts');
 
-  assert.match(sidebar, /pathname === '\/suite\/agent\/quality'/);
-  assert.match(sidebar, /ROOT_TOOL_BY_ITEM_ID/);
-  assert.match(sidebar, /!hasMappedRootTool/);
-  assert.match(sidebar, /'\/suite\/agent\/queue'/);
-  assert.match(sidebar, /'\/suite\/agent\/stories'/);
-  assert.match(sidebar, /\['\/suite\/gallery', '\/suite\/cover-letter', '\/suite\/linkedin', '\/suite\/writing-tools'\]/);
+  const { getWorkspaceRoute, isWorkspaceDestinationActive } = loadTypeScriptModule('lib/workspace-navigation.ts');
+  assert.match(sidebar, /isWorkspaceDestinationActive/);
+  assert.equal(getWorkspaceRoute('/suite/agent/quality').section, 'applications');
+  assert.equal(isWorkspaceDestinationActive('assistant', '/suite/agent/quality'), false);
+  assert.equal(isWorkspaceDestinationActive('applications', '/suite/agent/queue?packet=123'), true);
+  assert.equal(isWorkspaceDestinationActive('experience', '/suite/agent/stories'), true);
+  assert.equal(isWorkspaceDestinationActive('gallery', '/suite/gallery/taco'), false);
+  assert.equal(isWorkspaceDestinationActive('home', '/suite/resume'), false);
   assert.equal(getSidebarUpgradeRouteOwner('free', '/suite/upgrade'), 'upgrade');
   assert.equal(getSidebarUpgradeRouteOwner('free', '/suite/upgrade?plan=studio'), 'upgrade');
   assert.equal(getSidebarUpgradeRouteOwner('pro', '/suite/upgrade'), 'explore-max');
@@ -121,7 +123,7 @@ test('admin, guest, billing, plan, and Taco contracts survive the visual rewrite
   const sidebar = read('components/SuiteSidebar.tsx');
 
   assert.match(sidebar, /authFetch\('\/api\/admin\/session', \{ cache: 'no-store' \}\)/);
-  assert.match(sidebar, /GUEST_PREVIEW_BY_SUITE_PATH/);
+  assert.match(sidebar, /getGuestWorkspaceHref/);
   assert.match(sidebar, /postAuthRedirect/);
   assert.match(sidebar, /authFetch\('\/api\/stripe\/portal', \{ method: 'POST' \}\)/);
   assert.match(sidebar, /\/suite\/settings\?tab=subscription/);

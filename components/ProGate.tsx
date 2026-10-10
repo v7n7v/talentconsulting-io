@@ -41,7 +41,7 @@ export default function ProGate({ feature, description, children }: ProGateProps
         {/* Lock icon */}
         <div
           className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)]"
-          style={{ color: proPlan.accent, boxShadow: `0 8px 32px color-mix(in srgb, ${proPlan.accent} 16%, transparent)` }}
+          style={{ color: proPlan.accentText, boxShadow: 'var(--elevation-card)' }}
         >
           <span className="material-symbols-rounded text-[32px]">lock</span>
         </div>
@@ -65,7 +65,7 @@ export default function ProGate({ feature, description, children }: ProGateProps
         <button
           onClick={() => router.push('/suite/upgrade')}
           className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-opacity hover:opacity-90"
-          style={{ background: proPlan.accent, color: proPlan.buttonText, boxShadow: `0 4px 16px color-mix(in srgb, ${proPlan.accent} 20%, transparent)` }}
+          style={{ background: proPlan.accent, color: proPlan.buttonText, boxShadow: 'var(--elevation-card)' }}
         >
           <span className="material-symbols-rounded text-[18px]">bolt</span>
           {UPGRADE_COPY.primaryCta}

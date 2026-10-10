@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { TalentConsultingMark } from '@/components/BrandLogo';
+import { TacoWordmark } from '@/components/BrandLogo';
+import '@/components/taco-public-palette.css';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -40,23 +41,23 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-dvh bg-[var(--bg-deep)] px-4 py-12 text-[var(--text-primary)] sm:px-6">
+    <main className="taco-public-page min-h-dvh bg-[var(--bg-deep)] px-4 py-12 text-[var(--text-primary)] sm:px-6">
       <div className="mx-auto max-w-3xl">
         <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]">
           <span className="material-symbols-rounded text-[17px]">arrow_back</span>
-          Back to Talent Studio
+          Back to Taco
         </Link>
         <header className="mb-8">
           <div className="flex items-center gap-3">
-            <TalentConsultingMark className="h-9 w-9 rounded-[12px] border border-[var(--border-subtle)]" />
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-400">Talent Studio</p>
+            <TacoWordmark className="w-[150px]" />
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] taco-public-kicker">Privacy center</p>
           </div>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight">Privacy Policy</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">Last updated July 24, 2026. This page summarizes the product privacy posture in plain language.</p>
         </header>
-        <div className="space-y-4">
+        <div className="space-y-6">
           {sections.map((section) => (
-            <section key={section.title} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
+            <section key={section.title} className="taco-public-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
               <h2 className="text-base font-semibold">{section.title}</h2>
               <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{section.body}</p>
             </section>

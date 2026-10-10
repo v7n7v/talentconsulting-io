@@ -49,10 +49,9 @@ function buildAccept(
  * Kept in step with VALID_EXTENSIONS in app/api/gauntlet/parse-resume/route.ts.
  */
 export const RESUME_ACCEPT = buildAccept(
-  ['.pdf', '.docx', '.doc', '.txt'],
+  ['.pdf', '.docx', '.txt'],
   [
     'application/pdf',
-    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'text/plain',
   ],
@@ -64,10 +63,9 @@ export const RESUME_ACCEPT = buildAccept(
  * PDF. The narrower spec is a real capability difference, not drift.
  */
 export const DOCUMENT_TEXT_ACCEPT = buildAccept(
-  ['.txt', '.docx', '.doc'],
+  ['.txt', '.docx'],
   [
     'text/plain',
-    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ],
   'TXT, DOC or DOCX',
@@ -82,9 +80,8 @@ export const DOCUMENT_TEXT_ACCEPT = buildAccept(
  * narrowing.
  */
 export const WORD_DOCUMENT_ACCEPT = buildAccept(
-  ['.docx', '.doc'],
+  ['.docx'],
   [
-    'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ],
   'Word',

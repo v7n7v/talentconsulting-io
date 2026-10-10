@@ -8,7 +8,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { guardApiRoute } from '@/lib/api-auth';
+import { guardApiRoute, incrementUsage } from '@/lib/api-auth';
+import { claimPractice, releasePractice, resolvePracticeEvidence, practiceError } from '@/lib/practice-session-server';
+import { getAdminDb } from '@/lib/firebase-admin';
 
 // Voice config per persona — voiceName + gender for prompt reinforcement
 const PERSONA_VOICE_MAP: Record<string, { voice: string; gender: string }> = {
@@ -20,32 +22,45 @@ const PERSONA_VOICE_MAP: Record<string, { voice: string; gender: string }> = {
   'STAR Specialist':    { voice: 'Kore',   gender: 'female' },
   'default':            { voice: 'Kore',   gender: 'female' },
 };
+const PERSONA_ALIASES: Record<string, string> = {
+  'faang-lead': 'FAANG Tech Lead',
+  'friendly-hr': 'Friendly HR',
+  'startup-cto': 'Startup CTO',
+  'vp-engineering': 'VP of Engineering',
+  'consulting-partner': 'Consulting Partner',
+  'behavioral-specialist': 'STAR Specialist',
+};
 
 const LIVE_MODEL = 'gemini-2.5-flash-preview-native-audio';
 
 export async function POST(req: NextRequest) {
   // Auth gate — requires account, counts toward gauntlet usage
   const guard = await guardApiRoute(req, {
-    feature: 'gauntlets',
+    skipUsageCap: true,
     allowAnonymous: false,
   });
   if (guard.error) return guard.error;
 
+  let claim: Awaited<ReturnType<typeof claimPractice>> | undefined;
   try {
     const body = await req.json();
-    const persona = body.persona || 'default';
+    const persona = PERSONA_ALIASES[body.persona] || body.persona || 'default';
     const jobDescription = body.jobDescription || '';
     const interviewStyle = body.interviewStyle || 'behavioral';
     const avatarMode = body.avatarMode || false;
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId.slice(0, 120) : '';
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return NextResponse.json({ error: 'Live interview is temporarily unavailable' }, { status: 503 });
+    const sessionDoc = await getAdminDb().collection('users').doc(guard.user.uid).collection('interview_sessions').doc(sessionId || '_missing').get();
+    if (!sessionDoc.exists) return NextResponse.json({ error: 'Interview session required' }, { status: 404 });
+    const sessionData = sessionDoc.data()!;
+    if (!['sona_live', 'avatar_live'].includes(sessionData.mode)) return NextResponse.json({ error: 'Live session required' }, { status: 400 });
+    const evidence = sessionData.evidenceSnapshot || await resolvePracticeEvidence(guard.user.uid, sessionData);
+    claim = await claimPractice(guard.user.uid, sessionId, guard.user.tier, 'live');
     const voiceConfig = PERSONA_VOICE_MAP[persona] || PERSONA_VOICE_MAP['default'];
 
     // Build the interview system instruction with persona identity
-    const systemInstruction = buildInterviewPrompt(persona, jobDescription, interviewStyle, voiceConfig.gender);
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
-    }
+    const systemInstruction = buildInterviewPrompt(PERSONA_ALIASES[sessionData.persona] || persona, sessionData.jobDescription || '', sessionData.interviewType || interviewStyle, voiceConfig.gender) + `\nCandidate approved source evidence: ${JSON.stringify(evidence).slice(0, 16000)}`;
 
     // v1alpha is REQUIRED for Live API and ephemeral tokens
     const client = new GoogleGenAI({
@@ -77,6 +92,8 @@ export async function POST(req: NextRequest) {
         },
       },
     });
+    await claim.session.set({ evidenceSnapshot: evidence }, { merge: true });
+    await releasePractice(claim, 'live');
 
     return NextResponse.json({
       token: token.name,
@@ -86,6 +103,7 @@ export async function POST(req: NextRequest) {
       avatarMode,
     });
   } catch (error: any) {
+    await releasePractice(claim, 'live').catch(() => {});
     console.error('[api/voice/live-token] Error:', error?.message || error);
     return NextResponse.json(
       { error: error?.message || 'Failed to create live session token' },
@@ -142,4 +160,3 @@ ${jobDescription ? `TARGET ROLE CONTEXT:\n${jobDescription.substring(0, 2000)}` 
 
 Begin the interview now. Introduce yourself in one sentence and ask the first question.`;
 }
-

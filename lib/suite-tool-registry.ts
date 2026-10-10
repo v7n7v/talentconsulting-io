@@ -55,8 +55,8 @@ export const suiteToolRegistry = [
   {
     id: 'resume',
     path: '/suite/resume',
-    title: 'Resume Studio',
-    subtitle: 'Build, morph, verify, and export resumes with truth locks on.',
+    title: 'Your resumes',
+    subtitle: 'Create, edit, design and export your next resume.',
     eyebrow: 'Build',
     icon: 'description',
     group: 'Build',
@@ -121,7 +121,7 @@ export const suiteToolRegistry = [
   },
   {
     id: 'market-oracle',
-    path: '/suite/market-oracle',
+    path: '/suite/job-search?view=analysis',
     title: 'Market Oracle',
     subtitle: 'Decode role fit, market signals, salary context, and skill gaps before applying.',
     eyebrow: 'Search and apply',
@@ -170,7 +170,7 @@ export const suiteToolRegistry = [
   },
   {
     id: 'agent-queue',
-    path: '/suite/agent/queue',
+    path: '/suite/applications?view=review',
     title: 'Agent Queue',
     subtitle: 'Review AI-prepared application packets before they move forward.',
     eyebrow: 'Search and apply',

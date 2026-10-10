@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
 
     const validated = await validateBody(req, ResumeMorphSchema);
     if (!validated.success) return validated.error;
-    const { resume, jobDescription, morphPercentage } = validated.data;
+    const { resume, jobDescription, morphPercentage, targetRole, targetCompany } = validated.data;
 
     const safeJD = sanitizeForAI(jobDescription);
     const consentStatus = await getResumeMorphConsentForUser(guard.user.uid);
@@ -142,7 +142,8 @@ export async function POST(req: NextRequest) {
 
     const guarded = await generateGuardedMorphDraft({
       resume,
-      jobTitle: 'Target role',
+      jobTitle: sanitizeForAI(targetRole || '', 300) || 'Target role',
+      company: sanitizeForAI(targetCompany || '', 300),
       jobDescription: safeJD,
       access: morphAccess,
     });

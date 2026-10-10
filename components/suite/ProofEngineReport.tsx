@@ -41,7 +41,7 @@ export interface ProofEngineFormatCheck {
 export interface ProofEngineReportData {
   title: string;
   description: string;
-  score: number;
+  score: number | null;
   scoreLabel: string;
   sourceLabel: string;
   requirements: ProofEngineRequirement[];
@@ -49,6 +49,44 @@ export interface ProofEngineReportData {
   rejectedClaims: ProofEngineClaim[];
   changes: ProofEngineChange[];
   formattingChecks: ProofEngineFormatCheck[];
+  /** Provenance controls which protection claims this report is allowed to make. */
+  reportKind?: 'scoring-only' | 'rewrite-proof' | 'export-proof';
+  /** Explicit evidence that the corresponding operation was actually checked. */
+  verification?: { rewriteProtected?: boolean; exportVerified?: boolean };
+}
+
+export function getProofEngineVerdict(report: Pick<ProofEngineReportData, 'reportKind' | 'requirements' | 'verification'>): {
+  label: string;
+  detail: string;
+  icon: string;
+} {
+  const missingCount = report.requirements.filter(item => item.status === 'missing' || item.status === 'blocked').length;
+  const partialCount = report.requirements.filter(item => item.status === 'partial').length;
+  if (report.reportKind === 'scoring-only') {
+    if (report.requirements.length === 0) {
+      return { label: 'No coverage assessed', detail: 'This scan did not receive any requirements to assess. It does not verify a rewrite or export.', icon: 'fact_check' };
+    }
+    return missingCount > 0 || partialCount > 0
+      ? { label: 'Scoring gaps found', detail: 'This keyword scan found requirements without affirmative resume evidence. It does not verify a rewrite or export.', icon: 'fact_check' }
+      : { label: 'Evidence coverage assessed', detail: 'This keyword scan found affirmative evidence for the checked requirements. It does not verify a rewrite or export.', icon: 'fact_check' };
+  }
+  if (report.reportKind === 'rewrite-proof') {
+    if (!report.verification?.rewriteProtected) {
+      return { label: 'Evidence review available', detail: 'Rewrite protection was not verified for this report.', icon: 'fact_check' };
+    }
+    return missingCount > 0 || partialCount > 0
+      ? { label: 'Safe rewrite, weak evidence match', detail: 'The rewrite stayed safe, but the source supports only part of the target. Review the gaps to strengthen fit.', icon: 'shield' }
+      : { label: 'Evidence aligned, facts protected', detail: 'The rewrite stayed inside the source evidence and preserved protected facts.', icon: 'verified_user' };
+  }
+  if (report.reportKind === 'export-proof') {
+    if (!report.verification?.exportVerified) {
+      return { label: 'Evidence review available', detail: 'Export verification was not completed for this report.', icon: 'fact_check' };
+    }
+    return missingCount > 0 || partialCount > 0
+      ? { label: 'Export review has gaps', detail: 'Some requirements remain unsupported. Review the source evidence before exporting.', icon: 'rule' }
+      : { label: 'Export checks passed', detail: 'The supplied export checks passed for the requirements represented in this report.', icon: 'verified_user' };
+  }
+  return { label: 'Evidence review available', detail: 'This report summarizes supplied evidence. Rewrite protection and export verification are not established by this report.', icon: 'fact_check' };
 }
 
 type ProofStage = 'requirements' | 'facts' | 'claims' | 'changes' | 'checks';
@@ -174,7 +212,7 @@ function ClaimRows({
                 <strong>{item.claim}</strong>
                 <small>{item.reason}</small>
               </span>
-              <span className="proof-claim-status">Restored</span>
+              <span className="proof-claim-status">Blocked</span>
               <Icon name={expanded ? 'expand_less' : 'expand_more'} />
             </button>
             {expanded ? (
@@ -256,7 +294,9 @@ export function ProofEngineReport({
     item => item.status === 'missing' || item.status === 'blocked',
   ).length;
   const checkedCount = report.requirements.length;
-  const boundedScore = Math.min(Math.max(Math.round(report.score), 0), 100);
+  const boundedScore = report.score == null || !Number.isFinite(report.score)
+    ? null
+    : Math.min(Math.max(Math.round(report.score), 0), 100);
   const firstGapIndex = Math.max(
     report.requirements.findIndex(item => item.status === 'missing' || item.status === 'blocked'),
     0,
@@ -270,6 +310,8 @@ export function ProofEngineReport({
   );
   const [expandedSummary, setExpandedSummary] = useState<ProofStage | null>(null);
   const stagePanelRef = useRef<HTMLDivElement>(null);
+  const rewriteVerified = report.reportKind === 'rewrite-proof' && report.verification?.rewriteProtected === true;
+  const exportVerified = report.reportKind === 'export-proof' && report.verification?.exportVerified === true;
 
   const stages: StageConfig[] = [
     {
@@ -281,8 +323,8 @@ export function ProofEngineReport({
     },
     {
       id: 'facts',
-      label: 'Facts preserved',
-      shortLabel: 'Facts protected',
+      label: rewriteVerified ? 'Facts preserved' : 'Source facts reviewed',
+      shortLabel: rewriteVerified ? 'Facts protected' : 'Source facts',
       icon: 'verified_user',
       count: report.preservedFacts.length,
     },
@@ -295,27 +337,22 @@ export function ProofEngineReport({
     },
     {
       id: 'changes',
-      label: 'Before and after',
-      shortLabel: 'Rewrite explained',
+      label: rewriteVerified ? 'Before and after' : 'Coverage explanation',
+      shortLabel: rewriteVerified ? 'Rewrite explained' : 'Coverage explained',
       icon: 'compare_arrows',
       count: report.changes.length,
     },
     {
       id: 'checks',
-      label: 'ATS-safe checks',
-      shortLabel: 'Export checks',
+      label: exportVerified ? 'ATS-safe checks' : 'Reported scan checks',
+      shortLabel: exportVerified ? 'Export checks' : 'Scan checks',
       icon: 'rule',
       count: report.formattingChecks.length,
     },
   ];
   const activeIndex = stages.findIndex(stage => stage.id === activeStage);
   const activeConfig = stages[activeIndex] || stages[0];
-  const verdict = missingCount > 0
-    ? 'Safe rewrite, weak evidence match'
-    : 'Evidence aligned, facts protected';
-  const verdictDetail = missingCount > 0
-    ? 'The rewrite stayed safe, but the source supports only part of the target. Review the gaps to strengthen fit.'
-    : 'The rewrite stayed inside the source evidence and preserved protected facts.';
+  const verdict = getProofEngineVerdict(report);
 
   const activateStage = (stage: ProofStage, focusPanel = false) => {
     setActiveStage(stage);
@@ -430,25 +467,24 @@ export function ProofEngineReport({
         </div>
 
         <div className="proof-verdict">
-          <Icon name={missingCount > 0 ? 'shield' : 'verified_user'} />
+          <Icon name={verdict.icon} />
           <span>
-            <strong>{verdict}</strong>
-            <small>{verdictDetail}</small>
+            <strong>{verdict.label}</strong>
+            <small>{verdict.detail}</small>
           </span>
         </div>
 
-        <div className="proof-fit-cluster" aria-label={`${report.scoreLabel}: ${boundedScore}%`}>
+        <div className="proof-fit-cluster" aria-label={`${report.scoreLabel}: ${boundedScore == null ? 'not scored' : boundedScore + '%'}`}>
           <span className="proof-fit-marker">
-            <strong>{boundedScore}%</strong>
-            <small>{report.scoreLabel}</small>
+            <strong>{boundedScore == null ? '—' : `${boundedScore}%`}</strong>
           </span>
           <span className="proof-fit-track">
             <span className="proof-fit-track__label">
               <small>{report.scoreLabel}</small>
-              <small>{boundedScore}%</small>
+              <small>{boundedScore == null ? 'Not scored' : `${boundedScore}%`}</small>
             </span>
-            <progress max={100} value={boundedScore}>
-              {boundedScore}%
+            <progress max={100} value={boundedScore ?? 0}>
+              {boundedScore == null ? 'Not scored' : `${boundedScore}%`}
             </progress>
             <span className="proof-fit-track__range">
               <small>0%</small>

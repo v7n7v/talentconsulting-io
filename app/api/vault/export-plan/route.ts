@@ -40,7 +40,12 @@ export async function POST(req: NextRequest) {
         markdown += `### Required Resources\n`;
         day.resources.forEach((res: any) => {
           const typeLabel = res.type === 'video' ? '[Video]' : res.type === 'article' ? '[Article]' : '[Book]';
-          markdown += `- ${typeLabel} [${res.title}](${res.url})\n`;
+        const title = typeof res.title === 'string' && res.title.trim() ? res.title.trim() : 'Suggested resource';
+        const url = typeof res.url === 'string' && /^https?:\/\//i.test(res.url.trim()) ? res.url.trim() : '';
+        const searchFor = typeof res.searchFor === 'string' ? res.searchFor.trim() : '';
+        markdown += url
+          ? `- ${typeLabel} [${title}](${url})\n`
+          : `- ${typeLabel} ${title}${searchFor ? ` (search for: ${searchFor})` : ''}\n`;
         });
         markdown += `\n`;
       }
@@ -65,6 +70,13 @@ export async function POST(req: NextRequest) {
       applicationId: applicationId || null,
       resumeVersionId: resumeVersionId || null,
       sourceTool: 'skill-bridge',
+      schedule: schedule.map((day: any) => ({
+        day: day.day,
+        focus: typeof day.focus === 'string' ? day.focus.slice(0, 300) : '',
+        timeEstimate: typeof day.timeEstimate === 'string' ? day.timeEstimate.slice(0, 80) : null,
+        tasks: Array.isArray(day.tasks) ? day.tasks.filter((task: unknown) => typeof task === 'string').slice(0, 20) : [],
+        resources: Array.isArray(day.resources) ? day.resources.slice(0, 20).map((res: any) => ({ title: String(res.title || '').slice(0, 240), type: String(res.type || 'resource').slice(0, 40), url: /^https?:\/\//i.test(String(res.url || '')) ? String(res.url) : null, searchFor: typeof res.searchFor === 'string' ? res.searchFor.slice(0, 240) : null })) : [],
+      })),
       createdAt: now,
       updatedAt: now,
     };

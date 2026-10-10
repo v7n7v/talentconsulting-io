@@ -8,13 +8,10 @@ service cloud.firestore {
     function isUserMutableCollection(collectionId) {
       return collectionId in [
         'agent',
-        'agent_stories',
         'applicationQueue',
         'cover_letters',
         'debriefs',
         'feedback',
-        'fit_analyses',
-        'interview_sessions',
         'jd_templates',
         'jobAlertEvents',
         'morale',
@@ -22,10 +19,7 @@ service cloud.firestore {
         'outcomes',
         'personas',
         'preferences',
-        'profile',
         'referral',
-        'skill_verifications',
-        'study_progress',
         'vault',
         'writing_sessions'
       ];
@@ -38,11 +32,26 @@ service cloud.firestore {
         'morph_effective_percentage',
         'morph_source_resume_id',
         'morph_source_resume_hash',
+        'morph_source_resume_type',
+        'human_review',
+        'packet_revision',
+        'packet_job_description_hash',
         'cover_letter_succeeded',
         'cover_letter_guardrail_report',
         'cover_letter_source_resume_id',
         'cover_letter_source_resume_hash'
       ]);
+    }
+
+    // Derived intelligence and fit evidence are server-authored. Editable profile
+    // documents retain owner controls, except the computed twin.
+    match /users/{userId}/profile/{profileId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && profileId != 'career_twin';
+    }
+    match /users/{userId}/fit_analyses/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if false;
     }
 
     // Per-user root documents: user can maintain their own profile shell.
@@ -61,12 +70,51 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Assessments and practice allowance receipts are authored by authenticated
+    // server routes; an owner cannot promote a practice result or mint a run.
+    match /users/{userId}/practice_receipts/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/interview_sessions/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/skill_verifications/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+    match /users/{userId}/agent_stories/{document=**} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/skill_challenges/{document=**} {
+      allow read, write: if false;
+    }
+    match /users/{userId}/study_progress/{skillId} {
+      allow read, delete: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && request.resource.data.user_id == userId
+        && request.resource.data.keys().hasOnly([
+          'user_id', 'skill', 'skill_id', 'category', 'total_days', 'completed_days',
+          'plan_data', 'email_reminders', 'application_ids', 'job_title', 'company_name',
+          'started_at', 'last_activity_at', 'completed_at'
+        ]);
+      allow update: if isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'total_days', 'completed_days', 'plan_data', 'email_reminders',
+          'application_ids', 'job_title', 'company_name', 'last_activity_at', 'completed_at'
+        ]);
+    }
+
     // User settings are owner-readable/writable except security-sensitive records
     // that must be updated through server routes.
     match /users/{userId}/settings/{settingId} {
       allow read: if isOwner(userId)
         && settingId != 'privacyControls';
       allow write: if isOwner(userId)
+        && settingId != 'accountLifecycle'
         && settingId != 'resumeMorphSafety'
         && settingId != 'privacyControls';
     }
@@ -75,6 +123,7 @@ service cloud.firestore {
       allow read: if isOwner(userId)
         && settingId != 'privacyControls';
       allow write: if isOwner(userId)
+        && settingId != 'accountLifecycle'
         && settingId != 'resumeMorphSafety'
         && settingId != 'privacyControls';
     }
@@ -101,16 +150,23 @@ service cloud.firestore {
     match /users/{userId}/applications/{document=**} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
+        && (!request.resource.data.keys().hasAny(['source'])
+          || !(request.resource.data.source in ['agent_queue', 'apply_pipeline']))
         && !request.resource.data.keys().hasAny([
           'morph_succeeded',
           'morph_guardrail_report',
           'morph_effective_percentage',
           'morph_source_resume_id',
           'morph_source_resume_hash',
+          'morph_source_resume_type',
+          'packet_revision',
+          'packet_job_description_hash',
+          'human_review',
           'cover_letter_succeeded',
           'cover_letter_guardrail_report',
           'cover_letter_source_resume_id',
           'cover_letter_source_resume_hash',
+          'cover_letter_source_resume_type',
           'packet_generation_state',
           'packet_generation_owner',
           'packet_generation_lease_expires_at'
@@ -118,16 +174,24 @@ service cloud.firestore {
         && (!request.resource.data.keys().hasAny(['packet_status'])
           || request.resource.data.packet_status == 'tracker_draft');
       allow update: if isOwner(userId)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['source'])
+          || (!(request.resource.data.get('source', '') in ['agent_queue', 'apply_pipeline'])
+            && !(resource.data.get('source', '') in ['agent_queue', 'apply_pipeline'])))
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'morph_succeeded',
           'morph_guardrail_report',
           'morph_effective_percentage',
           'morph_source_resume_id',
           'morph_source_resume_hash',
+          'morph_source_resume_type',
+          'packet_revision',
+          'packet_job_description_hash',
+          'human_review',
           'cover_letter_succeeded',
           'cover_letter_guardrail_report',
           'cover_letter_source_resume_id',
           'cover_letter_source_resume_hash',
+          'cover_letter_source_resume_type',
           'packet_generation_state',
           'packet_generation_owner',
           'packet_generation_lease_expires_at'
@@ -146,6 +210,7 @@ service cloud.firestore {
             'company_name',
             'job_description',
             'application_link',
+            'source',
             'source_meta'
           ]));
       allow delete: if isOwner(userId);
@@ -200,57 +265,22 @@ service cloud.firestore {
         ]);
     }
 
-    // Sona queue evidence is written by server workflows. Owners can record
-    // review decisions and feedback without rewriting prepared packet artifacts.
+    // Approval and tracker links are revision-bound server decisions. Clients may
+    // leave feedback or retire a packet, but cannot promote it or forge a receipt.
     match /users/{userId}/agent_queue/{queueId} {
       allow read: if isOwner(userId);
       allow create: if false;
-      allow update: if isOwner(userId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status',
-          'packetStatus',
-          'reviewed_at',
-          'last_action_at',
-          'feedbackTags',
-          'application_id',
-          'assisted_at'
-        ])
-        && request.resource.data.status in ['pending', 'approved', 'dismissed', 'expired']
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['packetStatus'])
-          || request.resource.data.packetStatus in [
-            'needs_review',
-            'needs_attention',
-            'approved',
-            'dismissed',
-            'expired',
-            'assist_apply'
+      allow update: if isOwner(userId) && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'feedbackTags', 'last_action_at'
+        ]) || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'packetStatus', 'last_action_at'
           ])
-        && (!resource.data.keys().hasAny(['generation_status'])
-          || request.resource.data.status != 'approved'
-          || resource.data.generation_status == 'prepared')
-        && (request.resource.data.packetStatus != 'approved'
-          || request.resource.data.status == 'approved')
-        && (request.resource.data.status != 'approved'
-          || request.resource.data.packetStatus in ['approved', 'assist_apply'])
-        && (request.resource.data.status != 'dismissed'
-          || request.resource.data.packetStatus == 'dismissed')
-        && (request.resource.data.status != 'expired'
-          || request.resource.data.packetStatus == 'expired')
-        && (request.resource.data.packetStatus != 'assist_apply'
-          || (request.resource.data.status == 'approved'
-            && resource.data.generation_status == 'prepared'
-            && request.resource.data.application_id is string))
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['application_id'])
-          || ((request.resource.data.packetStatus == 'assist_apply'
-              && request.resource.data.application_id is string
-              && exists(/databases/$(database)/documents/users/$(userId)/applications/$(request.resource.data.application_id))
-              && get(/databases/$(database)/documents/users/$(userId)/applications/$(request.resource.data.application_id)).data.source == 'agent_queue'
-              && get(/databases/$(database)/documents/users/$(userId)/applications/$(request.resource.data.application_id)).data.source_meta.queue_id == queueId)
-            || (request.resource.data.packetStatus == 'approved'
-              && request.resource.data.status == 'approved'
-              && resource.data.application_id is string
-              && !request.resource.data.keys().hasAny(['application_id'])
-              && !exists(/databases/$(database)/documents/users/$(userId)/applications/$(resource.data.application_id)))));
+          && request.resource.data.status in ['dismissed', 'expired']
+          && request.resource.data.packetStatus == request.resource.data.status
+        )
+      );
       allow delete: if isOwner(userId);
     }
 

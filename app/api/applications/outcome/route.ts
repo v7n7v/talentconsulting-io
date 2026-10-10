@@ -6,6 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { readApplicationRecords } from '@/lib/application-records-server';
+import { normalizeApplicationRecord } from '@/lib/application-records';
+import { countsAsApplied, countsAsInterview, countsAsOffer, recordCountsAsEmployerResponse } from '@/lib/career-graph';
+import { firstResponseDays } from '@/lib/career-source-records';
+import { invalidateTwin } from '@/lib/career-twin';
 import { monitor } from '@/lib/monitor';
 import { upsertRecommendationLedgerInTransaction, type RecommendationLedgerStatus } from '@/lib/job-recommendation-platform';
 
@@ -92,23 +97,24 @@ export async function GET(req: NextRequest) {
   try {
     const db = getAdminDb();
     const uid = guard.user.uid;
-    const appsSnap = await db.collection('users').doc(uid).collection('applications').get();
+    const applicationRead = await readApplicationRecords(uid);
+    if (!applicationRead.complete) throw new Error('Application history exceeds the current summary limit.');
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const allApps = appsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+    const allApps = applicationRead.records;
 
     const pending = allApps
       .filter((app: any) => {
         if (app.outcome_response) return false;
         if (app.status !== 'applied') return false;
-        const appliedAt = app.applied_at || app.created_at;
+        const appliedAt = app.applied_at;
         return new Date(appliedAt).getTime() < sevenDaysAgo;
       })
       .map((app: any) => ({
         id: app.id,
         company_name: app.company_name,
         job_title: app.job_title || '',
-        applied_at: app.applied_at || app.created_at,
-        days_ago: Math.floor((Date.now() - new Date(app.applied_at || app.created_at).getTime()) / (1000 * 60 * 60 * 24)),
+        applied_at: app.applied_at,
+        days_ago: Math.floor((Date.now() - new Date(app.applied_at).getTime()) / (1000 * 60 * 60 * 24)),
         talent_density_score: app.talent_density_score || null,
       }))
       .sort((a: any, b: any) => a.days_ago - b.days_ago)
@@ -123,8 +129,8 @@ export async function GET(req: NextRequest) {
     // "Offer Rate 0%" and "Ghost Rate 0%" — and the "No Outcome Data" empty
     // state below it was unreachable, because the page gates on the stats
     // object existing rather than on the count.
-    const appliedApps = allApps.filter(a => a.status !== 'not_applied');
-    const withOutcome = allApps.filter(a => a.outcome_response);
+    const appliedApps = allApps.filter(a => countsAsApplied(a.status));
+    const withOutcome = appliedApps.filter(a => a.outcome_response);
     const totalApplied = appliedApps.length;
     const totalReported = withOutcome.length;
 
@@ -134,10 +140,8 @@ export async function GET(req: NextRequest) {
     for (const app of withOutcome) {
       const outcome = app.outcome_response as string;
       if (counts[outcome] !== undefined) counts[outcome]++;
-      if (app.outcome_days_to_response) {
-        totalDays += app.outcome_days_to_response;
-        daysCount++;
-      }
+      const days = firstResponseDays(app);
+      if (days !== null) { totalDays += days; daysCount++; }
     }
 
     /*
@@ -152,7 +156,9 @@ export async function GET(req: NextRequest) {
      * Rate 0% / Of 3 sent" on the next. `ghosted` stays out, for the obvious
      * reason. The positive outcomes keep their own tiles below.
      */
-    const responded = counts.callback + counts.interview + counts.offer + counts.rejection;
+    const responded = appliedApps.filter(recordCountsAsEmployerResponse).length;
+    const interviews = appliedApps.filter(countsAsInterview).length;
+    const offers = appliedApps.filter(countsAsOffer).length;
     const stats = {
       totalReported,
       totalApplied,
@@ -161,11 +167,11 @@ export async function GET(req: NextRequest) {
       responseRate: totalApplied > 0 ? Math.round((responded / totalApplied) * 100) : null,
       ghostRate: totalReported > 0 ? Math.round((counts.ghosted / totalReported) * 100) : null,
       avgDaysToResponse: daysCount > 0 ? Math.round(totalDays / daysCount) : null,
-      interviewRate: totalApplied > 0 ? Math.round(((counts.interview + counts.offer) / totalApplied) * 100) : null,
-      offerRate: totalApplied > 0 ? Math.round((counts.offer / totalApplied) * 100) : null,
+      interviewRate: totalApplied > 0 ? Math.round((interviews / totalApplied) * 100) : null,
+      offerRate: totalApplied > 0 ? Math.round((offers / totalApplied) * 100) : null,
       callbackCount: counts.callback,
-      interviewCount: counts.interview,
-      offerCount: counts.offer,
+      interviewCount: interviews,
+      offerCount: offers,
       rejectionCount: counts.rejection,
       ghostedCount: counts.ghosted,
     };
@@ -220,7 +226,7 @@ export async function POST(req: NextRequest) {
       ]);
       if (!snap.exists) throw new OutcomeRequestError(404, 'APPLICATION_NOT_FOUND', 'Application not found');
 
-      const appData = snap.data()!;
+      const appData = normalizeApplicationRecord(snap.data()!);
       const previousOutcome = appData.outcome_response as ApplicationOutcome | undefined;
       if (appData.status === 'not_applied') {
         throw new OutcomeRequestError(409, 'APPLICATION_NOT_APPLIED', 'Mark applied before logging an outcome');
@@ -340,6 +346,7 @@ export async function POST(req: NextRequest) {
       return { duplicate: false, daysToResponse, reportedAt, learningLinked: Boolean(calibrationEvidence?.jobKey) };
     });
 
+    await invalidateTwin(uid).catch(error => console.error('Twin invalidation failed', error));
     monitor.info('Outcome Reported', `${applicationId}: ${normalizedOutcome}`, [
       { name: 'Days', value: String(result.daysToResponse) },
     ]);

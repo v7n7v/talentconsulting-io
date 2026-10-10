@@ -1,0 +1,33 @@
+.resume-intake-review {
+  min-width: 0;
+  border: 1px solid var(--text-primary);
+  background: var(--bg-surface);
+  padding: clamp(16px, 3vw, 28px);
+  box-shadow: var(--elevation-card);
+}
+.resume-intake-review__header { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; margin-bottom: 24px; }
+.resume-intake-review__header h2 { font-size: 1.35rem; line-height: 1.3; margin: 6px 0 8px; }
+.resume-intake-review__header p { font-size: 13px; line-height: 1.6; color: var(--text-secondary); }
+.resume-intake-review .resume-intake-review__eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; overflow-wrap: anywhere; }
+.resume-intake-review__fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.resume-intake-review__wide { grid-column: 1 / -1; }
+.resume-intake-review label { display: grid; gap: 6px; min-width: 0; font-size: 12px; font-weight: 600; }
+.resume-intake-review :is(input, textarea) {
+  display: block; width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--border-subtle); border-radius: 2px;
+  background: var(--bg-input); color: var(--text-primary); padding: 10px 12px; font: inherit; font-size: 14px; line-height: 1.5;
+}
+.resume-intake-review textarea { resize: vertical; max-height: 360px; }
+.resume-intake-review__facts { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-subtle); }
+.resume-intake-review__facts h3 { font-size: 14px; margin: 0 0 12px; }
+.resume-intake-review fieldset { display: grid; gap: 10px; min-width: 0; padding: 16px; margin: 12px 0; border: 1px solid var(--border-subtle); }
+.resume-intake-review legend { font-size: 12px; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; padding: 0 6px; }
+.resume-intake-review button { border: 1px solid var(--border-subtle); border-radius: 2px; min-height: 44px; padding: 10px 14px; font-size: 12px; font-weight: 600; background: var(--bg-surface); color: var(--text-primary); }
+.resume-intake-review button:hover { border-color: var(--text-primary); background: var(--bg-hover); }
+.resume-intake-review button:disabled { opacity: .6; cursor: wait; }
+.resume-intake-review .resume-intake-review__primary { width: 100%; margin-top: 24px; background: var(--taco-coral) !important; color: var(--taco-ink) !important; border-color: var(--taco-ink); font-size: 14px; }
+.resume-intake-review__error { padding: 12px; border-left: 3px solid var(--danger); color: var(--danger); font-size: 13px; }
+@media(max-width: 540px) {
+  .resume-intake-review__fields { grid-template-columns: 1fr; }
+  .resume-intake-review__header { flex-wrap: wrap; }
+  .resume-intake-review fieldset { padding: 12px; }
+}

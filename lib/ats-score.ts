@@ -35,6 +35,18 @@ export interface ATSScoreResult {
     partial: number;
     missing: number;
   };
+  /** Indicates which category scores had requirements to assess. Numeric scores remain backwards compatible. */
+  assessment?: {
+    hardSkills: 'assessed' | 'unassessed';
+    softSkills: 'assessed' | 'unassessed';
+    tools: 'assessed' | 'unassessed';
+    experienceRelevance: 'assessed' | 'unassessed';
+    overall: 'assessed' | 'unassessed';
+  };
+}
+
+export function getATSProofScore(result: Pick<ATSScoreResult, 'overallScore' | 'assessment'>): number | null {
+  return result.assessment?.overall === 'unassessed' ? null : result.overallScore;
 }
 
 // ── Common ATS-Parsed Section Headers ──
@@ -85,29 +97,6 @@ function tokenize(text: string): string[] {
     .filter(w => w.length > 1);
 }
 
-function extractPhrases(text: string, maxN = 3): Set<string> {
-  const lower = text.toLowerCase();
-  const words = tokenize(lower);
-  const phrases = new Set<string>();
-
-  // Unigrams
-  words.forEach(w => phrases.add(w));
-
-  // Bigrams
-  for (let i = 0; i < words.length - 1; i++) {
-    phrases.add(`${words[i]} ${words[i + 1]}`);
-  }
-
-  // Trigrams
-  if (maxN >= 3) {
-    for (let i = 0; i < words.length - 2; i++) {
-      phrases.add(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
-    }
-  }
-
-  return phrases;
-}
-
 function findContext(text: string, keyword: string): string | undefined {
   const lower = text.toLowerCase();
   const idx = lower.indexOf(keyword.toLowerCase());
@@ -119,6 +108,60 @@ function findContext(text: string, keyword: string): string | undefined {
   if (start > 0) snippet = '...' + snippet;
   if (end < text.length) snippet = snippet + '...';
   return snippet;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Match a keyword as a token/phrase, so Java does not match JavaScript and SQL does not match NoSQL. */
+function findStandaloneMatches(text: string, keyword: string): number[] {
+  const pattern = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(keyword)}(?![A-Za-z0-9])`, 'gi');
+  return Array.from(text.matchAll(pattern), match => match.index ?? -1).filter(index => index >= 0);
+}
+
+function affirmativeMatchIndex(text: string, keyword: string): number | undefined {
+  const matches = findStandaloneMatches(text, keyword);
+  return matches.find(index => {
+    const sentenceStart = Math.max(
+      text.lastIndexOf('.', index), text.lastIndexOf('!', index), text.lastIndexOf('?', index),
+      text.lastIndexOf('\n', index), text.lastIndexOf(';', index),
+    ) + 1;
+    const sentenceEndCandidates = [
+      text.indexOf('.', index + keyword.length), text.indexOf('!', index + keyword.length),
+      text.indexOf('?', index + keyword.length), text.indexOf('\n', index + keyword.length),
+      text.indexOf(';', index + keyword.length),
+    ].filter(value => value >= 0);
+    const sentenceEnd = sentenceEndCandidates.length ? Math.min(...sentenceEndCandidates) : text.length;
+    const sentence = text.slice(sentenceStart, sentenceEnd);
+    const before = text.slice(sentenceStart, index);
+    const after = text.slice(index + keyword.length, sentenceEnd);
+    // A comma followed by "but/however" starts an independent affirmative clause.
+    const clauseBefore = /,\s*(?:but|however|yet|although)\b/i.test(before)
+      ? before.slice(Math.max(before.lastIndexOf(','), 0) + 1)
+      : before;
+    if (/\b(?:no|without|not|never|lack(?:s|ing)?|lacks)\b[^.!?;\n]{0,80}$/i.test(clauseBefore)) return false;
+    if (/\b(?:learning|studying|training|planned?\s+to|planning\s+to|hoping\s+to|aspiring\s+to)\b[^.!?;\n]{0,60}$/i.test(clauseBefore)) return false;
+    if (/^\s*(?::|[-–—])?\s*(?:(?:[A-Za-z]+)\s+){0,3}(?:no|without|not|never|expired|lapsed)\b/i.test(after)) return false;
+    if (/\b(?:expired|lapsed)\b[^.!?;\n]{0,30}$/i.test(clauseBefore)) return false;
+    return sentence.trim().length > 0;
+  });
+}
+
+/**
+ * This is deliberately conservative lexical evidence, not an NLP qualification claim.
+ * A keyword is affirmative only when at least one occurrence is not negated or aspirational.
+ */
+function hasAffirmativeEvidence(text: string, keyword: string): boolean {
+  return affirmativeMatchIndex(text, keyword) !== undefined;
+}
+
+function findAffirmativeContext(text: string, keyword: string): string | undefined {
+  const index = affirmativeMatchIndex(text, keyword);
+  if (index === undefined) return undefined;
+  const start = Math.max(0, index - 40);
+  const end = Math.min(text.length, index + keyword.length + 40);
+  return `${start > 0 ? '...' : ''}${text.slice(start, end).trim()}${end < text.length ? '...' : ''}`;
 }
 
 /**
@@ -191,8 +234,7 @@ function extractJDKeywords(jd: string): Array<{ keyword: string; category: Keywo
   ];
 
   for (const kw of techKeywords) {
-    const regex = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-    if (regex.test(jd) && !seen.has(kw)) {
+    if (findStandaloneMatches(jd, kw).length > 0 && !seen.has(kw)) {
       seen.add(kw);
       results.push({ keyword: kw, category: 'tool' });
     }
@@ -274,30 +316,26 @@ function scoreFormatting(resumeText: string): { score: number; issues: string[] 
 
 export function calculateATSScore(resumeText: string, jobDescription: string): ATSScoreResult {
   const jdKeywords = extractJDKeywords(jobDescription);
-  const resumePhrases = extractPhrases(resumeText, 3);
-  const resumeLower = resumeText.toLowerCase();
-
   const keywords: KeywordMatch[] = [];
   let matched = 0;
   let partial = 0;
   let missing = 0;
 
   for (const { keyword, category } of jdKeywords) {
-    const kwLower = keyword.toLowerCase();
-    const kwWords = kwLower.split(/\s+/);
+    const kwWords = keyword.toLowerCase().split(/\s+/);
 
     // Exact match
-    if (resumeLower.includes(kwLower) || resumePhrases.has(kwLower)) {
+    if (hasAffirmativeEvidence(resumeText, keyword)) {
       matched++;
       keywords.push({
         keyword,
         category,
         status: 'matched',
-        resumeContext: findContext(resumeText, keyword),
+        resumeContext: findAffirmativeContext(resumeText, keyword),
       });
     }
     // Partial match — at least one word from multi-word keyword exists
-    else if (kwWords.length > 1 && kwWords.some(w => w.length > 2 && resumePhrases.has(w))) {
+    else if (kwWords.length > 1 && kwWords.some(w => w.length > 2 && hasAffirmativeEvidence(resumeText, w))) {
       partial++;
       keywords.push({ keyword, category, status: 'partial' });
     }
@@ -313,7 +351,7 @@ export function calculateATSScore(resumeText: string, jobDescription: string): A
   // Category scores
   const byCategory = (cat: KeywordMatch['category']) => {
     const catKws = keywords.filter(k => k.category === cat);
-    if (catKws.length === 0) return 70; // neutral if no keywords in this category
+    if (catKws.length === 0) return 70; // legacy numeric fallback; assessment metadata marks this unassessed
     const catMatched = catKws.filter(k => k.status === 'matched').length;
     const catPartial = catKws.filter(k => k.status === 'partial').length;
     return Math.round(((catMatched + catPartial * 0.5) / catKws.length) * 100);
@@ -327,18 +365,34 @@ export function calculateATSScore(resumeText: string, jobDescription: string): A
   const formatting = scoreFormatting(resumeText);
 
   // Experience relevance: blend of domain keywords + cert matches
-  const domainScore = byCategory('domain');
-  const certScore = byCategory('certification');
-  const experienceRelevance = Math.round((domainScore + certScore) / 2);
+  const relevanceParts = [
+    ...(keywords.some(k => k.category === 'domain') ? [byCategory('domain')] : []),
+    ...(keywords.some(k => k.category === 'certification') ? [byCategory('certification')] : []),
+  ];
+  const experienceRelevance = relevanceParts.length
+    ? Math.round(relevanceParts.reduce((sum, score) => sum + score, 0) / relevanceParts.length)
+    : 70;
 
-  // Overall score: weighted blend
+  // Overall score: weighted blend of assessed dimensions only. Keep the numeric
+  // fields for API compatibility, while metadata prevents neutral placeholders
+  // from affecting the displayed/interpretive score.
   const matchRate = (matched + partial * 0.5) / totalKeywords;
-  const overallScore = Math.min(98, Math.max(5, Math.round(
-    matchRate * 50 +                    // 50% keyword match
-    (formatting.score / 100) * 20 +     // 20% formatting
-    (hardSkillsScore / 100) * 15 +      // 15% hard skills emphasis
-    (experienceRelevance / 100) * 15    // 15% domain relevance
-  )));
+  const assessment = {
+    hardSkills: keywords.some(k => k.category === 'hard_skill') ? 'assessed' as const : 'unassessed' as const,
+    softSkills: keywords.some(k => k.category === 'soft_skill') ? 'assessed' as const : 'unassessed' as const,
+    tools: keywords.some(k => k.category === 'tool') ? 'assessed' as const : 'unassessed' as const,
+    experienceRelevance: keywords.some(k => k.category === 'domain' || k.category === 'certification') ? 'assessed' as const : 'unassessed' as const,
+    overall: jdKeywords.length > 0 ? 'assessed' as const : 'unassessed' as const,
+  };
+  const weightedParts = [
+    { value: matchRate, weight: 50 },
+    { value: formatting.score / 100, weight: 20 },
+    ...(assessment.hardSkills === 'assessed' ? [{ value: hardSkillsScore / 100, weight: 15 }] : []),
+    ...(assessment.experienceRelevance === 'assessed' ? [{ value: experienceRelevance / 100, weight: 15 }] : []),
+  ];
+  const weightedTotal = weightedParts.reduce((sum, part) => sum + part.value * part.weight, 0);
+  const weightTotal = weightedParts.reduce((sum, part) => sum + part.weight, 0);
+  const overallScore = Math.min(98, Math.max(5, Math.round((weightedTotal / weightTotal) * 100)));
 
   // Generate suggestions
   const suggestions: string[] = [];
@@ -387,5 +441,6 @@ export function calculateATSScore(resumeText: string, jobDescription: string): A
       partial,
       missing,
     },
+    assessment,
   };
 }

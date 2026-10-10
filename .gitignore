@@ -13,6 +13,7 @@
 
 # next.js
 /.next/
+/.next-workspace-preview/
 /out/
 
 # production
@@ -90,3 +91,11 @@ YOUR_CREDENTIALS.txt
 # .claude/skills is the local install target, per docs/claude-skills/README.md.
 # Tracking both would let the two copies diverge silently.
 /.claude
+
+/.project-map/
+
+# Local verification and publication receipts
+/.codex/releases/
+/tmp/
+__pycache__/
+*.py[cod]

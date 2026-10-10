@@ -27,9 +27,9 @@ export const emailTokens = {
 export const emailBrand = {
   name: 'TalentConsulting.io',
   origin: 'https://talentconsulting.io',
-  logoUrl: 'https://talentconsulting.io/brand/talentconsulting-logo-email.png',
-  markUrl: 'https://talentconsulting.io/brand/talentconsulting-mark-192.png',
-  tacoMarkUrl: 'https://talentconsulting.io/brand/talentconsulting-mark-192.png',
+  logoUrl: 'https://talentconsulting.io/brand/taco/taco-folded-ink.png',
+  markUrl: 'https://talentconsulting.io/taco-icon-192.png',
+  tacoMarkUrl: 'https://talentconsulting.io/taco-icon-192.png',
   settingsUrl: 'https://talentconsulting.io/suite/settings?tab=notifications',
   supportUrl: 'https://talentconsulting.io/contact',
   privacyUrl: 'https://talentconsulting.io/privacy',

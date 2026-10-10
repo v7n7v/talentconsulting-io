@@ -54,10 +54,10 @@ test('paid lifecycle messages explain the work that became available', () => {
     email.indexOf('// ── Template: Job Digest'),
   );
   const sona = read('app/api/agent/chat/route.ts');
-  const sonaAccess = sona.slice(
-    sona.indexOf('async function checkSonaAccess'),
-    sona.indexOf('async function incrementSonaUsage'),
-  );
+  const sonaAccess = read('lib/assistant/chat-message-quota.ts');
+  // Access guidance now lives with the atomic message quota policy.
+  assert.match(sona, /reserveChatMessage\(db, guard\.user\.uid, guard\.user\.tier/);
+  assert.match(sona, /reservation\.kind === 'denied'.*reservation\.reason/);
   assert.match(paidEmail, /Taco scouting with ranked opportunities and source checks/);
   assert.match(paidEmail, /Role-ready resumes grounded in your real experience/);
   assert.match(paidEmail, /Taco can now scout, rank and prepare truth-locked application work for your review/);

@@ -54,7 +54,7 @@
   background: color-mix(in srgb, var(--admin-info-soft) 62%, var(--admin-surface-elevated));
   color: var(--admin-text-secondary);
   padding: 5px 10px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 680;
 }
 
@@ -78,9 +78,7 @@
   position: absolute;
   border: 1px solid color-mix(in srgb, var(--admin-cobalt) 52%, transparent);
   border-radius: 50%;
-  box-shadow:
-    inset 0 0 26px color-mix(in srgb, var(--admin-cobalt) 9%, transparent),
-    0 0 20px color-mix(in srgb, var(--admin-violet) 8%, transparent);
+  box-shadow: var(--elevation-card);
 }
 
 .admin-command-grid .observability-orbit-ring.is-outer {
@@ -98,7 +96,7 @@
   height: 8px;
   border-radius: 50%;
   background: var(--admin-info);
-  box-shadow: 0 0 18px var(--admin-info);
+  box-shadow: var(--elevation-card);
   content: "";
 }
 
@@ -114,7 +112,7 @@
   top: 10px;
   left: 84px;
   background: var(--admin-violet);
-  box-shadow: 0 0 18px var(--admin-violet);
+  box-shadow: var(--elevation-card);
 }
 
 .admin-command-grid .observability-orbit-core {
@@ -126,9 +124,7 @@
   border-radius: 20px;
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--admin-cobalt) 24%, var(--admin-surface-elevated)), var(--admin-surface-elevated));
-  box-shadow:
-    0 0 0 8px color-mix(in srgb, var(--admin-cobalt) 5%, transparent),
-    0 16px 45px color-mix(in srgb, var(--admin-cobalt) 25%, transparent);
+  box-shadow: var(--elevation-raised);
   color: var(--admin-text-primary);
   font-size: 32px;
 }
@@ -139,7 +135,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--admin-healthy);
-  box-shadow: 0 0 13px var(--admin-healthy);
+  box-shadow: var(--elevation-card);
   animation: observability-node-pulse 2.6s ease-in-out infinite;
 }
 
@@ -242,7 +238,7 @@
 
 .admin-command-grid .observability-view-switcher small {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-tab-panel {
@@ -290,7 +286,7 @@
 .admin-command-grid .observability-disabled-state p {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -337,7 +333,7 @@
   background: var(--admin-degraded-soft);
   color: var(--admin-text-secondary);
   padding: 8px 10px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-sparse-note .material-symbols-rounded {
@@ -370,13 +366,13 @@
 .admin-command-grid .observability-bar-rank {
   color: var(--admin-text-muted);
   font-family: var(--font-mono), "JetBrains Mono", monospace;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-bar-label {
   overflow: hidden;
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 680;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -396,14 +392,14 @@
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--admin-cobalt), var(--admin-violet));
-  box-shadow: 0 0 12px color-mix(in srgb, var(--admin-cobalt) 32%, transparent);
+  box-shadow: var(--elevation-card);
   transition: width 320ms ease;
 }
 
 .admin-command-grid .observability-bar-row > strong {
   color: var(--admin-text-secondary);
   font-family: var(--font-mono), "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: 11px;
   text-align: right;
 }
 
@@ -426,9 +422,7 @@
       var(--admin-healthy) 0 var(--observability-success, 0deg),
       var(--admin-violet) var(--observability-success, 0deg) 360deg
     );
-  box-shadow:
-    inset 0 0 0 1px var(--admin-border),
-    0 0 28px color-mix(in srgb, var(--admin-violet) 13%, transparent);
+  box-shadow: inset 0 0 0 1px var(--admin-border);
 }
 
 .admin-command-grid .observability-donut > span {
@@ -444,7 +438,7 @@
 
 .admin-command-grid .observability-donut small {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -473,7 +467,7 @@
   align-items: center;
   gap: 7px;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-outcome-list i {
@@ -502,7 +496,7 @@
 .admin-command-grid .observability-outcome-list strong {
   color: var(--admin-text-primary);
   font-family: var(--font-mono), "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-context-grid {
@@ -541,7 +535,7 @@
 
 .admin-command-grid .observability-fact-list dt {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -550,7 +544,7 @@
 .admin-command-grid .observability-fact-list dd {
   margin: 0;
   color: var(--admin-text-primary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 670;
 }
 
@@ -573,7 +567,7 @@
   background: var(--admin-surface-elevated);
   color: var(--admin-text-secondary);
   padding: 7px 9px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -966,7 +960,7 @@
 
 .admin-command-grid .observability-timeline dt {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 740;
   letter-spacing: 0.07em;
   text-transform: uppercase;

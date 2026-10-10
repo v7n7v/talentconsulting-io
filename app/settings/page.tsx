@@ -48,13 +48,15 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
             setTotpSecret(result.totpSecret);
             setSecretKey(result.secretKey || '');
 
-            // Generate QR code as data URL
+            // Generate QR code as data URL. Dark modules on a transparent field so
+            // the code sits on the always-white --paper well and stays scannable in
+            // both themes (a white-module QR was invisible on the light surface).
             if (result.qrCodeUrl) {
                 const QRCode = (await import('qrcode')).default;
                 const dataUrl = await QRCode.toDataURL(result.qrCodeUrl, {
                     width: 200,
                     margin: 2,
-                    color: { dark: '#ffffff', light: '#00000000' },
+                    color: { dark: '#151515', light: '#00000000' },
                 });
                 setQrDataUrl(dataUrl);
             }
@@ -135,26 +137,26 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="rounded-2xl bg-gradient-to-br from-slate-900/80 to-slate-800/50 border border-white/10 overflow-hidden relative"
+            className="elevation-card overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)]"
         >
-            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-amber-500/10 to-orange-500/10 blur-3xl" />
             <div className="relative p-6">
                 <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                            <span className="material-symbols-rounded text-2xl text-white">enhanced_encryption</span>
+                        <div className="icon-shell-neutral inline-grid h-12 w-12 shrink-0 place-items-center rounded-xl border">
+                            <span className="material-symbols-rounded icon-neutral text-2xl">enhanced_encryption</span>
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-white">Two-Factor Authentication</h2>
-                            <p className="text-slate-400 text-sm">Protect your account with Google Authenticator</p>
+                            <h2 className="text-xl font-bold text-[var(--text-primary)]">Two-Factor Authentication</h2>
+                            <p className="text-sm text-[var(--text-secondary)]">Protect your account with Google Authenticator</p>
                         </div>
                     </div>
                     {mfaStatus.enrolled ? (
-                        <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-medium border border-green-500/30">
-                            ✓ Enabled
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[var(--success)] px-3 py-1 text-xs font-medium text-[var(--success)]">
+                            <span className="material-symbols-rounded text-[15px] leading-none" aria-hidden="true">check_circle</span>
+                            Enabled
                         </span>
                     ) : (
-                        <span className="px-3 py-1 rounded-full bg-slate-500/20 text-slate-400 text-xs font-medium border border-slate-500/30">
+                        <span className="rounded-full border border-[var(--border-subtle)] px-3 py-1 text-xs font-medium text-[var(--text-muted)]">
                             Not Enrolled
                         </span>
                     )}
@@ -162,14 +164,14 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
 
                 {mfaStatus.enrolled ? (
                     <div className="space-y-4">
-                        <div className="p-4 rounded-xl bg-green-500/5 border border-green-500/20">
+                        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                                    <span className="material-symbols-rounded text-lg text-green-400">shield</span>
+                                <div className="inline-grid h-10 w-10 place-items-center rounded-full border border-[var(--success)]">
+                                    <span className="material-symbols-rounded text-lg text-[var(--success)]">shield</span>
                                 </div>
                                 <div>
-                                    <p className="text-white font-medium">Authenticator App</p>
-                                    <p className="text-sm text-slate-400">
+                                    <p className="font-medium text-[var(--text-primary)]">Authenticator App</p>
+                                    <p className="text-sm text-[var(--text-secondary)]">
                                         {mfaStatus.hints[0]?.displayName || 'Google Authenticator'}
                                     </p>
                                 </div>
@@ -180,7 +182,7 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
                             whileTap={{ scale: 0.98 }}
                             onClick={handleUnenroll}
                             disabled={loading}
-                            className="w-full px-6 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-medium hover:bg-red-500/20 transition-all disabled:opacity-50"
+                            className="w-full min-h-[44px] rounded-xl border border-[var(--danger)] bg-transparent px-6 py-3 font-medium text-[var(--danger)] transition-colors hover:bg-[var(--accent-dim)] disabled:opacity-50"
                         >
                             {loading && step === 'unenrolling' ? 'Removing...' : 'Remove 2FA'}
                         </motion.button>
@@ -189,24 +191,24 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
                     <div className="space-y-5">
                         {/* QR Code */}
                         <div className="flex flex-col items-center">
-                            <p className="text-slate-400 text-sm mb-4 text-center">
-                                Scan this QR code with <strong className="text-amber-400">Google Authenticator</strong> or any TOTP app
+                            <p className="mb-4 text-center text-sm text-[var(--text-secondary)]">
+                                Scan this QR code with <strong className="text-[var(--accent)]">Google Authenticator</strong> or any TOTP app
                             </p>
                             {qrDataUrl && (
-                                <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-                                    <img src={qrDataUrl} alt="QR Code for authenticator" className="w-48 h-48" />
+                                <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--paper)] p-4">
+                                    <img src={qrDataUrl} alt="QR Code for authenticator" className="h-48 w-48" />
                                 </div>
                             )}
                         </div>
 
                         {/* Manual key */}
-                        <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-                            <p className="text-xs text-slate-500 mb-1">Can't scan? Enter this key manually:</p>
+                        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                            <p className="mb-1 text-xs text-[var(--text-muted)]">Can&apos;t scan? Enter this key manually:</p>
                             <div className="flex items-center gap-2">
-                                <code className="flex-1 text-sm text-amber-400 font-mono break-all select-all">{secretKey}</code>
+                                <code className="flex-1 select-all break-all font-mono text-sm text-[var(--accent)]">{secretKey}</code>
                                 <button
                                     onClick={copySecret}
-                                    className="px-2 py-1 rounded-lg bg-white/5 text-slate-400 hover:text-white text-xs transition-colors shrink-0"
+                                    className="inline-flex min-h-[44px] shrink-0 items-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
                                 >
                                     Copy
                                 </button>
@@ -215,14 +217,14 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
 
                         {/* Verify */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                            <label className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
                                 Enter code from app
                             </label>
                             <input
                                 type="text"
                                 value={verifyCode}
                                 onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                                className="w-full rounded-xl px-4 py-4 bg-white/5 border border-white/10 text-white text-center text-2xl tracking-[0.3em] font-mono focus:outline-none focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 transition-all"
+                                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-4 text-center font-mono text-2xl tracking-[0.3em] text-[var(--text-primary)] transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-dim)]"
                                 placeholder="000000"
                                 maxLength={6}
                                 disabled={loading}
@@ -231,8 +233,8 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
                         </div>
 
                         {error && (
-                            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-                                <p className="text-sm text-red-300">{error}</p>
+                            <div className="rounded-xl border border-[var(--danger)] bg-[var(--bg-surface)] p-3">
+                                <p className="text-sm text-[var(--danger)]">{error}</p>
                             </div>
                         )}
 
@@ -242,13 +244,13 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
                                 whileTap={{ scale: 0.98 }}
                                 onClick={handleVerifyEnroll}
                                 disabled={loading || verifyCode.length < 6}
-                                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium hover:shadow-lg hover:shadow-amber-500/30 transition-all disabled:opacity-50"
+                                className="btn-primary flex-1 min-h-[44px] rounded-xl px-6 py-3 font-medium disabled:opacity-50"
                             >
                                 {loading ? 'Verifying...' : 'Verify & Enable'}
                             </motion.button>
                             <button
                                 onClick={() => { setStep('idle'); setVerifyCode(''); setError(''); setTotpSecret(null); setQrDataUrl(''); }}
-                                className="px-4 py-3 rounded-xl border border-white/10 text-slate-400 hover:text-white transition-colors"
+                                className="btn-secondary min-h-[44px] rounded-xl px-4 py-3"
                             >
                                 Cancel
                             </button>
@@ -256,12 +258,12 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-[var(--text-muted)]">
                             Use Google Authenticator, Authy, or any TOTP-compatible app to generate verification codes every time you sign in.
                         </p>
                         {error && (
-                            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-                                <p className="text-sm text-red-300">{error}</p>
+                            <div className="rounded-xl border border-[var(--danger)] bg-[var(--bg-surface)] p-3">
+                                <p className="text-sm text-[var(--danger)]">{error}</p>
                             </div>
                         )}
                         <motion.button
@@ -269,11 +271,11 @@ function MFASection({ addToast }: { addToast: (type: 'success' | 'error' | 'info
                             whileTap={{ scale: 0.98 }}
                             onClick={handleStartEnroll}
                             disabled={loading}
-                            className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium hover:shadow-lg hover:shadow-amber-500/30 transition-all disabled:opacity-50"
+                            className="btn-primary w-full min-h-[44px] rounded-xl px-6 py-3 font-medium disabled:opacity-50"
                         >
                             {loading ? (
                                 <span className="flex items-center justify-center gap-2">
-                                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                     </svg>
@@ -368,9 +370,9 @@ export default function SettingsPage() {
         if (/\d/.test(password)) strength++;
         if (/[^a-zA-Z0-9]/.test(password)) strength++;
 
-        if (strength <= 2) return { strength, label: 'Weak', color: 'bg-red-500' };
-        if (strength <= 3) return { strength, label: 'Medium', color: 'bg-yellow-500' };
-        return { strength, label: 'Strong', color: 'bg-green-500' };
+        if (strength <= 2) return { strength, label: 'Weak', color: 'bg-[var(--danger)]' };
+        if (strength <= 3) return { strength, label: 'Medium', color: 'bg-[var(--warning)]' };
+        return { strength, label: 'Strong', color: 'bg-[var(--success)]' };
     };
 
     const handlePasswordChange = async (e: React.FormEvent) => {
@@ -425,6 +427,9 @@ export default function SettingsPage() {
 
     const passwordStrength = getPasswordStrength(newPassword);
 
+    const toastIconColor = (type: Toast['type']) =>
+        type === 'success' ? 'text-[var(--success)]' : type === 'error' ? 'text-[var(--danger)]' : 'text-[var(--accent)]';
+
     return (
         <div className="min-h-dvh p-6 lg:p-8">
             {/* Toast Notifications */}
@@ -436,17 +441,12 @@ export default function SettingsPage() {
                             initial={{ opacity: 0, x: 100, scale: 0.8 }}
                             animate={{ opacity: 1, x: 0, scale: 1 }}
                             exit={{ opacity: 0, x: 100, scale: 0.8 }}
-                            className={`px-4 py-3 rounded-xl shadow-lg border backdrop-blur-xl ${toast.type === 'success'
-                                ? 'bg-green-500/20 border-green-500/30 text-green-100'
-                                : toast.type === 'error'
-                                    ? 'bg-red-500/20 border-red-500/30 text-red-100'
-                                    : 'bg-blue-500/20 border-blue-500/30 text-blue-100'
-                                }`}
+                            className="elevation-raised rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-[var(--text-primary)] backdrop-blur-xl"
                         >
                             <div className="flex items-center gap-2">
-                                {toast.type === 'success' && <span className="material-symbols-rounded text-base">check_circle</span>}
-                                {toast.type === 'error' && <span className="material-symbols-rounded text-base">error</span>}
-                                {toast.type === 'info' && <span className="material-symbols-rounded text-base">info</span>}
+                                {toast.type === 'success' && <span className={`material-symbols-rounded text-base ${toastIconColor(toast.type)}`}>check_circle</span>}
+                                {toast.type === 'error' && <span className={`material-symbols-rounded text-base ${toastIconColor(toast.type)}`}>error</span>}
+                                {toast.type === 'info' && <span className={`material-symbols-rounded text-base ${toastIconColor(toast.type)}`}>info</span>}
                                 <span className="text-sm font-medium">{toast.message}</span>
                             </div>
                         </motion.div>
@@ -464,21 +464,22 @@ export default function SettingsPage() {
                     <div className="flex items-center gap-3 mb-2">
                         <button
                             onClick={() => router.back()}
-                            className="p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-400 hover:text-white transition-colors group"
+                            className="group inline-grid min-h-[44px] min-w-[44px] place-items-center rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                            aria-label="Go back"
                         >
-                            <svg className="w-6 h-6 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="h-6 w-6 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                             </svg>
                         </button>
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
-                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="inline-grid h-12 w-12 place-items-center rounded-xl border border-[var(--border-subtle)] bg-[var(--accent-dim)]">
+                            <svg className="h-6 w-6 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             </svg>
                         </div>
                         <div>
-                            <h1 className="text-3xl font-bold text-white">Account Settings</h1>
-                            <p className="text-slate-400 text-sm">Manage your account preferences and security</p>
+                            <h1 className="text-3xl font-bold text-[var(--text-primary)]">Account Settings</h1>
+                            <p className="text-sm text-[var(--text-secondary)]">Manage your account preferences and security</p>
                         </div>
                     </div>
                 </motion.div>
@@ -489,38 +490,37 @@ export default function SettingsPage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-xl"
+                        className="elevation-card overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)]"
                     >
-                        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-cyan-500/10 to-blue-500/10 blur-3xl" />
                         <div className="relative p-6">
-                            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-                                <span className="material-symbols-rounded text-xl text-cyan-400">person</span>
+                            <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold text-[var(--text-primary)]">
+                                <span className="material-symbols-rounded text-xl text-[var(--accent)]">person</span>
                                 Account Information
                             </h2>
                             <div className="space-y-3">
-                                <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                                <div className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
                                     <div>
-                                        <p className="text-sm text-slate-500">Full Name</p>
-                                        <p className="text-white font-medium">{user?.displayName || 'Not specified'}</p>
+                                        <p className="text-sm text-[var(--text-muted)]">Full Name</p>
+                                        <p className="font-medium text-[var(--text-primary)]">{user?.displayName || 'Not specified'}</p>
                                     </div>
                                 </div>
-                                <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                                <div className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
                                     <div>
-                                        <p className="text-sm text-slate-500">Email Address</p>
-                                        <p className="text-white font-medium">{user?.email}</p>
+                                        <p className="text-sm text-[var(--text-muted)]">Email Address</p>
+                                        <p className="font-medium text-[var(--text-primary)]">{user?.email}</p>
                                     </div>
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-lg font-bold">
+                                    <div className="inline-grid h-10 w-10 place-items-center rounded-full bg-[var(--accent)] text-lg font-bold text-[var(--accent-on)]">
                                         {user?.email?.[0].toUpperCase()}
                                     </div>
                                 </div>
-                                <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                                    <p className="text-sm text-slate-500">Account Created</p>
-                                    <p className="text-white font-medium">
+                                <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                                    <p className="text-sm text-[var(--text-muted)]">Account Created</p>
+                                    <p className="font-medium text-[var(--text-primary)]">
                                         {user?.metadata?.creationTime ? new Date(user.metadata.creationTime).toLocaleDateString('en-US', {
                                             year: 'numeric',
                                             month: 'long',
                                             day: 'numeric'
-                                        }) : 'N/A'}
+                                        }) : 'Not available'}
                                     </p>
                                 </div>
                             </div>
@@ -532,22 +532,21 @@ export default function SettingsPage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
-                        className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-xl"
+                        className="elevation-card overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)]"
                     >
-                        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-cyan-500/10 to-blue-500/10 blur-3xl" />
                         <div className="relative p-6">
                             <button
                                 onClick={() => setIsEmailSectionOpen(!isEmailSectionOpen)}
-                                className="w-full flex items-center justify-between text-left group"
+                                className="group flex min-h-[44px] w-full items-center justify-between text-left"
                             >
-                                <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                                    <span className="material-symbols-rounded text-xl text-cyan-400">mail</span>
+                                <h2 className="flex items-center gap-2 text-xl font-semibold text-[var(--text-primary)]">
+                                    <span className="material-symbols-rounded text-xl text-[var(--accent)]">mail</span>
                                     Change Email Address
                                 </h2>
                                 <motion.svg
                                     animate={{ rotate: isEmailSectionOpen ? 180 : 0 }}
                                     transition={{ duration: 0.3 }}
-                                    className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors"
+                                    className="h-5 w-5 text-[var(--text-muted)] transition-colors group-hover:text-[var(--text-primary)]"
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -563,10 +562,10 @@ export default function SettingsPage() {
                                         exit={{ height: 0, opacity: 0 }}
                                         transition={{ duration: 0.3 }}
                                         onSubmit={handleEmailChange}
-                                        className="space-y-4 mt-4 overflow-hidden"
+                                        className="mt-4 space-y-4 overflow-hidden"
                                     >
                                         <div>
-                                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            <label className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
                                                 New Email Address
                                             </label>
                                             <input
@@ -574,9 +573,9 @@ export default function SettingsPage() {
                                                 value={newEmail}
                                                 onChange={(e) => setNewEmail(e.target.value)}
                                                 placeholder="Enter new email"
-                                                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                                                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-dim)]"
                                             />
-                                            <p className="mt-2 text-xs text-slate-500">
+                                            <p className="mt-2 text-xs text-[var(--text-muted)]">
                                                 We will send a verification link. Your current email stays active until you confirm the new one.
                                             </p>
                                         </div>
@@ -585,11 +584,11 @@ export default function SettingsPage() {
                                             whileTap={{ scale: 0.98 }}
                                             type="submit"
                                             disabled={isUpdatingEmail}
-                                            className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-medium hover:shadow-lg hover:shadow-cyan-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="btn-primary w-full min-h-[44px] rounded-xl px-6 py-3 font-medium disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {isUpdatingEmail ? (
                                                 <span className="flex items-center justify-center gap-2">
-                                                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                                    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
                                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                                     </svg>
@@ -610,22 +609,21 @@ export default function SettingsPage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3 }}
-                        className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-xl"
+                        className="elevation-card overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)]"
                     >
-                        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 blur-3xl" />
                         <div className="relative p-6">
                             <button
                                 onClick={() => setIsPasswordSectionOpen(!isPasswordSectionOpen)}
-                                className="w-full flex items-center justify-between text-left group"
+                                className="group flex min-h-[44px] w-full items-center justify-between text-left"
                             >
-                                <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                                    <span className="material-symbols-rounded text-xl text-emerald-400">lock</span>
+                                <h2 className="flex items-center gap-2 text-xl font-semibold text-[var(--text-primary)]">
+                                    <span className="material-symbols-rounded text-xl text-[var(--accent)]">lock</span>
                                     Change Password
                                 </h2>
                                 <motion.svg
                                     animate={{ rotate: isPasswordSectionOpen ? 180 : 0 }}
                                     transition={{ duration: 0.3 }}
-                                    className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors"
+                                    className="h-5 w-5 text-[var(--text-muted)] transition-colors group-hover:text-[var(--text-primary)]"
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -641,10 +639,10 @@ export default function SettingsPage() {
                                         exit={{ height: 0, opacity: 0 }}
                                         transition={{ duration: 0.3 }}
                                         onSubmit={handlePasswordChange}
-                                        className="space-y-4 mt-4 overflow-hidden"
+                                        className="mt-4 space-y-4 overflow-hidden"
                                     >
                                         <div>
-                                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            <label className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
                                                 Current Password
                                             </label>
                                             <input
@@ -652,14 +650,14 @@ export default function SettingsPage() {
                                                 value={currentPassword}
                                                 onChange={(e) => setCurrentPassword(e.target.value)}
                                                 placeholder="Enter current password"
-                                                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                                                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-dim)]"
                                             />
-                                            <p className="mt-2 text-xs text-slate-500">
+                                            <p className="mt-2 text-xs text-[var(--text-muted)]">
                                                 Required to verify your identity
                                             </p>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            <label className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
                                                 New Password
                                             </label>
                                             <div className="relative">
@@ -668,19 +666,20 @@ export default function SettingsPage() {
                                                     value={newPassword}
                                                     onChange={(e) => setNewPassword(e.target.value)}
                                                     placeholder="Enter new password"
-                                                    className="w-full px-4 py-3 pr-12 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                                                    className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 pr-12 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-dim)]"
                                                 />
                                                 <button
                                                     type="button"
                                                     onClick={() => setShowPasswords(!showPasswords)}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                                                    aria-label={showPasswords ? 'Hide password' : 'Show password'}
+                                                    className="absolute right-1 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
                                                 >
                                                     {showPasswords ? (
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                                                         </svg>
                                                     ) : (
-                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                                         </svg>
@@ -689,16 +688,16 @@ export default function SettingsPage() {
                                             </div>
                                             {newPassword && (
                                                 <div className="mt-2">
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <span className="text-xs text-slate-500">Password Strength:</span>
-                                                        <span className={`text-xs font-medium ${passwordStrength.label === 'Weak' ? 'text-red-400' :
-                                                            passwordStrength.label === 'Medium' ? 'text-yellow-400' :
-                                                                'text-green-400'
+                                                    <div className="mb-1 flex items-center justify-between">
+                                                        <span className="text-xs text-[var(--text-muted)]">Password Strength:</span>
+                                                        <span className={`text-xs font-medium ${passwordStrength.label === 'Weak' ? 'text-[var(--danger)]' :
+                                                            passwordStrength.label === 'Medium' ? 'text-[var(--warning)]' :
+                                                                'text-[var(--success)]'
                                                             }`}>
                                                             {passwordStrength.label}
                                                         </span>
                                                     </div>
-                                                    <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                                                    <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--bg-surface)]">
                                                         <motion.div
                                                             initial={{ width: 0 }}
                                                             animate={{ width: `${(passwordStrength.strength / 5) * 100}%` }}
@@ -709,7 +708,7 @@ export default function SettingsPage() {
                                             )}
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-slate-300 mb-2">
+                                            <label className="mb-2 block text-sm font-medium text-[var(--text-secondary)]">
                                                 Confirm New Password
                                             </label>
                                             <input
@@ -717,10 +716,10 @@ export default function SettingsPage() {
                                                 value={confirmPassword}
                                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                                 placeholder="Confirm new password"
-                                                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                                                className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] transition-all focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-dim)]"
                                             />
                                             {confirmPassword && newPassword !== confirmPassword && (
-                                                <p className="mt-2 text-xs text-red-400">Passwords do not match</p>
+                                                <p className="mt-2 text-xs text-[var(--danger)]">Passwords do not match</p>
                                             )}
                                         </div>
                                         <motion.button
@@ -728,11 +727,11 @@ export default function SettingsPage() {
                                             whileTap={{ scale: 0.98 }}
                                             type="submit"
                                             disabled={isUpdatingPassword}
-                                            className="w-full px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:shadow-lg hover:shadow-emerald-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="btn-primary w-full min-h-[44px] rounded-xl px-6 py-3 font-medium disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {isUpdatingPassword ? (
                                                 <span className="flex items-center justify-center gap-2">
-                                                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                                                    <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
                                                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                                                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                                     </svg>

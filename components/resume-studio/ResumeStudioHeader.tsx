@@ -1,7 +1,9 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { ResumeStudioProgress, type ResumeStudioStage } from './ResumeStudioProgress';
+import PageHelp from '@/components/PageHelp';
+import { ToolGuidanceInvitation } from '@/components/guidance/ToolGuidanceProvider';
+import { ResumeStudioProgress, type ResumeStudioProgressProps, type ResumeStudioStage } from './ResumeStudioProgress';
 
 interface ResumeStudioHeaderProps {
   current: ResumeStudioStage;
@@ -11,6 +13,12 @@ interface ResumeStudioHeaderProps {
   saveLabel?: string;
   primaryAction?: ReactNode;
   secondaryAction?: ReactNode;
+  showProgress?: boolean;
+  sourceLabel?: string;
+  backAction?: ReactNode;
+  stageDescription?: string;
+  onNavigate?: ResumeStudioProgressProps['onNavigate'];
+  statuses?: ResumeStudioProgressProps['statuses'];
 }
 
 export function ResumeStudioHeader({
@@ -18,19 +26,26 @@ export function ResumeStudioHeader({
   candidateName,
   candidateDetail,
   targetLabel,
-  saveLabel = 'Saved locally',
+  saveLabel = 'Not saved',
   primaryAction,
   secondaryAction,
+  showProgress = true,
+  sourceLabel = 'Source-aware editing',
+  backAction,
+  stageDescription,
+  onNavigate,
+  statuses,
 }: ResumeStudioHeaderProps) {
   return (
-    <header className="resume-studio-header">
+    <header className="resume-studio-header resume-guided-workflow" data-guide="resume-context">
       <div className="resume-studio-header__top">
         <div className="resume-studio-header__brand">
+          {backAction && <span className="resume-guided-workflow__back">{backAction}</span>}
           <span className="material-symbols-rounded" aria-hidden="true">description</span>
-          <strong>Resume Studio</strong>
+          <h1 className="resume-studio-title">Resume Studio</h1>
         </div>
 
-        <ResumeStudioProgress current={current} />
+        {showProgress && <ResumeStudioProgress current={current} onNavigate={onNavigate} statuses={statuses} />}
 
         <div className="resume-studio-header__context" aria-label="Resume Studio context">
           <div className="resume-studio-header__context-item">
@@ -43,14 +58,14 @@ export function ResumeStudioHeader({
           <div className="resume-studio-header__context-item">
             <span className="material-symbols-rounded" aria-hidden="true">work</span>
             <p>
-              <strong>{targetLabel || 'Role target pending'}</strong>
-              <span>Target role</span>
+              <strong>{targetLabel || 'General resume'}</strong>
+              <span>{targetLabel ? 'Target role' : 'Job targeting is optional'}</span>
             </p>
           </div>
           <div className="resume-studio-header__context-item is-trust">
             <span className="material-symbols-rounded" aria-hidden="true">verified_user</span>
             <p>
-              <strong>Truth Lock on</strong>
+              <strong>{sourceLabel}</strong>
               <span>{saveLabel}</span>
             </p>
           </div>
@@ -59,10 +74,17 @@ export function ResumeStudioHeader({
         {(primaryAction || secondaryAction) && (
           <div className="resume-studio-header__actions">
             {secondaryAction}
-            {primaryAction}
+            <span data-guide="resume-next">{primaryAction}</span>
           </div>
         )}
+        <div className="resume-guided-workflow__help"><PageHelp toolId="resume" /></div>
       </div>
+      {stageDescription && (
+        <div className="resume-guided-workflow__description" aria-live="polite">
+          {stageDescription}
+        </div>
+      )}
+      <ToolGuidanceInvitation toolId="resume" />
     </header>
   );
 }

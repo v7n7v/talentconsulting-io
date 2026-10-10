@@ -4,15 +4,15 @@ import { breadcrumbJsonLd, buildMetadata, faqJsonLd, softwareApplicationJsonLd }
 import AIHumanizerLanding from './AIHumanizerLanding';
 
 const FAQS = [
-  { q: 'How does the AI humanizer work?', a: 'It analyzes patterns that often create low-trust writing signals, then revises cadence and specificity while keeping the original meaning intact.' },
+  { q: 'How does the AI humanizer work?', a: 'It suggests changes to phrasing and tone. Compare every edit with your source and review facts, attribution, and meaning before using it.' },
   { q: 'Is using an AI humanizer ethical?', a: 'It should be used like an editor: to make your own draft clearer, more specific, and more authentic.' },
   { q: 'Can I humanize my resume with this?', a: 'Yes. Resume mode focuses on clarity, credibility, and formatting-safe improvements.' },
   { q: 'Can detectors still be wrong?', a: 'Yes. Detector scores are indicators, not proof. The safer goal is stronger writing.' },
 ];
 
 export const metadata: Metadata = buildMetadata({
-  title: 'Free AI Humanizer - Preserve Voice & Improve Trust',
-  description: 'Transform AI-assisted drafts into natural, polished writing while preserving meaning and voice. Review trust signals, originality, and readability. Free to try.',
+  title: 'AI Humanizer — Improve and Review Your Writing',
+  description: 'Edit tone and phrasing with optional voice guidance, compare changes, and keep or reject each edit. Review facts and meaning before exporting. Free to try.',
   path: '/tools/ai-humanizer',
   keywords: [
     'AI humanizer',
@@ -39,9 +39,9 @@ export default function AIHumanizerPage() {
           faqJsonLd(FAQS),
           softwareApplicationJsonLd({
             name: 'Talent Studio AI Humanizer',
-            description: 'Voice-preserving AI humanizer for resumes, cover letters, LinkedIn, and recruiter communication.',
+            description: 'Writing editor with tone controls and change review for resumes, cover letters, LinkedIn, and recruiter communication.',
             path: '/tools/ai-humanizer',
-            features: ['Voice-preserving rewrites', 'Trust signal coaching', 'Readability review', 'Career-writing modes'],
+            features: ['Tone and voice guidance', 'Before-and-after comparison', 'Readability review', 'Career-writing modes'],
           }),
         ]}
       />

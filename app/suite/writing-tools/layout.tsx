@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Writing Trust Studio — Originality, Voice & Humanization',
-  description: 'Scan writing trust signals, diagnose paragraph risk, humanize with controlled voice-preserving presets, verify originality, and export polished documents.',
+  title: 'Humanize writing — Edit and review your draft',
+  description: 'Improve phrasing and tone, compare every change with your source, and export your reviewed draft. Optional style feedback does not verify facts, authorship, or plagiarism.',
   alternates: { canonical: '/suite/writing-tools' },
 };
 

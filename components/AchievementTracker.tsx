@@ -8,7 +8,9 @@ const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
 
 // ═══════════════════════════════════════
 // LOTTIE ANIMATION DATA (inline — no external fetches)
-// Minimal confetti/celebration particles
+// Minimal confetti/celebration particles.
+// Colour literals below are Lottie canvas paint (not DOM/CSS), analogous to the
+// three.js/WebGL exception — they cannot reference CSS tokens.
 // ═══════════════════════════════════════
 const CONFETTI_ANIMATION = {
   v: "5.7.4", fr: 30, ip: 0, op: 60, w: 400, h: 400,
@@ -54,7 +56,6 @@ interface Achievement {
   icon: string;
   unlocked: boolean;
   category: 'resume' | 'skills' | 'practice';
-  celebrationColor: string;
 }
 
 interface AchievementTrackerProps {
@@ -65,17 +66,18 @@ interface AchievementTrackerProps {
   totalSkills: number;
   gauntletSessions: number;
   morphScore: number; // 0-100 from the morph
-  isLight: boolean;
+  // Accepted for caller compatibility; colours now flip via the [data-theme]
+  // cascade rather than a JS branch, so this is intentionally unused.
+  isLight?: boolean;
 }
 
 // ═══════════════════════════════════════
-// GAUGE COMPONENT (avely.me style)
+// GAUGE COMPONENT — single-accent progress arc (flat, tokenised)
 // ═══════════════════════════════════════
-function ArcGauge({ value, maxValue, label, isLight }: {
+function ArcGauge({ value, maxValue, label }: {
   value: number;
   maxValue: number;
   label: string;
-  isLight: boolean;
 }) {
   const percent = Math.min(Math.round((value / maxValue) * 100), 100);
   const cx = 140;
@@ -85,13 +87,13 @@ function ArcGauge({ value, maxValue, label, isLight }: {
   const endAngle = 390;
   const totalArc = endAngle - startAngle; // 240 degrees
 
-  // 5 arc segments with gaps
+  // 5 arc segments with gaps — geometry only; a single accent fill carries meaning.
   const segments = [
-    { color: isLight ? '#fca5a5' : '#ef4444', from: 0, to: 0.2 },
-    { color: isLight ? '#fde68a' : '#f59e0b', from: 0.22, to: 0.4 },
-    { color: isLight ? '#86efac' : '#22c55e', from: 0.42, to: 0.6 },
-    { color: isLight ? '#6ee7b7' : '#10b981', from: 0.62, to: 0.8 },
-    { color: isLight ? '#93c5fd' : '#3b82f6', from: 0.82, to: 1.0 },
+    { from: 0, to: 0.2 },
+    { from: 0.22, to: 0.4 },
+    { from: 0.42, to: 0.6 },
+    { from: 0.62, to: 0.8 },
+    { from: 0.82, to: 1.0 },
   ];
 
   const degToRad = (deg: number) => (deg * Math.PI) / 180;
@@ -115,13 +117,13 @@ function ArcGauge({ value, maxValue, label, isLight }: {
   return (
     <div className="relative flex flex-col items-center">
       <svg width="280" height="180" viewBox="0 0 280 180">
-        {/* Background segments (muted) */}
+        {/* Background segments (track) */}
         {segments.map((seg, i) => (
           <path
             key={`bg-${i}`}
             d={describeArc(seg.from, seg.to)}
             fill="none"
-            stroke={isLight ? '#f1f5f9' : 'rgba(255,255,255,0.04)'}
+            stroke="var(--border-subtle)"
             strokeWidth="22"
             strokeLinecap="round"
           />
@@ -136,7 +138,7 @@ function ArcGauge({ value, maxValue, label, isLight }: {
               key={`fill-${i}`}
               d={describeArc(seg.from, segEnd)}
               fill="none"
-              stroke={seg.color}
+              stroke="var(--accent)"
               strokeWidth="22"
               strokeLinecap="round"
               initial={{ pathLength: 0, opacity: 0 }}
@@ -150,14 +152,14 @@ function ArcGauge({ value, maxValue, label, isLight }: {
       {/* Center number */}
       <div className="absolute top-[50%] left-1/2 -translate-x-1/2 -translate-y-[30%] text-center">
         <motion.p
-          className={`text-4xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}
+          className="text-4xl font-black tracking-tight text-[var(--text-primary)]"
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.4, type: 'spring', stiffness: 200 }}
         >
           {percent}%
         </motion.p>
-        <p className={`text-[11px] font-medium mt-0.5 ${isLight ? 'text-slate-400' : 'text-white/30'}`}>
+        <p className="text-[11px] font-medium mt-0.5 text-[var(--text-muted)]">
           {label}
         </p>
       </div>
@@ -170,7 +172,7 @@ function ArcGauge({ value, maxValue, label, isLight }: {
 // ═══════════════════════════════════════
 export default function AchievementTracker({
   resumeUploaded, jdMatched, resumeMorphed, skillsBridged, totalSkills,
-  gauntletSessions, morphScore, isLight,
+  gauntletSessions, morphScore,
 }: AchievementTrackerProps) {
   const [showCelebration, setShowCelebration] = useState<string | null>(null);
   const [seenAchievements, setSeenAchievements] = useState<string[]>([]);
@@ -186,35 +188,35 @@ export default function AchievementTracker({
   const achievements: Achievement[] = useMemo(() => [
     {
       id: 'resume_uploaded', title: 'Resume Ready', description: 'Upload your resume',
-      icon: 'description', unlocked: resumeUploaded, category: 'resume', celebrationColor: 'from-blue-400 to-cyan-500',
+      icon: 'description', unlocked: resumeUploaded, category: 'resume',
     },
     {
       id: 'jd_matched', title: 'Target Acquired', description: 'Match with a job description',
-      icon: 'my_location', unlocked: jdMatched, category: 'resume', celebrationColor: 'from-amber-400 to-orange-500',
+      icon: 'my_location', unlocked: jdMatched, category: 'resume',
     },
     {
       id: 'resume_morphed', title: 'Shape Shifter', description: 'Morph your resume to a JD',
-      icon: 'sync', unlocked: resumeMorphed, category: 'resume', celebrationColor: 'from-violet-400 to-purple-500',
+      icon: 'sync', unlocked: resumeMorphed, category: 'resume',
     },
     {
       id: 'skills_started', title: 'Bridge Builder', description: 'Start training on your first skill',
-      icon: '🌉', unlocked: skillsBridged > 0, category: 'skills', celebrationColor: 'from-teal-400 to-emerald-500',
+      icon: '🌉', unlocked: skillsBridged > 0, category: 'skills',
     },
     {
       id: 'skills_half', title: 'Halfway Hero', description: `Complete ${Math.ceil(totalSkills / 2)} skill courses`,
-      icon: 'bolt', unlocked: skillsBridged >= Math.ceil(totalSkills / 2), category: 'skills', celebrationColor: 'from-yellow-400 to-amber-500',
+      icon: 'bolt', unlocked: skillsBridged >= Math.ceil(totalSkills / 2), category: 'skills',
     },
     {
       id: 'gauntlet_warrior', title: 'Gauntlet Warrior', description: 'Complete 3+ practice sessions',
-      icon: '⚔️', unlocked: gauntletSessions >= 3, category: 'practice', celebrationColor: 'from-red-400 to-rose-500',
+      icon: '⚔️', unlocked: gauntletSessions >= 3, category: 'practice',
     },
     {
       id: 'perfect_morph', title: 'Perfect Match', description: 'Score 85%+ on a resume morph',
-      icon: 'diamond', unlocked: morphScore >= 85, category: 'resume', celebrationColor: 'from-emerald-400 to-teal-500',
+      icon: 'diamond', unlocked: morphScore >= 85, category: 'resume',
     },
     {
       id: 'all_skills', title: 'Skill Master', description: 'Complete all skill courses',
-      icon: 'emoji_events', unlocked: skillsBridged >= totalSkills && totalSkills > 0, category: 'skills', celebrationColor: 'from-amber-500 to-yellow-400',
+      icon: 'emoji_events', unlocked: skillsBridged >= totalSkills && totalSkills > 0, category: 'skills',
     },
   ], [resumeUploaded, jdMatched, resumeMorphed, skillsBridged, totalSkills, gauntletSessions, morphScore]);
 
@@ -232,9 +234,8 @@ export default function AchievementTracker({
   }, [achievements, seenAchievements]);
 
   const unlockedCount = achievements.filter(a => a.unlocked).length;
-  const overallProgress = achievements.length > 0 ? (unlockedCount / achievements.length) : 0;
 
-  // Calculate journey progress (weighted)
+  // Calculate journey progress (weighted) — every term is measured from real props.
   const journeyScore = useMemo(() => {
     let score = 0;
     if (resumeUploaded) score += 15;
@@ -271,9 +272,7 @@ export default function AchievementTracker({
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.8, y: -20, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              className={`pointer-events-auto p-6 rounded-3xl backdrop-blur-xl shadow-2xl border text-center max-w-xs ${ 
-                isLight ? 'bg-white/95 border-slate-200' : 'bg-slate-900/95 border-white/10'
-              }`}
+              className="elevation-raised pointer-events-auto p-6 rounded-3xl border border-[var(--border-subtle)] bg-[var(--card-bg)] text-center max-w-xs"
               onClick={() => setShowCelebration(null)}
             >
               <motion.div
@@ -283,13 +282,13 @@ export default function AchievementTracker({
               >
                 {achievements.find(a => a.id === showCelebration)?.icon}
               </motion.div>
-              <p className={`text-lg font-black ${isLight ? 'text-slate-900' : 'text-white'}`}>
+              <p className="text-lg font-black text-[var(--text-primary)]">
                 Achievement Unlocked! <span className="material-symbols-rounded align-middle mr-1">celebration</span>
               </p>
-              <p className={`text-sm font-bold mt-1 ${isLight ? 'text-slate-700' : 'text-white/70'}`}>
+              <p className="text-sm font-bold mt-1 text-[var(--text-secondary)]">
                 {achievements.find(a => a.id === showCelebration)?.title}
               </p>
-              <p className={`text-xs mt-1 ${isLight ? 'text-slate-400' : 'text-white/30'}`}>
+              <p className="text-xs mt-1 text-[var(--text-muted)]">
                 {achievements.find(a => a.id === showCelebration)?.description}
               </p>
             </motion.div>
@@ -302,23 +301,19 @@ export default function AchievementTracker({
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        className={`p-6 rounded-2xl ${
-          isLight ? 'bg-white border border-slate-200 shadow-sm' : 'bg-white/[0.02] border border-white/[0.06]'
-        }`}
+        className="elevation-card p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)]"
       >
         <div className="flex items-center justify-between mb-2">
-          <h3 className={`text-sm font-bold flex items-center gap-2 ${isLight ? 'text-slate-800' : 'text-white/70'}`}>
+          <h3 className="text-sm font-bold flex items-center gap-2 text-[var(--text-primary)]">
             <span>🏅</span> Achievement Tracker
           </h3>
-          <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold ${
-            isLight ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-          }`}>
+          <span className="text-[11px] px-2.5 py-1 rounded-full font-bold border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
             {unlockedCount}/{achievements.length} Unlocked
           </span>
         </div>
 
         {/* Gauge */}
-        <ArcGauge value={journeyScore} maxValue={100} label="Interview Readiness" isLight={isLight} />
+        <ArcGauge value={journeyScore} maxValue={100} label="Interview Readiness" />
 
         {/* Achievement Grid */}
         <div className="grid grid-cols-4 gap-2 mt-2">
@@ -328,32 +323,26 @@ export default function AchievementTracker({
               onClick={() => a.unlocked && setShowCelebration(a.id)}
               whileHover={a.unlocked ? { scale: 1.08 } : undefined}
               whileTap={a.unlocked ? { scale: 0.95 } : undefined}
-              className={`relative p-2.5 rounded-xl text-center transition-all group ${
+              className={`relative min-h-11 p-2.5 rounded-xl text-center transition-all group border ${
                 a.unlocked
-                  ? isLight
-                    ? 'bg-white border border-slate-200 shadow-sm hover:shadow-md cursor-pointer'
-                    : 'bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] cursor-pointer'
-                  : isLight
-                    ? 'bg-slate-50 border border-slate-100 opacity-40'
-                    : 'bg-white/[0.01] border border-white/[0.03] opacity-25'
+                  ? 'elevation-interactive border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border)] cursor-pointer'
+                  : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] opacity-40'
               }`}
               disabled={!a.unlocked}
               title={a.unlocked ? `${a.title} — Click to replay!` : a.description}
             >
               {a.unlocked && (
                 <motion.div
-                  className={`absolute inset-0 rounded-xl bg-gradient-to-br ${a.celebrationColor} opacity-[0.06]`}
-                  animate={{ opacity: [0.04, 0.08, 0.04] }}
+                  className="absolute inset-0 rounded-xl bg-[var(--accent-dim)]"
+                  animate={{ opacity: [0.5, 1, 0.5] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 />
               )}
-              <span className={`text-xl ${!a.unlocked ? 'grayscale' : ''}`}>
+              <span className={`relative text-xl ${!a.unlocked ? 'grayscale' : ''}`}>
                 {a.unlocked ? a.icon : 'lock'}
               </span>
-              <p className={`text-[8px] font-bold mt-1 leading-tight truncate ${
-                a.unlocked
-                  ? isLight ? 'text-slate-700' : 'text-white/60'
-                  : isLight ? 'text-slate-300' : 'text-white/15'
+              <p className={`relative text-[11px] font-bold mt-1 leading-tight truncate ${
+                a.unlocked ? 'text-[var(--text-secondary)]' : 'text-[var(--text-muted)]'
               }`}>
                 {a.title}
               </p>
@@ -364,20 +353,19 @@ export default function AchievementTracker({
         {/* Journey Progress Bar */}
         <div className="mt-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className={`text-[10px] font-semibold ${isLight ? 'text-slate-400' : 'text-white/25'}`}>
+            <span className="text-[11px] font-semibold text-[var(--text-muted)]">
               Interview Journey
             </span>
-            <span className={`text-[10px] font-bold ${isLight ? 'text-slate-600' : 'text-white/50'}`}>
+            <span className="text-[11px] font-bold text-[var(--text-secondary)]">
               {journeyScore}%
             </span>
           </div>
-          <div className={`w-full h-2 rounded-full overflow-hidden ${isLight ? 'bg-slate-100' : 'bg-white/[0.04]'}`}>
+          <div className="w-full h-2 rounded-full overflow-hidden bg-[var(--bg-elevated)]">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${journeyScore}%` }}
               transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
-              className="h-full rounded-full bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-500"
-              style={{ boxShadow: '0 0 8px rgba(6, 182, 212, 0.3)' }}
+              className="h-full rounded-full bg-[var(--accent)]"
             />
           </div>
           <div className="flex justify-between mt-1">
@@ -385,10 +373,8 @@ export default function AchievementTracker({
               const stepThreshold = (i + 1) * 20;
               const active = journeyScore >= stepThreshold;
               return (
-                <span key={step} className={`text-[8px] font-medium ${
-                  active
-                    ? isLight ? 'text-teal-600' : 'text-teal-400'
-                    : isLight ? 'text-slate-300' : 'text-white/15'
+                <span key={step} className={`text-[11px] font-medium ${
+                  active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
                 }`}>
                   {step}
                 </span>

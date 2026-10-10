@@ -688,6 +688,28 @@ async function withTransport(fn) {
   }
 }
 
+test('direct uploads always call the canonical endpoint, independent of client preview flags', async () => {
+  await withTransport(async ({ transport }) => {
+    const previous = { preview: process.env.NEXT_PUBLIC_TACO_WORKSPACE_PREVIEW, bypass: process.env.NEXT_PUBLIC_DISABLE_AUTH_GATE };
+    try {
+      for (const value of ['true', 'false']) {
+        process.env.NEXT_PUBLIC_TACO_WORKSPACE_PREVIEW = value;
+        process.env.NEXT_PUBLIC_DISABLE_AUTH_GATE = value;
+        const { settled } = startRun(transport, pdf(1000));
+        await flushMicrotasks();
+        const xhr = FakeXhr.instances.at(-1);
+        assert.equal(xhr.url, '/api/gauntlet/parse-resume');
+        xhr.respond(200, { text: 'x'.repeat(200), fileName: 'resume.pdf', sourceType: 'direct' });
+        assert.equal((await settled).ok, true);
+      }
+    } finally {
+      for (const [key, value] of [['NEXT_PUBLIC_TACO_WORKSPACE_PREVIEW', previous.preview], ['NEXT_PUBLIC_DISABLE_AUTH_GATE', previous.bypass]]) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+});
+
 test('a dead socket is reported as a network stall, never as a cancellation', async () => {
   await withTransport(async ({ transport, timers }) => {
     const { settled } = startRun(transport, pdf(1_000));

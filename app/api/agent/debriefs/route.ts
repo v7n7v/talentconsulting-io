@@ -162,26 +162,7 @@ export async function POST(req: NextRequest) {
       throw writeError;
     }
 
-    // Auto-generate STAR story from debrief questions with high confidence
-    const goodQuestions = normalizedQuestions.filter(question => question.confidence >= 60);
-    if (goodQuestions.length > 0) {
-      try {
-        const topQ = goodQuestions[0];
-        await createStoryBankStory(uid, {
-          title: `${resolvedRole} @ ${resolvedCompany} — ${topQ.category || 'Interview'} Question`,
-          situation: `During a ${normalizedRoundType.replace('_', ' ')} interview at ${resolvedCompany} for the ${resolvedRole} position.`,
-          task: `Was asked: "${topQ.text}"`,
-          action: normalizedStrengths || '(Fill in your answer approach)',
-          result: `Self-assessed confidence: ${topQ.confidence}%. ${normalizedFeeling >= 4 ? 'Strong performance overall.' : 'Room for improvement.'}`,
-          reflection: normalizedWeaknesses ? `Area to improve: ${normalizedWeaknesses}` : 'Review and refine this story for next time.',
-          tags: [resolvedCompany, normalizedRoundType.replace('_', ' '), topQ.category || 'General'].filter(Boolean),
-          source: 'interview_debrief',
-          sourceTool: 'interview_debrief',
-          company: resolvedCompany,
-          role: resolvedRole,
-        });
-      } catch { /* story save is best-effort */ }
-    }
+    // Interview reflection is not a factual work accomplishment. Story promotion requires explicit review.
 
     // Invalidate the Digital Twin so it recomputes on next read
     invalidateTwin(uid).catch(() => {});

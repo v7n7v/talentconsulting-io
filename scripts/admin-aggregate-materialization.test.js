@@ -89,7 +89,17 @@ test('production owns a ten-minute refresh schedule and post-deploy prime', () =
   assert.match(workflow, /cron: '\*\/10 \* \* \* \*'/);
   assert.match(workflow, /secrets\.ADMIN_AGGREGATE_CRON_SECRET/);
   assert.match(workflow, /node scripts\/admin-aggregate-prime\.js/);
-  assert.match(deploy, /deployFirebase\(\{ runPreflight: \(\) => \{\} \}\);\s*primeAdminAggregates\(\);/);
+  const mainStart = deploy.indexOf('function main()');
+  const mainEnd = deploy.indexOf('if (require.main', mainStart);
+  assert.ok(mainStart >= 0 && mainEnd > mainStart, 'production orchestration must be present');
+  const main = deploy.slice(mainStart, mainEnd);
+  const deployAt = main.search(/deployFirebase\(\{ runPreflight: \(\) => \{\} \}\)/);
+  const promoteAt = main.indexOf('promoteDeployedRevision();');
+  const primeAt = main.indexOf('primeAdminAggregates();');
+  const smokeAt = main.indexOf('runPostDeploySmoke();');
+  assert.ok(deployAt >= 0 && primeAt > deployAt, 'prime aggregates only after deployment');
+  assert.ok(promoteAt > deployAt && promoteAt < primeAt, 'promote the deployed revision before priming its aggregates');
+  assert.ok(smokeAt > primeAt, 'verify the release after aggregates are primed');
   assert.match(prime, /MAX_RECEIPT_AGE_MS/);
   assert.match(prime, /providerWritesPerformed/);
   assert.doesNotMatch(workflow, /echo.+CRON_SECRET/i);

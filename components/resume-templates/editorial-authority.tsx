@@ -62,11 +62,14 @@ export function EditorialAuthorityTemplate({ resume, colors }: EditorialAuthorit
     cleanResumeText(resume.location),
     cleanResumeText(resume.linkedin),
     cleanResumeText(resume.website),
+    ...(resume.links || []).map(cleanResumeText),
   ].filter(Boolean);
   const hasRail = contactItems.length > 0
     || resume.skills.length > 0
     || resume.education.length > 0
-    || resume.certifications.length > 0;
+    || resume.certifications.length > 0
+    || (resume.additionalSections || []).some(section => section.title || section.items.length);
+
   const name = cleanResumeText(resume.name) || 'Resume';
   const title = cleanResumeText(resume.title);
 
@@ -240,6 +243,13 @@ export function EditorialAuthorityTemplate({ resume, colors }: EditorialAuthorit
                 </ul>
               </RailSection>
             )}
+            {(resume.additionalSections || []).map((section) => (
+              <RailSection key={section.id} title={cleanResumeText(section.title) || 'Additional information'} colors={colors}>
+                <ul className="space-y-[0.65cqw]">
+                  {section.items.map((item) => <li key={item} className="font-sans leading-[1.45] text-slate-200" style={{ fontSize: '1.08cqw' }}>{item}</li>)}
+                </ul>
+              </RailSection>
+            ))}
           </aside>
         )}
 
@@ -254,7 +264,7 @@ export function EditorialAuthorityTemplate({ resume, colors }: EditorialAuthorit
                   );
                   return (
                     <article
-                      key={`${experience.company}-${experience.role}-${experienceIndex}`}
+                      key={experience.id || `${experience.company}-${experience.role}-${experienceIndex}`}
                       className="break-inside-avoid border-b border-[#0b2e4a]/25 py-[2.2cqw] first:pt-0 last:border-b-0"
                     >
                       <div className="flex items-start justify-between gap-[2cqw]">

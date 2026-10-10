@@ -1,3 +1,6 @@
+import { invalidateTwin } from '@/lib/career-twin';
+import { createHash } from 'node:crypto';
+import { SKILL_ASSESSMENT_VERSION } from '@/lib/skill-assessment';
 import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
@@ -7,6 +10,7 @@ import { geminiJSONCompletion } from '@/lib/ai/gemini-client';
 import { monitor } from '@/lib/monitor';
 
 const VerifySchema = z.object({
+  challengeId: z.string().regex(/^[\w-]{1,120}$/).optional(),
   mode: z.enum(['generate', 'grade']).default('generate'),
   challengeType: z.enum(['quick_check', 'applied_challenge']).default('quick_check'),
   skill: z.string().trim().min(1).max(200),
@@ -139,13 +143,22 @@ Return JSON:
         challenge = fallbackChallenge(body);
       }
 
-      return NextResponse.json({ success: true, challenge });
+      challenge = z.object({ prompt: z.string().min(1), rubric: z.array(z.object({ label: z.string().min(1), weight: z.number().min(0).max(100) })).min(1), timeBox: z.string(), expectedDepth: z.string() }).parse(challenge);
+      const ref = await getAdminDb().collection('users').doc(guard.user.uid).collection('skill_challenges').add({ ...body, ...challenge, createdAt: new Date().toISOString() });
+      return NextResponse.json({ success: true, challenge: { ...challenge, id: ref.id } });
     }
 
-    if (!body.prompt || !body.response) {
+    if (!body.challengeId || !body.response) {
       return NextResponse.json({ error: 'Prompt and response are required for grading.' }, { status: 400 });
     }
 
+    const challengeDoc = await getAdminDb().collection('users').doc(guard.user.uid).collection('skill_challenges').doc(body.challengeId!).get();
+    if (!challengeDoc.exists) return NextResponse.json({ error: 'Generate a challenge before grading.' }, { status: 404 });
+    const challenge = challengeDoc.data()!;
+    if (body.prompt !== challenge.prompt || body.skill !== challenge.skill || body.challengeType !== challenge.challengeType) return NextResponse.json({ error: 'The challenge changed. Generate a new challenge before grading.' }, { status: 409 });
+    const attemptId = `${body.challengeId}_${createHash('sha256').update(body.response!).digest('hex').slice(0, 24)}`;
+    const cachedAttempt = await getAdminDb().collection('users').doc(guard.user.uid).collection('skill_verifications').doc(attemptId).get();
+    if (cachedAttempt.exists) return NextResponse.json({ success: true, verification: { id: cachedAttempt.id, ...cachedAttempt.data() }, grade: cachedAttempt.data() });
     const gradeSystemPrompt = `You are Taco, grading a Skill Bridge verification attempt.
 
 Grade only what the user demonstrated. Do not reveal hidden reasoning. Do not invent certifications, job experience, or achievements.
@@ -171,11 +184,12 @@ Return JSON:
       skill: body.skill,
       category: body.category,
       challengeType: body.challengeType,
-      prompt: body.prompt,
+      prompt: challenge.prompt,
+      rubric: challenge.rubric,
       response: body.response,
-      role: body.role || '',
-      company: body.company || '',
-      jobDescription: body.jobDescription || '',
+      role: challenge.role || '',
+      company: challenge.company || '',
+      jobDescription: challenge.jobDescription || '',
     });
 
     let grade: any;
@@ -193,6 +207,7 @@ Return JSON:
       }, { status: 503 });
     }
 
+    grade = z.object({ score: z.number().min(0).max(100), verdict: z.enum(['needs_work', 'building', 'ready', 'verified']), summary: z.string().min(1), strengths: z.array(z.string()), gaps: z.array(z.string()), recommendations: z.array(z.string()), rubric: z.array(z.object({ label: z.string(), score: z.number().min(0).max(100), note: z.string() })).min(1) }).parse(grade);
     // No default score either. `clampScore(grade?.score, 60)` invented a 60 for
     // any response the grader came back without a number for.
     if (typeof grade?.score !== 'number' || !Number.isFinite(grade.score)) {
@@ -204,12 +219,15 @@ Return JSON:
     }
 
     const score = clampScore(grade.score, 60);
-    const verdict = ['needs_work', 'building', 'ready', 'verified'].includes(grade?.verdict)
-      ? grade.verdict
-      : verdictFor(score, body.challengeType);
+    // The model may describe the result, but entitlement/readiness claims are
+    // server policy. In particular, an applied challenge can never be
+    // verified below 80, regardless of the provider's enum output.
+    const verdict = verdictFor(score, body.challengeType);
     const now = new Date().toISOString();
 
     const verification = {
+      assessmentVersion: SKILL_ASSESSMENT_VERSION,
+      challengeId: body.challengeId,
       user_id: guard.user.uid,
       skill: body.skill,
       skill_id: skillId,
@@ -234,14 +252,16 @@ Return JSON:
       .collection('users')
       .doc(guard.user.uid)
       .collection('skill_verifications')
-      .add(verification);
+      .doc(attemptId);
 
     const progressRef = db
       .collection('users')
       .doc(guard.user.uid)
       .collection('study_progress')
       .doc(skillId);
-    const existingProgress = await progressRef.get();
+    await db.runTransaction(async transaction => {
+    const [existingAttempt, existingProgress] = await Promise.all([transaction.get(verificationRef), transaction.get(progressRef)]);
+    if (existingAttempt.exists) return;
     const existingData = existingProgress.exists ? existingProgress.data() : null;
 
     const newReadinessStatus = verdict === 'verified'
@@ -249,15 +269,13 @@ Return JSON:
       : verdict === 'ready'
         ? 'ready_to_verify'
         : 'learning';
-    const readinessStatus = existingData?.readiness_status === 'verified' ? 'verified' : newReadinessStatus;
+    const readinessStatus = newReadinessStatus;
     const nextProofLevel = verdict === 'verified'
       ? body.challengeType
       : body.challengeType === 'quick_check' && score >= 75
         ? 'quick_check'
         : 'none';
-    const proofLevel = ['applied_challenge', 'interview_drill'].includes(existingData?.proof_level)
-      ? existingData?.proof_level
-      : nextProofLevel;
+    const proofLevel = nextProofLevel;
 
     const progressUpdate: Record<string, any> = {
       user_id: guard.user.uid,
@@ -265,9 +283,13 @@ Return JSON:
       skill_id: skillId,
       category: body.category,
       readiness_status: readinessStatus,
-      readiness_score: Math.max(Number(existingData?.readiness_score || 0), score),
+      readiness_score: score,
+      assessment_version: SKILL_ASSESSMENT_VERSION,
+      latest_assessment_at: now,
+      best_readiness_score: Math.max(existingData?.assessment_version === SKILL_ASSESSMENT_VERSION ? Number(existingData?.best_readiness_score || 0) : 0, score),
       proof_level: proofLevel,
-      last_verified_at: now,
+      last_verified_at: verdict === 'verified' ? now : existingData?.last_verified_at || null,
+      latest_verification_id: verificationRef.id,
       next_review_at: nextReviewDate(),
       verification_attempt_ids: FieldValue.arrayUnion(verificationRef.id),
       source_context: body.sourceContext,
@@ -285,8 +307,11 @@ Return JSON:
       progressUpdate.application_ids = FieldValue.arrayUnion(body.applicationId);
     }
 
-    await progressRef.set(progressUpdate, { merge: true });
+    transaction.set(verificationRef, verification);
+    transaction.set(progressRef, progressUpdate, { merge: true });
+    });
 
+    await invalidateTwin(guard.user.uid).catch(error => console.error('Twin invalidation failed', error));
     return NextResponse.json({
       success: true,
       verification: { id: verificationRef.id, ...verification },

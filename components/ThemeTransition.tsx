@@ -3,8 +3,8 @@
 /**
  * ThemeTransition — Cinematic dawn/dusk sweep overlay
  * 
- * Light mode (dawn): Golden sweep from top → bottom, like sunrise
- * Dark mode (dusk): Deep indigo sweep from bottom → top, like nightfall
+ * Light mode (dawn): Coral and paper sweep from top → bottom
+ * Dark mode (dusk): Ink and coral sweep from bottom → top
  * 
  * Includes floating particles (stars for dusk, light rays for dawn)
  * and a subtle gradient that dissipates to reveal the new theme.
@@ -37,11 +37,10 @@ export default function ThemeTransition({ isTransitioning, targetTheme, onComple
 
   const isDawn = targetTheme === 'light';
 
-  // Dawn gradient: warm golden-amber-pink (sunrise colors)
-  // Dusk gradient: deep indigo-violet-navy (sunset-to-night colors)
+  // Keep the transition within Taco's paper, ink, and coral palette.
   const gradient = isDawn
-    ? 'linear-gradient(180deg, #FDB813 0%, #FF8C42 20%, #FF6B6B 40%, #FFA07A 60%, #FFE4B5 80%, rgba(248,250,252,0.0) 100%)'
-    : 'linear-gradient(0deg, #0C0C1D 0%, #1a1a3e 15%, #2D1B69 30%, #4A1942 45%, #FF6B35 60%, #FF8C42 72%, #2D1B69 85%, rgba(5,5,5,0.0) 100%)';
+    ? 'linear-gradient(180deg, var(--taco-coral) 0%, var(--taco-coral-ink) 20%, var(--taco-coral) 40%, var(--taco-soft) 65%, var(--taco-paper) 82%, rgba(255,250,245,0) 100%)'
+    : 'linear-gradient(0deg, var(--taco-ink) 0%, var(--taco-muted) 15%, var(--taco-coral-ink) 32%, var(--taco-coral) 52%, var(--taco-coral) 68%, var(--taco-soft) 84%, rgba(21,21,21,0) 100%)';
 
   return (
     <AnimatePresence onExitComplete={onComplete}>
@@ -81,11 +80,11 @@ export default function ThemeTransition({ isTransitioning, targetTheme, onComple
                 width: p.size,
                 height: p.size,
                 background: isDawn
-                  ? `rgba(255, 215, 0, ${0.6 + Math.random() * 0.4})`
-                  : `rgba(200, 200, 255, ${0.4 + Math.random() * 0.5})`,
+                  ? `rgba(255, 91, 53, ${0.6 + Math.random() * 0.4})`
+                  : `rgba(255, 250, 245, ${0.4 + Math.random() * 0.5})`,
                 boxShadow: isDawn
-                  ? `0 0 ${p.size * 3}px rgba(255, 215, 0, 0.6)`
-                  : `0 0 ${p.size * 2}px rgba(180, 180, 255, 0.5)`,
+                  ? `0 0 ${p.size * 3}px rgba(198, 182, 255, 0.55)`
+                  : `0 0 ${p.size * 2}px rgba(198, 182, 255, 0.4)`,
               }}
               initial={{
                 opacity: 0,
@@ -129,11 +128,11 @@ export default function ThemeTransition({ isTransitioning, targetTheme, onComple
               className="w-16 h-16 rounded-full"
               style={{
                 background: isDawn
-                  ? 'radial-gradient(circle, #FDB813 0%, #FF8C42 50%, rgba(255,140,66,0) 70%)'
-                  : 'radial-gradient(circle, #E8E8FF 0%, #C4C4FF 40%, rgba(196,196,255,0) 70%)',
+                  ? 'radial-gradient(circle, var(--taco-paper) 0%, var(--taco-coral) 50%, rgba(255,91,53,0) 70%)'
+                  : 'radial-gradient(circle, var(--taco-paper) 0%, var(--taco-soft) 40%, rgba(242,235,227,0) 70%)',
                 boxShadow: isDawn
-                  ? '0 0 60px 20px rgba(253,184,19,0.4), 0 0 120px 60px rgba(255,140,66,0.2)'
-                  : '0 0 40px 15px rgba(200,200,255,0.3), 0 0 80px 40px rgba(150,150,255,0.15)',
+                  ? '0 0 60px 20px rgba(198,182,255,0.4), 0 0 120px 60px rgba(198,182,255,0.2)'
+                  : '0 0 40px 15px rgba(198,182,255,0.3), 0 0 80px 40px rgba(198,182,255,0.15)',
               }}
             />
           </motion.div>
@@ -155,7 +154,7 @@ export default function ThemeTransition({ isTransitioning, targetTheme, onComple
                     left: `${30 + i * 8}%`,
                     width: '2px',
                     height: '60%',
-                    background: `linear-gradient(180deg, rgba(255,215,0,0.5) 0%, rgba(255,215,0,0) 100%)`,
+                    background: 'linear-gradient(180deg, rgba(255,91,53,0.5) 0%, rgba(255,91,53,0) 100%)',
                     transform: `rotate(${-15 + i * 6}deg)`,
                   }}
                   initial={{ scaleY: 0, opacity: 0 }}
@@ -188,7 +187,7 @@ export default function ThemeTransition({ isTransitioning, targetTheme, onComple
                     ease: 'easeInOut',
                   }}
                 >
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="var(--taco-paper)">
                     <path d="M4 0L4.5 3L8 4L4.5 5L4 8L3.5 5L0 4L3.5 3Z" opacity="0.8" />
                   </svg>
                 </motion.div>

@@ -6,6 +6,7 @@ export interface PrepMemoryItem {
   title: string;
   excerpt: string;
   content?: string;
+  cards?: Array<{question:string;answer:string}>;
   skill?: string | null;
   applicationId?: string | null;
   resumeVersionId?: string | null;
@@ -73,6 +74,7 @@ export function normalizePrepMemoryItem(
     title,
     excerpt,
     content: options.includeContent ? content : undefined,
+    cards: options.includeContent && type === 'flashcards' && Array.isArray(data.cards || data.items) ? (data.cards || data.items).filter((card: any) => typeof card.question === 'string' && typeof card.answer === 'string').map((card: any) => ({question:card.question,answer:card.answer})) : undefined,
     skill: inferSkill(data, title),
     applicationId: data.applicationId || data.application_id || null,
     resumeVersionId: data.resumeVersionId || data.resume_version_id || null,

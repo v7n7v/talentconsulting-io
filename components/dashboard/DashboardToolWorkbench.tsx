@@ -1,5 +1,6 @@
 'use client';
 
+import { TacoName } from '@/components/BrandLogo';
 import { useEffect, useMemo, useState } from 'react';
 import type { DashboardMode, DashboardToolId, GuestUsageSnapshot } from '@/lib/dashboard-types';
 import {
@@ -10,7 +11,8 @@ import {
 } from '@/components/dashboard/guestUsage';
 
 interface WorkbenchResult {
-  score: number;
+  /** null when the source returned no measured score. Never a fabricated fallback. */
+  score: number | null;
   scoreLabel: string;
   title: string;
   summary: string;
@@ -121,18 +123,19 @@ function countWords(text: string) {
 }
 
 function scoreColor(score: number) {
-  if (score >= 80) return '#059669';
-  if (score >= 60) return '#0ea5e9';
-  if (score >= 40) return '#d97706';
-  return '#dc2626';
+  if (score >= 80) return 'var(--success)';
+  if (score >= 60) return 'var(--text-secondary)';
+  if (score >= 40) return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 function normalizeList(value: unknown, fallback: string[], max = 5) {
   return Array.isArray(value) && value.length > 0 ? value.slice(0, max).map((item) => String(item)) : fallback;
 }
 
-function valueNumber(value: unknown, fallback: number) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+/** A real, finite number or null. Never invents a fallback value. */
+function measuredNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function importantWords(text: string) {
@@ -194,11 +197,13 @@ function runClientJobMatch(text: string): WorkbenchResult {
   const jobWords = Array.from(new Set(importantWords(jobText)));
   const matched = jobWords.filter((word) => resumeWords.has(word));
   const missing = jobWords.filter((word) => !resumeWords.has(word)).slice(0, 5);
-  const score = jobWords.length ? Math.min(94, Math.round((matched.length / jobWords.length) * 100) + 18) : 52;
+  // Honest keyword-overlap ratio only. No inflation constant, no cap, no
+  // fabricated fallback: with no role language to compare, there is no score.
+  const score = jobWords.length ? Math.round((matched.length / jobWords.length) * 100) : null;
 
   return {
     score,
-    scoreLabel: 'Match',
+    scoreLabel: 'Keyword overlap',
     title: 'Resume and role match',
     summary: 'This local preview compares role language against proof already present in your draft.',
     issues: missing.length
@@ -234,7 +239,7 @@ function ScoreDial({ score, label }: { score: number; label: string }) {
       </svg>
       <div className="text-center">
         <p className="text-2xl font-semibold tabular-nums" style={{ color }}>{score}</p>
-        <p className="text-[10px] leading-none text-[var(--text-muted)]">{label}</p>
+        <p className="text-[11px] leading-none text-[var(--text-muted)]">{label}</p>
       </div>
     </div>
   );
@@ -245,17 +250,17 @@ function GuestUsagePill({ usage }: { usage: GuestUsageSnapshot }) {
     <div className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
       <div className="flex items-center justify-between gap-4">
         <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Guest preview</span>
-        <span className={`text-xs font-semibold tabular-nums ${usage.exhausted ? 'text-amber-500' : 'text-emerald-500'}`}>
+        <span className={`text-xs font-semibold tabular-nums ${usage.exhausted ? 'text-[var(--warning)]' : 'text-[var(--success)]'}`}>
           {usage.remaining}/{usage.cap} left
         </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--bg-hover)]">
         <div
-          className="h-full rounded-full bg-emerald-500"
+          className="h-full rounded-full bg-[var(--success)]"
           style={{ width: `${Math.max(0, Math.min(100, (usage.remaining / usage.cap) * 100))}%` }}
         />
       </div>
-      <p className="mt-1 text-[10px] text-[var(--text-muted)]">{usage.resetLabel}</p>
+      <p className="mt-1 text-[11px] text-[var(--text-muted)]">{usage.resetLabel}</p>
     </div>
   );
 }
@@ -371,16 +376,20 @@ export default function DashboardToolWorkbench({
           return;
         }
 
+        const beforeScore = measuredNumber(data.before?.humanScore);
+        const afterScore = measuredNumber(data.after?.humanScore);
+        const polishStrengths: string[] = [];
+        if (beforeScore !== null) polishStrengths.push(`Before: ${beforeScore} human score`);
+        if (afterScore !== null) polishStrengths.push(`After: ${afterScore} human score`);
+        if (polishStrengths.length === 0) polishStrengths.push('Polished draft is ready — review every claim yourself.');
+
         setResult({
-          score: data.after?.humanScore || 72,
-          scoreLabel: 'Trust',
+          score: afterScore,
+          scoreLabel: 'Trust (est.)',
           title: 'Polished career draft',
           summary: 'Your draft was polished for specificity, rhythm, and career credibility.',
           issues: data.warnings?.slice(0, 3) || ['Review the final text and confirm every claim is accurate.'],
-          strengths: [
-            `Before: ${data.before?.humanScore ?? 0} human score`,
-            `After: ${data.after?.humanScore ?? 0} human score`,
-          ],
+          strengths: polishStrengths,
           recommendation: 'Create a free account to save versions and continue in the full writing toolkit.',
           rewritten: data.rewritten,
         });
@@ -413,8 +422,8 @@ export default function DashboardToolWorkbench({
 
       if (tool.id === 'writing-trust') {
         setResult({
-          score: valueNumber(data.humanScore, valueNumber(data.score, 58)),
-          scoreLabel: 'Trust',
+          score: measuredNumber(data.humanScore) ?? measuredNumber(data.score),
+          scoreLabel: 'Trust (est.)',
           title: 'Writing trust scan',
           summary: 'Trust scan complete. Treat this as an editing signal, not proof of authorship.',
           issues: normalizeList(data.topIssues || data.issues, ['Replace generic phrasing with concrete career evidence.']),
@@ -424,8 +433,8 @@ export default function DashboardToolWorkbench({
         });
       } else {
         setResult({
-          score: valueNumber(data.atsScore, valueNumber(data.score, 64)),
-          scoreLabel: 'ATS',
+          score: measuredNumber(data.atsScore) ?? measuredNumber(data.score),
+          scoreLabel: 'ATS (est.)',
           title: tool.id === 'resume-check' ? 'Resume readiness preview' : 'ATS analyzer preview',
           summary: typeof data.summary === 'string' ? data.summary : 'Resume structure check complete.',
           issues: normalizeList(data.issues, ['Add measurable outcomes where possible.', 'Make section labels easy for ATS systems to parse.']),
@@ -449,7 +458,7 @@ export default function DashboardToolWorkbench({
 
   return (
     <section
-      className={`rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm ${
+      className={`elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] ${
         minimal ? 'p-4 md:p-5' : 'p-4 md:p-5'
       }`}
       aria-labelledby="dashboard-workbench-title"
@@ -462,11 +471,11 @@ export default function DashboardToolWorkbench({
                 {mode === 'guest' ? 'Free tool workbench' : 'Workspace preview'}
               </p>
               <h2 id="dashboard-workbench-title" className="premium-heading-wrap mt-1 flex items-center gap-2 text-2xl font-black tracking-[-0.02em] text-[var(--text-primary)]">
-                <Icon name={tool.icon} className="text-[24px] text-emerald-600 dark:text-emerald-300" />
+                <Icon name={tool.icon} className="text-[24px] text-[var(--accent)]" />
                 {tool.label}
               </h2>
               <p className="premium-copy-wrap mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                {tool.description} Public previews stay bounded; saved history and Taco memory unlock when you create an account.
+                {tool.description} Public previews stay bounded; saved history and <TacoName /> memory unlock when you create an account.
               </p>
             </div>
             {mode === 'guest' && <GuestUsagePill usage={usage} />}
@@ -483,7 +492,7 @@ export default function DashboardToolWorkbench({
                   onClick={() => onSelectTool(item.id)}
                   className={`min-h-14 rounded-[14px] border px-3 py-2 text-left transition ${
                     active
-                      ? 'border-emerald-500/50 bg-emerald-500/10 text-[var(--text-primary)]'
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -491,7 +500,7 @@ export default function DashboardToolWorkbench({
                     <Icon name={item.icon} className="text-[17px]" />
                     <span className="truncate">{item.label}</span>
                   </span>
-                  <span className="mt-1 block text-[10px] font-medium text-[var(--text-muted)]">{item.limitLabel}</span>
+                  <span className="mt-1 block text-[11px] font-medium text-[var(--text-muted)]">{item.limitLabel}</span>
                 </button>
               );
             })}
@@ -508,7 +517,7 @@ export default function DashboardToolWorkbench({
                 Run a real preview before opening the full tool.
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">
-                Public previews stay bounded; save, export, history, and Taco memory unlock when you sign in.
+                Public previews stay bounded; save, export, history, and <TacoName /> memory unlock when you sign in.
               </p>
             </div>
             {mode === 'guest' && <GuestUsagePill usage={usage} />}
@@ -526,7 +535,7 @@ export default function DashboardToolWorkbench({
                   onClick={() => onSelectTool(item.id)}
                   className={`min-h-20 rounded-[16px] border p-3 text-left transition ${
                     active
-                      ? 'border-emerald-500/50 bg-emerald-500/10 text-[var(--text-primary)]'
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -557,15 +566,15 @@ export default function DashboardToolWorkbench({
               setLimitReached(false);
             }}
             placeholder={tool.placeholder}
-            className={`${minimal ? 'min-h-[220px]' : 'min-h-[270px]'} w-full resize-y rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-sm leading-6 text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10`}
+            className={`${minimal ? 'min-h-[220px]' : 'min-h-[270px]'} w-full resize-y rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-base leading-6 text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-dim)]`}
           />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className={overLimit ? 'text-red-500' : 'text-[var(--text-muted)]'}>
+              <span className={overLimit ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}>
                 {wordCount} / {tool.wordCap} words
               </span>
-              {needsMoreText && <span className="text-amber-500">Add more text for a useful signal.</span>}
-              {guestExhausted && <span className="text-amber-500">Guest previews used.</span>}
+              {needsMoreText && <span className="text-[var(--warning)]">Add more text for a useful signal.</span>}
+              {guestExhausted && <span className="text-[var(--warning)]">Guest previews used.</span>}
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -580,8 +589,7 @@ export default function DashboardToolWorkbench({
                 type="button"
                 onClick={limitReached || guestExhausted ? onShowSignup : runCheck}
                 disabled={!limitReached && !guestExhausted && (!canRun || loading)}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[10px] px-5 py-2 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
-                style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}
+                className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Icon name={loading ? 'progress_activity' : limitReached || guestExhausted ? 'person_add' : tool.icon} className={`text-[19px] ${loading ? 'animate-spin' : ''}`} />
                 {loading ? 'Checking...' : limitReached || guestExhausted ? 'Create free account' : tool.cta}
@@ -589,13 +597,16 @@ export default function DashboardToolWorkbench({
             </div>
           </div>
           {error && (
-            <div className="mt-3 rounded-[16px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm leading-6 text-amber-600 dark:text-amber-300">
+            <div className="mt-3 flex items-start gap-2 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm leading-6 text-[var(--text-primary)]">
+              <span className="material-symbols-rounded mt-0.5 shrink-0 text-[17px] text-[var(--warning)]" aria-hidden="true">warning</span>
+              <span>
               {error}
               {(limitReached || guestExhausted) && (
                 <button type="button" onClick={onShowSignup} className="ml-1 font-semibold underline underline-offset-2">
                   Sign up free
                 </button>
               )}
+              </span>
             </div>
           )}
         </div>
@@ -604,7 +615,14 @@ export default function DashboardToolWorkbench({
           {result ? (
             <div>
               <div className="flex items-center gap-4">
-                <ScoreDial score={result.score} label={result.scoreLabel} />
+                {result.score !== null ? (
+                  <ScoreDial score={result.score} label={result.scoreLabel} />
+                ) : (
+                  <div className="flex h-24 w-24 shrink-0 flex-col items-center justify-center rounded-full border border-dashed border-[var(--border-subtle)] px-2 text-center">
+                    <span className="material-symbols-rounded text-[24px] text-[var(--text-muted)]" aria-hidden="true">do_not_disturb_on</span>
+                    <span className="mt-1 text-[11px] leading-tight text-[var(--text-muted)]">Not scored</span>
+                  </div>
+                )}
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">{result.title}</p>
                   <h3 className="mt-1 text-lg font-bold leading-6 text-[var(--text-primary)]">{result.summary}</h3>
@@ -617,7 +635,7 @@ export default function DashboardToolWorkbench({
                   <ul className="space-y-2">
                     {result.issues.slice(0, 4).map((issue) => (
                       <li key={issue} className="flex gap-2 text-sm leading-5 text-[var(--text-secondary)]">
-                        <Icon name="priority_high" className="mt-0.5 text-[17px] text-amber-500" />
+                        <Icon name="priority_high" className="mt-0.5 text-[17px] text-[var(--warning)]" />
                         <span>{issue}</span>
                       </li>
                     ))}
@@ -628,7 +646,7 @@ export default function DashboardToolWorkbench({
                   <ul className="space-y-2">
                     {result.strengths.slice(0, 3).map((strength) => (
                       <li key={strength} className="flex gap-2 text-sm leading-5 text-[var(--text-secondary)]">
-                        <Icon name="check_circle" className="mt-0.5 text-[17px] text-emerald-500" />
+                        <Icon name="check_circle" className="mt-0.5 text-[17px] text-[var(--success)]" />
                         <span>{strength}</span>
                       </li>
                     ))}
@@ -636,7 +654,7 @@ export default function DashboardToolWorkbench({
                 </div>
               </div>
               {result.rewritten && (
-                <div className="mt-3 rounded-[16px] border border-emerald-500/25 bg-emerald-500/10 p-3 text-sm leading-6 text-[var(--text-primary)]">
+                <div className="mt-3 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-sm leading-6 text-[var(--text-primary)]">
                   {result.rewritten}
                 </div>
               )}
@@ -647,7 +665,7 @@ export default function DashboardToolWorkbench({
           ) : (
             <div className={minimal ? 'flex min-h-[260px] flex-col items-center justify-center text-center' : 'flex min-h-[430px] flex-col justify-between'}>
               <div className={minimal ? 'max-w-sm' : undefined}>
-                <div className={`${minimal ? 'mx-auto h-10 w-10 rounded-[14px]' : 'h-12 w-12 rounded-[16px]'} flex items-center justify-center border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-emerald-500`}>
+                <div className={`${minimal ? 'mx-auto h-10 w-10 rounded-[14px]' : 'h-12 w-12 rounded-[16px]'} flex items-center justify-center border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--accent)]`}>
                   <Icon name={tool.icon} className={minimal ? 'text-[21px]' : 'text-[24px]'} />
                 </div>
                 <h3 className={`${minimal ? 'mt-3 text-base' : 'mt-4 text-xl'} font-bold text-[var(--text-primary)]`}>

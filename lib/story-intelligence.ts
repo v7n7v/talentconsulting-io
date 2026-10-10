@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { writingJSONCompletion } from '@/lib/ai/writing-model-router';
 import type { QualityDecision } from '@/lib/writing-quality';
 import { sanitizeForAI, wrapUserContent } from '@/lib/sanitize';
@@ -326,9 +327,10 @@ Return { "proofScore": number, "privacyRisk": "low|medium|high", "missingMetrics
       },
     });
 
+    const report = z.object({ proofScore: z.number().min(0).max(100), privacyRisk: z.enum(['low', 'medium', 'high']), missingMetrics: z.array(z.string()), clarityIssues: z.array(z.string()), confidentialityWarnings: z.array(z.string()), suggestedImprovements: z.array(z.string()), strengths: z.array(z.string()) }).parse(completion.result);
     return {
       ...deterministic,
-      ...completion.result,
+      ...report,
       proofScore: Math.max(0, Math.min(100, Number(completion.result.proofScore) || deterministic.proofScore)),
       privacyRisk: ['low', 'medium', 'high'].includes(completion.result.privacyRisk) ? completion.result.privacyRisk : deterministic.privacyRisk,
     };
@@ -384,7 +386,8 @@ Return { "stories": [{ "title": "", "situation": "", "task": "", "action": "", "
     },
   });
 
-  const drafts = (completion.result.stories || [])
+  const output = z.object({ stories: z.array(z.object({ title: z.string().min(1), situation: z.string().min(1), task: z.string(), action: z.string(), result: z.string(), reflection: z.string().optional(), tags: z.array(z.string()).optional(), category: z.string().optional(), competencies: z.array(z.string()).optional(), confidence: z.number().min(0).max(100).optional(), company: z.string().nullable().optional(), role: z.string().nullable().optional() })).max(5) }).parse(completion.result);
+  const drafts = output.stories
     .map(draft => normalizeStoryData({
       ...draft,
       source: options.sourceType as StorySource,
@@ -395,7 +398,7 @@ Return { "stories": [{ "title": "", "situation": "", "task": "", "action": "", "
       resumeVersionId: options.resumeVersionId || null,
       category: draft.category || inferStoryCategory(draft as any),
       competencies: draft.competencies?.length ? draft.competencies : inferStoryCompetencies(draft as any),
-      confidence: draft.confidence || 70,
+      confidence: draft.confidence ?? 0,
     }))
     .filter(story => story.title && story.situation)
     .slice(0, 5);

@@ -4,6 +4,7 @@ import { invalidateTwin } from '@/lib/career-twin';
 import { monitor } from '@/lib/monitor';
 import {
   createStoryBankStory,
+  getStoryBankStory,
   deleteStoryBankStory,
   listStoryBankStories,
   updateStoryBankStory,
@@ -21,6 +22,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const url = new URL(req.url);
+    const storyId = url.searchParams.get('id');
+    if (storyId) {
+      if (!/^[A-Za-z0-9_-]{1,180}$/.test(storyId)) return Response.json({error:'Invalid story identifier.'},{status:400});
+      const story = await getStoryBankStory(uid, storyId);
+      if (!story) return Response.json({error:'This story is unavailable for this account.'},{status:404});
+      return Response.json({stories:[story],count:1,page:1,limit:1,hasMore:false,nextCursor:null,countMeaning:'page'});
+    }
     const result = await listStoryBankStories(uid, {
       search: url.searchParams.get('search') || undefined,
       category: url.searchParams.get('category') || undefined,
@@ -28,6 +36,7 @@ export async function GET(req: NextRequest) {
       applicationId: url.searchParams.get('applicationId') || undefined,
       resumeVersionId: url.searchParams.get('resumeVersionId') || undefined,
       contactId: url.searchParams.get('contactId') || undefined,
+      cursor: url.searchParams.get('cursor') || undefined,
       page: Number(url.searchParams.get('page') || 1),
       limit: Number(url.searchParams.get('limit') || 100),
     });
@@ -38,9 +47,12 @@ export async function GET(req: NextRequest) {
       page: result.page,
       limit: result.limit,
       hasMore: result.hasMore,
+      nextCursor: result.nextCursor,
+      countMeaning: result.countMeaning,
       migratedCount: result.migratedCount,
     }), { headers: { 'Content-Type': 'application/json' } });
   } catch (e: any) {
+    if (e.message === 'INVALID_STORY_CURSOR') return new Response(JSON.stringify({ error: 'Story filters or account changed. Reload the list.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     monitor.critical('Tool: agent/stories', String(e));
     return new Response(JSON.stringify({ error: e.message, stories: [], count: 0 }), {
       status: 500,

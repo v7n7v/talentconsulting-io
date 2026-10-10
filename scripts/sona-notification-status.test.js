@@ -58,7 +58,7 @@ test('legacy emailSent cannot be mistaken for delivered evidence', () => {
 
 test('Taco result UI renders the bounded status contract and alert-consent handoff', () => {
   const page = fs.readFileSync(path.join(repoRoot, 'app', 'suite', 'agent', 'page.tsx'), 'utf8');
-  assert.match(page, /getSonaHarnessNotificationStatus\(result\.notification\)/);
+  assert.match(page, /getSonaHarnessNotificationStatus\(\s*result\.notification,?\s*\)/);
   assert.match(page, /notificationState\.label/);
   assert.match(page, /notificationState\.message/);
   assert.match(page, /Choose email alerts/);

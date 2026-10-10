@@ -646,8 +646,8 @@ test('active job-alert opt-in surfaces acknowledge email consent', () => {
   const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
   assert.match(read('components/JobFeedWidget.tsx'), /jobAlertsConsentAcknowledged:\s*true/);
   assert.match(read('components/SonaPicksCapture.tsx'), /consentAcknowledged:\s*true/);
-  assert.match(read('app/suite/page.tsx'), /consentAcknowledged:\s*true/);
+  assert.match(read('app/suite/page.tsx'), /<JobFeedWidget/); // Consent belongs to the embedded widget; exercised in job-widget-behavior.test.js.
   assert.match(read('app/suite/settings/page.tsx'), /jobAlertsConsentAcknowledged:\s*true/);
-  assert.match(read('app/suite/job-search/WeeklyPicksSection.tsx'), /consentAcknowledged:\s*true/);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'app/suite/job-search/WeeklyPicksSection.tsx')), false, 'Dormant weekly UI is retired; active consent surfaces remain covered above');
   assert.match(read('app/suite/job-search/JobPreferencesPanel.tsx'), /agentDigestConsentAcknowledged:\s*isMaxPlan\s*&&\s*agentDigestEmailEnabled/);
 });

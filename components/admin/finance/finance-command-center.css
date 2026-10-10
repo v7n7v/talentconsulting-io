@@ -30,8 +30,8 @@
 }
 
 .admin-command-grid .finance-kicker {
-  color: var(--admin-cobalt);
-  font-size: 10px;
+  color: var(--taco-accent-text);
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -66,7 +66,7 @@
 
 .admin-command-grid .finance-window-select > span {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -167,7 +167,7 @@
 
 .admin-command-grid .finance-evidence-list dt {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 720;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -211,7 +211,7 @@
 
 .admin-command-grid .finance-source-note p {
   margin: 0;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -237,12 +237,12 @@
   background: var(--admin-surface-elevated);
   padding: 10px;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
 .admin-command-grid .finance-limitations li .material-symbols-rounded {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 17px;
 }
 
@@ -274,7 +274,7 @@
   border: 1px solid color-mix(in srgb, var(--admin-cobalt) 36%, var(--admin-border));
   border-radius: 11px;
   background: var(--admin-cobalt-soft);
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 24px;
 }
 
@@ -321,7 +321,7 @@
 
 .admin-command-grid .finance-pricing-evidence > div > span {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -386,7 +386,7 @@
 .admin-command-grid .finance-scenario-grid > label:focus-within,
 .admin-command-grid .finance-scenario-grid > label.is-selected {
   border-color: color-mix(in srgb, var(--admin-cobalt) 62%, var(--admin-border));
-  box-shadow: 0 12px 30px color-mix(in srgb, var(--admin-cobalt) 14%, transparent);
+  box-shadow: var(--elevation-raised);
   transform: translateY(-2px);
 }
 
@@ -426,7 +426,7 @@
 .admin-command-grid .finance-scenario-promotion,
 .admin-command-grid .finance-scenario-tradeoff {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -459,7 +459,7 @@
 
 .admin-command-grid .finance-scenario-plans strong {
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .finance-scenario-economics {
@@ -477,7 +477,7 @@
 
 .admin-command-grid .finance-scenario-economics small > span {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -485,7 +485,7 @@
 
 .admin-command-grid .finance-scenario-economics small > strong {
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -528,12 +528,12 @@
 
 .admin-command-grid .finance-pricing-attestations strong {
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .finance-pricing-attestations small {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -564,14 +564,14 @@
 
 .admin-command-grid .finance-pricing-scope .material-symbols-rounded,
 .admin-command-grid .finance-pricing-recorded > .material-symbols-rounded {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 18px;
 }
 
 .admin-command-grid .finance-pricing-scope p,
 .admin-command-grid .finance-pricing-recorded p,
 .admin-command-grid .finance-pricing-recorded small {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -609,7 +609,7 @@
   border-right: 1px solid var(--admin-border);
   padding: 0 13px;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .finance-reconciliation-summary span:last-child {
@@ -629,7 +629,7 @@
   background: var(--admin-degraded-soft);
   color: var(--admin-degraded);
   padding: 9px 13px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .finance-inline-warning .material-symbols-rounded {
@@ -651,7 +651,7 @@
   border: 1px solid var(--admin-border);
   border-radius: 7px;
   background: var(--admin-cobalt-soft);
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 17px;
 }
 
@@ -669,7 +669,7 @@
 .admin-command-grid .finance-proposal,
 .admin-command-grid .finance-missing {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .finance-missing {
@@ -684,7 +684,7 @@
   border-top: 1px solid var(--admin-border);
   color: var(--admin-text-muted);
   padding: 10px 13px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .finance-drawer-evidence {
@@ -704,7 +704,7 @@
 }
 
 .admin-command-grid .finance-drawer-account > .material-symbols-rounded {
-  color: var(--admin-cobalt);
+  color: var(--taco-accent-text);
   font-size: 24px;
 }
 
@@ -716,7 +716,7 @@
 .admin-command-grid .finance-drawer-account span,
 .admin-command-grid .finance-drawer-evidence dt {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .finance-drawer-account strong {
@@ -803,7 +803,7 @@
 .admin-command-grid .finance-confirmation-scope {
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -893,7 +893,7 @@
 
   .admin-command-grid .finance-preview-cards small {
     color: var(--admin-text-muted);
-    font-size: 9px;
+    font-size: 11px;
   }
 }
 

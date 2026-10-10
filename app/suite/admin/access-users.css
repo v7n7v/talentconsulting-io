@@ -43,7 +43,7 @@
 .admin-module-kicker {
   margin-bottom: 4px !important;
   color: var(--admin-cobalt) !important;
-  font-size: 9px !important;
+  font-size: 11px !important;
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -177,7 +177,7 @@
   overflow: hidden;
   max-width: 220px;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -193,7 +193,7 @@
 .access-status-stack small,
 .users-badge-stack > span {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .access-status-stack small {
@@ -208,7 +208,7 @@
   align-items: center;
   gap: 6px;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -233,7 +233,7 @@
   border: 1px solid var(--admin-border);
   border-radius: 8px;
   padding: 0 8px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -278,7 +278,7 @@
 .access-session-card small {
   overflow: hidden;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -308,14 +308,14 @@
 .access-evidence-list dt,
 .users-detail-list dt {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .access-evidence-list dd,
 .users-detail-list dd {
   margin: 0;
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 680;
   text-align: right;
 }
@@ -330,7 +330,7 @@
   display: grid;
   gap: 6px;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 680;
 }
 
@@ -360,14 +360,14 @@
   background: var(--admin-violet-soft);
   color: var(--admin-text-secondary);
   padding: 9px 10px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
 .admin-confirmation-hint {
   margin: 7px 0 0;
   color: var(--admin-degraded);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .access-role-matrix {
@@ -403,7 +403,7 @@
 
 .access-role-matrix article header > span:last-child {
   color: var(--admin-cobalt);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -413,7 +413,7 @@
   min-height: 44px;
   margin: 10px 0 0;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -431,7 +431,7 @@
 
 .access-permission-count span {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .access-role-matrix ul {
@@ -446,7 +446,7 @@
   overflow: hidden;
   color: var(--admin-text-muted);
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -489,7 +489,7 @@
 .access-audit-list strong {
   display: block;
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: capitalize;
 }
@@ -499,14 +499,14 @@
   margin: 3px 0 0;
   max-width: 260px;
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .access-audit-list time {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -520,7 +520,7 @@
 
 .users-page-evidence span {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -536,7 +536,7 @@
   border: 1px solid var(--admin-border);
   border-radius: 8px;
   padding: 0 28px 0 10px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .users-scope-note {
@@ -548,7 +548,7 @@
   background: var(--admin-info-soft);
   color: var(--admin-info);
   padding: 8px 14px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .users-scope-note .material-symbols-rounded {
@@ -576,7 +576,7 @@
 
 .users-pagination span {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .users-open-label {
@@ -623,7 +623,7 @@
   overflow: hidden;
   margin: 4px 0 0;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -633,7 +633,7 @@
   overflow: hidden;
   margin-top: 6px;
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -688,7 +688,7 @@
 .users-rollout-lock p {
   margin: 4px 0 0;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 

@@ -27,7 +27,8 @@ export default function SkillGapWarningModal({ isOpen, onClose, newSkills, match
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 backdrop-blur-sm z-[100]"
+            style={{ background: 'var(--modal-backdrop)' }}
             onClick={onClose}
           />
 
@@ -38,20 +39,19 @@ export default function SkillGapWarningModal({ isOpen, onClose, newSkills, match
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="relative w-full max-w-md rounded-2xl overflow-hidden shadow-xl"
+              className="relative w-full max-w-md rounded-2xl overflow-hidden elevation-raised"
               style={{
-                background: 'var(--bg-surface)',
+                background: 'var(--card-bg)',
                 border: '1px solid var(--border-subtle)',
               }}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
               <div className="relative px-6 pt-6 pb-4">
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-transparent" />
                 <div className="relative flex items-center gap-3">
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                    style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}
+                    style={{ background: 'color-mix(in srgb, var(--warning) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--warning) 24%, transparent)' }}
                   >
                     🌉
                   </div>
@@ -66,13 +66,13 @@ export default function SkillGapWarningModal({ isOpen, onClose, newSkills, match
                 </div>
               </div>
 
-              {/* Score bar (optional) */}
-              {matchScore && (
+              {/* Score bar — guarded with != null so a real measured 0 is shown, not dropped as falsy */}
+              {matchScore != null && (
                 <div
                   className="mx-6 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg"
-                  style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}
+                  style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--success) 24%, transparent)' }}
                 >
-                  <span className="material-symbols-rounded text-sm" style={{ color: 'var(--success)' }}>check_circle</span>
+                  <span className="material-symbols-rounded text-sm icon-status-success">check_circle</span>
                   <span className="text-xs font-medium" style={{ color: 'var(--success)' }}>
                     Resume match score: {matchScore}%
                   </span>
@@ -89,10 +89,10 @@ export default function SkillGapWarningModal({ isOpen, onClose, newSkills, match
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.05 }}
                       className="flex items-center justify-between px-3 py-2.5 rounded-xl"
-                      style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)' }}
+                      style={{ background: 'color-mix(in srgb, var(--warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--warning) 16%, transparent)' }}
                     >
                       <div className="flex items-center gap-2.5">
-                        <span className="material-symbols-rounded text-sm" style={{ color: 'var(--warning)' }}>
+                        <span className="material-symbols-rounded text-sm icon-status-warning">
                           {s.category === 'technical' ? 'computer' : s.category === 'soft' ? 'handshake' : 'domain'}
                         </span>
                         <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
@@ -100,10 +100,10 @@ export default function SkillGapWarningModal({ isOpen, onClose, newSkills, match
                         </span>
                       </div>
                       <span
-                        className="text-[9px] px-2 py-0.5 rounded-full font-medium"
-                        style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.2)' }}
+                        className="inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full font-medium"
+                        style={{ background: 'color-mix(in srgb, var(--warning) 12%, transparent)', color: 'var(--warning)', border: '1px solid color-mix(in srgb, var(--warning) 24%, transparent)' }}
                       >
-                        <span className="material-symbols-rounded align-middle mr-0.5 text-[10px]">warning</span>AI-Added
+                        <span className="material-symbols-rounded align-middle text-[12px]">warning</span>AI-Added
                       </span>
                     </motion.div>
                   ))}
@@ -113,7 +113,7 @@ export default function SkillGapWarningModal({ isOpen, onClose, newSkills, match
               {/* Message */}
               <div
                 className="mx-6 mb-5 p-3 rounded-xl text-xs leading-relaxed"
-                style={{ background: 'var(--accent-dim)', border: '1px solid rgba(26,115,232,0.12)', color: 'var(--text-secondary)' }}
+                style={{ background: 'var(--accent-dim)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
               >
                 <strong><span className="material-symbols-rounded align-middle mr-1 text-sm" style={{ color: 'var(--accent)' }}>lightbulb</span>Pro Tip:</strong> These skills strengthen your resume match, but you should learn the basics before your interview. Skill Bridge creates a <strong>7-day crash course</strong> to get you ready.
               </div>
@@ -122,17 +122,13 @@ export default function SkillGapWarningModal({ isOpen, onClose, newSkills, match
               <div className="px-6 pb-6 flex gap-2.5">
                 <button
                   onClick={handleBridgeGap}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all"
-                  style={{ background: 'linear-gradient(135deg, #f59e0b, #f97316)', boxShadow: '0 4px 12px rgba(245,158,11,0.2)' }}
+                  className="flex-1 min-h-[44px] py-2.5 rounded-xl text-sm font-semibold transition-all btn-primary"
                 >
                   🌉 Bridge the Gap
                 </button>
                 <button
                   onClick={onClose}
-                  className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
-                  style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  className="min-h-[44px] px-5 py-2.5 rounded-xl text-sm font-medium transition-colors btn-secondary"
                 >
                   Got it
                 </button>

@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 Analyze the resume thoroughly and provide a detailed quality assessment.
 
 You MUST respond with a JSON object containing:
-- "atsScore": number 0-100 (how well it passes ATS parsing)
+- "atsScore": number 0-100 (model assessment of plain-text structure; no exported document or vendor parser was tested)
 - "keywordMatch": number 0-100 (keyword density and relevance${targetJD ? ' against the provided job description' : ''})
 - "formattingScore": number 0-100 (structure, readability, length)
 - "overallGrade": "A+" | "A" | "B+" | "B" | "C" | "D" | "F"

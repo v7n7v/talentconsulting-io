@@ -144,7 +144,7 @@ export default function SonaSignalsV2({
                 cx="94"
                 cy="22"
                 r={2.4 - index * 0.45}
-                fill={index === 0 ? '#ffd27d' : index === 1 ? '#77e6ef' : '#ff8acb'}
+                fill={index === 0 ? 'var(--taco-paper)' : index === 1 ? 'var(--taco-coral)' : 'var(--taco-coral-ink)'}
                 animate={reducedMotion ? { x: -31 - index * 4, y: 14 + index * 5, opacity: 0.45 } : { x: orbitX, y: orbitY, opacity: [0, 0.5, 0.28, 0] }}
                 transition={{ duration: 3.2, delay: -index * 0.18, repeat: reducedMotion ? 0 : Infinity, ease: 'linear' }}
               />
@@ -157,7 +157,7 @@ export default function SonaSignalsV2({
             key="success"
             d="M 89 31 C 99 34 104 42 103 51"
             fill="none"
-            stroke="#76dfb2"
+            stroke="var(--taco-coral)"
             strokeWidth="2.2"
             strokeLinecap="round"
             initial={{ opacity: 0, pathLength: 0 }}

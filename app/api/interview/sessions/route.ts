@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { getAdminDb } from '@/lib/firebase-admin';
+import { resolvePracticeEvidence } from '@/lib/practice-session-server';
 import { monitor } from '@/lib/monitor';
 
 const MODES = new Set(['quick_drill', 'study_cards', 'full_mock', 'sona_live', 'avatar_live', 'technical_whiteboard']);
@@ -47,12 +49,13 @@ function toSession(body: Record<string, any>, uid: string) {
     applicationId: cleanNullableString(body.applicationId, 120),
     transcript: cleanArray(body.transcript, 200),
     telemetry: cleanRecord(body.telemetry),
-    scores: cleanRecord(body.scores),
-    rubric: cleanArray(body.rubric, 20),
+    scores: {},
+    rubric: [],
     recommendations: cleanArray(body.recommendations, 20),
     nextDrills: cleanArray(body.nextDrills, 20),
     storyMatches: cleanArray(body.storyMatches, 20),
     createdStoryIds: cleanArray<string>(body.createdStoryIds, 20),
+    selectedStoryIds: cleanArray<string>(body.selectedStoryIds, 8),
     skillGapIds: cleanArray<string>(body.skillGapIds, 20),
     notes: cleanNullableString(body.notes, 6000),
     whiteboard: cleanRecord(body.whiteboard),
@@ -94,7 +97,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await guardApiRoute(req, { rateLimit: 12, rateLimitWindow: 60_000, feature: 'gauntlets' });
+  const guard = await guardApiRoute(req, { rateLimit: 12, rateLimitWindow: 60_000, skipUsageCap: true });
   if (guard.error) return guard.error;
 
   const db = getAdminDb();
@@ -102,8 +105,25 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+    const requestId = typeof body.requestId === 'string' && /^[\w-]{1,120}$/.test(body.requestId) ? body.requestId : null;
+    const requestFingerprint = createHash('sha256').update(JSON.stringify({ ...body, requestId: undefined })).digest('hex');
+    if (requestId) {
+      const existing = await db.collection('users').doc(uid).collection('interview_sessions').doc(requestId).get();
+      if (existing.exists) {
+        if (existing.data()?.requestFingerprint !== requestFingerprint) return NextResponse.json({ error: 'Session request changed' }, { status: 409 });
+        return NextResponse.json({ id: existing.id, session: { id: existing.id, ...existing.data() }, success: true });
+      }
+    }
+    if (body.applicationId) {
+      const application = await db.collection('users').doc(uid).collection('applications').doc(body.applicationId).get();
+      if (!application.exists) return NextResponse.json({ error: 'Application is unavailable' }, { status: 403 });
+      const source = application.data()!;
+      body.company = source.company_name || ''; body.role = source.job_title || ''; body.jobDescription = source.job_description || ''; body.resumeVersionId = body.resumeVersionId || source.resume_version_id || null;
+    }
     const session = toSession(body || {}, uid);
-    const docRef = await db.collection('users').doc(uid).collection('interview_sessions').add(session);
+    await resolvePracticeEvidence(uid, session);
+    const docRef = db.collection('users').doc(uid).collection('interview_sessions').doc(requestId || crypto.randomUUID());
+    await db.runTransaction(async tx => { const existing = await tx.get(docRef); if (existing.exists) { if (existing.data()?.requestFingerprint !== requestFingerprint) throw new Error('Session request changed'); return; } tx.set(docRef, { ...session, requestFingerprint }); });
     return NextResponse.json({ id: docRef.id, session: { id: docRef.id, ...session }, success: true });
   } catch (error: any) {
     monitor.critical('Tool: interview/sessions POST', String(error));
@@ -123,11 +143,16 @@ export async function PATCH(req: NextRequest) {
     const id = cleanString(body?.id, 120);
     if (!id) return NextResponse.json({ error: 'Interview session id required' }, { status: 400 });
 
+    const sessionRef = db.collection('users').doc(uid).collection('interview_sessions').doc(id);
+    const existing = await sessionRef.get();
+    if (!existing.exists) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    const receipt = await db.collection('users').doc(uid).collection('practice_receipts').doc(id).get();
+    if (receipt.exists && ['persona', 'interviewType', 'mode', 'jobDescription', 'resumeVersionId', 'selectedStoryIds', 'applicationId'].some(key => body[key] !== undefined && JSON.stringify(body[key]) !== JSON.stringify(existing.data()?.[key]))) return NextResponse.json({ error: 'Started session context is fixed. Start a new session to change sources.' }, { status: 409 });
     const now = new Date().toISOString();
     const updates: Record<string, any> = { updatedAt: now };
     const allowedScalars = ['persona', 'interviewType', 'intensity', 'company', 'role', 'jobDescription', 'resumeVersionId', 'applicationId', 'notes'];
-    const allowedRecords = ['telemetry', 'scores', 'whiteboard'];
-    const allowedArrays = ['transcript', 'rubric', 'recommendations', 'nextDrills', 'storyMatches', 'createdStoryIds', 'skillGapIds'];
+    const allowedRecords = ['telemetry', 'whiteboard'];
+    const allowedArrays = ['transcript', 'createdStoryIds', 'selectedStoryIds', 'skillGapIds'];
 
     if (MODES.has(body.mode)) updates.mode = body.mode;
     if (SOURCES.has(body.source)) updates.source = body.source;

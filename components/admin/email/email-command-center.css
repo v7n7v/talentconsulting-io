@@ -22,7 +22,7 @@
   border: 1px solid var(--admin-border);
   border-radius: 11px;
   background: var(--admin-surface-panel);
-  box-shadow: var(--admin-shadow-panel);
+  box-shadow: var(--elevation-card);
 }
 
 .admin-command-grid .email-metric-grid .admin-metric-card {
@@ -102,7 +102,7 @@
 .admin-command-grid .email-proof-grid small {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -140,7 +140,7 @@
 
 .admin-command-grid .email-canary-target small {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -156,7 +156,7 @@
 .admin-command-grid .email-canary-note {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -173,7 +173,7 @@
   align-items: center;
   gap: 8px;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .email-safety-list .material-symbols-rounded {
@@ -216,7 +216,7 @@
 }
 
 .admin-command-grid .email-outbox-heading strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .email-outbox-heading b {
@@ -248,7 +248,7 @@
 
 .admin-command-grid .email-outbox-grid small {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .admin-command-grid .email-privacy-panel .admin-panel-content {
@@ -281,12 +281,12 @@
 }
 
 .admin-command-grid .email-privacy-grid strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .email-privacy-grid small {
   color: var(--admin-text-secondary);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.45;
 }
 

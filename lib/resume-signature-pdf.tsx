@@ -20,12 +20,14 @@ export interface CuratedSignaturePDFProps {
   resume: CanonicalResume;
   templateId: CuratedSignatureTemplateId;
   colors?: Partial<TemplateColors>;
+  pageSize?: 'A4' | 'LETTER';
 }
 
 interface CuratedRendererProps {
   resume: CanonicalResume;
   colors: TemplateColors;
   metadata: ResumeTemplateMetadata;
+  pageSize?: 'A4' | 'LETTER';
 }
 
 type PDFSectionTreatment = 'rule' | 'bar' | 'numbered' | 'boxed' | 'plain';
@@ -163,6 +165,7 @@ export function getPDFContentInventory(resume: CanonicalResume) {
       resume.location,
       resume.linkedin,
       resume.website,
+    ...(resume.links || []),
     ].map(clean).filter(Boolean),
     experienceCount: resume.experience.length,
     educationCount: resume.education.length,
@@ -395,6 +398,7 @@ function ContactLine({ resume, color }: { resume: CanonicalResume; color?: strin
     resume.location,
     resume.linkedin,
     resume.website,
+    ...(resume.links || []),
   ].map(clean).filter(Boolean);
   if (items.length === 0) return null;
   return (
@@ -630,6 +634,15 @@ function CertificationsSection({
   );
 }
 
+function AdditionalSectionsSection({ resume, colors, metadata, treatment, index }: CuratedRendererProps & { treatment: PDFSectionTreatment; index: number }) {
+  const sections = (resume as CanonicalResume & { additionalSections?: { id: string; title: string; items: string[] }[] }).additionalSections || [];
+  return <>{sections.map((section, sectionIndex) => {
+    const items = (section.items || []).map(clean).filter(Boolean);
+    if (!clean(section.title) && items.length === 0) return null;
+    return <View key={section.id || `${section.title}-${sectionIndex}`} style={common.section}><SectionTitle colors={colors} treatment={treatment} index={index + sectionIndex}>{clean(section.title) || 'Additional information'}</SectionTitle>{items.map((item, itemIndex) => <View key={itemIndex} style={common.bulletRow}><Text style={[common.bulletMark, { color: colors.primary }]}>-</Text><Text style={[common.bulletText, { color: colors.text }]}>{item}</Text></View>)}</View>;
+  })}</>;
+}
+
 type TitleTreatment = Parameters<typeof SectionTitle>[0]['treatment'];
 
 function OrderedSections({
@@ -657,6 +670,7 @@ function OrderedSections({
         <View key={sectionName}>{renderers[sectionName]?.(index + 1) ?? null}</View>
       ))}
       <CertificationsSection {...props} treatment={treatment} index={metadata.structure.sectionOrder.length + 1} />
+      <AdditionalSectionsSection {...props} treatment={treatment} index={metadata.structure.sectionOrder.length + 2} />
     </>
   );
 }
@@ -931,6 +945,7 @@ function ProfileSections({
         <View style={{ width: '53%', paddingLeft: 10, borderLeftWidth: 0.8, borderLeftColor: colors.accent }}>
           <EducationSection {...props} treatment="plain" index={4} />
           <CertificationsSection {...props} treatment="plain" index={5} />
+          <AdditionalSectionsSection {...props} treatment="plain" index={6} />
         </View>
       </View>
     </>
@@ -960,7 +975,7 @@ function SignatureProfilePage(
   }
   return (
     <Page
-      size="A4"
+      size={props.pageSize || 'A4'}
       style={[
         common.page,
         {

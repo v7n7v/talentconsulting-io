@@ -1,0 +1,93 @@
+/* Shared public palette: landing, pricing and privacy use the same color roles. */
+.taco-landing,
+.taco-public-page {
+  --landing-paper: var(--taco-paper);
+  --landing-ink: var(--taco-ink);
+  --landing-muted: var(--taco-muted);
+  --landing-coral: var(--taco-coral);
+  --landing-coral-ink: var(--taco-coral-ink);
+  /* Fixed roles: paper surfaces, ink text, coral accents, lavender shadows, blue identity. */
+  --landing-shadow: var(--taco-shadow);
+  --landing-coral-soft: color-mix(in srgb, var(--landing-coral) 12%, var(--landing-paper));
+  --landing-line: var(--taco-line);
+  --landing-soft: var(--taco-soft);
+}
+
+/* Public pages retain the paper palette under either application theme. */
+.taco-public-page {
+  --bg-deep: var(--landing-paper);
+  --bg-surface: var(--landing-paper);
+  --bg-elevated: var(--landing-soft);
+  --bg-input: var(--landing-paper);
+  --bg-hover: var(--landing-soft);
+  --card-bg: var(--landing-paper);
+  --border: var(--landing-ink);
+  --border-subtle: var(--landing-line);
+  --border-hover: var(--landing-ink);
+  --text-primary: var(--landing-ink);
+  --text-secondary: var(--landing-muted);
+  --text-tertiary: var(--landing-muted);
+  --text-muted: var(--landing-muted);
+  --accent: var(--landing-coral-ink);
+  --accent-active: var(--landing-coral);
+  --accent-dim: var(--landing-coral-soft);
+  --accent-hover: var(--landing-coral-soft);
+  --accent-on: var(--landing-ink);
+  --icon-static: var(--landing-muted);
+  --icon-active: var(--landing-ink);
+  background: var(--landing-paper);
+  color: var(--landing-ink);
+  overflow-x: clip;
+}
+
+.taco-public-page .taco-public-card,
+.taco-public-page .taco-public-card:hover {
+  background: var(--landing-paper);
+  border: 1px solid var(--landing-ink);
+  border-radius: 8px;
+  box-shadow: 6px 6px 0 var(--landing-shadow);
+}
+
+.taco-public-page .taco-public-button {
+  background: var(--landing-paper);
+  color: var(--landing-ink);
+  border: 1px solid var(--landing-ink);
+  border-radius: 4px;
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.taco-public-page .taco-public-button:hover {
+  background: var(--landing-soft);
+  border-color: var(--landing-ink);
+}
+
+.taco-public-page button[aria-pressed="true"],
+.taco-public-page button[aria-pressed="true"]:hover {
+  background: var(--landing-ink);
+  color: var(--landing-paper);
+}
+
+.taco-public-page .taco-public-action,
+.taco-public-page .taco-public-action:hover {
+  background: var(--landing-coral);
+  color: var(--landing-ink);
+  border-color: var(--landing-ink);
+}
+
+.taco-public-page .taco-public-action:hover {
+  background: var(--landing-coral-ink);
+  color: var(--landing-paper);
+}
+
+.taco-public-page .taco-public-kicker {
+  color: var(--landing-coral-ink);
+}
+
+.taco-public-page :focus-visible {
+  outline: 3px solid var(--landing-coral);
+  outline-offset: 4px;
+}

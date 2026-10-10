@@ -55,6 +55,15 @@ export async function POST(req: NextRequest) {
       temperature: 0.2,
       maxTokens: 2048,
       title: 'TalentConsulting.io Writing Uniqueness',
+      validateResult: (value): value is {
+        uniquenessScore: number; verdict: 'highly_unique' | 'mostly_unique' | 'some_overlap' | 'needs_revision'; analysis: Array<{ paragraphIndex: number; score: number; concern: string | null; suggestion: string | null }>; summary: string;
+      } => {
+        if (!value || typeof value !== 'object') return false;
+        const candidate = value as any;
+        return Number.isFinite(candidate.uniquenessScore) && candidate.uniquenessScore >= 0 && candidate.uniquenessScore <= 100 &&
+          ['highly_unique', 'mostly_unique', 'some_overlap', 'needs_revision'].includes(candidate.verdict) && Array.isArray(candidate.analysis) && typeof candidate.summary === 'string' &&
+          candidate.analysis.every((item: any) => Number.isInteger(item?.paragraphIndex) && Number.isFinite(item?.score) && item.score >= 0 && item.score <= 100 && (item.concern === null || typeof item.concern === 'string') && (item.suggestion === null || typeof item.suggestion === 'string'));
+      },
     });
 
     await incrementUsage(guard.user.uid, 'writingTools');

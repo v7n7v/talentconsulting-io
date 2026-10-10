@@ -1,0 +1,311 @@
+/* Focused styles for the five-section Resume Studio flow. Import alongside the
+   existing Resume Studio system stylesheet. */
+.resume-guided-workflow {
+  --guided-paper: var(--bg-deep);
+  --guided-ink: var(--text-primary);
+  --guided-coral: var(--taco-coral);
+  --guided-action-ink: var(--taco-ink);
+  --guided-rule: var(--border-subtle);
+  color: var(--guided-ink);
+  background: var(--guided-paper);
+}
+
+.resume-guided-workflow .resume-studio-header__top {
+  grid-template-columns: minmax(175px, auto) minmax(280px, 1fr) minmax(0, auto) 44px;
+  gap: 0;
+  padding-inline: clamp(12px, 2vw, 28px);
+}
+
+.resume-guided-workflow__help {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  grid-column: -2 / -1;
+  margin-inline-start: auto;
+}
+
+.resume-guided-workflow .resume-studio-header__brand {
+  gap: 10px;
+  padding: 0 18px 0 0;
+  border-color: var(--guided-rule);
+}
+
+.resume-guided-workflow .resume-studio-header__brand > .material-symbols-rounded {
+  color: var(--taco-accent-text);
+  flex-shrink: 0;
+}
+
+.resume-guided-workflow .resume-studio-header__brand .resume-studio-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+  font-weight: 650;
+  min-width: 0;
+  white-space: normal;
+  color: var(--guided-ink);
+}
+
+.resume-guided-workflow__back {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.resume-guided-workflow__back > * {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.resume-guided-workflow .resume-studio-header .resume-guided-workflow__progress,
+.resume-guided-workflow .resume-guided-workflow__progress {
+  padding: 0 clamp(12px, 2vw, 28px);
+}
+
+.resume-guided-workflow .resume-guided-workflow__progress ol {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.resume-guided-workflow .resume-guided-workflow__progress li {
+  min-width: 0;
+  color: color-mix(in srgb, var(--guided-ink) 72%, transparent);
+}
+
+.resume-guided-workflow__section-button {
+  display: flex;
+  width: 100%;
+  min-width: 44px;
+  min-height: 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.resume-guided-workflow__section-button:hover {
+  border-color: var(--guided-rule);
+  background: color-mix(in srgb, var(--guided-ink) 5%, var(--guided-paper));
+}
+
+.resume-guided-workflow__section-button:focus-visible {
+  outline: 2px solid var(--guided-coral);
+  outline-offset: 2px;
+}
+
+.resume-guided-workflow__section-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.resume-guided-workflow__status {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.resume-guided-workflow__progress li[data-status="ready"] .resume-guided-workflow__status {
+  color: var(--taco-accent-text);
+}
+
+.resume-guided-workflow__progress li[data-status="attention"] .resume-guided-workflow__status,
+.resume-guided-workflow__progress li[data-status="outdated"] .resume-guided-workflow__status {
+  color: var(--accent);
+}
+
+.resume-guided-workflow .resume-studio-progress__marker {
+  width: 26px;
+  height: 26px;
+  flex-basis: 26px;
+  border-color: var(--guided-rule);
+  color: var(--guided-ink);
+  background: var(--guided-paper);
+  font-size: 12px;
+}
+
+.resume-guided-workflow .resume-guided-workflow__progress li.is-current {
+  color: var(--guided-ink);
+}
+
+.resume-guided-workflow .resume-guided-workflow__progress li.is-current .resume-guided-workflow__section-button {
+  border-color: color-mix(in srgb, var(--guided-coral) 48%, var(--guided-rule));
+  background: color-mix(in srgb, var(--guided-coral) 9%, var(--guided-paper));
+}
+
+.resume-guided-workflow .resume-guided-workflow__progress li.is-current .resume-studio-progress__marker {
+  border-color: var(--accent);
+  background: var(--guided-coral);
+  color: var(--guided-action-ink);
+}
+
+.resume-guided-workflow .resume-guided-workflow__progress li.is-complete {
+  color: var(--guided-ink);
+}
+
+.resume-guided-workflow .resume-guided-workflow__progress li.is-complete .resume-studio-progress__marker {
+  border-color: var(--accent);
+  color: var(--taco-accent-text);
+}
+
+.resume-guided-workflow .resume-studio-header__context {
+  display: none;
+}
+
+.resume-guided-workflow .resume-studio-header__actions {
+  min-height: 44px;
+  padding-left: 16px;
+  border: 0;
+}
+
+.resume-guided-workflow .resume-studio-header__actions > * {
+  min-height: 44px;
+}
+
+.resume-guided-workflow__description {
+  padding: 0 clamp(12px, 2vw, 28px) 12px;
+  color: color-mix(in srgb, var(--guided-ink) 70%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .resume-guided-workflow .resume-studio-header__top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    padding: 10px 12px 0;
+  }
+
+  .resume-guided-workflow__help { grid-column: 2; grid-row: 1; }
+
+  .resume-guided-workflow .resume-studio-header__brand {
+    min-height: 44px;
+    padding-right: 8px;
+    border-right: 0;
+    grid-row: 1;
+  }
+
+  .resume-guided-workflow .resume-studio-header__actions {
+    grid-row: 3;
+    width: 100%;
+    padding: 0 0 12px;
+    margin: 0;
+    display: flex;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .resume-guided-workflow .resume-studio-header__actions > * { flex: 1 1 auto; }
+
+  .resume-guided-workflow .resume-studio-header .resume-guided-workflow__progress {
+    order: 3;
+    grid-row: 2;
+    grid-column: 1 / -1;
+    width: 100%;
+    padding: 10px 0 12px;
+  }
+
+  .resume-guided-workflow .resume-guided-workflow__progress ol {
+    gap: 2px;
+  }
+
+  .resume-guided-workflow .resume-guided-workflow__progress li {
+    display: block;
+    font-size: 11px;
+  }
+
+  .resume-guided-workflow__section-button {
+    min-height: 68px;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 5px 2px;
+    text-align: center;
+  }
+
+  .resume-guided-workflow__section-copy {
+    justify-items: center;
+  }
+
+  .resume-guided-workflow__status {
+    font-size: 11px;
+  }
+
+  .resume-guided-workflow .resume-studio-progress__label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+    color: inherit;
+    font-size: inherit;
+    white-space: normal;
+  }
+
+  .resume-guided-workflow__description {
+    padding: 0 12px 12px;
+  }
+}
+
+@media (max-width: 390px) {
+  .resume-guided-workflow__section-button {
+    padding-inline: 0;
+  }
+
+  .resume-guided-workflow .resume-studio-progress__marker {
+    width: 22px;
+    height: 22px;
+    flex-basis: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resume-guided-workflow__section-button { transition: none; }
+}
+
+.resume-guided-workflow .resume-workflow-library {
+  margin-block: 12px;
+  border: 1px solid var(--guided-rule);
+  border-radius: 12px;
+  background: var(--guided-paper);
+}
+.resume-guided-workflow .resume-workflow-library > summary {
+  padding: 12px 16px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--guided-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.resume-guided-workflow .resume-workflow-library[open] > :not(summary) {
+  margin: 12px;
+}
+.resume-guided-workflow summary:focus-visible {
+  outline: 2px solid var(--guided-coral);
+  outline-offset: 3px;
+}
+@media (min-width: 701px) and (max-width: 1100px) {
+  .resume-guided-workflow .resume-studio-header__top {
+    display: flex;
+    flex-wrap: wrap;
+    padding-block: 12px;
+    gap: 8px;
+  }
+  .resume-guided-workflow .resume-studio-header__actions { margin-left: auto; }
+  .resume-guided-workflow .resume-guided-workflow__progress {
+    order: 3;
+    width: 100%;
+    padding: 12px 0 0;
+  }
+}
+
+.resume-guided-workflow .resume-workflow-field { display: grid; gap: 7px; font-size: 13px; color: var(--text-secondary); min-width: 0; }
+.resume-guided-workflow .resume-workflow-field input { min-height: 44px; width: 100%; border: 1px solid var(--border-subtle); border-radius: 10px; padding: 10px 12px; background: var(--bg-input); color: var(--text-primary); font-size: 16px; }
+.resume-guided-workflow .resume-workflow-field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

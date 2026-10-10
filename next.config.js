@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Let isolated local fixture reviews run alongside the normal dev server.
+  ...(process.env.NODE_ENV === 'development' && process.env.TACO_PREVIEW_DIST_DIR
+    ? { distDir: process.env.TACO_PREVIEW_DIST_DIR } : {}),
   output: 'standalone',
   reactStrictMode: true,
   allowedDevOrigins: ['localhost', '127.0.0.1'],
@@ -7,6 +10,12 @@ const nextConfig = {
   poweredByHeader: false,
   devIndicators: false,
   serverExternalPackages: ['mammoth', 'pdf-parse'],
+  // The binary parser runs in an eval worker. Its string-literal requires are
+  // invisible to Next's dependency tracer, so retain its runtime PDF assets.
+  outputFileTracingIncludes: {
+    '/api/gauntlet/parse-resume': ['./node_modules/pdfjs-dist/package.json', './node_modules/pdfjs-dist/legacy/build/*.mjs', './node_modules/pdfjs-dist/cmaps/**/*', './node_modules/pdfjs-dist/standard_fonts/**/*'],
+    '/api/workspace-preview/resume-import': ['./node_modules/pdfjs-dist/package.json', './node_modules/pdfjs-dist/legacy/build/*.mjs', './node_modules/pdfjs-dist/cmaps/**/*', './node_modules/pdfjs-dist/standard_fonts/**/*'],
+  },
   images: {
     domains: [],
   },
@@ -67,7 +76,11 @@ const nextConfig = {
               "frame-ancestors 'none'",
               "upgrade-insecure-requests",
             ].join('; ')
-          }
+          },
+          ...(process.env.STAGING_HOSTNAME ? [{
+            key: 'X-Robots-Tag',
+            value: 'noindex, nofollow, noarchive'
+          }] : [])
         ]
       }
     ]

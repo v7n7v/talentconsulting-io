@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     const cat = CATEGORY_MAP[effectiveCategory] || CATEGORY_MAP.general;
     const userName = guard.user.email?.split('@')[0] || 'Unknown';
     const userEmail = guard.user.email || 'unknown';
-    const safeMessage = message.slice(0, 2000);
+    // Retain the complete accepted report; only delivery summaries are bounded.
+    const safeMessage = message;
     const moodLabel = mood ? MOOD_MAP[mood] || '' : '';
     const submittedAt = new Date().toISOString();
     const retentionExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60_000);
@@ -225,7 +226,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             embeds: [{
               title: `${cat.emoji} ${cat.label}`,
-              description: safeMessage,
+              description: safeMessage.slice(0, 1900),
               color: cat.color,
               fields: [
                 { name: 'User', value: `${userName} (${userEmail})`, inline: true },
@@ -243,7 +244,7 @@ export async function POST(req: NextRequest) {
     const caseId = billingCaseId || generalCaseId;
     if (!caseId) throw new Error('Feedback case identifier was not created');
 
-    const [customerMessage, operationsMessage] = await Promise.all([
+    const [customerMessage, operationsMessage] = await Promise.allSettled([
       enqueueEmail({
         event: 'support.feedback_received',
         recipient: { kind: 'user', uid: guard.user.uid },
@@ -312,7 +313,8 @@ export async function POST(req: NextRequest) {
       diagnosticCaseId,
       diagnosticsRequested: diagnosticsWereRequested,
       diagnosticsAttached: Boolean(diagnosticCaseId),
-      emailQueued: customerMessage.created || operationsMessage.created,
+      emailQueued: (customerMessage.status === 'fulfilled' && customerMessage.value.created) || (operationsMessage.status === 'fulfilled' && operationsMessage.value.created),
+      deliveryWarning: customerMessage.status === 'rejected' || operationsMessage.status === 'rejected' ? 'Feedback saved; an email receipt could not be queued.' : null,
     });
   } catch (error) {
     console.error('[api/feedback] Error:', error);

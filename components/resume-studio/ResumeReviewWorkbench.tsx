@@ -1,5 +1,6 @@
 'use client';
 
+import { TacoName } from '@/components/BrandLogo';
 import { useMemo } from 'react';
 import {
   applyResumeReviewDecisions,
@@ -11,8 +12,11 @@ import {
   type ResumeReviewState,
 } from '@/lib/resume-review-ledger';
 import { ResumeStudioHeader } from './ResumeStudioHeader';
+import type { ResumeStudioSection, ResumeStudioSectionStatus } from './ResumeStudioProgress';
 
 interface ResumeReviewWorkbenchProps {
+  onNavigate?: (section: ResumeStudioSection) => void;
+  statuses?: Record<ResumeStudioSection, ResumeStudioSectionStatus>;
   sourceResume: ResumeReviewResume | null;
   candidateResume: ResumeReviewResume | null;
   reviewState: ResumeReviewState;
@@ -176,6 +180,7 @@ export function ResumeReviewWorkbench({
   isPro,
   onRunAtsScan,
   atsScanLoading,
+  onNavigate, statuses,
 }: ResumeReviewWorkbenchProps) {
   const ledger = useMemo(
     () => deriveResumeReviewLedger(sourceResume, candidateResume),
@@ -228,12 +233,14 @@ export function ResumeReviewWorkbench({
   // fitScore null means the alignment was never measured (no scorable job description),
   // not "fit is zero". It renders as the missing-evidence treatment, never a number.
   const atsLabel = atsScore === null ? 'ATS pending' : `ATS ${atsScore}`;
-  const proofLabel = proofScore === null ? 'Proof pending' : 'Proof verified';
+  const proofLabel = proofScore === null ? 'Comparison unavailable' : 'Source comparison available';
 
   return (
     <section className="resume-workbench resume-studio-system-shell" aria-label="Resume review workbench">
       <ResumeStudioHeader
-        current="review"
+        current="review" onNavigate={onNavigate} statuses={statuses}
+        stageDescription="Check the proposed AI changes. Accept or revert each one, then continue to your template."
+        backAction={<button type="button" className="resume-studio-header__secondary" onClick={onBack}>Back</button>}
         candidateName={candidateResume?.name || sourceResume?.name}
         candidateDetail={candidateResume?.title || sourceResume?.title || 'Candidate'}
         targetLabel={targetLabel}
@@ -248,9 +255,10 @@ export function ResumeReviewWorkbench({
             type="button"
             className="resume-studio-header__primary"
             disabled={!canContinue && validChanges.length > 0}
+            data-guide="resume-review-next"
             onClick={() => reviewedResume && onContinue(reviewedResume)}
           >
-            Continue to Design
+            Continue to Template
             <span className="material-symbols-rounded" aria-hidden="true">arrow_forward</span>
           </button>
         }
@@ -309,7 +317,7 @@ export function ResumeReviewWorkbench({
           <span className="material-symbols-rounded" aria-hidden="true">difference</span>
           <div>
             <h2>Source comparison is unavailable</h2>
-            <p>This draft does not include an immutable imported source. Taco will not invent one or relabel another version as the original.</p>
+            <p>This draft does not include an immutable imported source. <TacoName /> will not invent one or relabel another version as the original.</p>
           </div>
           <button type="button" onClick={onBack}>Return to Target</button>
         </section>

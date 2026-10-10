@@ -358,7 +358,7 @@ test('content inventory is canonical, flow-safe, and omits empty sections', asyn
   assert.doesNotMatch(source, /\bfixed(?:=|\s)/);
   assert.doesNotMatch(source, /position\s*:\s*['"]absolute['"]/);
   assert.doesNotMatch(source, /wrap=\{false\}/);
-  assert.match(source, /size="A4"/);
+  assert.match(source, /size=\{props\.pageSize \|\| 'A4'\}/);
   assert.doesNotMatch(source, /fontSize\s*:\s*[0-6](?:\D|$)/);
   assert.match(source, /Omit<FlowTextProps, 'hyphenationCallback'>/);
   assert.match(source, /<PDFText \{\.\.\.props\} hyphenationCallback=\{NO_HYPHENATION\} \/>/);
@@ -401,7 +401,7 @@ test('17 x full/sparse/long PDFs render and parse sequentially with repeat stabi
     for (const templateId of expectedIds) {
       const metadata = catalog.getRegisteredTemplate(templateId);
       for (const fixtureId of fixtureIds) {
-        const resume = fixtures[fixtureId];
+        const resume = { ...fixtures[fixtureId], links: ['https://research.example.test/work'], additionalSections: [{ id: 'community', title: 'Community work', items: ['Community contributor fixture final marker'] }] };
         const artifactKey = `${templateId}/${fixtureId}`;
         const rendered = await renderToBuffer(
           pdfModule.CuratedSignaturePDF({ resume, templateId }),
@@ -417,6 +417,8 @@ test('17 x full/sparse/long PDFs render and parse sequentially with repeat stabi
           `${artifactKey} pass ${pass} has 1-4 pages`,
         );
         assertFixtureContent(evidence.parsed.text, resume, templateId, fixtureId);
+        assert.ok(evidence.parsed.text.includes('https://research.example.test/work'), `${artifactKey} preserves generic links`);
+        assert.ok(evidence.parsed.text.includes('Community contributor fixture final marker'), `${artifactKey} preserves additional content`);
         assertOrderedHeadings(evidence.parsed.text, metadata, templateId, fixtureId);
         const structureFingerprint = artifactStructureFingerprint(evidence);
         assert.ok(

@@ -167,7 +167,7 @@ export const SONA_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'queue_application',
-      description: 'Save a prepared application to the user\'s "Ready to Submit" queue only after explicit user approval. This does NOT submit the application — the user reviews and submits manually.',
+      description: 'Legacy compatibility tool. It cannot create an application queue item or authorize preparation. Tell the user to choose a specific job in Job Search, select a confirmed resume, and use Prepare. Preparation creates internal drafts for review; the user controls any external submission.',
       parameters: {
         type: 'object',
         properties: {
@@ -177,9 +177,8 @@ export const SONA_TOOLS = [
           fitScore: { type: 'number', description: 'Fit score from analyze_job_fit' },
           resumeSummary: { type: 'string', description: 'Brief description of resume customizations made' },
           coverLetterPreview: { type: 'string', description: 'First 200 chars of the cover letter draft' },
-          userConfirmed: { type: 'boolean', description: 'True only when the user explicitly asked to queue this application or approved the prepared packet' },
         },
-        required: ['company', 'role', 'userConfirmed'],
+        required: ['company', 'role'],
       },
     },
   },
@@ -1003,77 +1002,19 @@ CRITICAL: Only use facts from the provided resume data. If you don't have enough
     }
 
     case 'queue_application': {
-      try {
-        if (args.userConfirmed !== true) {
-          return JSON.stringify({
-            approvalRequired: true,
-            message: 'Ask the user to approve adding this packet to Agent Queue. Do not create a queue item until they confirm.',
-          });
-        }
-
-        const queueRef = db.collection('users').doc(uid).collection('agent_queue');
-
-        // Check queue size (cap at 25 pending)
-        const pendingSnap = await queueRef.where('status', '==', 'pending').get();
-        const existing = pendingSnap.docs.find(docSnap => {
-          const data = docSnap.data();
-          return String(data.company || '').toLowerCase() === String(args.company || '').toLowerCase()
-            && String(data.job_title || '').toLowerCase() === String(args.role || '').toLowerCase();
-        });
-        if (existing) {
-          return JSON.stringify({
-            success: true,
-            queueId: existing.id,
-            idempotent: true,
-            message: `A pending packet for ${args.role} at ${args.company} is already in Agent Queue.`,
-            queueSize: pendingSnap.size,
-          });
-        }
-        if (pendingSnap.size >= 25) {
-          return JSON.stringify({
-            error: 'Your application queue is full (25 pending). Submit or skip some before adding more.',
-            queueSize: pendingSnap.size,
-          });
-        }
-
-        const doc = await queueRef.add({
-          user_id: uid,
-          job_title: args.role,
-          company: args.company,
-          location: args.location || 'Not specified',
-          job_url: args.url || '',
-          job_description: args.jobDescription || '',
-          salary: { min: null, max: null },
-          employment_type: args.employmentType || 'Not specified',
-          posted_date: new Date().toISOString(),
-          match_score: Math.max(0, Math.min(100, Number(args.fitScore || 0))),
-          match_reason: args.resumeSummary || 'Queued by Taco for your review.',
-          morphed_resume: null,
-          cover_letter: args.coverLetterPreview || '',
-          status: 'pending',
-          source: 'sona_chat',
-          packetStatus: 'needs_review',
-          fitSignals: args.resumeSummary ? [args.resumeSummary] : ['Taco prepared this from your chat context.'],
-          riskSignals: ['Review the posting, resume, and cover letter before submitting.'],
-          nextAction: 'Review the packet, refine it with Taco if needed, then apply manually.',
-          feedbackTags: [],
-          agentRunId: `sona_${Date.now()}`,
-          created_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          batch_id: 'sona_chat',
-          batch_date: new Date().toISOString().split('T')[0],
-        });
-        invalidateTwin(uid).catch(() => {});
-
-        return JSON.stringify({
-          success: true,
-          queueId: doc.id,
-          message: `Application for ${args.role} at ${args.company} has been queued. Review the packet from Agent Queue before submitting.`,
-          queueSize: pendingSnap.size + 1,
-        });
-      } catch (e: any) {
-        return JSON.stringify({ error: e.message });
-      }
+      // Keep accepting legacy model arguments (including userConfirmed) at the
+      // executor boundary, but never treat them as authority or write a queue
+      // record. The explicit Job Search Prepare action owns packet preparation.
+      return JSON.stringify({
+        success: false,
+        code: 'PREPARATION_REQUIRED',
+        preparation_required: true,
+        message: 'Choose a specific job in Job Search, select a confirmed resume, and use Prepare to create internal drafts for review. Nothing has been queued or submitted.',
+        nextAction: {
+          label: 'Open Job Search and choose Prepare',
+          href: '/suite/job-search',
+        },
+      });
     }
 
     // ── v3.0: Generate Tailored Resume ──

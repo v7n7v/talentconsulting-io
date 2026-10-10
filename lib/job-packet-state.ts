@@ -22,6 +22,7 @@ export interface ExistingJobPacketArtifacts {
   packet_generation_owner?: unknown;
   packet_generation_lease_expires_at?: unknown;
   ats_score?: unknown;
+  packet_job_description_hash?: unknown;
 }
 
 export interface PersistedGuardedResumeArtifact {
@@ -65,6 +66,7 @@ export function isCurrentGuardedResumeArtifact(
 export function isPersistedJobPacketReady(
   data?: ExistingJobPacketArtifacts | null,
   linkedResumeArtifact?: PersistedGuardedResumeArtifact | null,
+  options: { requireATS?: boolean } = {},
 ) {
   const verifiedMorph = data?.morph_succeeded === true
     && isCurrentResumeMorphGuardrailReport(data?.morph_guardrail_report);
@@ -98,9 +100,9 @@ export function isPersistedJobPacketReady(
     && Boolean(data?.cover_letter)
     && coverLetterVerified
     && (data?.cover_letter_succeeded === true || Boolean(data?.cover_letter))
-    && Number.isFinite(data?.ats_score)
-    && Number(data?.ats_score) >= 0
-    && Number(data?.ats_score) <= 100;
+    && (options.requireATS === false || (Number.isFinite(data?.ats_score)
+      && Number(data?.ats_score) >= 0
+      && Number(data?.ats_score) <= 100));
 }
 
 export function isJobPacketGenerationLocked(data: ExistingJobPacketArtifacts | null | undefined, nowMs: number) {
@@ -121,12 +123,17 @@ export function resolveJobPacketArtifacts(input: {
   currentSourceResumeHash: string;
   currentJobTitle: string;
   currentCompany: string;
+  currentJobDescriptionHash?: string;
   morphSucceeded: boolean;
   coverLetterSucceeded: boolean;
   coverLetter: string;
   coverLetterReport: CoverLetterGuardrailReport | null;
 }) {
-  const priorMorphVerified = input.existing?.morph_succeeded === true
+  const sameJobSnapshot = !input.currentJobDescriptionHash
+    || (input.existing?.packet_job_description_hash === input.currentJobDescriptionHash
+      && input.existing?.job_title === input.currentJobTitle
+      && input.existing?.company_name === input.currentCompany);
+  const priorMorphVerified = sameJobSnapshot && input.existing?.morph_succeeded === true
     && isCurrentResumeMorphGuardrailReport(input.existing?.morph_guardrail_report)
     && input.existing?.morph_source_resume_id === input.currentSourceResumeId
     && input.existing?.morph_source_resume_hash === input.currentSourceResumeHash
@@ -139,7 +146,7 @@ export function resolveJobPacketArtifacts(input: {
     && input.existing?.resume_version_id
     ? String(input.existing.resume_version_id)
     : null;
-  const priorCoverLetter = input.existing?.cover_letter_succeeded === true
+  const priorCoverLetter = sameJobSnapshot && input.existing?.cover_letter_succeeded === true
     && isCurrentCoverLetterGuardrailReport(input.existing?.cover_letter_guardrail_report, {
       content: input.existing?.cover_letter,
       sourceResumeId: input.currentSourceResumeId,

@@ -31,12 +31,9 @@ export interface PlanIdentity {
   shimmer: boolean;
 }
 
-const FREE_ACCENT = 'oklch(0.64 0.025 255)';
-const FREE_ALT = 'oklch(0.8 0.018 250)';
-const PRO_ACCENT = 'oklch(0.66 0.15 165)';
-const PRO_ALT = 'oklch(0.72 0.12 205)';
-const MAX_ACCENT = 'oklch(0.77 0.13 78)';
-const MAX_ALT = 'oklch(0.7 0.11 58)';
+const PLAN_ACCENT = 'var(--accent-active)';
+const PLAN_ACCENT_TEXT = 'var(--accent)';
+const PLAN_ACCENT_SOFT = 'var(--accent-dim, var(--bg-elevated))';
 
 export function normalizePlanTier(tier: PlanIdentityTier): CanonicalPlanTier {
   if (tier === 'studio' || tier === 'god' || tier === 'max') return 'studio';
@@ -54,14 +51,14 @@ export const PLAN_IDENTITIES: Record<CanonicalPlanTier, PlanIdentity> = {
     description: 'Start with free career checks, drafts, and one-off career decisions.',
     activeDescription: 'Your free workspace is ready for checks, drafts, and exploration.',
     icon: 'local_activity',
-    accent: FREE_ACCENT,
-    accentAlt: FREE_ALT,
-    accentSoft: `color-mix(in srgb, ${FREE_ACCENT} 12%, var(--bg-elevated))`,
-    accentText: 'oklch(0.42 0.035 255)',
-    accentTextDark: 'oklch(0.82 0.025 255)',
-    border: `color-mix(in srgb, ${FREE_ACCENT} 25%, var(--border-subtle))`,
-    surface: `linear-gradient(145deg, color-mix(in srgb, ${FREE_ACCENT} 9%, var(--card-bg)), color-mix(in srgb, ${FREE_ALT} 4%, var(--card-bg)))`,
-    buttonText: 'oklch(0.17 0.015 255)',
+    accent: PLAN_ACCENT,
+    accentAlt: PLAN_ACCENT,
+    accentSoft: PLAN_ACCENT_SOFT,
+    accentText: PLAN_ACCENT_TEXT,
+    accentTextDark: PLAN_ACCENT_TEXT,
+    border: 'var(--accent)',
+    surface: 'var(--bg-elevated)',
+    buttonText: 'var(--accent-on)',
     features: [
       { icon: 'fact_check', label: 'Free career checks', description: 'Try ATS, writing trust, and readiness checks.' },
       { icon: 'edit_note', label: 'Starter writing tools', description: 'Polish small drafts and recruiter replies.' },
@@ -81,14 +78,14 @@ export const PLAN_IDENTITIES: Record<CanonicalPlanTier, PlanIdentity> = {
     description: 'Hands-on tools for tailoring applications, practicing interviews, and keeping active search work connected.',
     activeDescription: 'Core career tools unlocked for active resumes, applications, and prep.',
     icon: 'workspace_premium',
-    accent: PRO_ACCENT,
-    accentAlt: PRO_ALT,
-    accentSoft: `color-mix(in srgb, ${PRO_ACCENT} 14%, var(--bg-elevated))`,
-    accentText: 'oklch(0.42 0.14 165)',
-    accentTextDark: 'oklch(0.82 0.13 165)',
-    border: `color-mix(in srgb, ${PRO_ACCENT} 28%, var(--border-subtle))`,
-    surface: `linear-gradient(145deg, color-mix(in srgb, ${PRO_ACCENT} 10%, var(--card-bg)), color-mix(in srgb, ${PRO_ALT} 5%, var(--card-bg)))`,
-    buttonText: 'oklch(0.14 0.03 170)',
+    accent: PLAN_ACCENT,
+    accentAlt: PLAN_ACCENT,
+    accentSoft: PLAN_ACCENT_SOFT,
+    accentText: PLAN_ACCENT_TEXT,
+    accentTextDark: PLAN_ACCENT_TEXT,
+    border: 'var(--accent)',
+    surface: 'var(--bg-elevated)',
+    buttonText: 'var(--accent-on)',
     features: [
       { icon: 'auto_awesome', label: 'Role-ready resumes', description: 'Tailor job-specific versions from your verified experience.' },
       { icon: 'mic', label: 'Interview practice', description: 'Rehearse target-role questions with focused feedback.' },
@@ -108,14 +105,14 @@ export const PLAN_IDENTITIES: Record<CanonicalPlanTier, PlanIdentity> = {
     description: 'Taco scouts, ranks, and prepares truth-locked application packets for your review.',
     activeDescription: 'Your Taco command center is active with ranked scouting, prepared packets, and review-first alerts.',
     icon: 'diamond',
-    accent: MAX_ACCENT,
-    accentAlt: MAX_ALT,
-    accentSoft: `color-mix(in srgb, ${MAX_ACCENT} 15%, var(--bg-elevated))`,
-    accentText: 'oklch(0.45 0.12 65)',
-    accentTextDark: 'oklch(0.86 0.12 78)',
-    border: `color-mix(in srgb, ${MAX_ACCENT} 34%, var(--border-subtle))`,
-    surface: `linear-gradient(145deg, color-mix(in srgb, ${MAX_ACCENT} 12%, var(--card-bg)), color-mix(in srgb, ${MAX_ALT} 6%, var(--card-bg)))`,
-    buttonText: 'oklch(0.17 0.03 75)',
+    accent: PLAN_ACCENT,
+    accentAlt: PLAN_ACCENT,
+    accentSoft: PLAN_ACCENT_SOFT,
+    accentText: PLAN_ACCENT_TEXT,
+    accentTextDark: PLAN_ACCENT_TEXT,
+    border: 'var(--accent)',
+    surface: 'var(--bg-elevated)',
+    buttonText: 'var(--accent-on)',
     features: [
       { icon: 'smart_toy', label: 'Taco career agent', description: 'Scout and rank opportunities against your verified context.' },
       { icon: 'verified_user', label: 'Truth-locked packets', description: 'Prepare resumes and letters without inventing career facts.' },

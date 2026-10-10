@@ -1,14 +1,6 @@
 # Taco assistant brand system
 
-> ⚠️ **The mark description in this document does not match what shipped.**
-> Verified 29 July 2026. §"The Taco mark" describes a navy `TC` monogram on a
-> white rounded tile with a cyan-to-blue edge. The mark and wordmark that
-> actually ship are electric blue (~`#2b3fff`), and the product accent settled
-> on cyan/teal `#00C2CD`/`#00787F` — see `docs/DECISIONS.md`.
->
-> The naming rules below (Taco vs TACO, TA + CO) are still correct and still
-> apply. **Do not use this file as the source for mark geometry or colour**
-> until it has been rewritten against the shipped assets in `public/brand/`.
+Visual identity updated October 4, 2026: the existing blue gradient folded A app icon is the persistent Taco identity, including the A within the TACO wordmark. See [the wordmark specification](taco-brand-wordmark.md) for assets and generation instructions.
 
 ## Identity
 
@@ -48,9 +40,31 @@ Functional tools such as Resume Studio, Application Tracker, Skill Bridge, and M
 
 ## Visual identity
 
-The Taco mark is a literal `TC` monogram built from the original `T` in Talent and `C` in Consulting in the company wordmark. The navy letterforms sit inside a white rounded tile with a TalentConsulting cyan-to-blue edge. Do not redraw the letters, substitute a font, add food imagery, or reintroduce the former abstract signal mark. It must remain recognizable at 16 px, in monochrome, on light and dark surfaces, and with reduced motion.
+The Taco symbol is the existing blue gradient folded A from `public/taco-icon-512.png`. Preserve its silhouette and original gradient across light/dark surfaces and every assistant state. No grayscale, white inversion, tint, pointed chevron, font A, or TC monogram may replace it.
 
-Canonical assets live in `public/brand/taco-*`. App surfaces use `public/taco-icon.png` and its sized variants. Run `npm run brand:taco:render` after changing the company logo source so every SVG, PNG size, avatar, and wordmark is regenerated from the same T/C letterforms. The old asset filenames remain available only for cached clients and rollback compatibility; new UI must not reference them.
+The same A appears within the visual TACO wordmark and as a standalone symbol next to visible Taco names, feature labels and app navigation. Use `TacoWordmark`, `TacoBrandSymbol`, `TacoName` and `TacoText` from `components/BrandLogo.tsx`; use the shared `components/taco-identity.css` styles. Lettering may adapt to the surface; the icon always retains its blue gradient. Compact desktop and mobile navigation keep the icon when the full name is hidden.
+
+Use the existing blue assets for browser, touch and install icons. The installed app's name is Taco. Shared social images use the same generated wordmark. Company attribution and legal organization names stay TalentConsulting. Native input values, accessibility names, speech and user documents keep plain text. Decorative icons must not duplicate the accessible name.
+
+See [the wordmark specification](taco-brand-wordmark.md). Regenerate the wordmark/icon family with `node scripts/render-taco-wordmark.js`; do not regenerate or recolour the master. Earlier monochrome and chevron designs are historical.
+
+## Fixed color palette
+
+Palette decision: October 5, 2026; applied throughout the app October 7, 2026. Keep the existing paper appearance, coral accent and original blue Taco identity. Lavender is the dedicated shadow color. Public pages, workspace, resume tools, admin, dialogs and plan presentation use these shared roles.
+
+| Role | Color | Use |
+| --- | --- | --- |
+| Paper | `#fffaf5` | Page and document backgrounds |
+| Ink | `#151515` | Headings, body text, structural borders, selected controls |
+| Coral | `#ff5b35` | Primary actions, focus outlines, small emphasis and progress details |
+| Lavender | `#c6b6ff` | Offset shadows behind cards and panels only |
+| Taco blue | Original gradient in `public/taco-icon-512.png` | Taco identity, wordmarks and the moving journey symbol |
+
+Supporting shades are part of these families: muted ink `#6e6964`, paper borders `#ded7cf`, soft paper `#f2ebe3`, darker coral `#a82c18` for readable text, and a 12% coral tint mixed into paper for subtle callouts. Use shared tokens rather than adding independent hex colors. The blue gradient remains the master asset, not a newly sampled or recolored approximation.
+
+Paper and ink carry most of each screen. Coral directs attention to actions and relevant details. Blue identifies Taco. Lavender adds depth through offset shadows, using the shared `--taco-shadow` token; it does not color text, badges, controls, borders or section backgrounds. Focus rings retain their accessible coral/ink/paper treatments. Do not add lime, rainbow feature colors, per-section palettes or decorative gradients. Differentiate information with labels, icons, typography, borders and spacing instead of unrelated hues. Status feedback must use explicit text or icons as well as color. Dark surfaces use the existing ink/paper family with the same coral and original blue identity.
+
+The canonical palette is defined once in `components/taco-theme.css`. `app/globals.css` maps legacy and semantic roles to those tokens; `components/taco-public-palette.css` maps public pages to the fixed paper surface. Use `--taco-accent-text` for readable coral text and `--taco-action` / `--taco-action-ink` for filled actions. Light and dark mode use appropriate shades from these families. Resume document templates and exports retain their independent presentation. WebGL scenes and the standalone global error boundary use matching literal colors because they cannot inherit CSS variables. The design audit validates accent contrast across every app surface and checks action contrast in both modes.
 
 ## Microcopy patterns
 

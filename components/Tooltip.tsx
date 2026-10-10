@@ -37,10 +37,10 @@ export default function Tooltip({
   };
 
   const arrowStyles = {
-    top: 'top-full left-1/2 -translate-x-1/2 border-t-slate-800 border-x-transparent border-b-transparent',
-    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-slate-800 border-x-transparent border-t-transparent',
-    left: 'left-full top-1/2 -translate-y-1/2 border-l-slate-800 border-y-transparent border-r-transparent',
-    right: 'right-full top-1/2 -translate-y-1/2 border-r-slate-800 border-y-transparent border-l-transparent',
+    top: 'top-full left-1/2 -translate-x-1/2 border-t-[var(--bg-elevated)] border-x-transparent border-b-transparent',
+    bottom: 'bottom-full left-1/2 -translate-x-1/2 border-b-[var(--bg-elevated)] border-x-transparent border-t-transparent',
+    left: 'left-full top-1/2 -translate-y-1/2 border-l-[var(--bg-elevated)] border-y-transparent border-r-transparent',
+    right: 'right-full top-1/2 -translate-y-1/2 border-r-[var(--bg-elevated)] border-y-transparent border-l-transparent',
   };
 
   const motionVariants = {
@@ -68,7 +68,7 @@ export default function Tooltip({
             transition={{ duration: 0.15 }}
             className={`absolute z-50 ${positionStyles[position]} pointer-events-none`}
           >
-            <div className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-sm font-medium whitespace-nowrap shadow-lg border border-white/10">
+            <div className="elevation-raised px-3 py-1.5 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-primary)] text-sm font-medium whitespace-nowrap border border-[var(--border-subtle)]">
               {content}
             </div>
             <div className={`absolute w-0 h-0 border-4 ${arrowStyles[position]}`} />

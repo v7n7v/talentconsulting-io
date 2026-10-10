@@ -1,9 +1,12 @@
 'use client';
 
+import { TacoBrandSymbol } from '@/components/BrandLogo';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { suiteToolRegistry, type SuiteToolDefinition } from '@/lib/suite-tool-registry';
+import { assistantWorkspaceDestination, getGuestWorkspaceHref, isWorkspaceDestinationActive, primaryWorkspaceDestinations, workspaceDestinations, workspaceQuickActions } from '@/lib/workspace-navigation';
+import AuthModal from '@/components/modals/AuthModal';
 import { useStore } from '@/lib/store';
 
 export interface MobileAction {
@@ -24,73 +27,57 @@ function MobileIcon({ name, className = '' }: { name: string; className?: string
   return <span className={`material-symbols-rounded ${className}`} aria-hidden="true">{name}</span>;
 }
 
-const QUICK_TOOL_ITEMS = [
-  { id: 'sona', label: 'Ask Taco', icon: 'auto_awesome', href: '/suite/agent' },
-  /* "Job Search", not "Job Match": /suite/job-search is the opportunity radar,
-     while "Job Match" on the landing page and in the sidebar dropdown means
-     comparing a resume against one role. One label pointing at two unrelated
-     tools is what made this tile read as broken. The sidebar already calls this
-     route Job Search (components/SuiteSidebar.tsx:157). */
-  { id: 'job-search', label: 'Job Search', icon: 'work_history', href: '/suite/job-search' },
-  { id: 'resume', label: 'Resume Check', icon: 'description', href: '/suite/resume?mobileAction=check' },
-  { id: 'humanize', label: 'Humanize', icon: 'edit_note', href: '/suite/writing-tools' },
-  { id: 'ats', label: 'ATS Score', icon: 'scanner', href: '/suite/ats-analyzer?mobileTab=score' },
-  { id: 'applications', label: 'Applications', icon: 'work', href: '/suite/applications' },
-  { id: 'follow-up', label: 'Follow-up', icon: 'forward_to_inbox', href: '/suite/applications?mobileView=followups' },
-  { id: 'interview', label: 'Interview Prep', icon: 'interpreter_mode', href: '/suite/interview-sim?mode=quick_drill' },
-] as const;
+const MOBILE_DESTINATIONS = [...primaryWorkspaceDestinations, assistantWorkspaceDestination];
+const TOOL_GROUPS = [
+  { label: 'Your workspace', items: MOBILE_DESTINATIONS },
+  { label: 'More tools', items: workspaceDestinations.filter(item => item.placement === 'tool') },
+  { label: 'Writing tools', items: workspaceDestinations.filter(item => item.placement === 'writing') },
+  { label: 'Quick actions', items: workspaceQuickActions },
+  { label: 'Account and help', items: workspaceDestinations.filter(item => item.placement === 'utility') },
+];
 
-/* Signed-out equivalents. Previously `/?tool=…`, which no code reads - see the
-   note on GUEST_PREVIEW_BY_SUITE_PATH in components/SuiteSidebar.tsx. A guest
-   tapping any of these was dropped on the marketing homepage.
+function useMobileWorkspaceNavigation() {
+  const router = useRouter();
+  const user = useStore(state => state.user);
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | null>(null);
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
 
-   Job Search has no public equivalent - /tools has five pages and none of them
-   is a job board - so it is left out of the guest rail rather than aliased to
-   /tools/ats-analyzer, which is already what "ATS Score" points at. Two tiles
-   with different names and one destination is the same lie as a dead link. */
-const GUEST_QUICK_TOOL_HREFS: Record<string, string> = {
-  sona: '/suite/agent?intent=resume-upload',
-  /* Resume and ATS resolve to the suite route, matching the landing page's
-     mode cards and components/SuiteSidebar.tsx. Both work signed out -
-     /api/resume/parse and /api/resume/ats-score are allowAnonymous with their
-     own ANON_CAPS - so overriding them to a marketing page took a guest off a
-     working tool. The `?tab=score` is load-bearing: ATS Preview reads a saved
-     resume, and a guest has none.
-     Humanize keeps its override. /suite/writing-tools calls
-     /api/writing/humanize, which is allowAnonymous:false and not in
-     FREEMIUM_API_PATHS, so there is nothing there for a guest to finish. */
-  resume: '/suite/resume',
-  humanize: '/tools/ai-humanizer',
-  ats: '/suite/ats-analyzer?tab=score',
-};
 
-const GUEST_TOP_QUICK_TOOLS = new Set(['sona', 'resume', 'ats', 'humanize']);
+  const hrefFor = (path: string) => !user ? getGuestWorkspaceHref(path) || path : path;
+  const navigate = (path: string) => {
+    const guestHref = getGuestWorkspaceHref(path);
+    if (!user && !guestHref) {
+      setPendingPath(path);
+      setAuthMode('signup');
+    } else router.push(!user ? guestHref! : path);
+  };
 
-const GROUP_ORDER = ['Build', 'Search and Apply', 'Prepare', 'Grow', 'Taco', 'Home'];
-
-function priorityLabel(tool: SuiteToolDefinition) {
-  if (tool.mobilePriority === 'desktopEnhanced') return 'Best on desktop';
-  if (tool.mobilePriority === 'advanced') return 'Advanced';
-  if (tool.mobilePriority === 'quick') return 'Quick';
-  return undefined;
+  return {
+    hrefFor,
+    navigate,
+    authModal: authMode ? (
+      <AuthModal
+        mode={authMode}
+        onClose={() => { setAuthMode(null); setPendingPath(null); }}
+        onSwitchMode={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+        postAuthRedirect={pendingPath}
+        returnFocusSelector='[data-mobile-tools-launcher="true"]'
+      />
+    ) : null,
+  };
 }
 
 export function MobileQuickToolsRail({ className = '' }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const railRef = useRef<HTMLElement | null>(null);
-  const user = useStore((state) => state.user);
-  const quickTools = user ? QUICK_TOOL_ITEMS : QUICK_TOOL_ITEMS.filter((item) => GUEST_TOP_QUICK_TOOLS.has(item.id));
+  const pathname = usePathname();
+  const { hrefFor, navigate, authModal } = useMobileWorkspaceNavigation();
 
   useEffect(() => {
     const rail = railRef.current;
     if (!rail) return;
-
-    const updateHint = () => {
-      const remaining = rail.scrollWidth - rail.clientWidth - rail.scrollLeft;
-      setShowSwipeHint(remaining > 28);
-    };
-
+    const updateHint = () => setShowSwipeHint(rail.scrollWidth - rail.clientWidth - rail.scrollLeft > 28);
     updateHint();
     rail.addEventListener('scroll', updateHint, { passive: true });
     window.addEventListener('resize', updateHint);
@@ -98,121 +85,117 @@ export function MobileQuickToolsRail({ className = '' }: { className?: string })
       rail.removeEventListener('scroll', updateHint);
       window.removeEventListener('resize', updateHint);
     };
-  }, [quickTools.length]);
+  }, []);
 
   return (
     <>
-      <section className={`mobile-quick-tools lg:hidden ${className}`} aria-label="Quick tools">
-        <nav ref={railRef} className="mobile-quick-tools__rail" aria-label="Frequent mobile tools">
-          {quickTools.map((item) => {
-            const content = (
-              <>
-                <MobileIcon name={item.icon} className="text-[19px]" />
-                <span>{item.label}</span>
-              </>
-            );
-
-            const href = !user ? GUEST_QUICK_TOOL_HREFS[item.id] || item.href : item.href;
-            return (
-              <Link key={item.id} href={href} className="mobile-quick-tools__item">
-                {content}
-              </Link>
-            );
-          })}
-          <button type="button" onClick={() => setOpen(true)} className="mobile-quick-tools__item mobile-quick-tools__item--more">
+      <section className={`mobile-quick-tools lg:hidden ${className}`} aria-label="Your workspace">
+        <nav ref={railRef} className="mobile-quick-tools__rail" aria-label="Workspace destinations">
+          {MOBILE_DESTINATIONS.map(item => (
+            <Link
+              key={item.id}
+              href={hrefFor(item.path)}
+              onClick={event => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                navigate(item.path);
+              }}
+              aria-current={isWorkspaceDestinationActive(item.id, pathname || '') ? 'location' : undefined}
+              className="mobile-quick-tools__item"
+            >
+              {item.id === 'assistant' ? <TacoBrandSymbol className="h-5 w-6" decorative /> : <MobileIcon name={item.icon} className="text-[19px]" />}
+              <span>{item.label}</span>
+            </Link>
+          ))}
+          <button data-mobile-tools-launcher="true" type="button" onClick={() => setOpen(true)} className="mobile-quick-tools__item mobile-quick-tools__item--more" aria-expanded={open} aria-controls="mobile-workspace-tools">
             <MobileIcon name="apps" className="text-[19px]" />
             <span>More tools</span>
           </button>
         </nav>
-        {showSwipeHint && (
-          <div className="mobile-quick-tools__swipe-hint" aria-hidden="true">
-            <span>Swipe</span>
-            <MobileIcon name="arrow_forward" className="text-[15px]" />
-          </div>
-        )}
+        {showSwipeHint && <div className="mobile-quick-tools__swipe-hint" aria-hidden="true"><span>Swipe</span><MobileIcon name="arrow_forward" className="text-[15px]" /></div>}
       </section>
       <MobileQuickToolsSheet open={open} onClose={() => setOpen(false)} />
+      {authModal}
     </>
   );
 }
 
-export function MobileQuickToolsSheet({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const groupedTools = useMemo(() => {
-    return suiteToolRegistry.reduce<Record<string, SuiteToolDefinition[]>>((groups, tool) => {
-      if (tool.id === 'dashboard') return groups;
-      const group = tool.group || 'Tools';
-      groups[group] = groups[group] || [];
-      groups[group].push(tool);
-      return groups;
-    }, {});
-  }, []);
+export function MobileQuickToolsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const panelRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => { closeRef.current = onClose; }, [onClose]);
+  const { hrefFor, navigate, authModal } = useMobileWorkspaceNavigation();
 
   useEffect(() => {
     if (!open) return;
+    const returnTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex="0"]') || []).filter(element => element.offsetParent !== null);
+    focusable()[0]?.focus({ preventScroll: true });
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRef.current();
+      } else if (event.key === 'Tab') {
+        const elements = focusable();
+        if (!elements.length) return;
+        const index = elements.indexOf(document.activeElement as HTMLElement);
+        if (event.shiftKey && index <= 0) {
+          event.preventDefault();
+          elements[elements.length - 1].focus();
+        } else if (!event.shiftKey && (index < 0 || index === elements.length - 1)) {
+          event.preventDefault();
+          elements[0].focus();
+        }
+      }
     };
+    const onResize = () => { if (window.innerWidth >= 1024) closeRef.current(); };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, open]);
-
-  if (!open) return null;
+    window.addEventListener('resize', onResize);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onResize);
+      if (returnTarget?.isConnected) returnTarget.focus({ preventScroll: true });
+    };
+  }, [open]);
 
   return (
-    <div className="mobile-quick-tools-sheet lg:hidden" role="dialog" aria-modal="true" aria-label="All mobile tools">
-      <button type="button" className="mobile-quick-tools-sheet__backdrop" onClick={onClose} aria-label="Dismiss quick tools overlay" />
-      <section className="mobile-quick-tools-sheet__panel">
-        <div className="mobile-quick-tools-sheet__header">
-          <div className="min-w-0">
-            <p>Mobile quick tools</p>
-            <h2>Choose the fastest path</h2>
-          </div>
-          <button type="button" onClick={onClose} className="mobile-quick-tools-sheet__close" aria-label="Close quick tools" autoFocus>
-            <MobileIcon name="close" className="text-[20px]" />
-          </button>
+    <>
+      {open && (
+        <div id="mobile-workspace-tools" className="mobile-quick-tools-sheet lg:hidden" role="dialog" aria-modal="true" aria-label="More tools">
+          <button type="button" tabIndex={-1} className="mobile-quick-tools-sheet__backdrop" onClick={onClose} aria-label="Dismiss tools overlay" />
+          <section ref={panelRef} className="mobile-quick-tools-sheet__panel">
+            <div className="mobile-quick-tools-sheet__header">
+              <div className="min-w-0"><p>Your workspace</p><h2>Tools for the task at hand</h2></div>
+              <button type="button" onClick={onClose} className="mobile-quick-tools-sheet__close" aria-label="Close tools"><MobileIcon name="close" className="text-[20px]" /></button>
+            </div>
+            <div className="mobile-quick-tools-sheet__groups">
+              {TOOL_GROUPS.map(group => (
+                <section key={group.label} className="mobile-quick-tools-sheet__group">
+                  <h3>{group.label}</h3>
+                  <div className="mobile-quick-tools-sheet__grid">
+                    {group.items.map(item => (
+                      <Link key={item.id} href={hrefFor(item.path)} onClick={event => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                        event.preventDefault();
+                        navigate(item.path);
+                        onClose();
+                      }} className="mobile-quick-tools-sheet__card">
+                        <span className="mobile-quick-tools-sheet__icon" aria-hidden="true">{item.id === 'assistant' ? <TacoBrandSymbol className="h-6 w-8" decorative /> : <MobileIcon name={item.icon} className="text-[21px]" />}</span>
+                        <span className="min-w-0"><strong>{item.label}</strong><small>{item.description}</small></span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </section>
         </div>
-
-        <div className="mobile-quick-tools-sheet__groups">
-          {GROUP_ORDER.filter(group => groupedTools[group]?.length).map(group => (
-            <section key={group} className="mobile-quick-tools-sheet__group">
-              <h3>{group}</h3>
-              <div className="mobile-quick-tools-sheet__grid">
-                {groupedTools[group].map(tool => {
-                  const label = tool.mobileLabel || tool.title;
-                  const description = tool.mobileDescription || tool.subtitle;
-                  const href = tool.mobileHref || tool.path;
-                  const badge = priorityLabel(tool);
-
-                  return (
-                    <Link
-                      key={tool.id}
-                      href={href}
-                      onClick={onClose}
-                      className="mobile-quick-tools-sheet__card"
-                    >
-                      <span className="mobile-quick-tools-sheet__icon" aria-hidden="true">
-                        <MobileIcon name={tool.icon} className="text-[21px]" />
-                      </span>
-                      <span className="min-w-0">
-                        <strong>{label}</strong>
-                        <small>{description}</small>
-                        {badge ? <em>{badge}</em> : null}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
-      </section>
-    </div>
+      )}
+      {authModal}
+    </>
   );
 }
 

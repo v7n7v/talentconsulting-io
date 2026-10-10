@@ -5,6 +5,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { DeepSpaceEnvironment, WarpLane } from './environment';
+import { ORACLE_COLORS } from './palette';
 
 // ═══════════════════════════════════════════════════════
 // TYPES
@@ -13,9 +14,13 @@ export interface JobStar {
   id: string;
   title: string;
   company: string;
-  salary: number;
+  // null when the source did not list a salary — the tooltip shows "Salary not
+  // listed" rather than a synthetic figure.
+  salary: number | null;
   skills: string[];
-  fitScore: number;
+  // null when no fit was measured for this job — the tooltip shows "Fit not
+  // computed" rather than a synthetic percentage.
+  fitScore: number | null;
   position: [number, number, number];
   color: string;
   isConstellation: boolean;
@@ -38,7 +43,7 @@ export interface BridgeSkill {
 
 export interface MarketAnalysis {
   currentPosition: [number, number, number];
-  talentDensityPercentile: number;
+  talentDensityPercentile: number | null;
   topSkills: string[];
   missingSkills: string[];
   bridgeSkills: BridgeSkill[];
@@ -61,16 +66,19 @@ function JobStarMesh({
   const glowRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  // Tiered visuals
-  const tier = job.fitScore > 0.8 ? 'elite'
-    : job.fitScore > 0.6 ? 'strong'
-    : job.fitScore > 0.4 ? 'decent' : 'low';
+  // Tiered visuals. A null fit (not measured) falls to the muted 'low' tier for
+  // layout; the tooltip states "Fit not computed" rather than implying a score.
+  const fit = job.fitScore;
+  const tier = fit == null ? 'low'
+    : fit > 0.8 ? 'elite'
+    : fit > 0.6 ? 'strong'
+    : fit > 0.4 ? 'decent' : 'low';
 
   const config = {
-    elite:  { size: 0.3, emissive: 2.5, glowScale: 1.8, color: '#06d6a0' },
-    strong: { size: 0.22, emissive: 1.5, glowScale: 1.4, color: '#0ea5e9' },
-    decent: { size: 0.16, emissive: 0.8, glowScale: 0,   color: '#f59e0b' },
-    low:    { size: 0.1,  emissive: 0.3, glowScale: 0,   color: '#6b7280' },
+    elite:  { size: 0.3, emissive: 2.5, glowScale: 1.8, color: ORACLE_COLORS.coral },
+    strong: { size: 0.22, emissive: 1.5, glowScale: 1.4, color: ORACLE_COLORS.coralInk },
+    decent: { size: 0.16, emissive: 0.8, glowScale: 0,   color: ORACLE_COLORS.soft },
+    low:    { size: 0.1,  emissive: 0.3, glowScale: 0,   color: ORACLE_COLORS.muted },
   }[tier];
 
   useFrame((state) => {
@@ -137,7 +145,7 @@ function JobStarMesh({
       {(hovered || isSelected) && (
         <Html distanceFactor={12} center style={{ pointerEvents: 'none' }}>
           <div style={{
-            background: 'rgba(10, 10, 26, 0.92)',
+            background: `color-mix(in srgb, ${ORACLE_COLORS.ink} 92%, transparent)`,
             backdropFilter: 'blur(16px)',
             border: `1px solid ${config.color}40`,
             borderRadius: 12,
@@ -148,44 +156,50 @@ function JobStarMesh({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <div style={{
                 width: 28, height: 28, borderRadius: 6,
-                background: `${config.color}25`, border: `1px solid ${config.color}40`,
+                background: `color-mix(in srgb, ${config.color} 14%, ${ORACLE_COLORS.ink})`, border: `1px solid ${config.color}66`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: config.color, fontSize: 11, fontWeight: 700,
               }}>
                 {initials}
               </div>
               <div>
-                <p style={{ color: '#fff', fontSize: 13, fontWeight: 700, margin: 0 }}>{job.title}</p>
+                <p style={{ color: ORACLE_COLORS.paper, fontSize: 13, fontWeight: 700, margin: 0 }}>{job.title}</p>
                 <p style={{ color: config.color, fontSize: 11, margin: 0 }}>{job.company}</p>
               </div>
             </div>
             {job.location && (
-              <p style={{ color: '#94a3b8', fontSize: 10, margin: '0 0 4px 0' }}>📍 {job.location}</p>
+              <p style={{ color: ORACLE_COLORS.soft, fontSize: 10, margin: '0 0 4px 0' }}>📍 {job.location}</p>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#4ade80', fontSize: 14, fontWeight: 700 }}>
-                ${job.salary.toLocaleString()}
-              </span>
+              {job.salary != null ? (
+                <span style={{ color: ORACLE_COLORS.coral, fontSize: 14, fontWeight: 700 }}>
+                  ${job.salary.toLocaleString()}
+                </span>
+              ) : (
+                <span style={{ color: ORACLE_COLORS.soft, fontSize: 11, fontWeight: 600 }}>
+                  Salary not listed
+                </span>
+              )}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '2px 8px', borderRadius: 20,
                 background: `${config.color}20`, border: `1px solid ${config.color}30`,
               }}>
                 <span style={{ color: config.color, fontSize: 11, fontWeight: 600 }}>
-                  {Math.round(job.fitScore * 100)}% fit
+                  {job.fitScore != null ? `${Math.round(job.fitScore * 100)}% fit` : 'Fit not computed'}
                 </span>
               </div>
             </div>
             {job.isReal && (
               <div style={{
                 marginTop: 6, padding: '2px 6px', borderRadius: 4,
-                background: '#22c55e15', border: '1px solid #22c55e30',
-                color: '#4ade80', fontSize: 9, fontWeight: 600, textAlign: 'center',
+                background: `color-mix(in srgb, ${ORACLE_COLORS.coral} 12%, ${ORACLE_COLORS.ink})`, border: `1px solid ${ORACLE_COLORS.coral}`,
+                color: ORACLE_COLORS.coral, fontSize: 9, fontWeight: 600, textAlign: 'center',
               }}>
                 ● LIVE JOB
               </div>
             )}
-            <p style={{ color: '#64748b', fontSize: 9, margin: '5px 0 0 0', textAlign: 'center' }}>
+            <p style={{ color: ORACLE_COLORS.muted, fontSize: 9, margin: '5px 0 0 0', textAlign: 'center' }}>
               Click to explore →
             </p>
           </div>
@@ -211,7 +225,7 @@ function ConstellationLines({ jobs, userPosition }: { jobs: JobStar[]; userPosit
   return (
     <lineSegments geometry={geometry}>
       <lineBasicMaterial
-        color="#06d6a0"
+        color={ORACLE_COLORS.coral}
         transparent
         opacity={0.2}
         depthWrite={false}
@@ -252,7 +266,7 @@ function UserAvatar({ position }: { position: [number, number, number] }) {
       <mesh ref={fieldRef}>
         <sphereGeometry args={[2.5, 32, 32]} />
         <meshBasicMaterial
-          color="#06d6a0"
+          color={ORACLE_COLORS.coral}
           transparent
           opacity={0.04}
           side={THREE.BackSide}
@@ -264,8 +278,8 @@ function UserAvatar({ position }: { position: [number, number, number] }) {
       <mesh ref={ringRef}>
         <torusGeometry args={[0.8, 0.04, 16, 64]} />
         <meshStandardMaterial
-          color="#0ea5e9"
-          emissive="#0ea5e9"
+          color={ORACLE_COLORS.coralInk}
+          emissive={ORACLE_COLORS.coralInk}
           emissiveIntensity={2}
           transparent
           opacity={0.8}
@@ -276,8 +290,8 @@ function UserAvatar({ position }: { position: [number, number, number] }) {
       <mesh ref={crystalRef}>
         <icosahedronGeometry args={[0.35, 1]} />
         <meshStandardMaterial
-          color="#06d6a0"
-          emissive="#06d6a0"
+          color={ORACLE_COLORS.coral}
+          emissive={ORACLE_COLORS.coral}
           emissiveIntensity={2.5}
           metalness={0.3}
           roughness={0.2}
@@ -285,23 +299,23 @@ function UserAvatar({ position }: { position: [number, number, number] }) {
       </mesh>
 
       {/* Point light from user */}
-      <pointLight color="#06d6a0" intensity={1} distance={8} decay={2} />
+      <pointLight color={ORACLE_COLORS.coral} intensity={1} distance={8} decay={2} />
 
       {/* YOU label with stats */}
       <Html position={[0, 1.5, 0]} center style={{ pointerEvents: 'none' }}>
         <div style={{
-          background: 'rgba(6, 6, 18, 0.85)',
+          background: `color-mix(in srgb, ${ORACLE_COLORS.ink} 90%, transparent)`,
           backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(6, 214, 160, 0.25)',
+          border: `1px solid ${ORACLE_COLORS.coral}`,
           borderRadius: 12,
           padding: '6px 14px',
           whiteSpace: 'nowrap',
           textAlign: 'center',
         }}>
-          <span style={{ color: '#06d6a0', fontSize: 10, fontWeight: 700, letterSpacing: 1.5, display: 'block' }}>
+          <span style={{ color: ORACLE_COLORS.coral, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, display: 'block' }}>
             ◆ YOU ARE HERE
           </span>
-          <span style={{ color: '#94a3b8', fontSize: 9, display: 'block', marginTop: 2 }}>
+          <span style={{ color: ORACLE_COLORS.soft, fontSize: 9, display: 'block', marginTop: 2 }}>
             The galaxy orbits around your skills
           </span>
         </div>
@@ -363,9 +377,11 @@ export default function OracleScene({
 }) {
   const filteredJobs = useMemo(() => {
     return analysis.jobs.filter(job => {
-      const tier = job.fitScore >= 0.8 ? 'elite'
-        : job.fitScore >= 0.6 ? 'strong'
-        : job.fitScore >= 0.4 ? 'decent'
+      const fit = job.fitScore;
+      const tier = fit == null ? 'low'
+        : fit >= 0.8 ? 'elite'
+        : fit >= 0.6 ? 'strong'
+        : fit >= 0.4 ? 'decent'
         : 'low';
       return visibleTiers.has(tier);
     });
@@ -374,9 +390,9 @@ export default function OracleScene({
     <>
       {/* Lighting */}
       <ambientLight intensity={0.15} />
-      <pointLight position={[15, 15, 15]} intensity={0.8} color="#ffffff" />
-      <pointLight position={[-15, -10, -15]} intensity={0.4} color="#8b5cf6" />
-      <pointLight position={[0, 20, 0]} intensity={0.3} color="#0ea5e9" />
+      <pointLight position={[15, 15, 15]} intensity={0.8} color={ORACLE_COLORS.paper} />
+      <pointLight position={[-15, -10, -15]} intensity={0.4} color={ORACLE_COLORS.coralInk} />
+      <pointLight position={[0, 20, 0]} intensity={0.3} color={ORACLE_COLORS.coral} />
 
       {/* Deep Space Environment */}
       <DeepSpaceEnvironment />
@@ -414,10 +430,10 @@ export default function OracleScene({
 
       {/* Axis Labels */}
       <Html position={[10, -9, 0]} center style={{ pointerEvents: 'none' }}>
-        <span style={{ color: '#06d6a0', fontSize: 11, fontWeight: 600, opacity: 0.5 }}>FIT SCORE →</span>
+        <span style={{ color: ORACLE_COLORS.coral, fontSize: 11, fontWeight: 600, opacity: 0.8 }}>FIT SCORE →</span>
       </Html>
       <Html position={[0, 8, 0]} center style={{ pointerEvents: 'none' }}>
-        <span style={{ color: '#4ade80', fontSize: 11, fontWeight: 600, opacity: 0.5 }}>SALARY ↑</span>
+        <span style={{ color: ORACLE_COLORS.soft, fontSize: 11, fontWeight: 600, opacity: 0.8 }}>SALARY ↑</span>
       </Html>
 
       <OrbitControls

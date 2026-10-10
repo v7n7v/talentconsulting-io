@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
 
     const normalized = normalizeText(sanitizeForAI(validated.data.text));
     const result = await deepDetect(normalized);
+    if (result.status === 'unavailable') {
+      return NextResponse.json({ success: false, ...result, error: 'Deep scan is unavailable for this text right now. No confidence score was produced.' }, { status: 503 });
+    }
     const summary =
       result.verdict === 'likely_human'
         ? 'Deep scan found lower predictability across sampled sentences.'

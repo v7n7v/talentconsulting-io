@@ -136,6 +136,7 @@ export interface StoryListFilters {
   contactId?: string;
   limit?: number;
   page?: number;
+  cursor?: string;
 }
 
 type StoryWriteInput = Partial<Omit<StoryBankStory, 'id' | 'createdAt' | 'updatedAt' | 'proofScore' | 'privacyRisk' | 'confidence'>>;
@@ -264,10 +265,12 @@ export function normalizeStoryData(data: any, id = ''): StoryBankStory {
   };
 
   const category = base.category || inferStoryCategory(base);
-  const competencies = base.competencies?.length ? base.competencies : inferStoryCompetencies({ ...base, category });
-  const proofScore = typeof data?.proofScore === 'number' ? data.proofScore : computeProofScore(base);
-  const confidence = typeof data?.confidence === 'number' ? data.confidence : Math.max(45, Math.min(95, proofScore));
-  const privacyRisk = ['low', 'medium', 'high'].includes(data?.privacyRisk) ? data.privacyRisk : computePrivacyRisk(base);
+  const competencies = inferStoryCompetencies({ ...base, category });
+  // These are server-derived hints. Never trust stale or client-supplied values;
+  // edits must immediately recompute them from the current STAR fields.
+  const proofScore = computeProofScore(base);
+  const confidence = typeof data?.confidence === 'number' ? Math.max(0, Math.min(100, data.confidence)) : proofScore;
+  const privacyRisk = computePrivacyRisk(base);
 
   return {
     id,
@@ -395,38 +398,44 @@ export async function readStoryBankStories(uid: string): Promise<StoryBankStory[
 }
 
 export async function listStoryBankStories(uid: string, filters: StoryListFilters = {}) {
-  const migratedCount = await migrateLegacyStories(uid);
   const limit = Math.min(Math.max(Number(filters.limit) || 100, 1), 150);
-  const page = Math.max(Number(filters.page) || 1, 1);
-
-  let stories = await readStoryBankStories(uid);
-  const search = cleanString(filters.search, 200).toLowerCase();
-  const category = cleanString(filters.category, 80).toLowerCase();
-  const source = cleanString(filters.source, 80).toLowerCase();
-
-  if (search) {
-    stories = stories.filter(story => storyToText(story).toLowerCase().includes(search));
+  const filterContext = JSON.stringify({ search: cleanString(filters.search, 200).toLowerCase(), category: cleanString(filters.category, 80).toLowerCase(), source: cleanString(filters.source, 80).toLowerCase(), applicationId: filters.applicationId || '', resumeVersionId: filters.resumeVersionId || '', contactId: filters.contactId || '' });
+  const selection = JSON.parse(filterContext);
+  let after = '';
+  if (filters.cursor) {
+    try {
+      const cursor = JSON.parse(Buffer.from(filters.cursor, 'base64url').toString('utf8'));
+      if (cursor.owner !== uid || cursor.filters !== filterContext || typeof cursor.after !== 'string' || !/^[\w-]{1,200}$/.test(cursor.after)) throw new Error();
+      after = cursor.after;
+    } catch { throw new Error('INVALID_STORY_CURSOR'); }
   }
-  if (category && category !== 'all') {
-    stories = stories.filter(story => story.category.toLowerCase() === category || story.competencies.includes(category));
+  const migratedCount = filters.cursor ? 0 : await migrateLegacyStories(uid);
+  const collection = getAdminDb().collection('users').doc(uid).collection(STORY_BANK_COLLECTION);
+  const matching: StoryBankStory[] = [];
+  let exhausted = false;
+  while (matching.length <= limit && !exhausted) {
+    let query = collection.orderBy('__name__').limit(250);
+    if (after) query = query.startAfter(after);
+    const snapshot = await query.get();
+    if (!snapshot.docs.length) { exhausted = true; break; }
+    for (const document of snapshot.docs) {
+      after = document.id;
+      const story = normalizeStoryData(document.data(), document.id);
+      if (selection.search && !storyToText(story).toLowerCase().includes(selection.search)) continue;
+      if (selection.category && selection.category !== 'all' && story.category.toLowerCase() !== selection.category && !story.competencies.includes(selection.category)) continue;
+      if (selection.source && selection.source !== 'all' && story.source.toLowerCase() !== selection.source && story.sourceTool?.toLowerCase() !== selection.source) continue;
+      if (selection.applicationId && story.applicationId !== selection.applicationId) continue;
+      if (selection.resumeVersionId && story.resumeVersionId !== selection.resumeVersionId) continue;
+      if (selection.contactId && story.contactId !== selection.contactId) continue;
+      matching.push(story);
+      if (matching.length > limit) break;
+    }
+    if (matching.length <= limit && snapshot.docs.length < 250) exhausted = true;
   }
-  if (source && source !== 'all') {
-    stories = stories.filter(story => story.source.toLowerCase() === source || story.sourceTool?.toLowerCase() === source);
-  }
-  if (filters.applicationId) stories = stories.filter(story => story.applicationId === filters.applicationId);
-  if (filters.resumeVersionId) stories = stories.filter(story => story.resumeVersionId === filters.resumeVersionId);
-  if (filters.contactId) stories = stories.filter(story => story.contactId === filters.contactId);
-
-  const total = stories.length;
-  const offset = (page - 1) * limit;
-  return {
-    stories: stories.slice(offset, offset + limit),
-    count: total,
-    migratedCount,
-    page,
-    limit,
-    hasMore: offset + limit < total,
-  };
+  const stories = matching.slice(0, limit);
+  const hasMore = matching.length > limit;
+  const nextCursor = hasMore ? Buffer.from(JSON.stringify({ owner: uid, filters: filterContext, after: stories[stories.length - 1].id })).toString('base64url') : null;
+  return { stories, count: stories.length, countMeaning: 'page' as const, migratedCount, page: 1, limit, hasMore, nextCursor };
 }
 
 export async function getStoryBankStory(uid: string, storyId: string) {
@@ -456,9 +465,10 @@ export async function updateStoryBankStory(uid: string, storyId: string, updates
   const existing = await getStoryBankStory(uid, storyId);
   if (!existing) throw new Error('Story not found');
 
+  const { proofScore: _proofScore, privacyRisk: _privacyRisk, competencies: _competencies, ...safeUpdates } = updates as any;
   const merged = normalizeStoryData({
     ...existing,
-    ...updates,
+    ...safeUpdates,
     updatedAt: nowIso(),
   }, storyId);
 

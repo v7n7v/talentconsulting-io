@@ -36,6 +36,8 @@ import {
   type UploadLimits,
 } from './file-upload-types';
 
+// Keep the browser URL stable across development mode changes. The proxy
+// selects local-only extraction when the server is running an isolated preview.
 export const PARSE_RESUME_ENDPOINT = '/api/gauntlet/parse-resume';
 export const PARSE_RESUME_ABANDON_ENDPOINT = '/api/gauntlet/parse-resume/abandon';
 
@@ -101,6 +103,12 @@ export interface ResumeUploadResult {
    * — see runResumableUpload. Do not re-add one.
    */
   storagePathDeleted?: boolean;
+  rawText?: string;
+  originalCharacterCount?: number;
+  extractedCharacterCount?: number;
+  truncated?: boolean;
+  warnings?: Array<{ code: string; message: string; field?: string }>;
+  evidenceReceipt?: { sourceHash: string; parserVersion: string; originalCharacterCount: number; extractedCharacterCount: number; rawText: string; warnings: Array<{ code: string; message: string; field?: string }>; evidence?: unknown[] };
 }
 
 /* ------------------------------------------------------------------ helpers */

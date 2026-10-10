@@ -7,7 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
 import { getAdminDb } from '@/lib/firebase-admin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { createHash } from 'node:crypto';
+import { FieldPath, FieldValue } from 'firebase-admin/firestore';
 import { monitor } from '@/lib/monitor';
 
 const CONTACT_TYPES = new Set(['recruiter', 'hiring_manager', 'referral', 'peer', 'other']);
@@ -44,15 +45,15 @@ export async function GET(req: NextRequest) {
 
     const userId = guard.user.uid;
     const db = getAdminDb();
-    const snap = await db
-      .collection('users').doc(userId)
-      .collection('network_contacts')
-      .orderBy('updated_at', 'desc')
-      .limit(100)
-      .get();
+    const cursor = req.nextUrl.searchParams.get('cursor');
+    if (cursor && !/^[\w-]{1,160}$/.test(cursor)) return NextResponse.json({ error: 'Invalid cursor' }, { status: 400 });
+    let query = db.collection('users').doc(userId).collection('network_contacts').orderBy(FieldPath.documentId());
+    if (cursor) query = query.startAfter(cursor);
+    const snap = await query.limit(101).get();
 
-    const contacts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    return NextResponse.json({ success: true, contacts });
+    const page = snap.docs.slice(0, 100);
+    const contacts = page.map(d => ({ id: d.id, ...d.data() }));
+    return NextResponse.json({ success: true, contacts, nextCursor: snap.docs.length > 100 ? page[page.length - 1].id : null });
   } catch (error: any) {
     console.error('[Network] GET Error:', error);
     monitor.critical('Tool: agent/network', String(error));
@@ -68,6 +69,11 @@ export async function POST(req: NextRequest) {
     const userId = guard.user.uid;
     const body = await req.json();
     const { action } = body;
+    if (body.id !== undefined && !/^[\w-]{1,160}$/.test(body.id)) return NextResponse.json({ error: 'Invalid contact id' }, { status: 400 });
+    if (body.followUpDate && (!/^\d{4}-\d{2}-\d{2}$/.test(body.followUpDate) || Number.isNaN(Date.parse(body.followUpDate)) || new Date(body.followUpDate).toISOString().slice(0, 10) !== body.followUpDate)) return NextResponse.json({ error: 'Follow-up date must be a valid date' }, { status: 400 });
+    if (body.linkedin) { try { const url = new URL(body.linkedin); if (!['http:', 'https:'].includes(url.protocol) || !/(^|\.)linkedin\.com$/.test(url.hostname)) throw new Error(); } catch { return NextResponse.json({ error: 'Enter a valid LinkedIn URL' }, { status: 400 }); } }
+    if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) return NextResponse.json({ error: 'Enter a valid email address' }, { status: 400 });
+    for (const key of UPDATE_FIELDS) if (typeof body[key] === 'string' && body[key].length > (key === 'notes' ? 20000 : 1000)) return NextResponse.json({ error: `${key} is too long` }, { status: 400 });
 
     const db = getAdminDb();
     const contactsRef = db.collection('users').doc(userId).collection('network_contacts');
@@ -123,17 +129,22 @@ export async function POST(req: NextRequest) {
     if (action === 'log_interaction') {
       const { id, interactionType, note, followUpDate } = body;
       if (!id) return NextResponse.json({ error: 'Contact ID required' }, { status: 400 });
-      const updateData: Record<string, unknown> = {
-        interactions: FieldValue.arrayUnion({
-          type: cleanText(interactionType) || 'note', // email | call | meeting | linkedin | referral | note
-          note: cleanText(note),
-          date: new Date().toISOString(),
-        }),
-        lastContactedAt: FieldValue.serverTimestamp(),
-        updated_at: FieldValue.serverTimestamp(),
-      };
-      if ('followUpDate' in body) updateData.followUpDate = cleanNullable(followUpDate);
-      await contactsRef.doc(id).update(updateData);
+      const requestId = cleanText(body.requestId);
+      if (!/^[\w-]{1,120}$/.test(requestId) || typeof note !== 'string' || !note.trim() || note.length > 20000) return NextResponse.json({ error: 'A request id and note up to 20,000 characters are required' }, { status: 400 });
+      const interaction = { id: requestId, type: cleanText(interactionType) || 'note', note, followUpDate: cleanNullable(followUpDate) };
+      const fingerprint = createHash('sha256').update(JSON.stringify(interaction)).digest('hex');
+      const contactRef = contactsRef.doc(id);
+      const result = await db.runTransaction(async tx => {
+        const contact = await tx.get(contactRef);
+        if (!contact.exists) return 'missing';
+        const interactions = contact.data()?.interactions || [];
+        const previous = interactions.find((entry: any) => entry.id === requestId);
+        if (previous) return previous.fingerprint === fingerprint ? 'duplicate' : 'conflict';
+        tx.update(contactRef, { interactions: [...interactions, { ...interaction, fingerprint, date: new Date().toISOString() }], followUpDate: interaction.followUpDate, lastContactedAt: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+        return 'saved';
+      });
+      if (result === 'missing') return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      if (result === 'conflict') return NextResponse.json({ error: 'This retry changed. Save it as a new interaction.' }, { status: 409 });
       return NextResponse.json({ success: true });
     }
 

@@ -1,13 +1,16 @@
 'use client';
 
+import { TacoName } from '@/components/BrandLogo';
 import { Suspense, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { authHelpers } from '@/lib/firebase';
 import { useStore } from '@/lib/store';
 import { getUserProfile } from '@/lib/database-suite';
 import { AssistantMark } from '@/components/assistant';
 import { createWorkspaceBootstrapWatchdog } from '@/lib/workspace-auth-bootstrap';
+import WorkspacePreviewBar from '@/components/workspace/WorkspacePreviewBar';
+import './workspace-frame.css';
 
 const SuiteSidebar = dynamic(() => import('@/components/SuiteSidebar'));
 const AdminWorkspaceRail = dynamic(
@@ -28,13 +31,22 @@ interface WorkspaceFrameProps {
   loadingFallback?: React.ReactNode;
 }
 
-export default function WorkspaceFrame({
+export default function WorkspaceFrame(props: WorkspaceFrameProps) {
+  return (
+    <Suspense fallback={props.loadingFallback ?? <div className="flex min-h-dvh items-center justify-center bg-[var(--bg-deep)]" role="status">Opening your workspace…</div>}>
+      <WorkspaceFrameContent {...props} />
+    </Suspense>
+  );
+}
+
+function WorkspaceFrameContent({
   children,
   showWorkspaceChrome = true,
   showOnboardingPrompt = true,
   loadingFallback,
 }: WorkspaceFrameProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { setUser, setUserProfile } = useStore();
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -42,6 +54,8 @@ export default function WorkspaceFrame({
     || pathname.startsWith('/suite/admin/')
     || (process.env.NODE_ENV !== 'production' && pathname === '/suite/admin-preview');
   const isAssistantReview = pathname === '/suite/gallery/taco' || pathname === '/suite/gallery/sona';
+  const isResumeIntake = pathname === '/suite/agent'
+    && (searchParams.get('intent') === 'resume-upload' || searchParams.get('pendingResume') === '1');
   const showAssistantContextPanel = showWorkspaceChrome
     && pathname !== '/suite/agent'
     && pathname !== '/suite/resume'
@@ -128,7 +142,7 @@ export default function WorkspaceFrame({
         <div className="flex flex-col items-center gap-4">
           <AssistantMark size="lg" state="thinking" />
           <div className="text-center">
-            <p className="text-sm font-semibold text-[var(--text-primary)]">Taco is opening your workspace</p>
+            <p className="text-sm font-semibold text-[var(--text-primary)]"><TacoName /> is opening your workspace</p>
             <p className="mt-1 text-xs text-[var(--text-muted)]">Getting your tools and context ready.</p>
           </div>
         </div>
@@ -137,7 +151,7 @@ export default function WorkspaceFrame({
   }
 
   return (
-    <div className="min-h-dvh bg-[var(--bg-deep)]">
+    <div className={isAdminWorkspace ? 'min-h-dvh bg-[var(--bg-deep)]' : `${process.env.NEXT_PUBLIC_TACO_WORKSPACE_DESIGN === 'legacy' ? 'taco-workspace-legacy' : 'taco-workspace'} min-h-dvh bg-[var(--bg-deep)]`}>
       {showWorkspaceChrome && (
         <Suspense fallback={null}>
           {isAdminWorkspace
@@ -153,6 +167,7 @@ export default function WorkspaceFrame({
       <main
         className={`mobile-app-page min-h-dvh ${isAdminWorkspace ? 'overflow-x-clip' : 'overflow-x-hidden'} transition-[margin] duration-200 ${showWorkspaceChrome ? 'lg:ml-[var(--suite-sidebar-content-offset,276px)] lg:pt-0' : ''} ${isAdminWorkspace ? 'workspace-admin-canvas' : ''}`}
       >
+        {!isAdminWorkspace && <WorkspacePreviewBar />}
         {showWorkspaceChrome && !isAssistantReview && !isAdminWorkspace && <MobileQuickToolsRail />}
         {children}
       </main>
@@ -160,7 +175,7 @@ export default function WorkspaceFrame({
       {showAssistantContextPanel && <AssistantContextPanel />}
       {showWorkspaceChrome && !isAssistantReview && !isAdminWorkspace && <AssistantFloatingOrb />}
 
-      {showOnboardingPrompt && showOnboarding && !isAdminWorkspace && (
+      {showOnboardingPrompt && showOnboarding && !isAdminWorkspace && !isResumeIntake && (
         <OnboardingModal
           userName={useStore.getState().user?.displayName || ''}
           onComplete={() => setShowOnboarding(false)}

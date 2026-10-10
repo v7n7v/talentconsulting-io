@@ -2,14 +2,14 @@ import { StructuredEmail } from '../components/StructuredEmail';
 
 export default function AccountDeactivationPreview() {
   return <StructuredEmail content={{
-    subject: 'Confirm account deactivation',
-    preheader: 'Use this secure link to pause your TalentConsulting.io account.',
+    subject: 'Confirm optional-email pause',
+    preheader: 'Use this secure link to pause optional email. Sign-in remains available.',
     category: 'Account',
-    title: 'Confirm account deactivation',
+    title: 'Confirm optional-email pause',
     greeting: 'Hi Jordan,',
-    paragraphs: ['A request was made to deactivate your account and pause optional email.'],
-    callout: { tone: 'warning', title: 'Didn’t request this?', body: 'Ignore this email. Your account will stay active.' },
-    action: { label: 'Confirm deactivation', url: 'https://talentconsulting.io/account/action?token=preview' },
+    paragraphs: ['A request was made to pause optional product email. This does not disable sign-in or delete your account data.'],
+    callout: { tone: 'warning', title: 'Didn’t request this?', body: 'Ignore this email. Your email preferences will not change.' },
+    action: { label: 'Pause optional email', url: 'https://talentconsulting.io/account/action?token=preview' },
     footerNote: 'This single-use link expires in 30 minutes.',
   }} />;
 }

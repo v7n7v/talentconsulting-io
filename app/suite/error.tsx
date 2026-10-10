@@ -34,11 +34,11 @@ export default function SuiteError({
           transition={{ delay: 0.1, type: 'spring', stiffness: 200 }}
           className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
           style={{
-            background: 'rgba(242, 139, 130, 0.08)',
-            border: '1px solid rgba(242, 139, 130, 0.2)',
+            background: 'var(--accent-dim)',
+            border: '1px solid var(--accent)',
           }}
         >
-          <span className="material-symbols-rounded text-4xl" style={{ color: '#f28b82' }}>
+          <span className="material-symbols-rounded text-4xl" style={{ color: 'var(--danger)' }}>
             error_outline
           </span>
         </motion.div>
@@ -64,9 +64,9 @@ export default function SuiteError({
             onClick={reset}
             className="px-6 py-3 rounded-xl font-semibold text-sm transition-all"
             style={{
-              background: 'linear-gradient(135deg, var(--accent), var(--accent-active))',
+              background: 'var(--accent-active)',
               color: 'var(--accent-on)',
-              boxShadow: '0 2px 12px rgba(168, 199, 250, 0.15)',
+              boxShadow: 'var(--elevation-card)',
             }}
           >
             <span className="flex items-center gap-2">
@@ -103,7 +103,7 @@ export default function SuiteError({
           <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full"
             style={{
-              background: 'radial-gradient(circle, rgba(242, 139, 130, 0.04) 0%, transparent 70%)',
+              background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 5%, transparent) 0%, transparent 70%)',
             }}
           />
         </motion.div>

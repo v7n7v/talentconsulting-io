@@ -1,6 +1,14 @@
 'use client';
 
+import PageHelp from '@/components/PageHelp';
+import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep, trapWorkflowTab } from '@/lib/tool-story-adapters';
+
+import { TacoName, TacoText } from '@/components/BrandLogo';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import QueueContent from '@/app/suite/agent/queue/QueueContent';
+import ManualApplicationForm from '@/components/suite/ManualApplicationForm';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
@@ -12,6 +20,7 @@ import {
   getResumeVersions,
   reportApplicationOutcome,
   updateApplicationOffer,
+  updateApplicationNotes,
   updateApplicationStatus,
   type JobApplication,
   type NegotiationBrief,
@@ -24,6 +33,7 @@ import { downloadResumePDF } from '@/lib/pdf-templates';
 import {
   NEW_SIGNATURE_TEMPLATE_IDS,
   getPersistedResumePaletteColors,
+  getPersistedResumeDesign,
   getPersistedResumeTemplateId,
   isResumeTemplateSelectionEntitled,
 } from '@/lib/resume-templates';
@@ -35,6 +45,10 @@ import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile'
 import { AssistantMark } from '@/components/assistant';
 import { SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
 import { showToast } from '@/components/Toast';
+import ApplicationsContext from '@/components/workspace/ApplicationsContext';
+import PacketResumeDocument from '@/components/workspace/PacketResumeDocument';
+import { offerInputSignature } from '@/lib/application-commands';
+import { createApplicationsLifecycleGuard } from '@/lib/applications-lifecycle';
 
 type ViewMode = 'command' | 'grid' | 'kanban' | 'list';
 type OutcomeFilter = 'all' | 'pending' | 'reported' | 'positive' | 'negative';
@@ -64,11 +78,11 @@ const STATUS_KEYS = [
 ] as const satisfies JobApplication['status'][];
 
 const OUTCOME_CONFIG: Record<NonNullable<JobApplication['outcome_response']>, { icon: string; label: string; color: string }> = {
-  callback: { icon: 'call', label: 'Callback', color: '#2563eb' },
-  interview: { icon: 'groups', label: 'Interview', color: '#7c3aed' },
-  offer: { icon: 'celebration', label: 'Offer', color: '#059669' },
-  rejection: { icon: 'cancel', label: 'Rejected', color: '#dc2626' },
-  ghosted: { icon: 'visibility_off', label: 'Ghosted', color: '#64748b' },
+  callback: { icon: 'call', label: 'Callback', color: 'var(--warning)' },
+  interview: { icon: 'groups', label: 'Interview', color: 'var(--warning)' },
+  offer: { icon: 'celebration', label: 'Offer', color: 'var(--success)' },
+  rejection: { icon: 'cancel', label: 'Rejected', color: 'var(--danger)' },
+  ghosted: { icon: 'visibility_off', label: 'Ghosted', color: 'var(--text-muted)' },
 };
 
 const OUTCOME_STATUS_MAP: Partial<Record<NonNullable<JobApplication['outcome_response']>, JobApplication['status']>> = {
@@ -79,15 +93,15 @@ const OUTCOME_STATUS_MAP: Partial<Record<NonNullable<JobApplication['outcome_res
 };
 
 const STATUS_CONFIG: Record<JobApplication['status'], { icon: string; label: string; color: string; order: number }> = {
-  not_applied: { icon: 'edit_document', label: 'Draft', color: '#64748b', order: 0 },
-  applied: { icon: 'send', label: 'Applied', color: '#2563eb', order: 1 },
-  screening: { icon: 'visibility', label: 'Screening', color: '#0891b2', order: 2 },
-  interview_scheduled: { icon: 'calendar_month', label: 'Interview Scheduled', color: '#4f46e5', order: 3 },
-  interviewed: { icon: 'mic', label: 'Interviewed', color: '#7c3aed', order: 4 },
-  offer: { icon: 'celebration', label: 'Offer Received', color: '#059669', order: 5 },
-  accepted: { icon: 'check_circle', label: 'Accepted', color: '#047857', order: 6 },
-  rejected: { icon: 'cancel', label: 'Rejected', color: '#dc2626', order: 7 },
-  withdrawn: { icon: 'undo', label: 'Withdrawn', color: '#d97706', order: 8 },
+  not_applied: { icon: 'edit_document', label: 'Draft', color: 'var(--text-muted)', order: 0 },
+  applied: { icon: 'send', label: 'Applied', color: 'var(--warning)', order: 1 },
+  screening: { icon: 'visibility', label: 'Screening', color: 'var(--warning)', order: 2 },
+  interview_scheduled: { icon: 'calendar_month', label: 'Interview Scheduled', color: 'var(--warning)', order: 3 },
+  interviewed: { icon: 'mic', label: 'Interviewed', color: 'var(--warning)', order: 4 },
+  offer: { icon: 'celebration', label: 'Offer Received', color: 'var(--success)', order: 5 },
+  accepted: { icon: 'check_circle', label: 'Accepted', color: 'var(--success)', order: 6 },
+  rejected: { icon: 'cancel', label: 'Rejected', color: 'var(--danger)', order: 7 },
+  withdrawn: { icon: 'undo', label: 'Withdrawn', color: 'var(--text-muted)', order: 8 },
 };
 
 const TERMINAL_STATUSES: JobApplication['status'][] = ['rejected', 'withdrawn', 'accepted'];
@@ -107,8 +121,13 @@ function nextStatusForOutcome(app: JobApplication, outcome: NonNullable<JobAppli
   return STATUS_CONFIG[target].order > STATUS_CONFIG[app.status].order ? target : app.status;
 }
 
+// Token-safe tint. The colours are now CSS variables (var(--success), …), so an
+// alpha suffix on a hex string no longer works — mix the token with transparent
+// instead. `alpha` is still the old two-digit hex-of-255 so every call site keeps
+// its intended weight (14→8%, 28→16%, 30→19%, 45→27%).
 function soft(color: string, alpha = '14') {
-  return `${color}${alpha}`;
+  const pct = Math.round((parseInt(alpha, 16) / 255) * 100);
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 }
 
 function daysSince(date?: string) {
@@ -143,7 +162,7 @@ function formatReadinessStatus(status?: StudyProgress['readiness_status']) {
 
 function buildSkillBridgeSummary(progresses: StudyProgress[]): SkillBridgeSummary {
   const completedDays = progresses.reduce((sum, progress) => sum + (progress.completed_days?.length || 0), 0);
-  const totalDays = progresses.reduce((sum, progress) => sum + (progress.total_days || 7), 0);
+  const totalDays = progresses.reduce((sum, progress) => sum + (progress.total_days || 0), 0);
   const readinessScores = progresses
     .map(progress => progress.readiness_score)
     .filter((score): score is number => typeof score === 'number');
@@ -215,14 +234,17 @@ function getOfferAction(app: JobApplication) {
   return { label: 'Record decision', detail: 'Review script or close the loop', icon: 'fact_check' };
 }
 
-function computeQualityScore(app: JobApplication): number {
+// Counts how many of five preparation signals are present on an application.
+// This is a checklist-completeness signal, NOT a measured quality score, and must
+// never be rendered as a 1-5 star rating. No floor: zero signals present reads as 0.
+function countPrepSignals(app: JobApplication): number {
   let score = 0;
   if (app.resume_version_id) score += 1;
   if (app.talent_density_score) score += 1;
   if ((app.talent_density_score || 0) >= 70) score += 1;
   if (app.status !== 'not_applied') score += 1;
   if (app.notes && app.notes.length > 10) score += 1;
-  return Math.max(1, Math.min(5, score));
+  return Math.min(5, score);
 }
 
 function getDossierCompletion(app: JobApplication) {
@@ -241,28 +263,28 @@ function getDossierCompletion(app: JobApplication) {
 function getWorkspaceAction(app: JobApplication) {
   if (needsOfferReview(app)) {
     const offer = getOfferAction(app);
-    return { ...offer, tone: '#059669', kind: 'Offer review' };
+    return { ...offer, tone: 'var(--success)', kind: 'Offer review' };
   }
   if (needsOutcome(app)) {
-    return { label: 'Log outcome', detail: `${daysSince(app.applied_at || app.created_at)} days since applied`, icon: 'fact_check', tone: '#f59e0b', kind: 'Outcome' };
+    return { label: 'Log outcome', detail: `${daysSince(app.applied_at || app.created_at)} days since applied`, icon: 'fact_check', tone: 'var(--warning)', kind: 'Outcome' };
   }
   if (canFollowUp(app)) {
-    return { label: 'Draft follow-up', detail: `${daysSince(app.applied_at || app.created_at)} days since applied`, icon: 'forward_to_inbox', tone: '#d97706', kind: 'Follow-up' };
+    return { label: 'Draft follow-up', detail: `${daysSince(app.applied_at || app.created_at)} days since applied`, icon: 'forward_to_inbox', tone: 'var(--warning)', kind: 'Follow-up' };
   }
   if (needsPrep(app)) {
-    return { label: 'Prepare interview', detail: app.interview_date ? formatDate(app.interview_date) : 'Interview stage', icon: 'psychology', tone: '#7c3aed', kind: 'Interview prep' };
+    return { label: 'Prepare interview', detail: app.interview_date ? formatDate(app.interview_date) : 'Interview stage', icon: 'psychology', tone: 'var(--accent)', kind: 'Interview prep' };
   }
   if (app.status === 'not_applied') {
-    return { label: 'Submit manually', detail: 'Open the posting, submit yourself, then mark applied', icon: 'open_in_new', tone: '#2563eb', kind: 'Application packet' };
+    return { label: 'Submit manually', detail: 'Open the posting, submit yourself, then mark applied', icon: 'open_in_new', tone: 'var(--accent)', kind: 'Application packet' };
   }
-  return { label: 'Keep tracking', detail: app.outcome_response ? OUTCOME_CONFIG[app.outcome_response].label : STATUS_CONFIG[app.status].label, icon: 'route', tone: '#0891b2', kind: 'Tracker' };
+  return { label: 'Keep tracking', detail: app.outcome_response ? OUTCOME_CONFIG[app.outcome_response].label : STATUS_CONFIG[app.status].label, icon: 'route', tone: 'var(--accent)', kind: 'Tracker' };
 }
 
 function dispatchSona(prompt: string, contextLabel?: string) {
   window.dispatchEvent(new CustomEvent('assistant:open', { detail: { prompt, contextLabel } }));
 }
 
-export default function ApplicationsPage() {
+function ApplicationsWorkspace() {
   const user = useStore(state => state.user);
   const { isPro, loading: tierLoading } = useUserTier();
   const [applications, setApplications] = useState<JobApplication[]>([]);
@@ -293,6 +315,40 @@ export default function ApplicationsPage() {
   const handledOutcomeLinkRef = useRef(false);
   const handledApplicationLinkRef = useRef(false);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerRequestRef = useRef(0);
+  const applicationLoadRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  const lifecycleRef = useRef(createApplicationsLifecycleGuard());
+  const ownerRef = useRef<string | null | undefined>(undefined);
+
+  const selectedActionRef = useRef(selectedApp?.id);
+  selectedActionRef.current = selectedApp?.id;
+  const notesRevisionRef = useRef(0);
+  const offerRevisionRef = useRef(0);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const actionSerials = useRef(new Map<string, number>());
+  function captureAction(appId: string, action: string) {
+    const owner = user?.uid;
+    const selected = selectedActionRef.current;
+    const drawerEpoch = drawerRequestRef.current;
+    const inputEpoch = action === 'notes' ? notesRevisionRef.current : action.startsWith('offer') ? offerRevisionRef.current : 0;
+    const key = `${appId}:${action}`; const serial = (actionSerials.current.get(key) || 0) + 1;
+    actionSerials.current.set(key, serial);
+    return () => mountedRef.current && useStore.getState().user?.uid === owner
+      && drawerRequestRef.current === drawerEpoch && selectedActionRef.current === selected && actionSerials.current.get(key) === serial
+      && inputEpoch === (action === 'notes' ? notesRevisionRef.current : action.startsWith('offer') ? offerRevisionRef.current : 0);
+  }
+  useEffect(() => {
+    mountedRef.current = true;
+    const lifecycle = lifecycleRef.current;
+    lifecycle.setup(useStore.getState().user?.uid || null);
+    return () => {
+      mountedRef.current = false;
+      lifecycle.cleanup();
+      drawerRequestRef.current += 1;
+      applicationLoadRequestRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -308,7 +364,26 @@ export default function ApplicationsPage() {
   }, []);
 
   useEffect(() => {
+    lifecycleRef.current.begin(user?.uid || null);
+    const ownerChanged = ownerRef.current !== undefined && ownerRef.current !== (user?.uid || null);
+    ownerRef.current = user?.uid || null;
+    if (ownerChanged) {
+      drawerRequestRef.current += 1;
+      handledApplicationLinkRef.current = false;
+      setSelectedApp(null);
+      setLinkedResume(null);
+      setResumeLoading(false);
+      setApplications([]);
+      setAllProgress([]);
+      setLoadError(null);
+    }
     if (!user) {
+      applicationLoadRequestRef.current += 1;
+      drawerRequestRef.current += 1;
+      handledApplicationLinkRef.current = false;
+      setSelectedApp(null);
+      setLinkedResume(null);
+      setResumeLoading(false);
       setApplications([]);
       setAllProgress([]);
       setLoadError(null);
@@ -322,17 +397,21 @@ export default function ApplicationsPage() {
     if (!selectedApp) return;
     drawerCloseRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDrawer();
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('dialog[open]')) closeDrawer();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedApp]);
+  }, [selectedApp?.id]);
 
   async function loadApplications() {
+    const requestId = ++applicationLoadRequestRef.current;
+    const userId = user?.uid;
+    const lifecycleToken = lifecycleRef.current.begin(userId || null);
     setIsLoading(true);
     setLoadError(null);
     try {
       const [appResult, progressResult] = await Promise.all([getJobApplications(), getAllStudyProgress()]);
+      if (!lifecycleRef.current.isCurrent(lifecycleToken, useStore.getState().user?.uid || null) || requestId !== applicationLoadRequestRef.current) return;
       if (!appResult.success) {
         setLoadError((appResult as any).error || 'Applications could not be loaded.');
         return;
@@ -340,9 +419,10 @@ export default function ApplicationsPage() {
       setApplications(appResult.data || []);
       if (progressResult.success && progressResult.data) setAllProgress(progressResult.data);
     } catch (error: any) {
+      if (!lifecycleRef.current.isCurrent(lifecycleToken, useStore.getState().user?.uid || null) || requestId !== applicationLoadRequestRef.current) return;
       setLoadError(error?.message || 'Applications could not be loaded.');
     } finally {
-      setIsLoading(false);
+      if (lifecycleRef.current.isCurrent(lifecycleToken, useStore.getState().user?.uid || null) && requestId === applicationLoadRequestRef.current) setIsLoading(false);
     }
   }
 
@@ -403,18 +483,15 @@ export default function ApplicationsPage() {
     if (!applicationId) return;
 
     handledApplicationLinkRef.current = true;
-    const cleanApplicationParams = () => {
-      params.delete('application');
-      params.delete('action');
-      const query = params.toString();
-      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
-    };
     const targetApp = applicationId.length <= 200
       ? applications.find(app => app.id === applicationId)
       : null;
     if (!targetApp) {
       showToast('That application is no longer available', 'cancel');
-      cleanApplicationParams();
+      params.delete('application');
+      params.delete('action');
+      const query = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
       return;
     }
 
@@ -423,7 +500,7 @@ export default function ApplicationsPage() {
         ? requestedAction as InboxDrawerAction
         : 'application',
     );
-    void openDrawer(targetApp).finally(cleanApplicationParams);
+    void openDrawer(targetApp);
   }, [applications, isLoading, user]);
 
   function updateLocalApplication(id: string, patch: Partial<JobApplication>) {
@@ -437,7 +514,7 @@ export default function ApplicationsPage() {
     const totals = appProgresses.reduce(
       (acc, progress) => {
         acc.done += progress.completed_days.length;
-        acc.possible += progress.total_days || 7;
+        acc.possible += progress.total_days || 0;
         return acc;
       },
       { done: 0, possible: 0 },
@@ -458,7 +535,9 @@ export default function ApplicationsPage() {
     }
     const additionalData: { appliedAt?: Date } = {};
     if (newStatus === 'applied' && !app.applied_at) additionalData.appliedAt = new Date();
+    const current = captureAction(app.id, 'status');
     const result = await updateApplicationStatus(app.id, newStatus, additionalData);
+    if (!current()) return;
     if (!result.success) {
       showToast('Failed to update status', 'cancel');
       return;
@@ -474,7 +553,9 @@ export default function ApplicationsPage() {
 
   async function handleNotesUpdate() {
     if (!selectedApp) return;
-    const result = await updateApplicationStatus(selectedApp.id, selectedApp.status, { notes: editingNotes });
+    const current = captureAction(selectedApp.id, 'notes');
+    const result = await updateApplicationNotes(selectedApp.id, editingNotes);
+    if (!current()) return;
     if (!result.success) {
       showToast('Failed to save notes', 'cancel');
       return;
@@ -485,7 +566,9 @@ export default function ApplicationsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this application? This cannot be undone.')) return;
+    const current = captureAction(id, 'delete');
     const result = await deleteJobApplication(id);
+    if (!current()) return;
     if (!result.success) {
       showToast('Application delete failed', 'cancel');
       return;
@@ -496,6 +579,10 @@ export default function ApplicationsPage() {
   }
 
   async function openDrawer(app: JobApplication) {
+    if (!selectedApp) returnFocusRef.current = document.activeElement as HTMLElement | null;
+    const requestId = ++drawerRequestRef.current;
+    setResumeLoading(false); setFollowUpLoading(false); setFollowUpDraft(null); setShowFollowUpModal(false); setPrepLoading(false); setOutcomeLoading(false);
+    const userId = user?.uid;
     setSelectedApp(app);
     setEditingNotes(app.notes || '');
     setLinkedResume(null);
@@ -507,14 +594,22 @@ export default function ApplicationsPage() {
 
     if (!app.resume_version_id) return;
     setResumeLoading(true);
-    const versions = await getResumeVersions();
+    let versions;
+    try { versions = await getResumeVersions(); } catch { if (mountedRef.current && requestId === drawerRequestRef.current) { setResumeLoading(false); setDrawerActionError('Linked resume could not be loaded. Reopen this application to retry.'); } return; }
+    if (!mountedRef.current || requestId !== drawerRequestRef.current || useStore.getState().user?.uid !== userId) return;
+    if (!versions.success) setDrawerActionError('Linked resume could not be loaded. Reopen this application to retry.');
     if (versions.success && versions.data) {
       setLinkedResume(versions.data.find(version => version.id === app.resume_version_id) || null);
     }
-    setResumeLoading(false);
+    if (mountedRef.current && requestId === drawerRequestRef.current) setResumeLoading(false);
   }
 
   function closeDrawer() {
+    drawerRequestRef.current += 1;
+    setFollowUpLoading(false); setFollowUpDraft(null); setShowFollowUpModal(false); setPrepLoading(false); setOutcomeLoading(false);
+    window.requestAnimationFrame(() => returnFocusRef.current?.isConnected && returnFocusRef.current.focus());
+    handledApplicationLinkRef.current = false;
+    setResumeLoading(false);
     setSelectedApp(null);
     setLinkedResume(null);
     setShowResumePreview(false);
@@ -523,10 +618,19 @@ export default function ApplicationsPage() {
     setDrawerActionError(null);
     setInboxDrawerAction(null);
     setRequestedOutcomeConfirmation(null);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('application');
+    params.delete('action');
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }
 
   async function handleDownloadPDF() {
     if (!linkedResume?.content) return;
+    if (!selectedApp?.resume_version_id || selectedApp.resume_version_id !== linkedResume.id) {
+      showToast('The linked resume changed. Reopen this application before exporting.', 'cancel');
+      return;
+    }
     const templateId = getPersistedResumeTemplateId(linkedResume);
     if (tierLoading) {
       showToast('Your plan access is still loading. Try again in a moment.', 'hourglass_top');
@@ -539,16 +643,22 @@ export default function ApplicationsPage() {
     setDownloading(true);
     try {
       const colors = getPersistedResumePaletteColors(linkedResume);
-      await downloadResumePDF(linkedResume.content as any, colors, undefined, templateId);
+      const design = getPersistedResumeDesign(linkedResume, normalizeResume(linkedResume.content));
+      await downloadResumePDF(linkedResume.content as any, colors, undefined, templateId, undefined, design?.pageSize || 'A4', design || undefined);
       showToast('PDF downloaded', 'check_circle');
-    } catch (error: any) {
-      showToast(`PDF failed: ${error.message}`, 'cancel');
+    } catch (error: unknown) {
+      showToast(`PDF failed: ${error instanceof Error ? error.message : 'Download failed'}`, 'cancel');
+    } finally {
+      setDownloading(false);
     }
-    setDownloading(false);
   }
 
   async function handleDownloadWord() {
     if (!linkedResume?.content) return;
+    if (!selectedApp?.resume_version_id || selectedApp.resume_version_id !== linkedResume.id) {
+      showToast('The linked resume changed. Reopen this application before exporting.', 'cancel');
+      return;
+    }
     const resume = linkedResume.content as any;
     const templateId = getPersistedResumeTemplateId(linkedResume);
     if (tierLoading) {
@@ -561,6 +671,15 @@ export default function ApplicationsPage() {
     }
     setDownloading(true);
     try {
+      const design = getPersistedResumeDesign(linkedResume, normalizeResume(resume));
+      if (design) {
+        const { buildResumeDesignDocxBlob } = await import('@/lib/resume-design/docx');
+        const blob = await buildResumeDesignDocxBlob(normalizeResume(resume), design);
+        saveAs(blob, `${resume.name?.replace(/\s+/g, '_') || 'resume'}.docx`);
+        showToast('Editable Word companion downloaded', 'check_circle');
+        setDownloading(false);
+        return;
+      }
       if (NEW_SIGNATURE_TEMPLATE_IDS.includes(templateId as (typeof NEW_SIGNATURE_TEMPLATE_IDS)[number])) {
         const { buildCuratedSignatureDocxBlob } = await import('@/lib/resume-signature-docx');
         const blob = await buildCuratedSignatureDocxBlob(
@@ -616,6 +735,7 @@ export default function ApplicationsPage() {
   }
 
   async function handleFollowUp(appId: string) {
+    const current = captureAction(appId, 'followup');
     setFollowUpLoading(true);
     setDrawerActionError(null);
     try {
@@ -624,6 +744,7 @@ export default function ApplicationsPage() {
         body: JSON.stringify({ applicationId: appId }),
       });
       const data = await res.json().catch(() => ({}));
+      if (!current()) return;
       if (!res.ok || !data.success) {
         const message = data.error || 'Failed to draft follow-up';
         setDrawerActionError(message);
@@ -633,15 +754,17 @@ export default function ApplicationsPage() {
       setFollowUpDraft(data);
       setShowFollowUpModal(true);
     } catch {
+      if (!current()) return;
       const message = 'Failed to generate follow-up';
       setDrawerActionError(message);
       showToast(message, 'cancel');
     } finally {
-      setFollowUpLoading(false);
+      if (current()) setFollowUpLoading(false);
     }
   }
 
   async function handleInterviewPrep(app: JobApplication) {
+    const current = captureAction(app.id, 'prep');
     setPrepLoading(true);
     setDrawerActionError(null);
     try {
@@ -650,6 +773,7 @@ export default function ApplicationsPage() {
         body: JSON.stringify({ applicationId: app.id }),
       });
       const data = await res.json().catch(() => ({}));
+      if (!current()) return;
       if (!res.ok || !data.success) {
         const message = data.error || 'Failed to generate prep';
         setDrawerActionError(message);
@@ -659,11 +783,12 @@ export default function ApplicationsPage() {
       setPrepData(data);
       setShowPrepCard(true);
     } catch {
+      if (!current()) return;
       const message = 'Failed to load interview prep';
       setDrawerActionError(message);
       showToast(message, 'cancel');
     } finally {
-      setPrepLoading(false);
+      if (current()) setPrepLoading(false);
     }
   }
 
@@ -673,10 +798,12 @@ export default function ApplicationsPage() {
       showToast('Mark applied before logging an outcome', 'cancel');
       return;
     }
+    const current = captureAction(selectedApp.id, 'outcome');
     setOutcomeLoading(true);
     setDrawerActionError(null);
     try {
       const result = await reportApplicationOutcome(selectedApp.id, outcome, { source: 'manual' });
+      if (!current()) return;
       if (!result.success) {
         const message = result.error || 'Failed to log outcome';
         setDrawerActionError(message);
@@ -702,21 +829,25 @@ export default function ApplicationsPage() {
       });
       setRequestedOutcomeConfirmation(null);
       window.requestAnimationFrame(() => {
+        if (!current()) return;
         document.getElementById('application-action-outcome')?.focus({ preventScroll: true });
       });
       showToast(result.duplicate ? 'Outcome was already saved' : `Outcome: ${OUTCOME_CONFIG[outcome].label}`, OUTCOME_CONFIG[outcome].icon);
-    } finally {
-      setOutcomeLoading(false);
+    } catch { if (current()) setDrawerActionError('Outcome could not be saved. Please retry.'); } finally {
+      if (current()) setOutcomeLoading(false);
     }
   }
 
   async function handleSaveOffer(app: JobApplication, offerDetails: OfferDetails, status?: JobApplication['negotiation_status']) {
+    const current = captureAction(app.id, 'offer-save');
     const result = await updateApplicationOffer(app.id, {
+      expectedOfferSignature: offerInputSignature(app.offer_details),
       offerDetails,
       negotiationStatus: status || app.negotiation_status || 'not_started',
     });
+    if (!current()) return null;
     if (!result.success) {
-      showToast('Failed to save offer details', 'cancel');
+      showToast(result.error || 'Failed to save offer details', 'cancel');
       return null;
     }
     updateLocalApplication(app.id, result.data || {
@@ -730,8 +861,11 @@ export default function ApplicationsPage() {
   }
 
   async function handleGenerateOfferBrief(app: JobApplication, offerDetails: OfferDetails) {
+    const current = captureAction(app.id, 'offer-brief');
     const savedApp = await handleSaveOffer(app, offerDetails, app.negotiation_status || 'not_started');
-    const sourceApp = savedApp || { ...app, offer_details: offerDetails };
+    if (!savedApp) throw new Error('Save the offer details before generating a brief.');
+    if (!current()) throw new Error('Offer input or application changed. Review your current details.');
+    const sourceApp = savedApp;
     const res = await authFetch('/api/agent/negotiate', {
       method: 'POST',
       body: JSON.stringify({
@@ -744,13 +878,12 @@ export default function ApplicationsPage() {
       }),
     });
     const data = await res.json();
+    if (!current()) throw new Error('The selected application changed. Reopen it to continue.');
     if (!res.ok || !data.success) {
       throw new Error(data.error || 'Failed to generate negotiation brief');
     }
     const brief: NegotiationBrief = {
-      marketRange: data.marketRange,
-      verdict: data.verdict,
-      verdictMessage: data.verdictMessage,
+      method: 'entered_offer_v1', sourceOfferSignature: JSON.stringify(offerDetailsToDraft(offerDetails)),
       counterStrategy: data.counterStrategy,
       emailScript: data.emailScript,
       phoneScript: data.phoneScript,
@@ -760,10 +893,12 @@ export default function ApplicationsPage() {
       redFlags: data.redFlags || [],
     };
     const result = await updateApplicationOffer(app.id, {
+      expectedOfferSignature: offerInputSignature(savedApp.offer_details),
       offerDetails,
       negotiationBrief: brief,
       negotiationStatus: 'drafted',
     });
+    if (!current()) throw new Error('The current offer changed while saving the brief.');
     if (!result.success) {
       throw new Error(result.error || 'Failed to save negotiation brief');
     }
@@ -779,19 +914,16 @@ export default function ApplicationsPage() {
   }
 
   async function handleNegotiationStatus(app: JobApplication, status: NonNullable<JobApplication['negotiation_status']>) {
+    if (['accepted','declined'].includes(status) && !window.confirm(`Record that you ${status} this offer? This records your decision; no message will be sent.`)) return;
+    const current = captureAction(app.id, 'offer-status');
     const result = await updateApplicationOffer(app.id, { negotiationStatus: status });
+    if (!current()) return;
     if (!result.success) {
       showToast('Failed to update negotiation status', 'cancel');
       return;
     }
     updateLocalApplication(app.id, result.data || { negotiation_status: status, last_updated: new Date().toISOString() });
-    if (status === 'accepted' || status === 'declined') {
-      const nextStatus: JobApplication['status'] = status === 'accepted' ? 'accepted' : 'withdrawn';
-      const statusResult = await updateApplicationStatus(app.id, nextStatus);
-      if (statusResult.success) {
-        updateLocalApplication(app.id, statusResult.data || { status: nextStatus, last_updated: new Date().toISOString() });
-      }
-    }
+
     showToast(status === 'accepted' ? 'Offer marked accepted' : status === 'declined' ? 'Offer marked declined' : 'Negotiation updated', 'check_circle');
   }
 
@@ -816,22 +948,22 @@ export default function ApplicationsPage() {
       const appliedDays = daysSince(app.applied_at || app.created_at);
       if (needsOfferReview(app)) {
         const offerAction = getOfferAction(app);
-        items.push({ app, kind: 'offer', label: offerAction.label, detail: offerAction.detail, priority: 0, icon: offerAction.icon, color: '#059669' });
+        items.push({ app, kind: 'offer', label: offerAction.label, detail: offerAction.detail, priority: 0, icon: offerAction.icon, color: 'var(--success)' });
       } else if (needsOutcome(app)) {
-        items.push({ app, kind: 'outcome', label: 'Log outcome', detail: `${appliedDays} days with no result logged`, priority: 1, icon: 'fact_check', color: '#f59e0b' });
+        items.push({ app, kind: 'outcome', label: 'Log outcome', detail: `${appliedDays} days with no result logged`, priority: 1, icon: 'fact_check', color: 'var(--warning)' });
       } else if (canFollowUp(app)) {
-        items.push({ app, kind: 'followup', label: 'Send follow-up', detail: `${appliedDays} days since applied`, priority: 2, icon: 'forward_to_inbox', color: '#d97706' });
+        items.push({ app, kind: 'followup', label: 'Send follow-up', detail: `${appliedDays} days since applied`, priority: 2, icon: 'forward_to_inbox', color: 'var(--warning)' });
       } else if (needsPrep(app)) {
-        items.push({ app, kind: 'prep', label: 'Prepare interview', detail: app.interview_date ? `Interview ${formatDate(app.interview_date)}` : 'Interview stage needs prep', priority: 3, icon: 'psychology', color: '#7c3aed' });
+        items.push({ app, kind: 'prep', label: 'Prepare interview', detail: app.interview_date ? `Interview ${formatDate(app.interview_date)}` : 'Interview stage needs prep', priority: 3, icon: 'psychology', color: 'var(--accent)' });
       } else if (app.status === 'not_applied') {
-        items.push({ app, kind: 'apply', label: 'Submit manually', detail: 'Open the posting and submit before marking applied', priority: 4, icon: 'open_in_new', color: '#2563eb' });
+        items.push({ app, kind: 'apply', label: 'Submit manually', detail: 'Open the posting and submit before marking applied', priority: 4, icon: 'open_in_new', color: 'var(--accent)' });
       }
     });
     return items.sort((a, b) => a.priority - b.priority || daysSince(b.app.created_at) - daysSince(a.app.created_at)).slice(0, 12);
   }, [applications]);
 
   const stats = useMemo(() => {
-    const qualityScores = applications.map(computeQualityScore);
+    const prepSignalCounts = applications.map(countPrepSignals);
     const appliedApps = applications.filter(app => app.status !== 'not_applied');
     const positiveOutcomes = applications.filter(app => ['callback', 'interview', 'offer'].includes(app.outcome_response || '')).length;
     const withOutcome = applications.filter(app => app.outcome_response).length;
@@ -842,21 +974,36 @@ export default function ApplicationsPage() {
       offers: applications.filter(needsOfferReview).length,
       responseRate: appliedApps.length ? Math.round((positiveOutcomes / appliedApps.length) * 100) : 0,
       outcomeCoverage: appliedApps.length ? Math.round((withOutcome / appliedApps.length) * 100) : 0,
-      avgQuality: qualityScores.length ? (qualityScores.reduce((sum, value) => sum + value, 0) / qualityScores.length).toFixed(1) : '0',
+      avgPrepSignals: prepSignalCounts.length ? (prepSignalCounts.reduce((sum, value) => sum + value, 0) / prepSignalCounts.length).toFixed(1) : null,
     };
   }, [applications, attentionItems.length]);
 
   const todayActions = [
-    { label: 'Offers to review', value: stats.offers, icon: 'payments', color: '#059669', onClick: () => { setStatusFilter('offer'); setOutcomeFilter('all'); setViewMode('command'); } },
-    { label: 'Follow-ups due', value: applications.filter(canFollowUp).length, icon: 'forward_to_inbox', color: '#d97706', onClick: () => { setViewMode('command'); } },
-    { label: 'Prep interviews', value: applications.filter(needsPrep).length, icon: 'psychology', color: '#7c3aed', onClick: () => { setStatusFilter('interview_scheduled'); setViewMode('grid'); } },
-    { label: 'Drafts ready', value: applications.filter(app => app.status === 'not_applied').length, icon: 'edit_document', color: '#2563eb', onClick: () => { setStatusFilter('not_applied'); setViewMode('grid'); } },
+    { label: 'Offers to review', value: stats.offers, icon: 'payments', onClick: () => { setStatusFilter('offer'); setOutcomeFilter('all'); setViewMode('command'); } },
+    { label: 'Follow-ups due', value: applications.filter(canFollowUp).length, icon: 'forward_to_inbox', onClick: () => { setViewMode('command'); } },
+    { label: 'Prep interviews', value: applications.filter(needsPrep).length, icon: 'psychology', onClick: () => { setStatusFilter('interview_scheduled'); setViewMode('grid'); } },
+    { label: 'Drafts ready', value: applications.filter(app => app.status === 'not_applied').length, icon: 'edit_document', onClick: () => { setStatusFilter('not_applied'); setViewMode('grid'); } },
   ];
+
+  // MUST6: response rate and average quality are only meaningful once there are
+  // applied applications to measure. With no denominator they must read as a
+  // labelled absence, never a fabricated "0%" or "0".
+  const hasAppliedApps = applications.some(app => app.status !== 'not_applied');
+
+  useToolGuidance(buildToolStory({
+    toolId: 'applications', title: 'Applications', contextKey: JSON.stringify([selectedApp?.id || 'tracker', viewMode]), modalSurface: selectedApp ? 'application-detail' : undefined,
+    purpose: 'Track real applications, inspect prepared documents and record only the events that happened.',
+    pending: isLoading || followUpLoading || outcomeLoading, hasResult: Boolean(selectedApp), failed: Boolean(loadError || drawerActionError),
+    work: [storyStep('capture', 'Track a real application', 'Open Track an application to record an external submission or an unsent tracker. Generation is not required.', 'applications-capture'), storyStep('find', 'Find your record', 'Search or filter your real application history. Choose a record yourself to open its details.', 'applications-search'), storyStep('records', 'Open the application you need', 'The current view shows loaded records, not invented examples. Opening a record does not change its status.', 'applications-records')],
+    result: [...(selectedApp?.status === 'offer' ? [storyStep('offer', 'Review the actual offer', 'Enter genuine compensation and deadlines, review any brief against those inputs, and record the decision only after it occurs. Saving an offer or copying counter language never sends it.', 'application-offer')] : []), storyStep('review', 'Inspect this record', 'Check the role, status, linked source, notes and real timeline. Prepared and submitted remain separate.', 'application-detail'), storyStep('documents', 'Review prepared documents when present', 'Compare the source and drafts. Explicit approval applies to a document revision and does not submit it.', 'application-document-review', 'This application has no inline prepared-document review. Queue packets link to their own review.'), storyStep('followup', 'Choose the next action', 'Draft a follow-up only when appropriate; a draft is not an email sent. Record status or outcome only after the event occurred.', 'application-followup', 'Follow-up drafting is available only for eligible application statuses. Other record actions remain in the drawer.')],
+    recovery: [storyStep('retry', 'Review the existing error', 'A failed load or action does not confirm a saved change. Keep your current work and use the tool recovery control when ready.', 'applications-records', 'Close the details yourself to reach the tracker load message if it is behind the drawer.')],
+  }));
 
   const hasFilters = Boolean(searchQuery.trim()) || statusFilter !== 'all' || outcomeFilter !== 'all';
 
   return (
     <SuiteToolShell variant="workbench">
+        <ApplicationsContext active="tracking" context="Track status, outcomes, and follow-ups" />
         <SuiteToolHeader
           tool="applications"
           actions={
@@ -864,15 +1011,19 @@ export default function ApplicationsPage() {
               <button
                 type="button"
                 onClick={() => dispatchSona('Review my application pipeline and tell me the three most important next actions.', 'Applications')}
-                className="inline-flex items-center gap-2 rounded-[12px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-600 transition-colors hover:bg-cyan-500/15 dark:text-cyan-300"
+                className="inline-flex items-center gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-sm font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-hover)]"
               >
                 <AssistantMark size="xs" state="idle" />
-                Ask Taco
+                Ask <TacoName />
               </button>
             </>
           }
         />
 
+        <div data-guide="applications-capture"><ManualApplicationForm key={user?.uid || 'guest'} applications={applications} onSaved={app => setApplications(previous => [app, ...previous.filter(item => item.id !== app.id)])} /></div>
+
+        <details className="taco-application-overview border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Pipeline overview</summary>
         <ApplicationWorkspaceBrief
           applications={applications}
           stats={stats}
@@ -894,13 +1045,15 @@ export default function ApplicationsPage() {
           onAskSona={() => dispatchSona('Audit my application workspace. Check tracker coverage, company dossiers, follow-ups, recruiter notes, outcome logging, and the next three review-first actions.', 'Application Workspace')}
         />
 
-        <section className="mobile-card-rail grid gap-3 lg:grid-cols-4">
+        </details>
+
+        <section className="taco-application-actions mobile-card-rail grid gap-3 lg:grid-cols-4">
           {todayActions.map(action => (
             <button
               key={action.label}
               type="button"
               onClick={action.onClick}
-              className="group rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
+              className="group elevation-interactive rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="icon-shell-neutral grid h-10 w-10 place-items-center rounded-[13px] border">
@@ -915,14 +1068,14 @@ export default function ApplicationsPage() {
         </section>
 
         <section className="mobile-card-rail grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Metric label="Active pipeline" value={stats.active} icon="route" tone="#0891b2" />
-          <Metric label="Needs attention" value={stats.needsAttention} icon="priority_high" tone="#d97706" />
-          <Metric label="Interviews" value={stats.interviews} icon="groups" tone="#7c3aed" />
-          <Metric label="Response rate" value={`${stats.responseRate}%`} icon="mark_email_read" tone="#059669" />
-          <Metric label="Avg quality" value={stats.avgQuality} icon="star" tone="#f59e0b" />
+          <Metric label="Active pipeline" value={stats.active} icon="route" />
+          <Metric label="Needs attention" value={stats.needsAttention} icon="priority_high" />
+          <Metric label="Interviews" value={stats.interviews} icon="groups" />
+          <Metric label="Response rate" value={hasAppliedApps ? `${stats.responseRate}%` : 'n/a'} icon="mark_email_read" />
+          <Metric label="Avg prep signals" value={hasAppliedApps && stats.avgPrepSignals !== null ? `${stats.avgPrepSignals} of 5` : 'n/a'} icon="checklist" />
         </section>
 
-        <section className="mobile-tool-shell rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+        <section className="mobile-tool-shell elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
           <div className="grid gap-2 lg:grid-cols-[1fr_180px_180px_auto]">
             <label className="flex min-w-0 items-center gap-2">
               <span className="pointer-events-none flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)]" aria-hidden="true">
@@ -932,14 +1085,15 @@ export default function ApplicationsPage() {
                 value={searchQuery}
                 onChange={event => setSearchQuery(event.target.value)}
                 placeholder="Search company or role"
+                data-guide="applications-search"
                 aria-label="Search applications"
-                className="h-11 min-w-0 flex-1 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+                className="h-11 min-w-0 flex-1 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
               />
             </label>
             <select
               value={statusFilter}
               onChange={event => setStatusFilter(event.target.value)}
-              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/25"
+              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
             >
               <option value="all">All statuses</option>
               {STATUS_KEYS.map(status => <option key={status} value={status}>{STATUS_CONFIG[status].label}</option>)}
@@ -947,7 +1101,7 @@ export default function ApplicationsPage() {
             <select
               value={outcomeFilter}
               onChange={event => setOutcomeFilter(event.target.value as OutcomeFilter)}
-              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/25"
+              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
             >
               <option value="all">All outcomes</option>
               <option value="pending">Outcome pending</option>
@@ -967,10 +1121,10 @@ export default function ApplicationsPage() {
                   type="button"
                   aria-label={`${view.label} view`}
                   onClick={() => setViewMode(view.mode)}
-                  className={`group relative grid h-9 w-10 place-items-center rounded-[10px] transition-colors ${viewMode === view.mode ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                  className={`group relative grid h-9 w-10 place-items-center rounded-[10px] transition-colors ${viewMode === view.mode ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] elevation-card' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                 >
                   <span className="material-symbols-rounded text-[18px]" aria-hidden="true">{view.icon}</span>
-                  <span className="pointer-events-none absolute -top-8 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[10px] font-semibold leading-none text-[var(--text-secondary)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <span className="pointer-events-none absolute -top-8 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] font-semibold leading-none text-[var(--text-secondary)] opacity-0 elevation-card transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                     {view.label}
                   </span>
                 </button>
@@ -979,7 +1133,7 @@ export default function ApplicationsPage() {
           </div>
         </section>
 
-        {isLoading ? (
+        <div data-guide="applications-records">{isLoading ? (
           <ApplicationsSkeleton />
         ) : loadError ? (
           <ApplicationsErrorState message={loadError} onRetry={loadApplications} />
@@ -1027,6 +1181,7 @@ export default function ApplicationsPage() {
         )}
 
 
+      </div>
       <ApplicationDrawer
         app={selectedApp}
         initialAction={inboxDrawerAction}
@@ -1035,7 +1190,7 @@ export default function ApplicationsPage() {
         showResumePreview={showResumePreview}
         setShowResumePreview={setShowResumePreview}
         editingNotes={editingNotes}
-        setEditingNotes={setEditingNotes}
+        setEditingNotes={value => { notesRevisionRef.current += 1; setEditingNotes(value); }}
         downloading={downloading}
         followUpLoading={followUpLoading}
         prepLoading={prepLoading}
@@ -1056,6 +1211,7 @@ export default function ApplicationsPage() {
         onDownloadPDF={handleDownloadPDF}
         onDownloadWord={handleDownloadWord}
         onOutcome={handleOutcome}
+        onOfferInputChange={() => { offerRevisionRef.current += 1; }}
         onSaveOffer={handleSaveOffer}
         onGenerateOfferBrief={handleGenerateOfferBrief}
         onNegotiationStatus={handleNegotiationStatus}
@@ -1092,9 +1248,9 @@ export default function ApplicationsPage() {
   );
 }
 
-function Metric({ label, value, icon, tone }: { label: string; value: string | number; icon: string; tone: string }) {
+function Metric({ label, value, icon }: { label: string; value: string | number; icon: string }) {
   return (
-    <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+    <div className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
       <div className="flex items-center justify-between gap-3">
         <span className="icon-shell-neutral grid h-9 w-9 place-items-center rounded-[12px] border">
           <span className="material-symbols-rounded icon-neutral text-[19px]">{icon}</span>
@@ -1131,11 +1287,11 @@ function OutcomeBadge({ outcome }: { outcome?: JobApplication['outcome_response'
 }
 
 function QualityPills({ app }: { app: JobApplication }) {
-  const score = computeQualityScore(app);
+  const signals = countPrepSignals(app);
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-amber-500" title={`Quality ${score}/5`}>
-      <span className="material-symbols-rounded text-[15px]">star</span>
-      <span className="font-semibold">{score}/5</span>
+    <span className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)]" title={`${signals} of 5 prep signals present`}>
+      <span className="material-symbols-rounded text-[15px]">checklist</span>
+      <span className="font-semibold">{signals} of 5 prep signals</span>
     </span>
   );
 }
@@ -1161,15 +1317,15 @@ function ApplicationsSkeleton() {
 
 function EmptyState({ mode, onClear }: { mode: 'empty' | 'filtered'; onClear?: () => void }) {
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-12 text-center">
-      <div className="mx-auto grid h-16 w-16 place-items-center rounded-[20px] border border-cyan-500/25 bg-cyan-500/10 text-cyan-500">
+    <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-12 text-center">
+      <div className="mx-auto grid h-16 w-16 place-items-center rounded-[20px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]">
         <span className="material-symbols-rounded text-[32px]">{mode === 'empty' ? 'inventory_2' : 'filter_alt_off'}</span>
       </div>
       <h2 className="mt-5 text-xl font-bold text-[var(--text-primary)]">{mode === 'empty' ? 'No applications yet' : 'No applications match these filters'}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
-        {mode === 'empty'
+        <TacoText text={mode === 'empty'
           ? 'Start from Resume Studio, Job Search, or Taco Queue. Prepared applications will show up here for follow-up and outcome tracking.'
-          : 'Clear the filters or search for a different company, role, status, or outcome.'}
+          : 'Clear the filters or search for a different company, role, status, or outcome.'} />
       </p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {mode === 'empty' ? (
@@ -1181,10 +1337,10 @@ function EmptyState({ mode, onClear }: { mode: 'empty' | 'filtered'; onClear?: (
             <button
               type="button"
               onClick={() => dispatchSona('Help me create my first tracked application.', 'Applications')}
-              className="inline-flex items-center gap-2 rounded-[12px] border border-cyan-500/25 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-600 dark:text-cyan-300"
+              className="inline-flex items-center gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-4 py-2 text-sm font-semibold text-[var(--accent)]"
             >
               <AssistantMark size="xs" state="idle" />
-              Ask Taco
+              Ask <TacoName />
             </button>
           </>
         ) : (
@@ -1199,8 +1355,8 @@ function EmptyState({ mode, onClear }: { mode: 'empty' | 'filtered'; onClear?: (
 
 function ApplicationsErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section role="alert" className="rounded-[22px] border border-rose-500/20 bg-rose-500/[0.04] px-5 py-10 text-center">
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-[18px] border border-rose-500/20 bg-rose-500/10 text-rose-500">
+    <section role="alert" className="elevation-card rounded-[22px] border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)] px-5 py-10 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-[18px] border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]">
         <span className="material-symbols-rounded text-[28px]" aria-hidden="true">cloud_off</span>
       </div>
       <h2 className="mt-4 text-lg font-bold text-[var(--text-primary)]">Applications did not load</h2>
@@ -1244,6 +1400,10 @@ function ApplicationWorkspaceBrief({
   const averageDossier = dossierScores.length
     ? Math.round(dossierScores.reduce((sum, score) => sum + score, 0) / dossierScores.length)
     : 0;
+  // MUST6: percentages are only real once there is something to measure. With no
+  // applications (dossier) or no applied applications (outcome coverage) they must
+  // render as a labelled absence, never a fabricated 0%.
+  const hasApplied = applications.some(app => app.status !== 'not_applied');
   const nextAction = applications
     .filter(app => !TERMINAL_STATUSES.includes(app.status))
     .map(app => ({ app, action: getWorkspaceAction(app) }))
@@ -1265,15 +1425,15 @@ function ApplicationWorkspaceBrief({
       value: stats.active,
       detail: `${applications.length} total applications`,
       icon: 'view_kanban',
-      tone: '#0891b2',
+      tone: 'var(--accent)',
       action: onOpenDossiers,
     },
     {
       label: 'Company dossiers',
-      value: `${averageDossier}%`,
+      value: applications.length ? `${averageDossier}%` : 'n/a',
       detail: 'Role, posting, resume, notes, and outcome coverage',
       icon: 'corporate_fare',
-      tone: '#2563eb',
+      tone: 'var(--accent)',
       action: onOpenDossiers,
     },
     {
@@ -1281,15 +1441,15 @@ function ApplicationWorkspaceBrief({
       value: followUpsDue,
       detail: 'Ready for a review-first message',
       icon: 'forward_to_inbox',
-      tone: '#d97706',
+      tone: 'var(--warning)',
       action: onOpenFollowUps,
     },
     {
       label: 'Outcomes',
-      value: `${stats.outcomeCoverage}%`,
+      value: hasApplied ? `${stats.outcomeCoverage}%` : 'n/a',
       detail: outcomeGaps > 0 ? `${outcomeGaps} need a result logged` : 'No overdue outcome gaps',
       icon: 'fact_check',
-      tone: '#059669',
+      tone: 'var(--success)',
       action: onOpenOutcomes,
     },
   ];
@@ -1312,7 +1472,7 @@ function ApplicationWorkspaceBrief({
         <button
           type="button"
           onClick={onAskSona}
-          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-cyan-500/25 bg-cyan-500/10 px-4 text-sm font-semibold text-cyan-600 transition hover:bg-cyan-500/15 dark:text-cyan-300"
+          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-4 text-sm font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-hover)]"
         >
           <AssistantMark size="xs" state="listening" />
           Review workspace
@@ -1325,7 +1485,7 @@ function ApplicationWorkspaceBrief({
             key={lane.label}
             type="button"
             onClick={lane.action}
-            className="min-w-0 rounded-[15px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2.5 text-left transition hover:border-[var(--border)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/25 md:p-3"
+            className="min-w-0 rounded-[15px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2.5 text-left transition hover:border-[var(--border)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)] md:p-3"
           >
             <div className="flex min-w-0 items-center justify-between gap-3">
               <span className="icon-shell-neutral grid h-8 w-8 shrink-0 place-items-center rounded-[11px] border md:h-9 md:w-9 md:rounded-[12px]">
@@ -1395,7 +1555,7 @@ function CommandView({
 }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-      <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
+      <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Today</p>
@@ -1404,10 +1564,10 @@ function CommandView({
           <button
             type="button"
             onClick={() => dispatchSona('Review the applications that need attention and tell me what to handle first.', 'Needs attention')}
-            className="inline-flex items-center gap-2 rounded-[12px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300"
+            className="inline-flex items-center gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)]"
           >
             <AssistantMark size="xs" state="idle" />
-            Ask Taco
+            Ask <TacoName />
           </button>
         </div>
         <div className="mt-4 space-y-2">
@@ -1422,7 +1582,7 @@ function CommandView({
         </div>
       </section>
 
-      <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
+      <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Pipeline scan</p>
@@ -1439,7 +1599,7 @@ function CommandView({
                 <p className="truncate text-xs text-[var(--text-secondary)]">{app.job_title || 'Role not specified'}</p>
               </div>
               <div className="hidden items-center gap-2 sm:flex">
-                {app.talent_density_score ? <span className="text-xs font-semibold text-cyan-500">{app.talent_density_score}%</span> : null}
+                {app.talent_density_score ? <span className="text-xs font-semibold text-[var(--accent)]">{app.talent_density_score}%</span> : null}
                 {getProgress(app.id) !== null ? <span className="text-xs text-[var(--text-muted)]">{getProgress(app.id)}%</span> : null}
               </div>
               <span className="material-symbols-rounded text-[18px] text-[var(--text-muted)]">chevron_right</span>
@@ -1483,8 +1643,13 @@ function AttentionRow({
         <button type="button" onClick={primary} className="rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
           {item.kind === 'followup' ? 'Draft' : item.kind === 'prep' ? 'Prep' : item.kind === 'apply' ? 'Open' : 'Review'}
         </button>
-        <button type="button" onClick={() => onAsk(item.app)} className="rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300">
-          Ask Taco
+        {item.kind === 'prep' && (
+          <Link href={`/suite/interview-sim?application=${item.app.id}`} className="rounded-[11px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">
+            Practice
+          </Link>
+        )}
+        <button type="button" onClick={() => onAsk(item.app)} className="rounded-[11px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">
+          Ask <TacoName />
         </button>
       </div>
     </div>
@@ -1515,7 +1680,7 @@ function ApplicationCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03 }}
-      className={`relative rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 ${openStatus ? 'z-20' : ''}`}
+      className={`elevation-card relative rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 ${openStatus ? 'z-20' : ''}`}
     >
       <div className="flex items-start justify-between gap-3">
         <button type="button" onClick={() => onOpen(app)} className="flex min-w-0 items-center gap-3 text-left">
@@ -1525,7 +1690,7 @@ function ApplicationCard({
             <span className="block truncate text-sm text-[var(--text-secondary)]">{app.job_title || 'Role not specified'}</span>
           </span>
         </button>
-        <button type="button" onClick={() => onDelete(app.id)} aria-label={`Delete ${app.company_name}`} className="rounded-[10px] p-2 text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-500">
+        <button type="button" onClick={() => onDelete(app.id)} aria-label={`Delete ${app.company_name}`} className="rounded-[10px] p-2 text-[var(--text-muted)] hover:bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] hover:text-[var(--danger)]">
           <span className="material-symbols-rounded text-[17px]">delete</span>
         </button>
       </div>
@@ -1547,15 +1712,15 @@ function ApplicationCard({
           <QualityPills app={app} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <MiniProgress label="Match" value={app.talent_density_score ?? null} color="#0891b2" />
-          <MiniProgress label="Skill Bridge" value={progress} color="#7c3aed" />
+          <MiniProgress label="Match" value={app.talent_density_score ?? null} color="var(--accent)" />
+          <MiniProgress label="Skill Bridge" value={progress} color="var(--accent)" />
         </div>
         {app.notes ? <p className="line-clamp-2 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-xs leading-5 text-[var(--text-secondary)]">{app.notes}</p> : null}
       </div>
       <div className="mt-4 flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-3 text-xs text-[var(--text-muted)]">
         <span>{getActivityDateLabel(app)}</span>
         <div className="flex gap-1">
-          <button type="button" onClick={onAsk} className="rounded-[10px] px-2 py-1 font-semibold text-cyan-600 hover:bg-cyan-500/10 dark:text-cyan-300">Ask Taco</button>
+          <button type="button" onClick={onAsk} className="rounded-[10px] px-2 py-1 font-semibold text-[var(--accent)] hover:bg-[var(--accent-hover)]">Ask <TacoName /></button>
           <button type="button" onClick={() => onOpen(app)} className="rounded-[10px] px-2 py-1 font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Details</button>
         </div>
       </div>
@@ -1576,11 +1741,17 @@ function MiniProgress({ label, value, color }: { label: string; value: number | 
     <div>
       <div className="mb-1 flex items-center justify-between text-xs">
         <span className="text-[var(--text-muted)]">{label}</span>
-        <span className="font-semibold tabular-nums text-[var(--text-primary)]">{value === null ? 'n/a' : `${value}%`}</span>
+        <span className="font-semibold tabular-nums text-[var(--text-primary)]">{value === null ? 'Not measured' : `${value}%`}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-        <motion.div className="h-full rounded-full" style={{ width: `${value || 0}%`, background: color }} initial={{ width: 0 }} animate={{ width: `${value || 0}%` }} transition={{ duration: 0.4 }} />
-      </div>
+      {/* MUST6: an unmeasured value renders the absence, never an empty bar that
+          reads as a measured 0%. Only draw the track once there is a number. */}
+      {value === null ? (
+        <div className="h-1.5 rounded-full border border-dashed border-[var(--border-subtle)]" />
+      ) : (
+        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+          <motion.div className="h-full rounded-full" style={{ width: `${value}%`, background: color }} initial={{ width: 0 }} animate={{ width: `${value}%` }} transition={{ duration: 0.4 }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1603,7 +1774,7 @@ function StatusMenu({
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
-          className="absolute left-0 top-full z-50 mt-2 w-56 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 shadow-xl"
+          className="absolute left-0 top-full z-50 mt-2 w-56 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 elevation-raised"
           role="menu"
         >
           {STATUS_KEYS.map(status => (
@@ -1633,7 +1804,7 @@ function KanbanView({ apps, onOpen, getProgress }: { apps: JobApplication[]; onO
         const config = STATUS_CONFIG[status];
         const columnApps = apps.filter(app => app.status === status);
         return (
-          <section key={status} className="flex w-[280px] shrink-0 flex-col rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+          <section key={status} className="elevation-card flex w-[280px] shrink-0 flex-col rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] p-3">
               <span className="inline-flex items-center gap-2 text-sm font-semibold" style={{ color: config.color }}>
                 <span className="material-symbols-rounded text-[17px]">{config.icon}</span>
@@ -1649,7 +1820,7 @@ function KanbanView({ apps, onOpen, getProgress }: { apps: JobApplication[]; onO
                   <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{app.company_name}</p>
                   <p className="truncate text-xs text-[var(--text-secondary)]">{app.job_title || 'Role not specified'}</p>
                   <div className="mt-2 flex items-center justify-between text-xs">
-                    <span className="font-semibold text-cyan-500">{app.talent_density_score ? `${app.talent_density_score}%` : 'No match'}</span>
+                    <span className="font-semibold text-[var(--accent)]">{app.talent_density_score ? `${app.talent_density_score}%` : 'No match'}</span>
                     {getProgress(app.id) !== null ? <span className="text-[var(--text-muted)]">{getProgress(app.id)}% Skill</span> : null}
                   </div>
                 </button>
@@ -1680,7 +1851,7 @@ function ListView({
   getProgress: (id: string) => number | null;
 }) {
   return (
-    <div className="overflow-x-auto rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+    <div className="elevation-card overflow-x-auto rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
       <table className="min-w-[980px] w-full">
         <thead>
           <tr className="border-b border-[var(--border-subtle)] text-left text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
@@ -1720,14 +1891,14 @@ function ListView({
                   <StatusMenu open={statusDropdownId === app.id} app={app} onClose={() => setStatusDropdownId(null)} onStatusUpdate={onStatusUpdate} />
                 </div>
               </td>
-              <td className="p-4 text-sm font-semibold text-cyan-500">{app.talent_density_score ? `${app.talent_density_score}%` : 'n/a'}</td>
+              <td className="p-4 text-sm font-semibold text-[var(--accent)]">{app.talent_density_score ? `${app.talent_density_score}%` : 'n/a'}</td>
               <td className="p-4"><QualityPills app={app} /></td>
               <td className="p-4 text-sm text-[var(--text-secondary)]">{getProgress(app.id) === null ? 'n/a' : `${getProgress(app.id)}%`}</td>
               <td className="p-4"><OutcomeBadge outcome={app.outcome_response} /></td>
               <td className="p-4 text-sm text-[var(--text-secondary)]">{getActivityDateLabel(app)}</td>
               <td className="p-4 text-right">
                 <button type="button" onClick={() => onOpen(app)} className="rounded-[10px] px-2 py-1 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]">Open</button>
-                <button type="button" onClick={() => onDelete(app.id)} className="rounded-[10px] px-2 py-1 text-sm font-semibold text-red-500 hover:bg-red-500/10">Delete</button>
+                <button type="button" onClick={() => onDelete(app.id)} className="rounded-[10px] px-2 py-1 text-sm font-semibold text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]">Delete</button>
               </td>
             </tr>
           ))}
@@ -1757,21 +1928,21 @@ function ApplicationDossier({
       value: app.company_name,
       detail: app.application_link ? 'Posting link saved' : 'Posting link missing',
       icon: 'corporate_fare',
-      tone: app.application_link ? '#059669' : '#d97706',
+      tone: app.application_link ? 'var(--success)' : 'var(--warning)',
     },
     {
       label: 'Role',
       value: app.job_title || 'Role not set',
       detail: app.job_description ? 'Job description captured' : 'Add JD for better context',
       icon: 'work',
-      tone: app.job_description ? '#059669' : '#d97706',
+      tone: app.job_description ? 'var(--success)' : 'var(--warning)',
     },
     {
       label: 'Resume',
       value: linkedResume?.version_name || app.morphed_resume_name || 'No resume linked',
       detail: app.resume_version_id ? 'Application packet has a resume source' : 'Link a resume before applying',
       icon: 'description',
-      tone: app.resume_version_id ? '#059669' : '#d97706',
+      tone: app.resume_version_id ? 'var(--success)' : 'var(--warning)',
     },
     {
       label: 'Outcome',
@@ -1782,7 +1953,7 @@ function ApplicationDossier({
           ? 'Apply manually before logging outcomes'
           : `${appliedDays} day${appliedDays === 1 ? '' : 's'} since activity`,
       icon: app.outcome_response ? OUTCOME_CONFIG[app.outcome_response].icon : 'fact_check',
-      tone: app.outcome_response ? OUTCOME_CONFIG[app.outcome_response].color : needsOutcome(app) ? '#f59e0b' : '#64748b',
+      tone: app.outcome_response ? OUTCOME_CONFIG[app.outcome_response].color : needsOutcome(app) ? 'var(--warning)' : 'var(--text-muted)',
     },
   ];
   const gates = [
@@ -1836,7 +2007,7 @@ function ApplicationDossier({
               <span className="font-black tabular-nums text-[var(--text-primary)]">{dossierCompletion}%</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-surface)]">
-              <span className="block h-full rounded-full bg-cyan-500" style={{ width: `${dossierCompletion}%` }} />
+              <span className="block h-full rounded-full bg-[var(--accent)]" style={{ width: `${dossierCompletion}%` }} />
             </div>
           </div>
         </div>
@@ -1857,8 +2028,8 @@ function ApplicationDossier({
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2">
-          <MiniProgress label="Match" value={app.talent_density_score ?? null} color="#0891b2" />
-          <MiniProgress label="Skill Bridge" value={skillProgress} color="#7c3aed" />
+          <MiniProgress label="Match" value={app.talent_density_score ?? null} color="var(--accent)" />
+          <MiniProgress label="Skill Bridge" value={skillProgress} color="var(--accent)" />
         </div>
 
         <div className="space-y-2">
@@ -1901,31 +2072,36 @@ function SkillBridgePanel({ app, summary }: { app: JobApplication; summary: Skil
           <div className="space-y-2">
             {summary.skills.slice(0, 3).map(progress => {
               const done = progress.completed_days?.length || 0;
-              const total = progress.total_days || 7;
-              const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+              const total = progress.total_days;
+              const hasTotal = typeof total === 'number' && total > 0;
+              const percent = hasTotal ? Math.round((done / total) * 100) : null;
               return (
                 <div key={progress.id || progress.skill_id} className="rounded-[13px] bg-[var(--bg-elevated)] px-3 py-2.5">
                   <div className="flex min-w-0 items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="wrap-natural text-sm font-semibold text-[var(--text-primary)]">{progress.skill}</p>
-                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">{formatReadinessStatus(progress.readiness_status)}, {done} of {total} days</p>
+                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">{formatReadinessStatus(progress.readiness_status)}, {hasTotal ? `${done} of ${total} days` : `${done} days logged, plan length not set`}</p>
                     </div>
-                    <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--text-primary)]">{percent}%</span>
+                    <span className="shrink-0 text-sm font-bold tabular-nums text-[var(--text-primary)]">{percent === null ? '—' : `${percent}%`}</span>
                   </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--bg-surface)]">
-                    <span className="block h-full rounded-full bg-violet-500" style={{ width: `${percent}%` }} />
-                  </div>
+                  {hasTotal ? (
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--bg-surface)]">
+                      <span className="block h-full rounded-full bg-[var(--accent)]" style={{ width: `${percent}%` }} />
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-[var(--text-muted)]">Progress unavailable until the plan length is set</p>
+                  )}
                 </div>
               );
             })}
           </div>
         ) : (
           <div className="rounded-[13px] border border-dashed border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-sm leading-6 text-[var(--text-secondary)]">
-            Link a skill plan when this application exposes a gap. Taco can then turn it into interview drills and proof notes.
+            Link a skill plan when this application exposes a gap. <TacoName /> can then turn it into interview drills and proof notes.
           </div>
         )}
 
-        <Link href={`/suite/skill-bridge?applicationId=${app.id}`} className="inline-flex items-center gap-2 rounded-[12px] border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-600 dark:text-violet-300">
+        <Link href={`/suite/skill-bridge?applicationId=${app.id}`} className="inline-flex items-center gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-sm font-semibold text-[var(--accent)]">
           <span className="material-symbols-rounded text-[17px]">open_in_new</span>
           Open Skill Bridge
         </Link>
@@ -1936,10 +2112,10 @@ function SkillBridgePanel({ app, summary }: { app: JobApplication; summary: Skil
 
 function ActionFeedback({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
-    <div role="alert" className="mt-3 flex items-start gap-3 rounded-[13px] border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm text-red-600 dark:text-red-300">
+    <div role="alert" className="mt-3 flex items-start gap-3 rounded-[13px] border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] px-3 py-2.5 text-sm text-[var(--danger)]">
       <span className="material-symbols-rounded mt-0.5 text-[17px]" aria-hidden="true">error</span>
       <p className="min-w-0 flex-1 leading-5">{message}</p>
-      <button type="button" onClick={onDismiss} aria-label="Dismiss action error" className="grid h-6 w-6 shrink-0 place-items-center rounded-[8px] hover:bg-red-500/10">
+      <button type="button" onClick={onDismiss} aria-label="Dismiss action error" className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] hover:bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]">
         <span className="material-symbols-rounded text-[16px]">close</span>
       </button>
     </div>
@@ -1975,6 +2151,7 @@ function ApplicationDrawer({
   onDownloadPDF,
   onDownloadWord,
   onOutcome,
+  onOfferInputChange,
   onSaveOffer,
   onGenerateOfferBrief,
   onNegotiationStatus,
@@ -2010,6 +2187,7 @@ function ApplicationDrawer({
   onDownloadPDF: () => void;
   onDownloadWord: () => void;
   onOutcome: (outcome: NonNullable<JobApplication['outcome_response']>) => Promise<void>;
+  onOfferInputChange: () => void;
   onSaveOffer: (app: JobApplication, offerDetails: OfferDetails, status?: JobApplication['negotiation_status']) => Promise<JobApplication | null>;
   onGenerateOfferBrief: (app: JobApplication, offerDetails: OfferDetails) => Promise<NegotiationBrief>;
   onNegotiationStatus: (app: JobApplication, status: NonNullable<JobApplication['negotiation_status']>) => void;
@@ -2019,6 +2197,15 @@ function ApplicationDrawer({
 }) {
   const [confirmOutcome, setConfirmOutcome] = useState<NonNullable<JobApplication['outcome_response']> | null>(null);
   const confirmDialogRef = useRef<HTMLDialogElement>(null);
+  const workflowDrawerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const surface = workflowDrawerRef.current;
+    if (!app || !surface) return;
+    const keydown = (event: KeyboardEvent) => trapWorkflowTab(event, surface);
+    surface.addEventListener('keydown', keydown);
+    return () => surface.removeEventListener('keydown', keydown);
+  }, [app?.id]);
   const confirmCancelRef = useRef<HTMLButtonElement>(null);
   const confirmSubmitRef = useRef<HTMLButtonElement>(null);
   const outcomeTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -2059,16 +2246,17 @@ function ApplicationDrawer({
     <AnimatePresence>
       {app && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm" />
-          <motion.aside
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-50 bg-[var(--modal-backdrop)] backdrop-blur-sm" />
+          <motion.aside data-guide="application-detail" data-guide-surface="application-detail"
             role="dialog"
+            ref={workflowDrawerRef}
             aria-modal="true"
             aria-label={`${app.company_name} application details`}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-x-0 bottom-0 top-8 z-50 flex w-full flex-col rounded-t-[24px] border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-2xl sm:inset-y-0 sm:left-auto sm:right-0 sm:max-w-2xl sm:rounded-none sm:border-l sm:border-t-0"
+            className="taco-application-drawer fixed inset-x-0 bottom-0 top-8 z-50 flex w-full flex-col rounded-t-[24px] border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-raised sm:inset-y-0 sm:left-auto sm:right-0 sm:max-w-2xl sm:rounded-none sm:border-l sm:border-t-0"
           >
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] p-4 md:p-5">
               <div className="flex min-w-0 items-center gap-3">
@@ -2079,17 +2267,18 @@ function ApplicationDrawer({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <button
+                <PageHelp toolId="applications" />
+              <button
                   type="button"
                   onClick={() => onAsk(app)}
                   aria-label={`Ask Taco about ${app.company_name}`}
-                  className="inline-flex min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-2.5 text-xs font-semibold text-cyan-600 transition hover:bg-cyan-500/15 dark:text-cyan-300 sm:px-3"
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-[11px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-2.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-hover)] sm:px-3"
                 >
                   <AssistantMark size="xs" state="idle" />
                   <span className="sm:hidden">Ask</span>
-                  <span className="hidden sm:inline">Ask Taco</span>
+                  <span className="hidden sm:inline">Ask <TacoName /></span>
                 </button>
-                <button ref={closeRef} type="button" onClick={onClose} aria-label="Close application details" className="grid h-9 w-9 place-items-center rounded-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+                <button ref={closeRef} type="button" onClick={onClose} aria-label="Close application details" className="grid h-11 w-11 place-items-center rounded-[12px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
                   <span className="material-symbols-rounded text-[20px]">close</span>
                 </button>
               </div>
@@ -2097,6 +2286,7 @@ function ApplicationDrawer({
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
               <div className="space-y-4">
+                <ApplicationPacketReview key={app.id} app={app} />
                 <ApplicationDossier app={app} linkedResume={linkedResume} skillProgress={skillProgress} skillSummary={skillSummary} />
                 <SkillBridgePanel app={app} summary={skillSummary} />
 
@@ -2131,13 +2321,13 @@ function ApplicationDrawer({
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {canFollowUp(app) && (
-                      <button id="application-action-followup" type="button" onClick={() => onFollowUp(app.id)} disabled={followUpLoading} className="inline-flex min-h-11 items-center gap-2 rounded-[12px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600 disabled:opacity-50 dark:text-amber-300">
+                      <button data-guide="application-followup" id="application-action-followup" type="button" onClick={() => onFollowUp(app.id)} disabled={followUpLoading} className="inline-flex min-h-11 items-center gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_25%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--warning)] disabled:opacity-50">
                         <span className="material-symbols-rounded text-[18px]">forward_to_inbox</span>
                         Draft follow-up
                       </button>
                     )}
                     {needsPrep(app) && (
-                      <button type="button" onClick={() => onInterviewPrep(app)} disabled={prepLoading} className="inline-flex items-center gap-2 rounded-[12px] border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-600 disabled:opacity-50 dark:text-violet-300">
+                      <button type="button" onClick={() => onInterviewPrep(app)} disabled={prepLoading} className="inline-flex items-center gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-sm font-semibold text-[var(--accent)] disabled:opacity-50">
                         <span className="material-symbols-rounded text-[18px]">psychology</span>
                         Prep interview
                       </button>
@@ -2160,18 +2350,18 @@ function ApplicationDrawer({
                   ) : linkedResume ? (
                     <div className="space-y-3">
                       <div className="flex items-center gap-3 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-                        <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-cyan-500/10 text-cyan-500">
+                        <span className="grid h-10 w-10 place-items-center rounded-[12px] bg-[var(--accent-dim)] text-[var(--accent)]">
                           <span className="material-symbols-rounded text-[20px]">description</span>
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{linkedResume.version_name}</p>
                           <p className="text-xs text-[var(--text-muted)]">Saved {formatDate(linkedResume.created_at)}</p>
                         </div>
-                        <button type="button" onClick={() => setShowResumePreview(!showResumePreview)} className="text-xs font-semibold text-cyan-600 dark:text-cyan-300">{showResumePreview ? 'Hide' : 'Preview'}</button>
+                        <button type="button" onClick={() => setShowResumePreview(!showResumePreview)} className="text-xs font-semibold text-[var(--accent)]">{showResumePreview ? 'Hide' : 'Preview'}</button>
                       </div>
                       <div className="flex gap-2">
-                        <button type="button" onClick={onDownloadPDF} disabled={downloading} className="flex-1 rounded-[12px] border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-600 disabled:opacity-50 dark:text-red-300">Download PDF</button>
-                        <button type="button" onClick={onDownloadWord} disabled={downloading} className="flex-1 rounded-[12px] border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm font-semibold text-blue-600 disabled:opacity-50 dark:text-blue-300">Download Word</button>
+                        <button type="button" onClick={onDownloadPDF} disabled={downloading} className="flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50">Download PDF</button>
+                        <button type="button" onClick={onDownloadWord} disabled={downloading} className="flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50">Download Word</button>
                       </div>
                       <AnimatePresence>
                         {showResumePreview && (
@@ -2183,7 +2373,7 @@ function ApplicationDrawer({
                     </div>
                   ) : (
                     <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-sm text-[var(--text-secondary)]">
-                      No saved resume is linked. <Link href="/suite/resume" className="font-semibold text-cyan-600 dark:text-cyan-300">Create one in Resume Studio</Link>.
+                      No saved resume is linked. <Link href="/suite/resume" className="font-semibold text-[var(--accent)]">Create one in Resume Studio</Link>.
                     </div>
                   )}
                 </DrawerSection>
@@ -2194,10 +2384,10 @@ function ApplicationDrawer({
                     onChange={event => setEditingNotes(event.target.value)}
                     rows={4}
                     placeholder="Add recruiter names, deadlines, interview notes, or follow-up context."
-                    className="w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+                    className="w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_25%,transparent)]"
                   />
                   {editingNotes !== (app.notes || '') && (
-                    <button type="button" onClick={onNotesSave} className="mt-2 rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300">Save notes</button>
+                    <button type="button" onClick={onNotesSave} className="mt-2 rounded-[11px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">Save notes</button>
                   )}
                 </DrawerSection>
 
@@ -2270,7 +2460,7 @@ function ApplicationDrawer({
                               }
                             }}
                             onClose={restoreOutcomeFocus}
-                            className="m-auto w-[calc(100vw_-_2rem)] max-w-sm rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-0 text-[var(--text-primary)] shadow-2xl backdrop:bg-black/40"
+                            className="m-auto w-[calc(100vw_-_2rem)] max-w-sm rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-0 text-[var(--text-primary)] elevation-raised backdrop:bg-[var(--modal-backdrop)]"
                           >
                             {confirmOutcome && availableOutcomeUpdates(app).includes(confirmOutcome) && (
                               <div className="p-4">
@@ -2321,8 +2511,10 @@ function ApplicationDrawer({
 
                 {isOfferStage(app) && (
                   <OfferCoachSection
+                    key={app.id}
                     app={app}
                     focusId="application-action-offer"
+                    onInputChange={onOfferInputChange}
                     onSave={onSaveOffer}
                     onGenerate={onGenerateOfferBrief}
                     onStatus={onNegotiationStatus}
@@ -2336,12 +2528,12 @@ function ApplicationDrawer({
                         <div key={`${question.question}-${index}`} className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
                           <p className="text-sm font-semibold text-[var(--text-primary)]">{question.question}</p>
                           <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{question.tip}</p>
-                          {question.matchedStory && <p className="mt-2 text-xs font-semibold text-violet-500">Story: {question.matchedStory}</p>}
+                          {question.matchedStory && <p className="mt-2 text-xs font-semibold text-[var(--accent)]">Story: {question.matchedStory}</p>}
                         </div>
                       ))}
                       {prepData.questionsToAsk.length > 0 && (
-                        <div className="rounded-[14px] border border-emerald-500/20 bg-emerald-500/10 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-300">Questions to ask</p>
+                        <div className="rounded-[14px] border border-[color-mix(in_srgb,var(--success)_25%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--success)]">Questions to ask</p>
                           <div className="mt-2 space-y-2">
                             {prepData.questionsToAsk.map((question: any, index: number) => (
                               <p key={`${question.question}-${index}`} className="text-sm text-[var(--text-primary)]">{question.question}</p>
@@ -2362,8 +2554,8 @@ function ApplicationDrawer({
                     {app.interview_date && <p>Interview {formatDate(app.interview_date)}</p>}
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Link href={`/suite/skill-bridge?applicationId=${app.id}`} className="rounded-[12px] border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-600 dark:text-violet-300">Open Skill Bridge</Link>
-                    <button type="button" onClick={() => onDelete(app.id)} className="rounded-[12px] border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-600 dark:text-red-300">Delete</button>
+                    <Link href={`/suite/skill-bridge?applicationId=${app.id}`} className="rounded-[12px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-sm font-semibold text-[var(--accent)]">Open Skill Bridge</Link>
+                    <button type="button" onClick={() => onDelete(app.id)} className="rounded-[12px] border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--danger)]">Delete</button>
                   </div>
                 </DrawerSection>
               </div>
@@ -2378,43 +2570,58 @@ function ApplicationDrawer({
 function OfferCoachSection({
   app,
   focusId,
+  onInputChange,
   onSave,
   onGenerate,
   onStatus,
 }: {
   app: JobApplication;
   focusId?: string;
+  onInputChange: () => void;
   onSave: (app: JobApplication, offerDetails: OfferDetails, status?: JobApplication['negotiation_status']) => Promise<JobApplication | null>;
   onGenerate: (app: JobApplication, offerDetails: OfferDetails) => Promise<NegotiationBrief>;
   onStatus: (app: JobApplication, status: NonNullable<JobApplication['negotiation_status']>) => void;
 }) {
-  const [draft, setDraft] = useState(() => offerDetailsToDraft(app.offer_details));
+  const [draft, setDraftState] = useState(() => offerDetailsToDraft(app.offer_details));
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [showDetails, setShowDetails] = useState(!app.negotiation_brief);
   const [offerError, setOfferError] = useState<string | null>(null);
-  const brief = app.negotiation_brief;
+  const revisionRef = useRef(0); const mounted = useRef(true); const busyRef = useRef(false);
+  const savedSignature = JSON.stringify(offerDetailsToDraft(app.offer_details));
+  const lastSavedSignature = useRef(savedSignature);
+  const draftSignature = JSON.stringify(draft);
+  const edited = draftSignature !== savedSignature;
+  const brief = app.negotiation_brief?.method === 'entered_offer_v1' && app.negotiation_brief.sourceOfferSignature === draftSignature ? app.negotiation_brief : null;
+  function setDraft(next: typeof draft) { revisionRef.current += 1; onInputChange(); setDraftState(next); setOfferError(null); }
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; revisionRef.current += 1; }; }, []);
   const hasComp = Boolean(draft.base || draft.total);
-  const verdict = brief?.verdict ? OFFER_VERDICT_CONFIG[brief.verdict] : null;
+
 
   useEffect(() => {
-    setDraft(offerDetailsToDraft(app.offer_details));
-    setShowDetails(!app.negotiation_brief);
-    setOfferError(null);
-  }, [app.id, app.offer_details, app.negotiation_brief]);
+    // Server refreshes may update the brief while the user is editing. Only
+    // synchronize the fields when they still match the prior saved values.
+    if (draftSignature === lastSavedSignature.current) setDraftState(offerDetailsToDraft(app.offer_details));
+    lastSavedSignature.current = savedSignature;
+  }, [app.id, savedSignature]);
 
   const offerDetails = draftToOfferDetails(draft);
 
   async function saveDetails() {
+    if (busyRef.current) return; busyRef.current = true;
+    const revision = revisionRef.current;
+    const current = () => mounted.current && revision === revisionRef.current;
     setSaving(true);
     setOfferError(null);
     try {
       const saved = await onSave(app, offerDetails, app.negotiation_status || 'not_started');
+      if (!current()) return;
       if (!saved) setOfferError('Offer details were not saved. Check the fields and try again.');
     } catch (error: any) {
+      if (!current()) return;
       setOfferError(error.message || 'Offer details were not saved. Try again.');
     } finally {
-      setSaving(false);
+      if (mounted.current) { busyRef.current = false; setSaving(false); }
     }
   }
 
@@ -2423,39 +2630,44 @@ function OfferCoachSection({
       showToast('Add base or total compensation first', 'warning');
       return;
     }
+    if (busyRef.current) return; busyRef.current = true;
+    const revision = revisionRef.current;
+    const current = () => mounted.current && revision === revisionRef.current;
     setGenerating(true);
     setOfferError(null);
     try {
       await onGenerate(app, offerDetails);
+      if (!current()) return;
       setShowDetails(false);
     } catch (error: any) {
+      if (!current()) return;
       const message = error.message || 'Failed to generate negotiation brief';
       setOfferError(message);
       showToast(message, 'cancel');
     } finally {
-      setGenerating(false);
+      if (mounted.current) { busyRef.current = false; setGenerating(false); }
     }
   }
 
-  function copy(text: string, label: string) {
-    navigator.clipboard.writeText(text);
-    showToast(`${label} copied`, 'content_copy');
+  async function copy(text: string, label: string) {
+    try { await navigator.clipboard.writeText(text); if (mounted.current) showToast(`${label} copied`, 'content_copy'); } catch { if (mounted.current) setOfferError('Clipboard unavailable. Select and copy the text manually.'); }
   }
 
   return (
-    <DrawerSection id={focusId} title="Offer Coach" icon="payments">
+    <DrawerSection id={focusId} title="Offer Coach" icon="payments"><div data-guide="application-offer">
       <div className="space-y-4">
-        <div className="flex flex-col gap-3 rounded-[15px] border border-emerald-500/20 bg-emerald-500/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-[15px] border border-[color-mix(in_srgb,var(--success)_25%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] p-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[var(--text-primary)]">{getOfferAction(app).label}</p>
             <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Evaluate the offer, prepare a counter, and keep the final decision attached to this application.</p>
           </div>
-          <span className="inline-flex w-fit items-center gap-1.5 rounded-[10px] border border-emerald-500/25 bg-[var(--bg-surface)] px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+          <span className="inline-flex w-fit items-center gap-1.5 rounded-[10px] border border-[color-mix(in_srgb,var(--success)_25%,transparent)] bg-[var(--bg-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--success)]">
             <span className="material-symbols-rounded text-[14px]">verified</span>
             {formatNegotiationStatus(app.negotiation_status)}
           </span>
         </div>
 
+        {app.negotiation_brief && !brief && <p role="status" className="text-sm text-[var(--text-muted)]">{edited ? 'Offer details have changed. Save and refresh the brief before using it.' : 'This saved brief lacks current input provenance. Refresh it to review a brief based on your entered offer; legacy market claims are hidden.'}</p>}
         {offerError && <ActionFeedback message={offerError} onDismiss={() => setOfferError(null)} />}
 
         <button
@@ -2476,37 +2688,39 @@ function OfferCoachSection({
               className="overflow-hidden"
             >
               <div className="grid gap-3 sm:grid-cols-2">
-                <OfferInput label="Base salary ($)" value={draft.base} onChange={value => setDraft({ ...draft, base: value })} placeholder="190000" />
-                <OfferInput label="Total comp ($)" value={draft.total} onChange={value => setDraft({ ...draft, total: value })} placeholder="235000" />
-                <OfferInput label="Bonus ($)" value={draft.bonus} onChange={value => setDraft({ ...draft, bonus: value })} placeholder="15000" />
-                <OfferInput label="Sign-on ($)" value={draft.signOn} onChange={value => setDraft({ ...draft, signOn: value })} placeholder="20000" />
-                <OfferInput label="Desired base ($)" value={draft.desiredBase} onChange={value => setDraft({ ...draft, desiredBase: value })} placeholder="215000" />
-                <OfferInput label="Desired total ($)" value={draft.desiredTotal} onChange={value => setDraft({ ...draft, desiredTotal: value })} placeholder="275000" />
+                <OfferInput label={`Base salary (${draft.currency} / ${draft.period})`} value={draft.base} onChange={value => setDraft({ ...draft, base: value })} placeholder="190000" />
+                <OfferInput label={`Total comp (${draft.currency} / ${draft.period})`} value={draft.total} onChange={value => setDraft({ ...draft, total: value })} placeholder="235000" />
+                <OfferInput label={`Bonus (${draft.currency} / ${draft.period})`} value={draft.bonus} onChange={value => setDraft({ ...draft, bonus: value })} placeholder="15000" />
+                <OfferInput label={`Sign-on (${draft.currency} once)`} value={draft.signOn} onChange={value => setDraft({ ...draft, signOn: value })} placeholder="20000" />
+                <OfferInput label={`Desired base (${draft.currency} / ${draft.period})`} value={draft.desiredBase} onChange={value => setDraft({ ...draft, desiredBase: value })} placeholder="215000" />
+                <OfferInput label={`Desired total (${draft.currency} / ${draft.period})`} value={draft.desiredTotal} onChange={value => setDraft({ ...draft, desiredTotal: value })} placeholder="275000" />
                 <label className="sm:col-span-2">
                   <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Equity</span>
-                  <input value={draft.equity} onChange={event => setDraft({ ...draft, equity: event.target.value })} placeholder="RSUs, options, vesting details" className="h-10 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-emerald-500/20" />
+                  <input value={draft.equity} onChange={event => setDraft({ ...draft, equity: event.target.value })} placeholder="RSUs, options, vesting details" className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_20%,transparent)]" />
                 </label>
                 <label>
                   <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Decision deadline</span>
-                  <input type="date" value={draft.deadline} onChange={event => setDraft({ ...draft, deadline: event.target.value })} className="h-10 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                  <input type="date" value={draft.deadline} onChange={event => setDraft({ ...draft, deadline: event.target.value })} className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_20%,transparent)]" />
                 </label>
                 <label className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2">
                   <span>
                     <span className="block text-sm font-semibold text-[var(--text-primary)]">Competing offer</span>
                     <span className="block text-xs text-[var(--text-muted)]">Use only if true.</span>
                   </span>
-                  <input type="checkbox" checked={draft.competingOffer} onChange={event => setDraft({ ...draft, competingOffer: event.target.checked })} className="h-4 w-4 accent-emerald-600" />
+                  <input type="checkbox" checked={draft.competingOffer} onChange={event => setDraft({ ...draft, competingOffer: event.target.checked })} className="h-4 w-4 accent-[var(--accent)]" />
                 </label>
+                <label>Currency<select value={draft.currency} onChange={event => setDraft({ ...draft, currency: event.target.value })} className="min-h-11 w-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3">{['USD','EUR','GBP','CAD','AUD','INR','JPY'].map(value => <option key={value}>{value}</option>)}</select></label>
+                <label>Pay period<select value={draft.period} onChange={event => setDraft({ ...draft, period: event.target.value as OfferDetails['period'] || 'year' })} className="min-h-11 w-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3"><option value="year">Annual</option><option value="month">Monthly</option><option value="hour">Hourly</option></select></label>
                 <label className="sm:col-span-2">
                   <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Benefits and context</span>
-                  <textarea value={draft.context} onChange={event => setDraft({ ...draft, context: event.target.value })} rows={3} placeholder="Benefits, recruiter notes, deadlines, location, or anything unusual." className="w-full resize-none rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-emerald-500/20" />
+                  <textarea value={draft.context} onChange={event => setDraft({ ...draft, context: event.target.value })} rows={3} placeholder="Benefits, recruiter notes, deadlines, location, or anything unusual." className="w-full resize-none rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_20%,transparent)]" />
                 </label>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={saveDetails} disabled={saving} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] disabled:opacity-50">
+                <button type="button" onClick={saveDetails} disabled={saving || generating} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] disabled:opacity-50">
                   {saving ? 'Saving...' : 'Save offer'}
                 </button>
-                <button type="button" onClick={generateBrief} disabled={generating || !hasComp} className="rounded-[12px] border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-600 disabled:opacity-50 dark:text-emerald-300">
+                <button type="button" onClick={generateBrief} disabled={saving || generating || !hasComp} className="rounded-[12px] border border-[color-mix(in_srgb,var(--success)_25%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--success)] disabled:opacity-50">
                   {generating ? 'Preparing...' : brief ? 'Refresh brief' : 'Evaluate offer'}
                 </button>
               </div>
@@ -2531,27 +2745,16 @@ function OfferCoachSection({
             <div className="rounded-[15px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-[var(--text-primary)]">Negotiation brief</span>
-                {verdict && (
-                  <span className="inline-flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1 text-xs font-semibold" style={{ color: verdict.color, borderColor: soft(verdict.color, '28'), background: soft(verdict.color) }}>
-                    <span className="material-symbols-rounded text-[14px]">{verdict.icon}</span>
-                    {verdict.label}
-                  </span>
-                )}
+
               </div>
-              {brief.verdictMessage && <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{brief.verdictMessage}</p>}
+<p className="mt-2 text-sm text-[var(--text-secondary)]">Based on your entered offer and preferences. No market benchmark is available.</p>
               {brief.counterStrategy && <p className="mt-2 text-sm leading-6 text-[var(--text-primary)]">{brief.counterStrategy}</p>}
-              {brief.marketRange && (
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <OfferRangeStat label="Low" value={brief.marketRange.low} />
-                  <OfferRangeStat label="Mid" value={brief.marketRange.mid} />
-                  <OfferRangeStat label="High" value={brief.marketRange.high} />
-                </div>
-              )}
+
             </div>
 
-            <OfferList title="Leverage points" items={brief.leveragePoints} tone="#059669" />
-            <OfferList title="Non-salary asks" items={brief.nonSalaryAsks} tone="#2563eb" />
-            <OfferList title="Red flags" items={brief.redFlags} tone="#dc2626" />
+            <OfferList title="Leverage points" items={brief.leveragePoints} tone="var(--success)" />
+            <OfferList title="Non-salary asks" items={brief.nonSalaryAsks} tone="var(--accent)" />
+            <OfferList title="Red flags" items={brief.redFlags} tone="var(--danger)" />
 
             {brief.emailScript && (
               <div className="rounded-[15px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
@@ -2574,9 +2777,9 @@ function OfferCoachSection({
             )}
 
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => onStatus(app, 'counter_sent')} className="rounded-[12px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600 dark:text-amber-300">Counter sent</button>
-              <button type="button" onClick={() => onStatus(app, 'accepted')} className="rounded-[12px] border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-600 dark:text-emerald-300">Accepted</button>
-              <button type="button" onClick={() => onStatus(app, 'declined')} className="rounded-[12px] border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-600 dark:text-red-300">Declined</button>
+              <button type="button" onClick={() => onStatus(app, 'counter_sent')} className="rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_25%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--warning)]">Counter sent</button>
+              <button type="button" onClick={() => onStatus(app, 'accepted')} className="rounded-[12px] border border-[color-mix(in_srgb,var(--success)_25%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--success)]">Accepted</button>
+              <button type="button" onClick={() => onStatus(app, 'declined')} className="rounded-[12px] border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] px-3 py-2 text-sm font-semibold text-[var(--danger)]">Declined</button>
             </div>
           </div>
         )}
@@ -2589,24 +2792,21 @@ function OfferCoachSection({
             ['Make it firmer', `Make my ${app.company_name} counter-offer message firmer without sounding aggressive.`],
             ['If they say no', `What should I do if ${app.company_name} says no to my counter offer?`],
           ].map(([label, prompt]) => (
-            <button key={label} type="button" onClick={() => dispatchSona(prompt, `${app.company_name} offer`)} className="rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300">
+            <button key={label} type="button" onClick={() => dispatchSona(prompt, `${app.company_name} offer`)} className="rounded-[11px] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)]">
               {label}
             </button>
           ))}
         </div>
       </div>
+    </div>
     </DrawerSection>
   );
 }
 
-const OFFER_VERDICT_CONFIG = {
-  below_market: { label: 'Below market', icon: 'trending_down', color: '#dc2626' },
-  at_market: { label: 'At market', icon: 'trending_flat', color: '#059669' },
-  above_market: { label: 'Above market', icon: 'trending_up', color: '#2563eb' },
-};
-
 function offerDetailsToDraft(details?: OfferDetails | null) {
   return {
+    currency: details?.currency || 'USD',
+    period: details?.period || 'year',
     base: details?.base ? String(details.base) : '',
     total: details?.total ? String(details.total) : '',
     bonus: details?.bonus ? String(details.bonus) : '',
@@ -2622,6 +2822,7 @@ function offerDetailsToDraft(details?: OfferDetails | null) {
 
 function draftToOfferDetails(draft: ReturnType<typeof offerDetailsToDraft>): OfferDetails {
   return {
+    currency: draft.currency, period: draft.period,
     base: parseOfferNumber(draft.base),
     total: parseOfferNumber(draft.total),
     bonus: parseOfferNumber(draft.bonus),
@@ -2659,7 +2860,7 @@ function OfferInput({ label, value, onChange, placeholder }: { label: string; va
         value={value}
         onChange={event => onChange(event.target.value)}
         placeholder={placeholder}
-        className="h-10 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-emerald-500/20"
+        className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent)_20%,transparent)]"
       />
     </label>
   );
@@ -2668,7 +2869,7 @@ function OfferInput({ label, value, onChange, placeholder }: { label: string; va
 function OfferRangeStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">{label}</p>
       <p className="mt-1 text-sm font-bold tabular-nums text-[var(--text-primary)]">${Math.round(value / 1000)}k</p>
     </div>
   );
@@ -2693,7 +2894,7 @@ function OfferList({ title, items, tone }: { title: string; items?: string[]; to
 
 function DrawerSection({ id, title, icon, children }: { id?: string; title: string; icon: string; children: React.ReactNode }) {
   return (
-    <section id={id} tabIndex={id ? -1 : undefined} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+    <section id={id} tabIndex={id ? -1 : undefined} className="taco-application-drawer-section elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
       <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
         <span className="material-symbols-rounded text-[18px] text-[var(--text-muted)]">{icon}</span>
         {title}
@@ -2709,7 +2910,7 @@ function FollowUpModal({ draft, open, onClose }: { draft: { subject: string; bod
     <AnimatePresence>
       {open && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-[60] bg-slate-950/45 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-[60] bg-[var(--modal-backdrop)] backdrop-blur-sm" />
           <motion.div
             initial={{ opacity: 0, y: 16, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -2717,14 +2918,14 @@ function FollowUpModal({ draft, open, onClose }: { draft: { subject: string; bod
             role="dialog"
             aria-modal="true"
             aria-labelledby="follow-up-draft-title"
-            className="fixed inset-x-4 top-[6vh] z-[61] mx-auto flex max-h-[88vh] max-w-xl flex-col overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-2xl"
+            className="fixed inset-x-4 top-[6vh] z-[61] mx-auto flex max-h-[88vh] max-w-xl flex-col overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-raised"
           >
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] p-5">
               <div>
                 <h2 id="follow-up-draft-title" className="text-lg font-bold text-[var(--text-primary)]">Follow-up draft</h2>
                 <p className="mt-1 text-xs text-[var(--text-muted)]">{draft.daysSinceApplied} days since applied, timing: {draft.timing}</p>
               </div>
-              <button type="button" onClick={onClose} aria-label="Close follow-up draft" className="grid h-8 w-8 place-items-center rounded-[10px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">
+              <button type="button" onClick={onClose} aria-label="Close follow-up draft" className="grid h-11 w-11 place-items-center rounded-[12px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]">
                 <span className="material-symbols-rounded text-[19px]">close</span>
               </button>
             </div>
@@ -2745,7 +2946,7 @@ function FollowUpModal({ draft, open, onClose }: { draft: { subject: string; bod
                   navigator.clipboard.writeText(`Subject: ${draft.subject}\n\n${draft.body}`);
                   showToast('Copied to clipboard', 'content_copy');
                 }}
-                className="flex-1 rounded-[12px] border border-amber-500/25 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-600 dark:text-amber-300"
+                className="flex-1 rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_25%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-4 py-2 text-sm font-semibold text-[var(--warning)]"
               >
                 Copy email
               </button>
@@ -2763,32 +2964,32 @@ function FollowUpModal({ draft, open, onClose }: { draft: { subject: string; bod
 function ResumePreviewCard({ resume }: { resume: any }) {
   if (!resume) return null;
   return (
-    <div className="mt-3 max-h-[420px] overflow-y-auto rounded-[14px] bg-slate-50 p-4 text-slate-700" style={{ fontSize: '11px', lineHeight: '1.55' }}>
-      <div className="mb-3 border-b border-slate-200 pb-3 text-center">
-        <h2 className="text-lg font-bold text-slate-950">{resume.name || 'Your Name'}</h2>
-        {resume.title && <p className="mt-0.5 text-sm text-slate-500">{resume.title}</p>}
-        <p className="mt-1 text-[10px] text-slate-400">{[resume.email, resume.phone, resume.location].filter(Boolean).join(' | ')}</p>
+    <div className="mt-3 max-h-[420px] overflow-y-auto rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4 text-[var(--text-secondary)]" style={{ fontSize: '12px', lineHeight: '1.55' }}>
+      <div className="mb-3 border-b border-[var(--border-subtle)] pb-3 text-center">
+        <h2 className="text-lg font-bold text-[var(--text-primary)]">{resume.name || 'Your Name'}</h2>
+        {resume.title && <p className="mt-0.5 text-sm text-[var(--text-muted)]">{resume.title}</p>}
+        <p className="mt-1 text-[11px] text-[var(--text-muted)]">{[resume.email, resume.phone, resume.location].filter(Boolean).join(' | ')}</p>
       </div>
       {resume.summary && (
         <div className="mb-3">
-          <h3 className="mb-1.5 border-b border-slate-100 pb-1 text-xs font-bold uppercase text-slate-700">Professional summary</h3>
+          <h3 className="mb-1.5 border-b border-[var(--border-subtle)] pb-1 text-xs font-bold uppercase text-[var(--text-secondary)]">Professional summary</h3>
           <p>{resume.summary}</p>
         </div>
       )}
       {resume.experience?.length > 0 && (
         <div className="mb-3">
-          <h3 className="mb-1.5 border-b border-slate-100 pb-1 text-xs font-bold uppercase text-slate-700">Experience</h3>
+          <h3 className="mb-1.5 border-b border-[var(--border-subtle)] pb-1 text-xs font-bold uppercase text-[var(--text-secondary)]">Experience</h3>
           {resume.experience.map((exp: any, index: number) => (
             <div key={index} className="mb-2">
               <div className="flex justify-between gap-2">
-                <span className="font-semibold text-slate-800">{exp.role}</span>
-                <span className="whitespace-nowrap text-[10px] text-slate-400">{exp.duration}</span>
+                <span className="font-semibold text-[var(--text-primary)]">{exp.role}</span>
+                <span className="whitespace-nowrap text-[11px] text-[var(--text-muted)]">{exp.duration}</span>
               </div>
-              <p className="text-[10px] text-slate-500">{exp.company}</p>
+              <p className="text-[11px] text-[var(--text-muted)]">{exp.company}</p>
               {exp.achievements?.length > 0 && (
                 <ul className="mt-1 space-y-0.5">
                   {exp.achievements.slice(0, 4).map((item: string, itemIndex: number) => (
-                    <li key={itemIndex} className="pl-3 text-slate-600">- {item}</li>
+                    <li key={itemIndex} className="pl-3 text-[var(--text-secondary)]">- {item}</li>
                   ))}
                 </ul>
               )}
@@ -2798,14 +2999,122 @@ function ResumePreviewCard({ resume }: { resume: any }) {
       )}
       {resume.skills?.length > 0 && (
         <div>
-          <h3 className="mb-1.5 border-b border-slate-100 pb-1 text-xs font-bold uppercase text-slate-700">Skills</h3>
+          <h3 className="mb-1.5 border-b border-[var(--border-subtle)] pb-1 text-xs font-bold uppercase text-[var(--text-secondary)]">Skills</h3>
           <div className="flex flex-wrap gap-1">
             {resume.skills.flatMap((cat: any) => cat.items).slice(0, 18).map((skill: string, index: number) => (
-              <span key={`${skill}-${index}`} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">{skill}</span>
+              <span key={`${skill}-${index}`} className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)]">{skill}</span>
             ))}
           </div>
         </div>
       )}
     </div>
   );
+}
+
+
+interface ApplicationReviewSnapshot {
+  id: string;
+  user_id: string;
+  review_revision: string;
+  review_ready: boolean;
+  review_status: 'needs_review' | 'blocked' | 'stale' | 'approved';
+  review_error?: string | null;
+  review_source?: Record<string, unknown> | null;
+  review_resume?: Record<string, unknown> | null;
+  cover_letter?: string;
+  keyword_gaps?: string[];
+}
+
+function ApplicationPacketReview({ app }: { app: JobApplication }) {
+  const user = useStore(state => state.user);
+  const [snapshot, setSnapshot] = useState<ApplicationReviewSnapshot | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
+  const operationRef = useRef<AbortController | null>(null);
+  const generated = app.source === 'apply_pipeline';
+  const visibleSnapshot = snapshot?.user_id === user?.uid && snapshot?.id === app.id ? snapshot : null;
+
+  useEffect(() => {
+    if (!generated || !user?.uid) return;
+    const controller = new AbortController();
+    operationRef.current = controller;
+    authFetch(`/api/agent/packet-review?kind=application&id=${encodeURIComponent(app.id)}`, { cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || 'The current packet could not be loaded.');
+        if (!controller.signal.aborted) { setSnapshot(result.data[0]); setError(''); }
+      })
+      .catch(failure => { if (!controller.signal.aborted) setError(failure.message || 'The current packet could not be loaded.'); });
+    return () => controller.abort();
+  }, [app.id, generated, reload, user?.uid]);
+
+  async function approve() {
+    if (!visibleSnapshot?.review_ready || !operationRef.current || operationRef.current.signal.aborted) return;
+    const controller = operationRef.current;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await authFetch('/api/agent/packet-review', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+        body: JSON.stringify({ kind: 'application', id: app.id, action: 'approve', revision: visibleSnapshot.review_revision }),
+      });
+      const result = await response.json();
+      if (controller.signal.aborted) return;
+      if (!response.ok || !result.success) {
+        setSnapshot(null);
+        throw new Error(result.error || 'The review could not be saved.');
+      }
+      setSnapshot(previous => previous ? { ...previous, review_status: 'approved' } : null);
+    } catch (failure) {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'The review could not be saved.');
+    } finally {
+      if (!controller.signal.aborted) setBusy(false);
+    }
+  }
+
+  if (app.source === 'agent_queue' && app.source_meta?.queue_id) return (
+    <DrawerSection title="Packet review" icon="fact_check">
+      <Link href={`/suite/agent/queue?packet=${encodeURIComponent(app.source_meta.queue_id)}`} className="font-semibold text-[var(--accent)]">Open the linked packet and its review</Link>
+      <p className="mt-2 text-sm text-[var(--text-secondary)]">The tracker records your application separately from the packet review.</p>
+    </DrawerSection>
+  );
+  if (!generated) return null;
+  return (
+    <DrawerSection title="Review prepared documents" icon="fact_check"><div data-guide="application-document-review">
+      <p className="text-sm leading-6 text-[var(--text-secondary)]">Compare the saved source with the prepared resume and cover letter. Approval applies to these drafts and does not submit an application.</p>
+      {error && <p className="mt-3 text-sm text-[var(--danger)]" role="alert">{error}</p>}
+      {!visibleSnapshot && !error && <p className="mt-3 text-sm" role="status">Loading the current documents…</p>}
+      {visibleSnapshot && (
+        <div className="mt-3 space-y-3">
+          {visibleSnapshot.review_error && <p className="text-sm text-[var(--warning)]">{visibleSnapshot.review_error}</p>}
+          <details className="border border-[var(--border-subtle)] p-3">
+            <summary className="cursor-pointer font-semibold">Source resume</summary>
+                {visibleSnapshot.review_source ? <PacketResumeDocument resume={visibleSnapshot.review_source} /> : <p className="mt-2 text-sm">The source is no longer available.</p>}
+          </details>
+          <details open className="border border-[var(--border-subtle)] p-3">
+            <summary className="cursor-pointer font-semibold">Prepared resume</summary>
+                {visibleSnapshot.review_resume ? <PacketResumeDocument resume={visibleSnapshot.review_resume} /> : <p className="mt-2 text-sm">The prepared resume is not available.</p>}
+          </details>
+          <details open className="border border-[var(--border-subtle)] p-3">
+            <summary className="cursor-pointer font-semibold">Cover letter</summary>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{visibleSnapshot.cover_letter || 'The cover letter is not available.'}</p>
+          </details>
+          {Boolean(visibleSnapshot.keyword_gaps?.length) && <p className="text-sm text-[var(--text-secondary)]">Terms to check against your experience: {visibleSnapshot.keyword_gaps!.join(', ')}. These are suggestions to review.</p>}
+          {visibleSnapshot.review_status === 'approved'
+            ? <p className="border border-[var(--theme-border)] bg-[var(--bg-elevated)] p-3 font-semibold" role="status">These drafts are approved for use.</p>
+            : <button type="button" onClick={approve} disabled={busy || !visibleSnapshot.review_ready} className="min-h-11 border border-[var(--theme-border)] bg-[var(--accent)] px-4 py-2 font-semibold text-[var(--text-primary)] disabled:opacity-50">{busy ? 'Saving review…' : 'Approve these drafts for use'}</button>}
+        </div>
+      )}
+      <button type="button" onClick={() => { setSnapshot(null); setError(''); setBusy(false); setReload(value => value + 1); }} disabled={busy} className="mt-3 min-h-11 px-2 text-sm font-semibold text-[var(--accent)] disabled:opacity-50">Reload current documents</button></div>
+    </DrawerSection>
+  );
+}
+
+
+export default function ApplicationsPage() {
+  const searchParams = useSearchParams();
+  const owner = useStore(state => state.user?.uid || 'guest');
+  const review = searchParams.get('view') === 'review';
+  return review ? <QueueContent key={owner} /> : <ApplicationsWorkspace key={owner} />;
 }

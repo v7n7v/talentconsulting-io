@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-
-export default function AnalyticsPage() {
-  redirect('/suite/intelligence');
+import { workspaceCompatibilityHref, type CompatibilityQuery } from '@/lib/workspace-compatibility';
+export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<CompatibilityQuery> }) {
+  redirect(workspaceCompatibilityHref('/suite/intelligence?tab=results', await searchParams));
 }

@@ -480,6 +480,14 @@ function restoreUnsupportedNumericClaims(
 
   if (Array.isArray(target)) {
     const originalItems = Array.isArray(original) ? original : [];
+    // An approved exact reorder carries each number with its original phrase.
+    // Index-based numeric restoration would otherwise replace a moved claim
+    // with the unrelated phrase formerly occupying that position.
+    const primitive = (item: unknown) => typeof item === 'string' || typeof item === 'number';
+    if (originalItems.length === target.length && originalItems.every(primitive) && target.every(primitive)) {
+      const tokens = (items: unknown[]) => items.map(item => JSON.stringify([typeof item, item])).sort();
+      if (JSON.stringify(tokens(originalItems)) === JSON.stringify(tokens(target))) return clone(target);
+    }
     return target
       .map((item, index) => restoreUnsupportedNumericClaims(
         originalItems[index],

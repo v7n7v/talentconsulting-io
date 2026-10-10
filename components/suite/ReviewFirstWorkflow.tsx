@@ -105,7 +105,7 @@ export function ApplicationPacketReview({
   const pendingCount = artifacts.filter(item => ['needs_review', 'blocked', 'error'].includes(item.status)).length;
 
   return (
-    <SuitePanel className={`p-5 ${className}`} as="article">
+    <SuitePanel className={`taco-review-packet p-5 ${className}`} as="article">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
@@ -164,7 +164,7 @@ export function ProofChecklist({
   className?: string;
 }) {
   return (
-    <SuitePanel className={`p-5 ${className}`} as="article">
+    <SuitePanel className={`taco-review-proof p-5 ${className}`} as="article">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
@@ -205,7 +205,7 @@ export function ReviewStateRail({
   className?: string;
 }) {
   return (
-    <SuitePanel className={`p-4 ${className}`} as="section">
+    <SuitePanel className={`taco-review-state-rail p-4 ${className}`} as="section">
       <div className="flex min-w-0 items-start gap-3">
         <SuiteToolIcon icon="rule" size="sm" />
         <div className="min-w-0">

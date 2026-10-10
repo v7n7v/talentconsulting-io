@@ -1,0 +1,33 @@
+/* Explicit local-only notice must stay legible in both application themes. */
+.taco-workspace .workspace-preview-bar {
+  border-bottom: 2px solid var(--preview-ink);
+  background: color-mix(in srgb, var(--taco-coral) 12%, var(--preview-paper)) !important;
+  color: var(--preview-ink) !important;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 10;
+}
+.taco-workspace .workspace-preview-bar :is(p, strong, label, select) {
+  color: var(--preview-ink) !important;
+}
+.taco-workspace .workspace-preview-bar p { font-size: 12px; margin: 0; }
+.taco-workspace .workspace-preview-bar label { margin-left: auto; font-size: 12px; font-weight: 600; }
+.taco-workspace .workspace-preview-bar select {
+  margin-left: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--preview-ink);
+  border-radius: 0;
+  background: var(--preview-paper) !important;
+  padding: 0 8px;
+}
+@media(max-width: 430px) {
+  .taco-workspace .workspace-preview-bar label { margin-left: 0; width: 100%; }
+  .taco-workspace .workspace-preview-bar select { display: block; margin: 4px 0 0; width: 100%; }
+}
+
+@media(max-width: 1023px) { .taco-workspace .workspace-preview-bar { padding-top: 64px; } }

@@ -86,7 +86,7 @@ export default function PricingTables() {
               aria-pressed={interval === value}
               className={
                 interval === value
-                  ? 'btn-secondary inline-flex min-h-[44px] items-center'
+                  ? 'taco-public-button inline-flex min-h-[44px] items-center'
                   : 'inline-flex min-h-[44px] items-center px-4 text-sm text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]'
               }
             >
@@ -106,7 +106,7 @@ export default function PricingTables() {
       ) : null}
 
       <div className="mt-8 grid gap-4 lg:grid-cols-3">
-        <section className="glass-card flex flex-col p-6">
+        <section className="taco-public-card flex flex-col p-6">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{FREE.displayName}</h2>
           <p className="mt-4 flex flex-wrap items-baseline gap-x-2">
             <span className="text-3xl font-semibold tabular-nums tracking-tight text-[var(--text-primary)]">$0</span>
@@ -114,32 +114,32 @@ export default function PricingTables() {
           </p>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{FREE.description}</p>
           <FeatureList features={FREE_FEATURES} />
-          <Link href="/tools" className="btn-secondary mt-6 inline-flex min-h-[44px] items-center self-start">
+          <Link href="/tools" className="taco-public-button mt-6 inline-flex min-h-[44px] items-center self-start">
             Use the free tools
           </Link>
         </section>
 
-        <section className="glass-card flex flex-col p-6">
+        <section className="taco-public-card flex flex-col p-6">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{STANDARD.displayName}</h2>
           <PriceLine price={proPrice} loading={loading} />
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{STANDARD.description}</p>
           <FeatureList features={PRO_FEATURES.slice(0, 5)} />
           <Link
             href="/suite/upgrade?plan=pro"
-            className="btn-secondary mt-6 inline-flex min-h-[44px] items-center self-start"
+            className="taco-public-button taco-public-action mt-6 inline-flex min-h-[44px] items-center self-start"
           >
             Compare and subscribe
           </Link>
         </section>
 
-        <section className="glass-card flex flex-col p-6">
+        <section className="taco-public-card flex flex-col p-6">
           <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{MAX.displayName}</h2>
           <PriceLine price={maxPrice} loading={loading} />
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{MAX.description}</p>
           <FeatureList features={STUDIO_EXTRAS} />
           <Link
             href="/suite/upgrade?plan=studio"
-            className="btn-secondary mt-6 inline-flex min-h-[44px] items-center self-start"
+            className="taco-public-button taco-public-action mt-6 inline-flex min-h-[44px] items-center self-start"
           >
             Compare and subscribe
           </Link>

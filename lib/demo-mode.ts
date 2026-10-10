@@ -1,4 +1,7 @@
+import { computeApplicationMetrics, normalizeApplicationRecord, applicationWasSubmitted } from './application-records';
+import { healthScoreFromBands } from './career-twin-client';
 import type { User } from 'firebase/auth';
+import { getWorkspacePreviewScenario, isIsolatedWorkspacePreview } from './workspace-preview';
 
 export const DEMO_USER_ID = 'demo-career-operator';
 export const DEMO_USER_EMAIL = 'demo@talentconsulting.local';
@@ -44,6 +47,7 @@ export function getDemoAuthUser(): User {
       creationTime: daysAgo(45),
       lastSignInTime: now(),
     },
+    accessToken: DEMO_AUTH_TOKEN,
     refreshToken: DEMO_AUTH_TOKEN,
     getIdToken: async () => DEMO_AUTH_TOKEN,
     getIdTokenResult: async () => ({
@@ -61,6 +65,7 @@ export function getDemoAuthUser(): User {
 }
 
 export function getDemoUserProfile() {
+  if (isIsolatedWorkspacePreview() && getWorkspacePreviewScenario() === 'new') return {id:'main',full_name:'Preview account',onboarding_completed:true,target_roles:[],base_resume_text:'',skills:[]};
   return {
     id: 'main',
     full_name: 'Alula Career Operator',
@@ -400,10 +405,18 @@ function clone<T>(value: T): T {
 }
 
 export function getDemoResumeVersions() {
+  if (isIsolatedWorkspacePreview() && getWorkspacePreviewScenario() === 'new') return clone(demoResumeVersions.filter(item => item.id.startsWith('demo-resume-') && !['demo-resume-product-ai','demo-resume-growth-lead'].includes(item.id)));
   return clone(demoResumeVersions);
 }
 
 export function saveDemoResumeVersion(data: any) {
+  if (data.id) {
+    const existing = demoResumeVersions.find(item => item.id === data.id);
+    if (existing) {
+      Object.assign(existing, data, { updated_at: now() });
+      return clone(existing);
+    }
+  }
   const record = {
     id: `demo-resume-${Date.now()}`,
     user_id: DEMO_USER_ID,
@@ -415,7 +428,16 @@ export function saveDemoResumeVersion(data: any) {
   return clone(record);
 }
 
+/** Demo-only persistence helper used by the database adapter for rename/archive/edit. */
+export function updateDemoResumeVersion(id: string, updates: Record<string, unknown>) {
+  const existing = demoResumeVersions.find(item => item.id === id);
+  if (!existing) return null;
+  Object.assign(existing, updates, { updated_at: now() });
+  return clone(existing);
+}
+
 export function getDemoJobApplications() {
+  if (isIsolatedWorkspacePreview() && ['new','active'].includes(getWorkspacePreviewScenario())) return [];
   return clone(demoApplications);
 }
 
@@ -428,7 +450,7 @@ export function createDemoJobApplication(data: any) {
     job_description: data.jobDescription || null,
     resume_version_id: data.resumeVersionId || null,
     morphed_resume_name: data.morphedResumeName,
-    talent_density_score: data.talentDensityScore || null,
+    talent_density_score: data.talentDensityScore ?? null,
     gap_analysis: data.gapAnalysis || null,
     application_link: data.applicationLink || null,
     status: 'not_applied',
@@ -460,6 +482,7 @@ export function deleteDemoJobApplication(id: string) {
 }
 
 export function getDemoAgentQueue(statusFilter?: string) {
+  if (isIsolatedWorkspacePreview() && typeof window !== 'undefined' && ['new','active'].includes(getWorkspacePreviewScenario())) return [];
   const items = statusFilter ? demoQueueItems.filter(item => item.status === statusFilter) : demoQueueItems;
   return clone(items);
 }
@@ -551,6 +574,16 @@ export function deleteDemoCoverLetter(id: string) {
 }
 
 export function getDemoIntelligenceResponse() {
+  const applications = demoApplications.map(record => normalizeApplicationRecord(record));
+  const sent = applications.filter(applicationWasSubmitted);
+  const metrics = computeApplicationMetrics(applications, demoQueueItems);
+  const responded = sent.filter(record => ['screening','interview_scheduled','interviewed','offer','accepted','rejected'].includes(record.status) || ['callback','interview','offer','rejection'].includes(record.outcome_response)).length;
+  const oldest = Math.min(...sent.map(record => Date.parse(record.applied_at)).filter(Number.isFinite));
+  const weeks = Number.isFinite(oldest) ? Math.max(1, Math.ceil((Date.now()-oldest)/(7*86400000))) : 1;
+  const velocity = Math.round(sent.filter(record => record.applied_at).length / weeks * 10) / 10;
+  const responseRate = sent.length ? Math.round(responded/sent.length*100) : null;
+  const interviewConversion = responded ? Math.round(metrics.pipeline.interviewing/responded*100) : null;
+
   const profile = {
     /*
      * 11 + 33 + 11 + 14 = 69 earned over 30 + 35 + 20 + 15 = 100 available.
@@ -632,23 +665,19 @@ export function getDemoIntelligenceResponse() {
       // one of them came in under 50 and is the single entry in `weak`.
       weakEvidenceCategories: 2,
     },
-    // Counts and rates have to agree: 3 sent, 2 answered (67%), 1 of those 2
-    // reached interview (50%), 0 of 1 interview became an offer (0%).
     pipeline: {
-      totalApps: demoApplications.length,
-      appliedApps: 3,
-      thisWeekApps: 1,
-      // 3 sent over ceil(45 days / 7) = 7 weeks. `4` was not reachable from
-      // any pair of numbers this profile declares.
-      velocity: 0.4,
-      responded: 2,
-      interviews: 1,
-      offers: 0,
-      responseRate: 67,
-      interviewConversion: 50,
-      offerConversion: 0,
-      ghostRate: 33,
-      topCompanies: demoApplications.map(app => app.company_name).slice(0, 4),
+      totalApps: applications.length,
+      appliedApps: sent.length,
+      thisWeekApps: metrics.weeklyVelocity,
+      velocity,
+      responded,
+      interviews: metrics.pipeline.interviewing,
+      offers: metrics.pipeline.offer,
+      responseRate,
+      interviewConversion,
+      offerConversion: metrics.pipeline.interviewing ? Math.round(metrics.pipeline.offer/metrics.pipeline.interviewing*100) : null,
+      ghostRate: sent.length ? Math.round((sent.length-responded)/sent.length*100) : null,
+      topCompanies: applications.map(app => app.company_name).slice(0, 4),
     },
     /*
      * Question confidence is 0-100 in InterviewIntelligence (weak is < 55,
@@ -695,6 +724,18 @@ export function getDemoIntelligenceResponse() {
     computedAt: now(),
   };
 
+  // Keep the displayed health bands consistent when the demo tracker changes.
+  for (const band of profile.healthBands) {
+    for (const item of band.items) {
+      if (item.key === 'velocity') item.score = Math.min(item.max, velocity * 2);
+      if (item.key === 'volume') item.score = Math.min(item.max, sent.length / 5);
+      if (item.key === 'responseRate') { item.measured = responseRate !== null; item.score = Math.min(item.max, (responseRate || 0) / 3); }
+      if (item.key === 'interviewConversion') { item.measured = interviewConversion !== null; item.score = Math.min(item.max, (interviewConversion || 0) / 5); }
+    }
+    band.earned = Math.round(band.items.filter(item => item.measured).reduce((sum,item)=>sum+item.score,0));
+    band.available = band.items.filter(item => item.measured).reduce((sum,item)=>sum+item.max,0);
+  }
+  profile.healthScore = healthScoreFromBands(profile.healthBands);
   const twin = {
     completeness: {
       score: 82,
@@ -747,9 +788,9 @@ export function getDemoIntelligenceResponse() {
       },
       activeSearch: {
         totalApplications: demoApplications.length,
-        sentApplications: 3,
-        responseRate: 67,
-        velocity: 0.4,
+        sentApplications: sent.length,
+        responseRate,
+        velocity,
         queuedApplications: demoQueueItems.length,
         staleApplications: 1,
         skillGaps: ['model evaluation depth', 'enterprise security narratives'],
@@ -786,7 +827,7 @@ export function getDemoIntelligenceResponse() {
         description: 'Pinnacle AI is a strong role match, but the packet needs a model evaluation example before it is safe to send.',
         action: 'Open Agent Queue',
         actionPath: '/suite/agent/queue',
-        color: '#2563eb',
+        color: 'var(--accent)',
         category: 'applications',
       },
       {
@@ -797,7 +838,7 @@ export function getDemoIntelligenceResponse() {
         description: 'A concise follow-up can reopen the loop while the role is still fresh.',
         action: 'Open Applications',
         actionPath: '/suite/applications',
-        color: '#d97706',
+        color: 'var(--accent)',
         category: 'pipeline',
       },
     ],

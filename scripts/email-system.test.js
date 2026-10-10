@@ -62,7 +62,7 @@ test('password reset renders branded HTML and a useful plain-text alternative', 
   assert.equal(rendered.from, 'TalentConsulting.io <hello@talentconsulting.io>');
   assert.match(rendered.html, /TalentConsulting\.io/);
   assert.match(rendered.html, /#2E3FFF/i);
-  assert.match(rendered.html, /talentconsulting-logo-email\.png/);
+  assert.match(rendered.html, /brand\/taco\/taco-folded-ink\.png/);
   assert.match(rendered.text, /RESET YOUR PASSWORD/i);
   assert.match(rendered.text, /Never share this link/i);
   assert.equal(rendered.tags.find((tag) => tag.name === 'event').value, 'security_password_reset_requested');
@@ -82,7 +82,7 @@ test('Taco-authored product email uses the official mark, labeled persona, and c
     actionUrl: 'https://talentconsulting.io/suite/job-search',
   });
 
-  assert.match(rendered.html, /brand\/talentconsulting-mark-192\.png/);
+  assert.match(rendered.html, /taco-icon-192\.png/);
   assert.match(rendered.html, />Taco</);
   assert.match(rendered.html, /Your review-first career copilot/);
   assert.match(rendered.html, /Continue the conversation/);
@@ -107,7 +107,7 @@ test('security and billing email stay focused even when social profiles are enab
   });
 
   for (const rendered of [security, billing]) {
-    assert.doesNotMatch(rendered.html, /brand\/talentconsulting-mark-192\.png/);
+    assert.doesNotMatch(rendered.html, /taco-icon-192\.png/);
     assert.doesNotMatch(rendered.html, /Continue the conversation/);
     assert.doesNotMatch(rendered.html, /x\.com\/talentconsulting/);
   }
@@ -345,6 +345,27 @@ test('every reserved event renders HTML and plain text from a schema-complete co
     assert.match(rendered.html, /max-width:\s*\d+px/i, event);
     assert.match(rendered.html, /name="viewport"/i, event);
     assert.match(rendered.html, /table-layout:\s*fixed/i, event);
-    assert.match(rendered.html, /alt="TalentConsulting\.io"/i, event);
+    assert.match(rendered.html, /alt="Taco by TalentConsulting"/i, event);
   }
+}));
+
+
+test('account action email copy distinguishes optional-email pause from queued deletion', async () => withEmailEnvironment(async () => {
+  const { renderEmail } = await loadEmailSystem();
+  const request = await renderEmail('account.deactivation_requested', {
+    recipientName: 'Jordan', actionUrl: 'https://talentconsulting.io/account/action?token=fixture', expiresInMinutes: 60,
+  });
+  assert.match(request.subject, /optional-email pause/i);
+  assert.match(request.text, /does not disable sign-in or delete your account data/i);
+  const paused = await renderEmail('account.deactivated', {
+    recipientName: 'Jordan', accountUrl: 'https://talentconsulting.io/suite/settings',
+  });
+  assert.match(paused.text, /You can still sign in/i);
+  assert.match(paused.text, /Essential account and security messages may still be sent/i);
+  assert.doesNotMatch(paused.text, /profile is inactive|account is deactivated|sign-in is disabled/i);
+  const deletion = await renderEmail('account.deletion_requested', {
+    recipientName: 'Jordan', actionUrl: 'https://talentconsulting.io/account/action?token=fixture', expiresInMinutes: 60,
+  });
+  assert.match(deletion.text, /queues the request for processing/i);
+  assert.match(deletion.text, /does not mean deletion is complete/i);
 }));

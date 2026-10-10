@@ -17,6 +17,8 @@ export default function ThemeToggle({ size = 'sm', className = '' }: ThemeToggle
     setMounted(true);
   }, []);
 
+  // isLight here drives the FUNCTIONAL icon/knob/sky state (which theme is active),
+  // not colour theming — colours are tokens and flip via the [data-theme] cascade.
   const isLight = mounted ? theme === 'light' : false;
   const dims = size === 'md'
     ? { w: 64, h: 34, knob: 28, pad: 3, iconSize: 19 }
@@ -32,130 +34,129 @@ export default function ThemeToggle({ size = 'sm', className = '' }: ThemeToggle
       aria-label={label}
       aria-pressed={isLight}
       title={label}
-      className={`relative inline-flex flex-shrink-0 cursor-pointer items-center overflow-hidden rounded-full outline-none transition-shadow duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] ${className}`}
+      className={`relative inline-flex flex-shrink-0 cursor-pointer items-center justify-center rounded-full outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-surface)] ${className}`}
       style={{
-        width: dims.w,
-        height: dims.h,
-        minHeight: dims.h,
-        padding: dims.pad,
-        border: '1px solid var(--border-subtle)',
-        background: isLight
-          ? 'linear-gradient(135deg, #bae6fd 0%, #60a5fa 54%, #2563eb 100%)'
-          : 'linear-gradient(135deg, #020617 0%, #0f172a 54%, #1e293b 100%)',
-        boxShadow: isLight
-          ? 'inset 0 1px 0 rgba(255,255,255,0.45), 0 6px 18px rgba(37,99,235,0.16)'
-          : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 18px rgba(2,6,23,0.22)',
+        minWidth: Math.max(dims.w, 44),
+        minHeight: 44,
+        background: 'transparent',
+        border: 'none',
       }}
     >
       <span className="sr-only">{label}</span>
 
-      <motion.div
-        className="absolute inset-0"
-        initial={false}
-        animate={{ opacity: isLight ? 0 : 1 }}
-        transition={{ duration: 0.22 }}
-        aria-hidden="true"
-      >
-        {mounted && [
-          { x: '18%', y: '28%', s: 2 },
-          { x: '32%', y: '66%', s: 1.5 },
-          { x: '54%', y: '22%', s: 1.5 },
-          { x: '72%', y: '58%', s: 2 },
-        ].map((star, i) => (
-          <motion.div
-            key={i}
-            className="absolute rounded-full bg-white/90"
-            style={{
-              left: star.x,
-              top: star.y,
-              width: star.s,
-              height: star.s,
-            }}
-            animate={{
-              opacity: [0.35, 0.95, 0.35],
-              scale: [0.85, 1.25, 0.85],
-            }}
-            transition={{
-              duration: 1.8 + i * 0.15,
-              delay: i * 0.12,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-          />
-        ))}
-      </motion.div>
-
-      <motion.div
-        className="absolute inset-0"
-        initial={false}
-        animate={{ opacity: isLight ? 1 : 0 }}
-        transition={{ duration: 0.22 }}
-        aria-hidden="true"
-      >
-        <motion.div
-          className="absolute rounded-full bg-white/75"
-          style={{
-            width: size === 'md' ? 17 : 14,
-            height: size === 'md' ? 7 : 6,
-            left: '16%',
-            top: '26%',
-          }}
-          animate={{ x: [0, 4, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          aria-hidden="true"
-        />
-        <motion.div
-          className="absolute rounded-full bg-white/55"
-          style={{
-            width: size === 'md' ? 11 : 9,
-            height: size === 'md' ? 5 : 4,
-            right: '18%',
-            bottom: '24%',
-          }}
-          animate={{ x: [0, -3, 0] }}
-          transition={{ duration: 4.6, repeat: Infinity, ease: 'easeInOut' }}
-          aria-hidden="true"
-        />
-      </motion.div>
-
-      <motion.div
-        className="relative z-10 flex items-center justify-center rounded-full shadow-md"
+      {/* Visual track — the 44px button is the hit area; this is the switch itself. */}
+      <span
+        className="relative inline-flex items-center overflow-hidden rounded-full border border-[var(--border-subtle)] bg-[var(--bg-input)]"
         style={{
-          width: dims.knob,
-          height: dims.knob,
-          background: isLight
-            ? 'linear-gradient(135deg, #fde68a 0%, #f59e0b 100%)'
-            : 'linear-gradient(135deg, #f8fafc 0%, #cbd5e1 100%)',
-          boxShadow: isLight
-            ? 'inset 0 -1px 2px rgba(120,53,15,0.25), 0 2px 8px rgba(120,53,15,0.18)'
-            : 'inset 0 -1px 2px rgba(15,23,42,0.22), 0 2px 8px rgba(2,6,23,0.18)',
-        }}
-        initial={false}
-        animate={{
-          x: isLight ? knobOffset : 0,
-        }}
-        transition={{
-          type: 'spring',
-          stiffness: 400,
-          damping: 30,
+          width: dims.w,
+          height: dims.h,
+          padding: dims.pad,
         }}
         aria-hidden="true"
       >
+        {/* Night sky — stars, shown in dark mode */}
         <motion.span
-          key={isLight ? 'light_mode' : 'dark_mode'}
-          className="material-symbols-rounded leading-none"
-          style={{
-            fontSize: dims.iconSize,
-            color: isLight ? '#78350f' : '#0f172a',
-            fontVariationSettings: "'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24",
-          }}
-          initial={{ opacity: 0, scale: 0.68, rotate: isLight ? -35 : 35 }}
-          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="absolute inset-0"
+          initial={false}
+          animate={{ opacity: isLight ? 0 : 1 }}
+          transition={{ duration: 0.22 }}
+          aria-hidden="true"
         >
-          {isLight ? 'light_mode' : 'dark_mode'}
+          {mounted && [
+            { x: '18%', y: '28%', s: 2 },
+            { x: '32%', y: '66%', s: 1.5 },
+            { x: '54%', y: '22%', s: 1.5 },
+            { x: '72%', y: '58%', s: 2 },
+          ].map((star, i) => (
+            <motion.span
+              key={i}
+              className="absolute rounded-full bg-[var(--text-muted)]"
+              style={{
+                left: star.x,
+                top: star.y,
+                width: star.s,
+                height: star.s,
+              }}
+              animate={{
+                opacity: [0.35, 0.95, 0.35],
+                scale: [0.85, 1.25, 0.85],
+              }}
+              transition={{
+                duration: 1.8 + i * 0.15,
+                delay: i * 0.12,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+          ))}
         </motion.span>
-      </motion.div>
+
+        {/* Day sky — clouds, shown in light mode */}
+        <motion.span
+          className="absolute inset-0"
+          initial={false}
+          animate={{ opacity: isLight ? 1 : 0 }}
+          transition={{ duration: 0.22 }}
+          aria-hidden="true"
+        >
+          <motion.span
+            className="absolute rounded-full bg-[var(--text-muted)]"
+            style={{
+              width: size === 'md' ? 17 : 14,
+              height: size === 'md' ? 7 : 6,
+              left: '16%',
+              top: '26%',
+            }}
+            animate={{ x: [0, 4, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            aria-hidden="true"
+          />
+          <motion.span
+            className="absolute rounded-full bg-[var(--text-muted)]"
+            style={{
+              width: size === 'md' ? 11 : 9,
+              height: size === 'md' ? 5 : 4,
+              right: '18%',
+              bottom: '24%',
+            }}
+            animate={{ x: [0, -3, 0] }}
+            transition={{ duration: 4.6, repeat: Infinity, ease: 'easeInOut' }}
+            aria-hidden="true"
+          />
+        </motion.span>
+
+        <motion.span
+          className="relative z-10 flex items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)]"
+          style={{
+            width: dims.knob,
+            height: dims.knob,
+          }}
+          initial={false}
+          animate={{
+            x: isLight ? knobOffset : 0,
+          }}
+          transition={{
+            type: 'spring',
+            stiffness: 400,
+            damping: 30,
+          }}
+          aria-hidden="true"
+        >
+          <motion.span
+            key={isLight ? 'light_mode' : 'dark_mode'}
+            className="material-symbols-rounded leading-none text-[var(--text-primary)]"
+            style={{
+              fontSize: dims.iconSize,
+              fontVariationSettings: "'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24",
+            }}
+            initial={{ opacity: 0, scale: 0.68, rotate: isLight ? -35 : 35 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            {isLight ? 'light_mode' : 'dark_mode'}
+          </motion.span>
+        </motion.span>
+      </span>
     </button>
   );
 }

@@ -2,6 +2,11 @@ import type { PlanTier } from '@/lib/pricing-tiers';
 
 export const SONA_WORKLOAD_POLICY_VERSION = '2026-07-10';
 
+/** Full prepared packets share one entitlement across chat and job search. */
+export function canPrepareApplicationPackets(tier: PlanTier): boolean {
+  return tier === 'studio' || tier === 'god';
+}
+
 export type SonaWorkloadMode = 'scout' | 'prepare';
 export type SonaPublicPlan = 'free' | 'pro' | 'max';
 
@@ -61,7 +66,7 @@ export function resolveSonaWorkloadEntitlement(
   requestedMode?: SonaWorkloadMode,
   requestedMaxRankedRoles?: number,
 ): SonaWorkloadEntitlement {
-  const isMax = tier === 'studio' || tier === 'god';
+  const isMax = canPrepareApplicationPackets(tier);
   const plan: SonaPublicPlan = isMax ? 'max' : tier === 'pro' ? 'pro' : 'free';
   const requested: SonaWorkloadMode = requestedMode || (isMax ? 'prepare' : 'scout');
   const effectiveMode: SonaWorkloadMode = isMax && requested !== 'scout' ? 'prepare' : 'scout';

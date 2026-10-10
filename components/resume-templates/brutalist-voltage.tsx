@@ -44,6 +44,7 @@ export function BrutalistVoltageTemplate({ resume, colors }: BrutalistVoltagePro
     cleanResumeText(resume.email),
     cleanResumeText(resume.phone),
     cleanResumeText(resume.location),
+    ...(resume.links || []).map(cleanResumeText),
   ].filter(Boolean);
   const engagements = resume.experience.slice(0, 6);
 
@@ -159,7 +160,7 @@ export function BrutalistVoltageTemplate({ resume, colors }: BrutalistVoltagePro
               <div className="mt-[1.2cqw]">
                 {resume.experience.map((experience, experienceIndex) => (
                   <article
-                    key={`${experience.company}-${experience.role}-${experienceIndex}`}
+                    key={experience.id || `${experience.company}-${experience.role}-${experienceIndex}`}
                     className="break-inside-avoid border-b border-black py-[1.2cqw] first:pt-0 last:border-b-0"
                   >
                     <div className="flex items-start justify-between gap-[1.5cqw]">
@@ -223,7 +224,7 @@ export function BrutalistVoltageTemplate({ resume, colors }: BrutalistVoltagePro
                 <VoltageSectionTitle>Capabilities</VoltageSectionTitle>
                 <div className="mt-[1cqw] grid grid-cols-2 gap-x-[1.4cqw] gap-y-[0.8cqw]">
                   {resume.skills.map((group, index) => (
-                    <div key={`${group.category}-${index}`}>
+                    <div key={group.id || `${group.category}-${index}`}>
                       <h3 className="font-sans font-black uppercase" style={{ fontSize: '0.92cqw' }}>
                         {cleanResumeText(group.category)}
                       </h3>
@@ -269,7 +270,7 @@ export function BrutalistVoltageTemplate({ resume, colors }: BrutalistVoltagePro
             <VoltageSectionTitle>Education</VoltageSectionTitle>
             <div className="mt-[0.8cqw] grid grid-cols-2 gap-[1.5cqw]">
               {resume.education.map((education, index) => (
-                <div key={`${education.institution}-${index}`}>
+                <div key={education.id || `${education.institution}-${index}`}>
                   <h3 className="font-sans font-black uppercase" style={{ color: colors.primary, fontSize: '0.92cqw' }}>
                     {cleanResumeText(education.degree)}
                   </h3>
@@ -296,6 +297,17 @@ export function BrutalistVoltageTemplate({ resume, colors }: BrutalistVoltagePro
           </div>
         </section>
       )}
+
+      {(resume.additionalSections || []).map((section) => {
+        const items = section.items.map(cleanResumeText).filter(Boolean);
+        if (!cleanResumeText(section.title) && items.length === 0) return null;
+        return <section key={section.id} className="border-t border-black px-[17.8cqw] py-[1.8cqw]">
+          <VoltageSectionTitle>{cleanResumeText(section.title) || 'Additional information'}</VoltageSectionTitle>
+          <ul className="mt-[0.8cqw] space-y-[0.35cqw] font-sans" style={{ fontSize: '0.9cqw' }}>
+            {items.map((item) => <li key={item}>— {item}</li>)}
+          </ul>
+        </section>;
+      })}
     </article>
   );
 }

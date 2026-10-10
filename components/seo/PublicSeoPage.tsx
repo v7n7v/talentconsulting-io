@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { TalentConsultingWordmark } from '@/components/BrandLogo';
+import { TacoWordmark } from '@/components/BrandLogo';
 import SeoTrackedLink from './SeoTrackedLink';
 import { CORE_RELATED_LINKS, RelatedLinks } from './RelatedLinks';
 
@@ -40,12 +40,12 @@ export default function PublicSeoPage({
       <nav className="sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--bg-deep)_88%,transparent)] backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <Link href="/" aria-label="TalentConsulting.io home" className="inline-flex min-w-0 items-center">
-            <TalentConsultingWordmark className="w-[min(210px,48vw)]" />
+            <TacoWordmark className="w-[min(210px,48vw)]" />
           </Link>
           <div className="flex items-center gap-4">
-            <Link href="/templates" className="text-xs text-[var(--text-muted)] transition hover:text-[var(--text-primary)]">Templates</Link>
-            <Link href="/tools/ats-analyzer" className="text-xs text-[var(--text-muted)] transition hover:text-[var(--text-primary)]">ATS Analyzer</Link>
-            <Link href="/blog" className="text-xs text-[var(--text-muted)] transition hover:text-[var(--text-primary)]">Blog</Link>
+            <Link href="/templates" className="inline-flex min-h-11 items-center text-xs text-[var(--text-muted)] transition hover:text-[var(--text-primary)]">Templates</Link>
+            <Link href="/tools/ats-analyzer" className="inline-flex min-h-11 items-center text-xs text-[var(--text-muted)] transition hover:text-[var(--text-primary)]">ATS Analyzer</Link>
+            <Link href="/blog" className="inline-flex min-h-11 items-center text-xs text-[var(--text-muted)] transition hover:text-[var(--text-primary)]">Blog</Link>
           </div>
         </div>
       </nav>
@@ -66,7 +66,7 @@ export default function PublicSeoPage({
               <SeoTrackedLink
                 href={primaryCta.href}
                 eventName={primaryCta.eventName}
-                className="inline-flex items-center justify-center rounded-[12px] px-5 py-3 text-sm font-semibold transition hover:opacity-90"
+                className="inline-flex min-h-11 items-center justify-center rounded-[12px] px-5 py-3 text-sm font-semibold transition hover:opacity-90"
                 style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}
               >
                 {primaryCta.label}
@@ -74,14 +74,14 @@ export default function PublicSeoPage({
               <SeoTrackedLink
                 href={secondaryCta.href}
                 eventName={secondaryCta.eventName}
-                className="inline-flex items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+                className="inline-flex min-h-11 items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
               >
                 {secondaryCta.label}
               </SeoTrackedLink>
             </div>
           </div>
 
-          <aside className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+          <aside className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Use this guide with</h2>
             <div className="mt-4 space-y-3">
               {CORE_RELATED_LINKS.slice(0, 3).map((link) => (
@@ -99,7 +99,7 @@ export default function PublicSeoPage({
 
         <section className="grid gap-4 py-8 md:grid-cols-3">
           {blocks.map((block) => (
-            <div key={block.title} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+            <div key={block.title} className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
               <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">{block.title}</h2>
               <ul className="mt-4 space-y-3">
                 {block.items.map((item) => (
@@ -114,28 +114,28 @@ export default function PublicSeoPage({
         </section>
 
         <section className="grid gap-5 py-8 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-sm">
+          <div className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
             <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{calloutTitle}</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{calloutBody}</p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <SeoTrackedLink
                 href={primaryCta.href}
                 eventName={primaryCta.eventName}
-                className="inline-flex items-center justify-center rounded-[12px] px-5 py-3 text-sm font-semibold transition hover:opacity-90"
+                className="inline-flex min-h-11 items-center justify-center rounded-[12px] px-5 py-3 text-sm font-semibold transition hover:opacity-90"
                 style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}
               >
                 {primaryCta.label}
               </SeoTrackedLink>
               <Link
                 href="/tools/ai-humanizer"
-                className="inline-flex items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+                className="inline-flex min-h-11 items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
               >
                 Polish career writing
               </Link>
               <SeoTrackedLink
                 href="/suite"
                 eventName="seo_signup_click"
-                className="inline-flex items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+                className="inline-flex min-h-11 items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
               >
                 Start free
               </SeoTrackedLink>
@@ -145,7 +145,7 @@ export default function PublicSeoPage({
         </section>
 
         <section className="pb-12">
-          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+          <div className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
             <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Source context</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
               Use this guide with current occupation and labor market context from the{' '}

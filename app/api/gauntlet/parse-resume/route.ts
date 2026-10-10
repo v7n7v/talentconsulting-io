@@ -7,16 +7,17 @@ import {
     assertAnonymousBinaryBudget,
 } from '@/lib/resume-parser-safety';
 import { parseResumeBinaryInWorker } from '@/lib/resume-binary-parser-worker';
+import { makeSourceHash } from '@/lib/resume-parse-contract';
 
 const MAX_DIRECT_FILE_SIZE = 4 * 1024 * 1024;
 const MAX_AUTH_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_EXTRACTED_CHARS = 50_000;
-const VALID_EXTENSIONS = ['.pdf', '.docx', '.doc', '.txt'];
+const VALID_EXTENSIONS = ['.pdf', '.docx', '.txt'];
 
-type DetectedResumeType = 'pdf' | 'docx' | 'doc' | 'txt';
+type DetectedResumeType = 'pdf' | 'docx' | 'txt';
 
-function resumeParseError(code: string, message: string, status = 400) {
-    return NextResponse.json({ code, error: message, message }, { status });
+function resumeParseError(code: string, message: string, status = 400, details: Record<string, unknown> = {}) {
+    return NextResponse.json({ code, error: message, message, ...details }, { status });
 }
 
 function getExtension(fileName: string) {
@@ -33,11 +34,6 @@ function hasZipSignature(buffer: Buffer) {
         && buffer[1] === 0x4b
         && (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07)
         && (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08);
-}
-
-function hasOleSignature(buffer: Buffer) {
-    const ole = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
-    return buffer.length >= ole.length && ole.every((byte, index) => buffer[index] === byte);
 }
 
 function looksLikeText(buffer: Buffer, textContent?: string) {
@@ -58,9 +54,6 @@ function detectResumeType(fileName: string, buffer: Buffer | null, textContent: 
     }
     if (fileName.endsWith('.docx')) {
         return hasZipSignature(buffer) ? 'docx' : null;
-    }
-    if (fileName.endsWith('.doc')) {
-        return hasOleSignature(buffer) ? 'doc' : null;
     }
     return null;
 }
@@ -157,9 +150,9 @@ export async function POST(req: NextRequest) {
             console.warn('[api/gauntlet/parse-resume] Storage cleanup failed:', cleanupError instanceof Error ? cleanupError.message : 'unknown');
         }
     };
-    const parseError = async (code: string, message: string, status = 400) => {
+    const parseError = async (code: string, message: string, status = 400, details: Record<string, unknown> = {}) => {
         await cleanupStorageUpload();
-        return resumeParseError(code, message, status);
+        return resumeParseError(code, message, status, details);
     };
     const parseSuccess = async (payload: Record<string, unknown>) => {
         await cleanupStorageUpload();
@@ -354,7 +347,7 @@ export async function POST(req: NextRequest) {
 
         const detectedType = detectResumeType(fileName, fileBuffer, textContent);
         if (!detectedType) {
-            return await parseError('UNSUPPORTED_TYPE', 'The file contents do not match a supported resume type. Please upload a real PDF, Word, or TXT file.');
+                return await parseError('UNSUPPORTED_TYPE', 'The file contents do not match a supported resume type. Please upload a real PDF, DOCX, or TXT file. Legacy .doc is not supported; convert it to .docx or paste the text.');
         }
 
         try {
@@ -372,7 +365,9 @@ export async function POST(req: NextRequest) {
         if (detectedType === 'txt') {
             const cleanText = trimExtractedText(textContent);
             if (!cleanText) return await parseError('PARSE_EMPTY', 'Could not extract meaningful text from this file.');
-            return await parseSuccess({ text: cleanText, fileName, sourceType, characterCount: cleanText.length, detectedType });
+            const truncated = textContent.length > MAX_EXTRACTED_CHARS;
+            if (truncated) return await parseError('EXTRACTION_TRUNCATED', `Only the first ${MAX_EXTRACTED_CHARS.toLocaleString()} characters could be extracted. Paste a shorter document or split it into sections.`, 422, { rawText: cleanText, fileName, sourceType, characterCount: cleanText.length, originalCharacterCount: textContent.length, truncated: true });
+            return await parseSuccess({ text: cleanText, rawText: cleanText, fileName, sourceType, characterCount: cleanText.length, originalCharacterCount: textContent.length, truncated: false, warnings: [], evidenceReceipt: { sourceHash: makeSourceHash(cleanText), parserVersion: 'binary-extraction-v1', originalCharacterCount: textContent.length, extractedCharacterCount: cleanText.length, warnings: [], rawText: cleanText } });
         }
 
         if (fileBuffer) {
@@ -384,6 +379,7 @@ export async function POST(req: NextRequest) {
                     maxExtractedChars: MAX_EXTRACTED_CHARS,
                 });
                 const cleanText = trimExtractedText(parsed.text);
+                const truncated = Boolean(parsed.truncated) || (parsed.originalCharacterCount ?? parsed.text.length) > MAX_EXTRACTED_CHARS;
                 if (detectedType === 'pdf' && cleanText.length < 20) {
                     return await parseError(
                         'SCANNED_PDF',
@@ -393,7 +389,8 @@ export async function POST(req: NextRequest) {
                 if (!cleanText) {
                     return await parseError('PARSE_EMPTY', 'Could not extract meaningful text from this resume.');
                 }
-                return await parseSuccess({ text: cleanText, fileName, sourceType, characterCount: cleanText.length, detectedType });
+                if (truncated) return await parseError('EXTRACTION_TRUNCATED', `Only the first ${MAX_EXTRACTED_CHARS.toLocaleString()} characters could be extracted. Upload a shorter document or paste the remaining text.`, 422, { rawText: cleanText, fileName, sourceType, characterCount: cleanText.length, originalCharacterCount: parsed.originalCharacterCount, truncated: true, warnings: [{ code: 'TRUNCATED_SOURCE', message: 'The extracted source exceeded the safe text limit.' }] });
+                return await parseSuccess({ text: cleanText, rawText: cleanText, fileName, sourceType, characterCount: cleanText.length, originalCharacterCount: parsed.originalCharacterCount ?? cleanText.length, truncated: false, warnings: [], evidenceReceipt: { sourceHash: makeSourceHash(cleanText), parserVersion: 'binary-extraction-v1', originalCharacterCount: parsed.originalCharacterCount ?? cleanText.length, extractedCharacterCount: cleanText.length, warnings: [], rawText: cleanText } });
             } catch (error) {
                 if (error instanceof ResumeParserSafetyError) {
                     return await parseError(error.code, error.message);
@@ -402,7 +399,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        return await parseError('UNSUPPORTED_TYPE', 'Unsupported file type. Please upload a PDF, Word (.docx), or TXT file.');
+        return await parseError('UNSUPPORTED_TYPE', 'Unsupported file type. Please upload a PDF, Word (.docx), or TXT file. Legacy .doc is not supported; convert it to .docx or paste the text.');
 
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown parse error';

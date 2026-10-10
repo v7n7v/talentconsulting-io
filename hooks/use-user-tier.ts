@@ -11,6 +11,8 @@ import { authFetch } from '@/lib/auth-fetch';
 import { useStore } from '@/lib/store';
 import type { UsageData } from '@/lib/usage-tracker';
 import { isDemoModeEnabled } from '@/lib/demo-mode';
+import { getWorkspacePreviewScenario, isIsolatedWorkspacePreview } from '@/lib/workspace-preview';
+import { readUserTierResponse } from '@/lib/user-tier-response';
 
 export type PlanTier = 'free' | 'pro' | 'studio' | 'god';
 
@@ -36,44 +38,61 @@ export function useUserTier(): TierState {
   const [caps, setCaps] = useState<Record<string, number> | null>(DEFAULT_CAPS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const hasLoaded = useRef(false);
+  // The owner of successful data is separate from the owner of the latest
+  // lookup. A failed lookup must never relabel another account's billing data.
+  const [loadedFor, setLoadedFor] = useState<string | null>();
+  const [requestedFor, setRequestedFor] = useState<string | null>();
+  const requestSequence = useRef(0);
+  const userId = user?.uid || null;
 
   const fetchUsage = useCallback(async () => {
+    const requestId = ++requestSequence.current;
+    const isCurrent = () => requestId === requestSequence.current
+      && (useStore.getState().user?.uid || null) === userId;
+    setRequestedFor(userId);
     if (isDemoModeEnabled()) {
-      setTier('studio');
+      const previewTier = isIsolatedWorkspacePreview() && getWorkspacePreviewScenario() === 'new' ? 'free' : 'studio';
+      setTier(previewTier);
       setUsage(DEFAULT_USAGE);
-      setCaps(null);
+      setCaps(previewTier === 'free' ? DEFAULT_CAPS : null);
       setError(null);
       setLoading(false);
-      hasLoaded.current = true;
+      setLoadedFor(userId);
       return;
     }
-
-    if (!user) {
+    if (!userId) {
+      setTier('free');
+      setUsage(DEFAULT_USAGE);
+      setCaps(DEFAULT_CAPS);
+      setError(null);
+      setLoadedFor(null);
       setLoading(false);
       return;
     }
+    setLoading(true);
+    setError(null);
     try {
-      if (!hasLoaded.current) setLoading(true);
-      const res = await authFetch('/api/usage');
-      if (res.ok) {
-        const data = await res.json();
-        const serverTier = data.tier || 'free';
-        setTier(serverTier);
-        setUsage(data.usage || DEFAULT_USAGE);
-        setCaps(serverTier === 'free' ? (data.caps || DEFAULT_CAPS) : null);
-        setError(null);
-        hasLoaded.current = true;
-      }
-    } catch (err: any) {
-      setError(err.message);
+      const data = await readUserTierResponse(await authFetch('/api/usage'));
+      if (!isCurrent()) return;
+      setTier(data.tier);
+      setUsage(data.usage || DEFAULT_USAGE);
+      setCaps(data.tier === 'free' ? (data.caps || DEFAULT_CAPS) : null);
+      setError(null);
+      setLoadedFor(userId);
+    } catch (err) {
+      if (!isCurrent()) return;
+      setError(err instanceof Error ? err.message : 'Your plan could not be checked. Please retry.');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
-    fetchUsage();
+    // A new account gets a new request generation; old responses cannot commit.
+    // Billing is an external resource; clear/refresh it when the authenticated owner changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchUsage();
+    return () => { requestSequence.current += 1; };
   }, [fetchUsage]);
 
   // Subscription documents are server-only by design. Revalidate through the
@@ -105,32 +124,42 @@ export function useUserTier(): TierState {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('upgrade') === 'success') {
-      const newUrl = window.location.pathname;
+      params.delete('upgrade');
+      const newUrl = `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`;
       window.history.replaceState({}, '', newUrl);
       const timer = setTimeout(() => fetchUsage(), 2000);
       return () => clearTimeout(timer);
     }
   }, [fetchUsage]);
 
-  const isPro = useMemo(() => tier === 'pro' || tier === 'studio' || tier === 'god', [tier]);
+  const accountPending = requestedFor !== userId;
+  const hasOwnedData = loadedFor === userId;
+  const effectiveLoading = loading || accountPending;
+  const effectiveTier = hasOwnedData ? tier : 'free';
+  const effectiveUsage = hasOwnedData ? usage : DEFAULT_USAGE;
+  const effectiveCaps = hasOwnedData ? caps : DEFAULT_CAPS;
+  const effectiveError = accountPending ? null : error;
+  const isPro = useMemo(() => !effectiveLoading && !effectiveError && (effectiveTier === 'pro' || effectiveTier === 'studio' || effectiveTier === 'god'), [effectiveTier, effectiveLoading, effectiveError]);
 
   const canUse = useCallback(
     (feature: keyof UsageData): boolean => {
+      if (effectiveLoading || effectiveError) return false;
       if (isPro) return true;
-      if (!caps) return true;
-      return (usage[feature] ?? 0) < (caps[feature] ?? Infinity);
+      if (!effectiveCaps) return true;
+      return (effectiveUsage[feature] ?? 0) < (effectiveCaps[feature] ?? Infinity);
     },
-    [isPro, usage, caps]
+    [isPro, effectiveUsage, effectiveCaps, effectiveLoading, effectiveError]
   );
 
   const remaining = useCallback(
     (feature: keyof UsageData): number => {
+      if (effectiveLoading || effectiveError) return 0;
       if (isPro) return Infinity;
-      if (!caps) return Infinity;
-      return Math.max(0, (caps[feature] ?? 0) - (usage[feature] ?? 0));
+      if (!effectiveCaps) return Infinity;
+      return Math.max(0, (effectiveCaps[feature] ?? 0) - (effectiveUsage[feature] ?? 0));
     },
-    [isPro, usage, caps]
+    [isPro, effectiveUsage, effectiveCaps, effectiveLoading, effectiveError]
   );
 
-  return { tier, isPro, usage, caps, loading, error, refetch: fetchUsage, canUse, remaining };
+  return { tier: effectiveTier, isPro, usage: effectiveUsage, caps: effectiveCaps, loading: effectiveLoading, error: effectiveError, refetch: fetchUsage, canUse, remaining };
 }

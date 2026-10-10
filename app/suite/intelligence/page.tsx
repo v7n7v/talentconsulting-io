@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '@/components/ThemeProvider';
+import { ToolGuidanceBinding } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep } from '@/lib/tool-story-adapters';
+
+import { TacoName } from '@/components/BrandLogo';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { motion } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { openSona } from '@/lib/assistant/execution-context';
@@ -21,7 +24,7 @@ import {
   titleCase,
   type CareerTwinSummary,
 } from '@/lib/career-twin-client';
-import { SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
+import { SuiteEmptyState, SuiteMetricCard, SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import SuiteSignedOut from '@/components/suite/SuiteSignedOut';
 import dynamic from 'next/dynamic';
 
@@ -29,11 +32,14 @@ const PulseTab = dynamic(() => import('@/app/suite/pulse/PulseContent').then(m =
   loading: () => <div className="h-64 rounded-xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />,
 });
 
-const AnalyticsTab = dynamic(() => import('@/app/suite/analytics/AnalyticsContent').then(m => ({ default: m.AnalyticsContent })), {
-  loading: () => <div className="h-64 rounded-xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />,
-});
+const ResultsTab = dynamic(() => import('@/app/suite/agent/quality/QualityContent'));
 
-type IntelTab = 'overview' | 'pulse' | 'analytics' | 'outcomes';
+type IntelTab = 'overview' | 'pulse' | 'results';
+function readIntelTab(value: string | null): IntelTab {
+  if (value === 'weekly') return 'pulse';
+  if (value === 'analytics' || value === 'outcomes') return 'results';
+  return ['overview', 'pulse', 'results'].includes(value || '') ? value as IntelTab : 'overview';
+}
 
 interface HealthBand {
   key: string;
@@ -48,6 +54,8 @@ interface HealthBand {
 
 interface CareerProfile {
   healthScore: number;
+  computedAt?: string;
+  sourceReads?: Record<string, { count: number; complete: boolean }>;
   /** The real bands behind healthScore. Never re-derive these from the total. */
   healthBands: HealthBand[];
   daysActive: number;
@@ -55,6 +63,7 @@ interface CareerProfile {
   resumeVersionCount: number;
   skills: {
     confirmed: string[]; growing: string[]; weak: string[];
+    assessments?: Array<{ skill: string; latestScore: number; bestScore: number; verified: boolean }>;
     marketHot: string[]; gap: string[];
     /** How many fit analyses `gap` was derived from. 0 means "never analyzed", not "no gaps". */
     fitAnalysisCount: number;
@@ -72,7 +81,7 @@ interface CareerProfile {
   };
   interviews: {
     totalDebriefs: number; passRate: number; avgConfidence: number; avgFeeling: number;
-    confidenceTrend: string;
+    confidenceTrend: string | null;
     weakCategories: { category: string; avgConfidence: number; count: number }[];
     strongCategories: { category: string; avgConfidence: number; count: number }[];
     roundTypeBreakdown: { type: string; count: number; avgConf: number }[];
@@ -136,7 +145,7 @@ function MemoryFact({
       <div className="flex min-w-0 items-start gap-2">
         <Icon name={icon} className="icon-neutral mt-0.5 shrink-0 text-[16px]" />
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">{label}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">{label}</p>
           <p className="premium-copy-wrap mt-1 text-sm font-semibold text-[var(--text-primary)]">{value}</p>
         </div>
       </div>
@@ -206,10 +215,10 @@ function CareerTwinMemoryPanel({
               Career Twin memory
             </p>
             <h2 className="premium-heading-wrap mt-1 text-lg font-bold text-[var(--text-primary)]">
-              Add trusted career data so Taco can work from memory.
+              Add trusted career data so <TacoName /> can work from memory.
             </h2>
             <p className="premium-copy-wrap mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-              Upload a resume, set target roles, save applications, and add interview stories. Taco will use that evidence before preparing packets or advice.
+              Upload a resume, set target roles, save applications, and add interview stories. <TacoName /> will use that evidence before preparing packets or advice.
             </p>
           </div>
         </div>
@@ -229,7 +238,7 @@ function CareerTwinMemoryPanel({
               Career Twin memory
             </p>
             <h2 className="premium-heading-wrap mt-1 text-lg font-bold text-[var(--text-primary)]">
-              Taco is rebuilding missing memory fields.
+              <TacoName /> is rebuilding missing memory fields.
             </h2>
             <p className="premium-copy-wrap mt-2 text-sm leading-6 text-[var(--text-secondary)]">
               Your account loaded, but this Career Twin snapshot is missing required sections. Refresh memory from here or keep using the suite while it syncs.
@@ -237,10 +246,10 @@ function CareerTwinMemoryPanel({
             <button
               type="button"
               onClick={() => onAskSona('My Career Twin memory loaded with missing fields. Help me identify what data to add next.', 'Career Twin repair')}
-              className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
+              className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
             >
               <Icon name="auto_awesome" className="text-[18px]" />
-              Ask Taco
+              Ask <TacoName />
             </button>
           </div>
         </div>
@@ -267,8 +276,10 @@ function CareerTwinMemoryPanel({
     skillGaps: [],
     fitAnalysisCount: 0,
   };
-  const completeness = clampScore(normalizedTwin.completeness.score);
-  const coverage = clampScore(normalizedTwin.behavioralBank.coverageScore);
+  const completenessRaw = normalizedTwin.completeness.score;
+  const coverageRaw = normalizedTwin.behavioralBank.coverageScore;
+  const completeness = completenessRaw != null && completenessRaw > 0 ? clampScore(completenessRaw) : null;
+  const coverage = coverageRaw != null && coverageRaw > 0 ? clampScore(coverageRaw) : null;
   const nextActions = memory.nextBestActions || [];
   const missing = normalizedTwin.completeness.missing || [];
 
@@ -284,10 +295,10 @@ function CareerTwinMemoryPanel({
                   Career Twin memory
                 </p>
                 <h2 className="premium-heading-wrap mt-1 text-xl font-bold text-[var(--text-primary)]">
-                  Taco's source of truth for your career search.
+                  The records behind your career overview.
                 </h2>
                 <p className="premium-copy-wrap mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                  This panel shows what Taco knows, what is missing, and which actions still require your review before anything external happens.
+                  This panel shows what <TacoName /> knows, what is missing, and which actions still require your review before anything external happens.
                 </p>
               </div>
             </div>
@@ -295,16 +306,17 @@ function CareerTwinMemoryPanel({
               <button
                 type="button"
                 onClick={() => onAskSona('Review my Career Twin memory. Tell me what is strongest, what is missing, and the next 3 actions that would improve my job search this week.', 'Career Twin')}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
               >
                 <Icon name="auto_awesome" className="text-[18px]" />
-                Ask Taco
+                Ask <TacoName />
               </button>
               <button
                 type="button"
+                data-guide="intelligence-export"
                 onClick={onExport}
                 disabled={!normalizedTwin.exportable || exporting}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
               >
                 <Icon name={exporting ? 'progress_activity' : 'download'} className={`text-[16px] ${exporting ? 'animate-spin' : ''}`} />
                 {normalizedTwin.exportable ? 'Export JSON' : 'Export locked'}
@@ -313,8 +325,8 @@ function CareerTwinMemoryPanel({
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MemoryFact label="Completeness" value={`${completeness}%`} icon="fact_check" />
-            <MemoryFact label="Story coverage" value={`${coverage}% across ${normalizedTwin.behavioralBank.totalStories} stories`} icon="auto_stories" />
+            <MemoryFact label="Completeness" value={completeness != null ? `${completeness}%` : 'Not computed'} icon="fact_check" />
+            <MemoryFact label="Story coverage" value={coverage != null ? `${coverage}% across ${normalizedTwin.behavioralBank.totalStories} stories` : 'Not computed'} icon="auto_stories" />
             <MemoryFact label="Applications" value={metricValue(activeSearch.totalApplications)} icon="work" />
             <MemoryFact label="Queued packets" value={metricValue(activeSearch.queuedApplications)} icon="pending_actions" />
           </div>
@@ -376,7 +388,7 @@ function CareerTwinMemoryPanel({
 
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="min-w-0 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-              <MemoryChipList label="Confirmed skills" values={memory.confirmedFacts.skills} empty="Upload or parse a resume to confirm skills." limit={12} />
+              <MemoryChipList label="Skills listed in your resume" values={memory.confirmedFacts.skills} empty="Add a resume to list your skills." limit={12} />
               <div className="mt-4">
                 <MemoryChipList label="Education" values={memory.confirmedFacts.education.length ? memory.confirmedFacts.education : normalizedTwin.background.education} empty="Education has not been captured yet." limit={4} />
               </div>
@@ -412,7 +424,7 @@ function CareerTwinMemoryPanel({
               Move the search forward.
             </h3>
             <p className="premium-copy-wrap mt-2 text-xs leading-5 text-[var(--text-secondary)]">
-              Taco ranks these from memory. Open a tool, or ask Taco to prepare the work for review.
+              <TacoName /> ranks these from memory. Open a tool, or ask <TacoName /> to prepare the work for review.
             </p>
           </div>
 
@@ -427,7 +439,7 @@ function CareerTwinMemoryPanel({
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <p className="premium-heading-wrap text-sm font-bold text-[var(--text-primary)]">{action.label}</p>
-                      <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                      <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                         {action.priority}
                       </span>
                     </div>
@@ -438,7 +450,7 @@ function CareerTwinMemoryPanel({
                   <button
                     type="button"
                     onClick={() => onOpenAction(action.path)}
-                    className="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
                   >
                     <Icon name="open_in_new" className="text-[15px]" />
                     Open
@@ -446,10 +458,10 @@ function CareerTwinMemoryPanel({
                   <button
                     type="button"
                     onClick={() => onAskSona(`Prepare this Career Twin action for review: ${action.label}. Reason: ${action.reason}. Do not submit, message, or change anything externally.`, action.label)}
-                    className="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-3 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-3 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
                   >
                     <Icon name="auto_awesome" className="text-[15px]" />
-                    Ask Taco
+                    Ask <TacoName />
                   </button>
                 </div>
               </div>
@@ -458,7 +470,7 @@ function CareerTwinMemoryPanel({
                 <Icon name="task_alt" className="icon-status-success text-[22px]" />
                 <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">No urgent actions yet.</p>
                 <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-                  Keep saving jobs, logging outcomes, and adding stories. Taco will surface the next move when the evidence changes.
+                  Keep saving jobs, logging outcomes, and adding stories. <TacoName /> will surface the next move when the evidence changes.
                 </p>
               </div>
             )}
@@ -467,10 +479,10 @@ function CareerTwinMemoryPanel({
           <div className="mt-5 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Completeness</span>
-              <span className="text-xs font-bold tabular-nums text-[var(--text-primary)]">{completeness}%</span>
+              <span className="text-xs font-bold tabular-nums text-[var(--text-primary)]">{completeness != null ? `${completeness}%` : 'Not computed'}</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--bg-elevated)]" aria-label="Career Twin completeness">
-              <div className="h-full rounded-full bg-[var(--text-primary)]" style={{ width: `${completeness}%` }} />
+              <div className="h-full rounded-full bg-[var(--text-primary)]" style={{ width: `${completeness ?? 0}%` }} />
             </div>
             {missing.length > 0 && (
               <p className="premium-copy-wrap mt-3 text-xs leading-5 text-[var(--text-muted)]">
@@ -485,8 +497,6 @@ function CareerTwinMemoryPanel({
 }
 
 export default function IntelligencePage() {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const router = useRouter();
   const { user } = useStore();
 
@@ -495,52 +505,67 @@ export default function IntelligencePage() {
   const [twin, setTwin] = useState<CareerTwinSummary | null>(null);
   const [exportingTwin, setExportingTwin] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<IntelTab>('overview');
-  const [outcomeStats, setOutcomeStats] = useState<any>(null);
-  const [outcomeLoading, setOutcomeLoading] = useState(false);
-  /*
-   * A swallowed fetch failure and a genuinely empty account both leave
-   * `outcomeStats` null, and the empty state then asserts "None are marked
-   * yet" — a positive claim about the user's data, made after failing to read
-   * it. A 401 on an expired token, a 429 from the route's rate limit and a 500
-   * all land here.
-   */
-  const [outcomeFailed, setOutcomeFailed] = useState(false);
+  const searchParams = useSearchParams();
+  const activeTab = readIntelTab(searchParams.get('tab'));
+  const selectTab = (tab: IntelTab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', tab === 'pulse' ? 'weekly' : tab);
+    router.push(`/suite/intelligence?${params}`, { scroll: false });
+  };
+  const uid = user?.uid;
+  const [loadedOwner, setLoadedOwner] = useState(uid);
+  const ownerChanged = loadedOwner !== uid;
+  const requestRef = useRef(0);
+  const mounted = useRef(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      setProfile(null);
-      setTwin(null);
-      setRecommendations([]);
-      return;
-    }
-    loadIntelligence();
-  }, [user]);
+    mounted.current = true;
+    return () => { mounted.current = false; requestRef.current += 1; };
+  }, []);
 
-  const loadIntelligence = async () => {
-    setLoading(true);
+  const loadIntelligence = useCallback(async (refresh = false) => {
+    const owner = uid, request = ++requestRef.current;
+    const isCurrent = () => mounted.current && owner === useStore.getState().user?.uid && request === requestRef.current;
+    if (!owner || !isCurrent()) return;
+    setLoading(true); setLoadError('');
     try {
-      const res = await authFetch('/api/agent/intelligence');
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(data.profile);
-        setRecommendations(data.recommendations || []);
-        setTwin(normalizeCareerTwinSummary(data.twin));
+      if (refresh) {
+        const invalidation = await authFetch('/api/agent/intelligence', { method: 'POST' });
+        if (!isCurrent()) return;
+        if (!invalidation.ok) throw new Error('Could not refresh your insights. Your previous overview is preserved.');
       }
-    } catch {
-      setTwin(null);
-    }
-    finally { setLoading(false); }
-  };
+      const res = await authFetch('/api/agent/intelligence');
+      if (!res.ok) throw new Error('Career insights could not be loaded. Please retry.');
+      const data = await res.json();
+      if (!isCurrent()) return;
+      if (!data.profile) throw new Error('Career insights returned incomplete data. Please retry.');
+      setProfile({ ...data.profile, computedAt: data.computedAt || data.profile.computedAt, sourceReads: data.sourceReads || data.profile.sourceReads }); setRecommendations(data.recommendations || []); setTwin(normalizeCareerTwinSummary(data.twin));
+    } catch (error) {
+      if (isCurrent()) setLoadError(error instanceof Error ? error.message : 'Career insights are temporarily unavailable.');
+    } finally { if (isCurrent()) setLoading(false); }
+  }, [uid]);
+
+  useEffect(() => {
+    requestRef.current += 1;
+    // Account hydration clears the previous owner's snapshot before the new external read.
+    // The render-time owner key withholds that snapshot until this reset is committed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoadedOwner(uid);
+    setProfile(null); setTwin(null); setRecommendations([]); setLoadError(''); setExportingTwin(false);
+    if (!uid) { setLoading(false); return; }
+    void loadIntelligence();
+  }, [uid, loadIntelligence]);
 
   const handleExportTwin = async () => {
     if (!twin?.exportable || exportingTwin) return;
     setExportingTwin(true);
+    const owner = uid;
     try {
       const res = await authFetch('/api/agent/intelligence?export=true');
       if (!res.ok) throw new Error('Failed to export Career Twin');
       const blob = await res.blob();
+      if (!mounted.current || owner !== useStore.getState().user?.uid) return;
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -550,6 +575,7 @@ export default function IntelligencePage() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch {
+      if (!mounted.current || owner !== useStore.getState().user?.uid) return;
       openSona({
         prompt: 'I tried to export my Career Twin JSON and it failed. Help me diagnose what data or access is missing.',
         contextLabel: 'Career Twin export',
@@ -560,7 +586,7 @@ export default function IntelligencePage() {
         },
       });
     } finally {
-      setExportingTwin(false);
+      if (mounted.current && owner === useStore.getState().user?.uid) setExportingTwin(false);
     }
   };
 
@@ -578,32 +604,16 @@ export default function IntelligencePage() {
     });
   };
 
-  // Load outcomes when tab activates
+  const previousTabRef = useRef(activeTab);
   useEffect(() => {
-    if (activeTab === 'outcomes' && !outcomeStats && user) {
-      setOutcomeLoading(true);
-      setOutcomeFailed(false);
-      authFetch('/api/applications/outcome')
-        .then(async r => {
-          if (!r.ok) throw new Error(`outcome fetch failed: ${r.status}`);
-          return r.json();
-        })
-        .then(data => {
-          if (data.stats) setOutcomeStats(data.stats);
-          else setOutcomeFailed(true);
-        })
-        .catch(() => setOutcomeFailed(true))
-        .finally(() => setOutcomeLoading(false));
-    }
-  }, [activeTab, user]);
-
-  const cardBg = isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)';
-  const cardBorder = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
+    const previous = previousTabRef.current; previousTabRef.current = activeTab;
+    if (activeTab === 'overview' && previous !== 'overview' && uid) void loadIntelligence();
+  }, [activeTab, uid, loadIntelligence]);
 
   const getScoreColor = (score: number) => {
-    if (score >= 70) return '#22c55e';
-    if (score >= 45) return '#f59e0b';
-    return '#ef4444';
+    if (score >= 70) return 'var(--success)';
+    if (score >= 45) return 'var(--warning)';
+    return 'var(--danger)';
   };
 
   const getScoreLabel = (score: number) => {
@@ -645,40 +655,38 @@ export default function IntelligencePage() {
    * green with a trending-up arrow. Tone comes from outcomes that actually
    * moved forward; the rate keeps its own tile and states itself plainly.
    */
-  const outcomesMovedForward = (outcomeStats?.callbackCount || 0)
-    + (outcomeStats?.interviewCount || 0)
-    + (outcomeStats?.offerCount || 0);
-  const outcomeInsightColor = outcomesMovedForward > 0 ? '#22c55e' : '#f59e0b';
-
   const ratedColor = getScoreColor(profile?.healthScore ?? 0);
   const scoreColor = ratingIsSupported ? ratedColor : 'var(--text-secondary)';
-  const scoreHeroBg = ratingIsSupported
-    ? `linear-gradient(135deg, ${ratedColor}06, ${cardBg})`
-    : cardBg;
-  const scoreHeroBorder = ratingIsSupported ? `${ratedColor}20` : 'var(--border-subtle)';
-  const scorePillBg = ratingIsSupported ? `${ratedColor}15` : 'var(--bg-elevated)';
-  const scorePillBorder = ratingIsSupported ? `${ratedColor}25` : 'var(--border-subtle)';
+
+  const toolStory = buildToolStory({
+    toolId: 'intelligence', title: 'Career insights', contextKey: activeTab,
+    purpose: 'Read a current snapshot of your recorded work and inspect the evidence behind the next useful action.',
+    pending: loading || exportingTwin, hasResult: Boolean(profile || twin), failed: Boolean(loadError), stale: Boolean(loadError && (profile || twin)),
+    work: [storyStep('views', 'Choose the question to inspect', 'Overview, Weekly review and Application results read different parts of your recorded history. Choose a view yourself.', 'intelligence-tabs'), storyStep('refresh', 'Refresh when useful', 'Refresh reads the current account snapshot. Reading insights does not create career progress.', 'intelligence-refresh')],
+    result: [storyStep('overview', 'Read the current overview', 'Inspect real priorities and their basis. Missing evidence remains unknown; planning scores are not hiring predictions.', 'intelligence-overview'), storyStep('evidence', 'Inspect the scoring basis', 'Open Evidence and scoring details yourself for source limitations and recorded cohorts.', 'intelligence-evidence'), storyStep('export', 'Choose a next action or export', 'Open a useful task yourself. Career Twin export downloads account context only when entitled; it does not apply or send it.', 'intelligence-export', 'Export is inside the Career Twin evidence panel. Open that disclosure yourself; the current entitlement may keep export locked.')],
+    recovery: [storyStep('retry', 'Review the current error', 'Any retained overview may be out of date. Use Retry overview yourself; no refreshed result is implied until the read succeeds.', 'intelligence-error')],
+  });
+
+  if (ownerChanged) return <SuiteToolShell variant="standard"><p role="status">Loading this account…</p></SuiteToolShell>;
 
   return (
     <SuiteToolShell variant="standard">
-      <SuiteToolHeader tool="intelligence">
-        <div className="flex gap-1 p-1 rounded-xl w-full sm:w-fit mt-3 overflow-x-auto scrollbar-hide" style={{
-          background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-        }}>
+      {(activeTab === 'overview' || !user) && <ToolGuidanceBinding config={toolStory} />}
+      <SuiteToolHeader tool="intelligence" title="Career insights" subtitle="Your recorded progress, the evidence behind it, and your next useful action." actions={<button data-guide="intelligence-refresh" disabled={loading || !user} className="min-h-11 border border-[var(--border)] px-4" onClick={() => void loadIntelligence(true)}>Refresh insights</button>}>
+        <div data-guide="intelligence-tabs" className="mt-3 flex w-full gap-1 overflow-x-auto scrollbar-hide rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1 sm:w-fit">
           {([
             { key: 'overview' as IntelTab, label: 'Overview', icon: 'neurology' },
-            { key: 'pulse' as IntelTab, label: 'Weekly Pulse', icon: 'monitor_heart' },
-            { key: 'analytics' as IntelTab, label: 'Analytics', icon: 'bar_chart' },
-            { key: 'outcomes' as IntelTab, label: 'Outcomes', icon: 'fact_check' },
+            { key: 'pulse' as IntelTab, label: 'Weekly review', icon: 'monitor_heart' },
+            { key: 'results' as IntelTab, label: 'Application results', icon: 'query_stats' },
           ]).map(tab => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              aria-pressed={activeTab === tab.key}
+              onClick={() => selectTab(tab.key)}
+              className={`flex min-h-11 items-center gap-2 whitespace-nowrap rounded-[10px] px-3 py-2.5 text-sm font-medium transition-colors sm:px-4 ${
                 activeTab === tab.key
-                  ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                  ? 'border border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
               }`}
             >
               <span className="material-symbols-rounded text-[18px]">{tab.icon}</span>
@@ -708,187 +716,13 @@ export default function IntelligencePage() {
         />
       )}
 
+      {loadError && user && <div data-guide="intelligence-error" role="alert" className="border border-[var(--danger)] p-4"><p>{loadError}</p>{profile && <p>Showing the last loaded overview.</p>}<button className="min-h-11 underline" onClick={() => void loadIntelligence()}>Retry overview</button></div>}
+      {activeTab === 'results' && user && <ResultsTab key={user.uid} embedded />}
       {/* Pulse Tab */}
-      {activeTab === 'pulse' && user && <PulseTab />}
-
-      {/* Analytics Tab */}
-      {activeTab === 'analytics' && user && <AnalyticsTab />}
-
-      {/* Outcomes Tab */}
-      {activeTab === 'outcomes' && user && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-          {outcomeLoading ? (
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-28 rounded-2xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />
-              ))}
-            </div>
-          ) : outcomeStats && outcomeStats.totalApplied > 0 ? (
-            <>
-              {/* KPI Cards. Every rate here is null until it has a denominator;
-                  `?? 0` would print four undefined ratios as measured zeros,
-                  which is what this tab used to do on a brand-new account. */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {[
-                  { label: 'Response Rate', value: pctOrDash(outcomeStats.responseRate), icon: 'reply', color: '#06b6d4', desc: `Of ${outcomeStats.totalApplied} sent` },
-                  { label: 'Ghost Rate', value: pctOrDash(outcomeStats.ghostRate), icon: 'visibility_off', color: '#6b7280', desc: `Of ${outcomeStats.totalReported} reported` },
-                  { label: 'Avg Response', value: outcomeStats.avgDaysToResponse ? `${outcomeStats.avgDaysToResponse}d` : '—', icon: 'schedule', color: '#f59e0b', desc: 'Days until first response' },
-                  { label: 'Interview Rate', value: pctOrDash(outcomeStats.interviewRate), icon: 'groups', color: '#8b5cf6', desc: `Of ${outcomeStats.totalApplied} sent` },
-                  { label: 'Offer Rate', value: pctOrDash(outcomeStats.offerRate), icon: 'celebration', color: '#22c55e', desc: `Of ${outcomeStats.totalApplied} sent` },
-                ].map((kpi, i) => (
-                  <motion.div
-                    key={kpi.label}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.06 }}
-                    className="rounded-xl p-4"
-                    style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
-                        <span className="material-symbols-rounded text-[16px]" style={{ color: kpi.color }}>{kpi.icon}</span>
-                      </div>
-                      <span className="text-[10px] text-[var(--text-tertiary)] font-medium">{kpi.label}</span>
-                    </div>
-                    <p className="text-2xl font-black text-[var(--text-primary)] tabular-nums mb-0.5">{kpi.value}</p>
-                    <p className="text-[9px] text-[var(--text-muted)]">{kpi.desc}</p>
-                  </motion.div>
-                ))}
-              </div>
-
-              {/* Outcome Breakdown Bar Chart */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
-                className="rounded-2xl p-5"
-                style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-              >
-                <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                  <span className="material-symbols-rounded text-base" style={{ color: '#06b6d4' }}>donut_large</span>
-                  Outcome Breakdown
-                </h3>
-                {(() => {
-                  const outcomes = [
-                    { key: 'callback', label: 'Callback', count: outcomeStats.callbackCount || 0, color: '#3b82f6' },
-                    { key: 'interview', label: 'Interview', count: outcomeStats.interviewCount || 0, color: '#8b5cf6' },
-                    { key: 'offer', label: 'Offer', count: outcomeStats.offerCount || 0, color: '#22c55e' },
-                    { key: 'rejection', label: 'Rejected', count: outcomeStats.rejectionCount || 0, color: '#ef4444' },
-                    { key: 'ghosted', label: 'Ghosted', count: outcomeStats.ghostedCount || 0, color: '#6b7280' },
-                  ];
-                  const maxCount = Math.max(...outcomes.map(o => o.count), 1);
-                  const totalOutcomes = outcomes.reduce((s, o) => s + o.count, 0);
-
-                  return totalOutcomes > 0 ? (
-                    <div className="space-y-3">
-                      {outcomes.filter(o => o.count > 0).map((outcome, i) => (
-                        <div key={outcome.key}>
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full" style={{ background: outcome.color }} />
-                              <span className="text-xs font-semibold text-[var(--text-secondary)]">{outcome.label}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-black tabular-nums" style={{ color: outcome.color }}>{outcome.count}</span>
-                              <span className="text-[10px] text-[var(--text-muted)]">
-                                ({Math.round((outcome.count / totalOutcomes) * 100)}%)
-                              </span>
-                            </div>
-                          </div>
-                          <div className="h-3 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
-                            <motion.div
-                              className="h-full rounded-full"
-                              style={{ background: `linear-gradient(90deg, ${outcome.color}, ${outcome.color}cc)` }}
-                              initial={{ width: 0 }}
-                              animate={{ width: `${(outcome.count / maxCount) * 100}%` }}
-                              transition={{ delay: i * 0.1, duration: 0.6 }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6">
-                      <span className="material-symbols-rounded text-[28px] block mb-2" style={{ color: '#6b7280' }}>fact_check</span>
-                      <p className="text-xs text-[var(--text-muted)]">No outcomes reported yet. Report outcomes from the Applications page.</p>
-                    </div>
-                  );
-                })()}
-              </motion.div>
-
-              {/* Insight Card */}
-              {outcomeStats.totalReported > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="rounded-2xl p-4 flex items-start gap-3"
-                  style={{
-                    background: `${outcomeInsightColor}08`,
-                    border: `1px solid ${outcomeInsightColor}20`,
-                  }}
-                >
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{
-                    background: `${outcomeInsightColor}15`,
-                  }}>
-                    <span className="material-symbols-rounded text-lg" style={{ color: outcomeInsightColor }}>
-                      {outcomesMovedForward > 0 ? 'trending_up' : 'lightbulb'}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: outcomeInsightColor }}>
-                      Outcome Insight
-                    </p>
-                    <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                      {outcomesMovedForward > 0
-                        ? `${outcomesMovedForward} of ${outcomeStats.totalReported} reported outcome${outcomeStats.totalReported === 1 ? '' : 's'} moved forward — a callback, an interview or an offer.`
-                        : (outcomeStats.ghostRate || 0) > 60
-                          ? `${outcomeStats.ghostRate}% of your applications went silent. Consider following up 7-10 days after applying, and use ATS Preview to optimize keyword matching.`
-                          : `You've reported ${outcomeStats.totalReported} outcome${outcomeStats.totalReported === 1 ? '' : 's'}. None have moved forward yet.`
-                      }
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </>
-          ) : (
-            <div className="text-center py-16">
-              <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-emerald-500/5" />
-                <div className="relative">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-                    <span className="material-symbols-rounded text-3xl text-cyan-500">
-                      {outcomeFailed ? 'cloud_off' : 'fact_check'}
-                    </span>
-                  </div>
-                  {/* Two different facts, two different sentences. The failure
-                      branch must not claim anything about the user's data —
-                      the request that would have told us did not come back. */}
-                  <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">
-                    {outcomeFailed ? 'Outcomes could not be loaded' : 'No Outcome Data'}
-                  </h3>
-                  <p className="text-sm text-[var(--text-tertiary)] mb-5">
-                    {outcomeFailed
-                      ? 'This tab could not read your outcomes just now, so nothing here is a statement about your applications. Try again in a moment.'
-                      : 'Conversion rates are counted from applications you have marked as sent. None are marked yet, so there is no rate to show — not a rate of zero.'}
-                  </p>
-                  <button
-                    onClick={() => (outcomeFailed ? window.location.reload() : router.push('/suite/applications'))}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                    style={{ background: 'linear-gradient(135deg, #06b6d4, #10b981)', boxShadow: '0 4px 16px rgba(6,182,212,0.3)' }}
-                  >
-                    <span className="material-symbols-rounded text-sm">{outcomeFailed ? 'refresh' : 'open_in_new'}</span>
-                    {outcomeFailed ? 'Retry' : 'Go to Applications'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </motion.div>
-      )}
+      {activeTab === 'pulse' && user && <PulseTab key={user.uid} embedded onCheckIn={() => void loadIntelligence(true)} />}
 
       {/* Overview Tab */}
-      {activeTab === 'overview' && (<>
+      {activeTab === 'overview' && (<div data-guide="intelligence-overview">
 
       {loading && (
         <div className="space-y-4">
@@ -904,24 +738,17 @@ export default function IntelligencePage() {
 
       {!loading && user && !profile && (
         <div className="space-y-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-8">
-            <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-indigo-500/5" />
-              <div className="relative">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                  <span className="material-symbols-rounded text-3xl text-violet-500">neurology</span>
-                </div>
-                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Unable to Load Intelligence</h3>
-                <p className="text-sm text-[var(--text-tertiary)] mb-5">Start using the suite tools to build your career profile.</p>
-                <button onClick={loadIntelligence}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                  style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', boxShadow: '0 4px 16px rgba(139,92,246,0.3)' }}>
-                  <span className="material-symbols-rounded text-sm">refresh</span>
-                  Try Again
-                </button>
-              </div>
-            </div>
-          </motion.div>
+          <SuiteEmptyState
+            icon="neurology"
+            title="Unable to load intelligence"
+            description="Your saved records are unchanged. Retry to load your career overview."
+            action={
+              <button type="button" onClick={() => void loadIntelligence(true)} className="btn-primary inline-flex items-center gap-2">
+                <span className="material-symbols-rounded text-[18px]">refresh</span>
+                Try Again
+              </button>
+            }
+          />
           <CareerTwinMemoryPanel
             twin={null}
             exporting={false}
@@ -933,21 +760,25 @@ export default function IntelligencePage() {
       )}
 
       {profile && (<>
+      <section className="space-y-4" aria-label="Your next actions">
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold">Your next useful moves</h2><p className="mt-1 text-sm text-[var(--text-secondary)]">Based on your saved work. These are suggestions for your review.</p></div><p className="text-xs text-[var(--text-muted)]">{profile.computedAt ? `Updated ${new Date(profile.computedAt).toLocaleString()}` : 'Update time unavailable'}</p></div>
+        {(() => {
+          const actions = twin?.memory?.nextBestActions?.length ? twin.memory.nextBestActions.slice(0, 3) : recommendations.slice(0, 3).map(rec => ({ id: rec.id, label: rec.title, reason: rec.description, path: rec.actionPath }));
+          return actions.length ? <div className="grid gap-3 lg:grid-cols-3">{actions.map(action => <SuitePanel key={action.id}><h3 className="font-semibold">{action.label}</h3><p className="mt-2 text-sm text-[var(--text-secondary)]">{action.reason}</p><a className="mt-4 inline-flex min-h-11 items-center underline" href={action.path}>Open this task →</a></SuitePanel>)}</div> : <SuitePanel><p>No specific next action is supported yet.</p><a href="/suite/applications" className="mt-2 inline-flex min-h-11 items-center underline">Review your applications</a></SuitePanel>;
+        })()}
+        <div className="grid gap-3 sm:grid-cols-3"><SuiteMetricCard label="Submitted" value={String(profile.pipeline.appliedApps)} icon="send" description="Applications marked as sent" /><SuiteMetricCard label="Reached interview" value={String(profile.pipeline.interviews)} icon="groups" description="Includes previous interview stages" /><SuiteMetricCard label="Received an offer" value={String(profile.pipeline.offers)} icon="celebration" description="Includes previous offer stages" /></div>
+      </section>
+      <details data-guide="intelligence-evidence" className="border border-[var(--border)] bg-[var(--bg-surface)] p-4"><summary className="cursor-pointer text-sm font-semibold">Evidence and scoring details</summary><p className="my-4 text-sm text-[var(--text-secondary)]">These summaries describe your recorded search. Scores are planning heuristics, not hiring predictions or market-wide measures. Skills listed in a resume are self-reported.</p><div className="space-y-5">
       {/* ── Health Score Hero ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-8"
-        style={{
-          background: scoreHeroBg,
-          border: `1px solid ${scoreHeroBorder}`,
-        }}
-      >
-        {/* Animated Ring */}
-        <div className="relative w-24 h-24 sm:w-32 sm:h-32 flex-shrink-0">
-          <svg viewBox="0 0 120 120" className="w-24 h-24 sm:w-32 sm:h-32 -rotate-90">
-            <circle cx="60" cy="60" r="54" fill="none" strokeWidth="6"
-              stroke={isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'} />
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        <SuitePanel className="flex flex-col items-center gap-4 sm:flex-row sm:gap-8">
+        {/* Animated Ring — a ring of the measured healthScore. It stays neutral
+            ink until the rating is actually supported, so the number appears
+            without a red/amber/green verdict it has not earned. */}
+        {Number.isFinite(profile.healthScore) && measuredBandCount > 0 ? (
+        <div className="relative h-24 w-24 flex-shrink-0 sm:h-32 sm:w-32">
+          <svg viewBox="0 0 120 120" className="h-24 w-24 -rotate-90 sm:h-32 sm:w-32">
+            <circle cx="60" cy="60" r="54" fill="none" strokeWidth="6" stroke="var(--border-subtle)" />
             <motion.circle
               cx="60" cy="60" r="54" fill="none" strokeWidth="6" strokeLinecap="round"
               stroke={scoreColor}
@@ -965,20 +796,25 @@ export default function IntelligencePage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.8 }}
             >{profile.healthScore}</motion.span>
-            <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Health</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Health</span>
           </div>
         </div>
+        ) : (
+          <div className="flex h-24 w-24 flex-shrink-0 flex-col items-center justify-center rounded-full border border-dashed border-[var(--border-subtle)] text-center sm:h-32 sm:w-32">
+            <span className="text-2xl font-black text-[var(--text-muted)]">—</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Not scored</span>
+          </div>
+        )}
 
         {/* Score Context. The rating word is only shown when at least three of
             the four bands are measured — a label derived from one group out of
             four describes that group, not the search. */}
         <div className="min-w-0 flex-1 sm:min-w-[200px]">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 mb-2">
+          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
             {ratingIsSupported && (
               <span className="text-lg font-bold" style={{ color: scoreColor }}>{getScoreLabel(profile.healthScore)}</span>
             )}
-            <span className="whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums"
-              style={{ background: scorePillBg, color: scoreColor, border: `1px solid ${scorePillBorder}` }}>
+            <span className="whitespace-nowrap rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-bold tabular-nums text-[var(--text-secondary)]">
               {profile.daysActive}d active
             </span>
           </div>
@@ -994,7 +830,7 @@ export default function IntelligencePage() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 text-center">
+        <div className="grid grid-cols-2 gap-2 text-center sm:gap-3">
           {[
             { label: 'Apps', value: profile.pipeline.totalApps, icon: 'send' },
             // Debriefs, not interviews. `totalDebriefs` counts documents in
@@ -1003,13 +839,14 @@ export default function IntelligencePage() {
             { label: 'Stories', value: profile.stories.totalStories, icon: 'auto_stories' },
             { label: 'Skills', value: profile.skills.confirmed.length, icon: 'code' },
           ].map(s => (
-            <div key={s.label} className="px-3 py-2 rounded-lg" style={{ background: cardBg }}>
+            <div key={s.label} className="rounded-[12px] bg-[var(--bg-elevated)] px-3 py-2">
               <span className="material-symbols-rounded text-[14px] text-[var(--text-muted)]">{s.icon}</span>
               <p className="text-lg font-bold text-[var(--text-primary)]">{s.value}</p>
-              <p className="text-[9px] text-[var(--text-muted)]">{s.label}</p>
+              <p className="text-[11px] text-[var(--text-muted)]">{s.label}</p>
             </div>
           ))}
         </div>
+        </SuitePanel>
       </motion.div>
 
       {/* ── Health breakdown ──
@@ -1053,9 +890,8 @@ export default function IntelligencePage() {
                       {bandItem.earned}/{bandItem.available}
                     </span>
                   </div>
-                  {/* Track is --border-subtle, not --bg-elevated: in light
-                      theme --bg-elevated is #EEF2FA sitting on a near-white
-                      panel, so the unfilled part of the bar disappeared. */}
+                  {/* Use the subtle border token so the unfilled track stays
+                      visible against both light and dark surfaces. */}
                   <div
                     className="mt-1.5 h-1.5 overflow-hidden rounded-full"
                     style={{ background: 'var(--border-subtle)' }}
@@ -1068,7 +904,7 @@ export default function IntelligencePage() {
                       transition={{ duration: 0.8, delay: 0.2 }}
                     />
                   </div>
-                  <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">
+                  <p className="premium-copy-wrap mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
                     {measuredItems.length} of {bandItem.items.length} measured
                     {bandItem.available < bandItem.max
                       ? ` — ${bandItem.max - bandItem.available} points not on the table yet`
@@ -1092,9 +928,9 @@ export default function IntelligencePage() {
       {/* ── Recommendations ── */}
       {recommendations.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base" style={{ color: '#f59e0b' }}>lightbulb</span>
-            Smart Recommendations ({recommendations.length})
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">lightbulb</span>
+            Additional suggestions ({recommendations.length})
           </h2>
           <div className="space-y-2">
             {recommendations.map((rec, i) => (
@@ -1103,28 +939,29 @@ export default function IntelligencePage() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 + i * 0.06 }}
-                className="flex items-start gap-3 p-4 rounded-xl cursor-pointer group"
+                className="group flex cursor-pointer items-start gap-3 rounded-[16px] p-4 elevation-interactive"
                 style={{
-                  background: cardBg,
-                  border: `1px solid ${rec.priority === 'critical' ? `${rec.color}30` : cardBorder}`,
+                  background: 'var(--bg-surface)',
+                  border: `1px solid ${rec.priority === 'critical' ? 'var(--danger)' : 'var(--border-subtle)'}`,
                 }}
+                role="link" tabIndex={0}
+                onKeyDown={event => { if (event.key === 'Enter') router.push(rec.actionPath); }}
                 onClick={() => router.push(rec.actionPath)}
               >
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${rec.color}12`, border: `1px solid ${rec.color}20` }}>
-                  <span className="material-symbols-rounded text-lg" style={{ color: rec.color }}>{rec.icon}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
+                <span className="icon-shell-neutral inline-grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border" aria-hidden="true">
+                  <span className="material-symbols-rounded icon-neutral text-lg leading-none">{rec.icon}</span>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 flex items-center gap-2">
                     <p className="text-sm font-semibold text-[var(--text-primary)]">{rec.title}</p>
                     {rec.priority === 'critical' && (
-                      <span className="text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase" style={{
-                        background: `${rec.color}15`, color: rec.color,
-                      }}>Critical</span>
+                      <span className="rounded-full border border-[var(--danger)] px-1.5 py-0.5 text-[11px] font-black uppercase text-[var(--danger)]">
+                        Critical
+                      </span>
                     )}
                   </div>
-                  <p className="text-xs text-[var(--text-secondary)] mb-1.5">{rec.description}</p>
-                  <span className="text-[11px] font-bold group-hover:underline" style={{ color: rec.color }}>
+                  <p className="mb-1.5 text-xs text-[var(--text-secondary)]">{rec.description}</p>
+                  <span className="text-[11px] font-bold text-[var(--accent)] group-hover:underline">
                     {rec.action} →
                   </span>
                 </div>
@@ -1135,14 +972,14 @@ export default function IntelligencePage() {
       )}
 
       {/* ── Pipeline Funnel ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-          className="rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base text-blue-500">filter_alt</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">filter_alt</span>
             Pipeline Funnel
           </h3>
           {/* Every value here is a count the graph produced, not a count
@@ -1161,17 +998,17 @@ export default function IntelligencePage() {
               nulls is how "Not measurable" ended up captioning a solid
               full-width bar next to the count 0. */}
           {[
-            { label: 'Applied', value: profile.pipeline.appliedApps, pct: null, bar: profile.pipeline.appliedApps > 0 ? 100 : 0, basis: '', color: '#3b82f6' },
-            { label: 'Responded', value: profile.pipeline.responded, pct: profile.pipeline.responseRate, bar: profile.pipeline.responseRate ?? 0, basis: 'of applications sent', color: '#06b6d4' },
-            { label: 'Interviews', value: profile.pipeline.interviews, pct: profile.pipeline.interviewConversion, bar: profile.pipeline.interviewConversion ?? 0, basis: 'of responses', color: '#8b5cf6' },
-            { label: 'Offers', value: profile.pipeline.offers, pct: profile.pipeline.offerConversion, bar: profile.pipeline.offerConversion ?? 0, basis: 'of interviews', color: '#22c55e' },
+            { label: 'Applied', value: profile.pipeline.appliedApps, pct: null, bar: profile.pipeline.appliedApps > 0 ? 100 : 0, basis: '', color: 'var(--accent)' },
+            { label: 'Responded', value: profile.pipeline.responded, pct: profile.pipeline.responseRate, bar: profile.pipeline.responseRate ?? 0, basis: 'of applications sent', color: 'var(--accent)' },
+            { label: 'Interviews', value: profile.pipeline.interviews, pct: profile.pipeline.interviewConversion, bar: profile.pipeline.interviewConversion ?? 0, basis: 'of responses', color: 'var(--accent)' },
+            { label: 'Offers', value: profile.pipeline.offers, pct: profile.pipeline.offerConversion, bar: profile.pipeline.offerConversion ?? 0, basis: 'of interviews', color: 'var(--success)' },
           ].map((stage, i) => (
             <div key={stage.label} className="mb-3">
-              <div className="flex items-center justify-between mb-1">
+              <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs text-[var(--text-secondary)]">{stage.label}</span>
                 <span className="text-xs font-bold tabular-nums text-[var(--text-primary)]">{stage.value}</span>
               </div>
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
+              <div className="h-2 overflow-hidden rounded-full" style={{ background: 'var(--border-subtle)' }}>
                 {/* No 2% floor. A visible sliver at zero reads as a small
                     measured value; an empty track reads as nothing, which is
                     what it is. */}
@@ -1184,48 +1021,55 @@ export default function IntelligencePage() {
                 />
               </div>
               {i > 0 && (
-                <span className="text-[9px] mt-0.5 block" style={{ color: stage.color }}>
+                <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">
                   {stage.pct === null ? `Not measurable — no ${stage.basis.replace('of ', '')} yet` : `${stage.pct}% ${stage.basis}`}
                 </span>
               )}
             </div>
           ))}
+          </SuitePanel>
         </motion.div>
 
         {/* ── Interview Radar ── */}
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          className="rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base text-purple-500">psychology</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">psychology</span>
             Interview Readiness
           </h3>
           {profile.interviews.totalDebriefs === 0 ? (
-            <div className="text-center py-6">
-              <span className="material-symbols-rounded text-[32px] block mb-2" style={{ color: '#6b7280' }}>mic</span>
+            <div className="py-6 text-center">
+              <span className="material-symbols-rounded mb-2 block text-[32px] text-[var(--text-muted)]">mic</span>
               <p className="text-xs text-[var(--text-muted)]">Log debriefs to see your interview readiness</p>
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-4">
+              {/* avgConfidence and passRate are averaged from the confidence and
+                  outcome the user logged per debrief — measured values, shown
+                  only once at least one debrief exists. */}
+              <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-2xl font-bold text-[var(--text-primary)]">{profile.interviews.avgConfidence}%</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Avg Confidence</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">Avg Confidence</p>
                 </div>
                 <div className="text-right">
                   <div className="flex items-center gap-1">
-                    <span className="material-symbols-rounded text-sm" style={{
-                      color: profile.interviews.confidenceTrend === 'improving' ? '#22c55e'
-                        : profile.interviews.confidenceTrend === 'declining' ? '#ef4444' : '#f59e0b',
-                    }}>
+                    <span
+                      className="material-symbols-rounded text-sm"
+                      style={{
+                        color: profile.interviews.confidenceTrend === 'improving' ? 'var(--success)'
+                          : profile.interviews.confidenceTrend === 'declining' ? 'var(--danger)' : 'var(--warning)',
+                      }}
+                    >
                       {profile.interviews.confidenceTrend === 'improving' ? 'trending_up'
                         : profile.interviews.confidenceTrend === 'declining' ? 'trending_down' : 'trending_flat'}
                     </span>
-                    <span className="text-xs capitalize text-[var(--text-secondary)]">{profile.interviews.confidenceTrend}</span>
+                    <span className="text-xs capitalize text-[var(--text-secondary)]">{profile.interviews.confidenceTrend || 'Trend not measured'}</span>
                   </div>
-                  <p className="text-[10px] text-[var(--text-muted)]">{profile.interviews.passRate}% pass rate</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">{profile.interviews.passRate == null ? 'Outcome rate not measured' : `${profile.interviews.passRate}% reported pass rate`}</p>
                 </div>
               </div>
 
@@ -1233,65 +1077,68 @@ export default function IntelligencePage() {
               <div className="space-y-2">
                 {[...profile.interviews.strongCategories.slice(0, 2), ...profile.interviews.weakCategories.slice(0, 2)]
                   .sort((a, b) => b.avgConfidence - a.avgConfidence)
-                  .map((cat, i) => (
+                  .map((cat, i) => {
+                    const catColor = cat.avgConfidence >= 70 ? 'var(--success)' : cat.avgConfidence >= 50 ? 'var(--warning)' : 'var(--danger)';
+                    return (
                     <div key={cat.category} className="flex items-center gap-2">
-                      <span className="text-[10px] w-24 text-[var(--text-secondary)] truncate">{cat.category}</span>
-                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
+                      <span className="w-24 truncate text-[11px] text-[var(--text-secondary)]">{cat.category}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: 'var(--border-subtle)' }}>
                         <motion.div className="h-full rounded-full"
-                          style={{ background: cat.avgConfidence >= 70 ? '#22c55e' : cat.avgConfidence >= 50 ? '#f59e0b' : '#ef4444' }}
+                          style={{ background: catColor }}
                           initial={{ width: 0 }}
                           animate={{ width: `${cat.avgConfidence}%` }}
                           transition={{ duration: 0.6, delay: 0.6 + i * 0.1 }}
                         />
                       </div>
-                      <span className="text-[10px] font-bold w-8 text-right"
-                        style={{ color: cat.avgConfidence >= 70 ? '#22c55e' : cat.avgConfidence >= 50 ? '#f59e0b' : '#ef4444' }}>
+                      <span className="w-8 text-right text-[11px] font-bold" style={{ color: catColor }}>
                         {cat.avgConfidence}%
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
               </div>
             </>
           )}
+          </SuitePanel>
         </motion.div>
       </div>
 
       {/* ── Skill Landscape ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-        className="rounded-xl p-5"
-        style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-      >
-        <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-          <span className="material-symbols-rounded text-base text-cyan-500">hub</span>
-          Skill Landscape
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+        <SuitePanel>
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+          <span className="material-symbols-rounded text-base text-[var(--text-muted)]">hub</span>
+          Skill evidence
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <p className="mb-4 text-xs text-[var(--text-muted)]">Role requirements come from {profile.skills.fitAnalysisCount} analyses you saved, not a survey of the job market.</p>
+        {!!profile.skills.growing?.length && <p className="mb-3 text-sm">Learning in progress: {profile.skills.growing.join(', ')}</p>}
+        {!!profile.skills.assessments?.length && <p className="mb-3 text-sm">Recorded assessments: {profile.skills.assessments.map(item => `${item.skill} (${item.latestScore}/100${item.verified ? ', passed' : ''})`).join('; ')}</p>}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {/* Confirmed */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Confirmed ({profile.skills.confirmed.length})
+            <p className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--success)]" /> Resume-listed ({profile.skills.confirmed.length})
             </p>
             <div className="flex flex-wrap gap-1">
               {profile.skills.confirmed.slice(0, 10).map((s, index) => (
-                <span key={`${s || 'confirmed-skill'}-${index}`} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: '#22c55e12', color: '#22c55e', border: '1px solid #22c55e20' }}>{s}</span>
+                <span key={`${s || 'confirmed-skill'}-${index}`} className="rounded-full px-2 py-0.5 text-[11px]"
+                  style={{ background: 'color-mix(in srgb, var(--success) 12%, transparent)', color: 'var(--success)', border: '1px solid color-mix(in srgb, var(--success) 24%, transparent)' }}>{s}</span>
               ))}
               {profile.skills.confirmed.length > 10 && (
-                <span className="text-[10px] text-[var(--text-muted)]">+{profile.skills.confirmed.length - 10} more</span>
+                <span className="text-[11px] text-[var(--text-muted)]">+{profile.skills.confirmed.length - 10} more</span>
               )}
             </div>
           </div>
 
-          {/* Market Hot */}
+          {/* Market Hot — a market signal, not a verdict on the user, so these
+              are neutral tags rather than a success/warning/danger colour. */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-orange-500" /> In Demand ({profile.skills.marketHot.length})
+            <p className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--text-muted)]" /> In analyzed roles ({profile.skills.marketHot.length})
             </p>
             <div className="flex flex-wrap gap-1">
               {profile.skills.marketHot.slice(0, 8).map((s, index) => (
-                <span key={`${s || 'market-skill'}-${index}`} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: '#f9731612', color: '#f97316', border: '1px solid #f9731620' }}>{s}</span>
+                <span key={`${s || 'market-skill'}-${index}`} className="wrap-natural rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">{s}</span>
               ))}
             </div>
           </div>
@@ -1300,10 +1147,10 @@ export default function IntelligencePage() {
               you against N roles and found nothing missing" OR "never compared
               you against anything". The second is not a clean bill of health. */}
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center gap-1">
+            <p className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
-                style={{ background: profile.skills.fitAnalysisCount > 0 ? '#ef4444' : 'var(--text-muted)' }}
+                style={{ background: profile.skills.fitAnalysisCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}
               />
               Gaps{profile.skills.fitAnalysisCount > 0 ? ` (${profile.skills.gap.length})` : ''}
             </p>
@@ -1316,12 +1163,12 @@ export default function IntelligencePage() {
             ) : profile.skills.gap.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {profile.skills.gap.map((s, index) => (
-                  <span key={`${s || 'skill-gap'}-${index}`} className="wrap-natural text-[10px] px-2 py-0.5 rounded-full"
-                    style={{ background: '#ef444412', color: '#ef4444', border: '1px solid #ef444420' }}>{s}</span>
+                  <span key={`${s || 'skill-gap'}-${index}`} className="wrap-natural rounded-full px-2 py-0.5 text-[11px]"
+                    style={{ background: 'color-mix(in srgb, var(--danger) 12%, transparent)', color: 'var(--danger)', border: '1px solid color-mix(in srgb, var(--danger) 24%, transparent)' }}>{s}</span>
                 ))}
               </div>
             ) : (
-              <p className="premium-copy-wrap flex min-w-0 items-start gap-1 text-[10px] leading-4 text-[var(--text-secondary)]">
+              <p className="premium-copy-wrap flex min-w-0 items-start gap-1 text-[11px] leading-4 text-[var(--text-secondary)]">
                 <span className="material-symbols-rounded shrink-0 text-[12px] text-[var(--text-muted)]">remove</span>
                 <span className="min-w-0">
                   No gaps found across {profile.skills.fitAnalysisCount} analyzed{' '}
@@ -1331,18 +1178,19 @@ export default function IntelligencePage() {
             )}
           </div>
         </div>
+        </SuitePanel>
       </motion.div>
 
       {/* ── Wellbeing + Search pace ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Morale */}
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}
-          className="rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base" style={{ color: '#ec4899' }}>self_improvement</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">self_improvement</span>
             Wellbeing
           </h3>
           {/* Morale is self-reported on the Weekly Pulse tab. With no check-in
@@ -1355,8 +1203,8 @@ export default function IntelligencePage() {
               action={
                 <button
                   type="button"
-                  onClick={() => setActiveTab('pulse')}
-                  className="btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                  onClick={() => selectTab('pulse')}
+                  className="btn-secondary inline-flex min-h-11 items-center gap-1.5 px-3 py-2 text-xs font-semibold"
                 >
                   <span className="material-symbols-rounded text-[14px]">monitor_heart</span>
                   Check in on Weekly Pulse
@@ -1365,47 +1213,54 @@ export default function IntelligencePage() {
             />
           ) : (
           <div className="flex min-w-0 items-center gap-4">
-            <span className="material-symbols-rounded shrink-0 text-[36px]" style={{ color: ['#ef4444', '#f59e0b', '#6b7280', '#22c55e', '#10b981'][profile.morale.current - 1] || '#6b7280' }}>{['sentiment_very_dissatisfied', 'sentiment_dissatisfied', 'sentiment_neutral', 'sentiment_satisfied', 'sentiment_very_satisfied'][profile.morale.current - 1] || 'sentiment_neutral'}</span>
+            <span
+              className="material-symbols-rounded shrink-0 text-[36px]"
+              style={{ color: ['var(--danger)', 'var(--warning)', 'var(--text-muted)', 'var(--success)', 'var(--success)'][profile.morale.current - 1] || 'var(--text-muted)' }}
+            >{['sentiment_very_dissatisfied', 'sentiment_dissatisfied', 'sentiment_neutral', 'sentiment_satisfied', 'sentiment_very_satisfied'][profile.morale.current - 1] || 'sentiment_neutral'}</span>
             <div className="min-w-0">
               <p className="text-sm font-semibold tabular-nums text-[var(--text-primary)]">{profile.morale.current}/5 Morale</p>
               {profile.morale.trend && (
-                <p className="text-xs text-[var(--text-secondary)] capitalize">{profile.morale.trend} trend</p>
+                <p className="text-xs capitalize text-[var(--text-secondary)]">{profile.morale.trend} trend</p>
               )}
               {profile.morale.burnoutRisk && (
-                <p className="text-[10px] mt-0.5" style={{
-                  color: profile.morale.burnoutRisk === 'low' ? '#22c55e'
-                    : profile.morale.burnoutRisk === 'moderate' ? '#f59e0b' : '#ef4444',
-                }}>Burnout risk: {profile.morale.burnoutRisk}</p>
+                <p
+                  className="mt-0.5 text-[11px]"
+                  style={{
+                    color: profile.morale.burnoutRisk === 'low' ? 'var(--success)'
+                      : profile.morale.burnoutRisk === 'moderate' ? 'var(--warning)' : 'var(--danger)',
+                  }}
+                >Burnout risk: {profile.morale.burnoutRisk}</p>
               )}
             </div>
           </div>
           )}
           {profile.morale.history.length > 0 && (
-            <div className="flex items-end gap-0.5 h-8 mt-3">
+            <div className="mt-3 flex h-8 items-end gap-0.5">
               {profile.morale.history.map((m, i) => (
                 <motion.div key={m.week} className="flex-1 rounded-t-sm"
                   initial={{ height: 0 }}
                   animate={{ height: `${m.score * 20}%` }}
                   transition={{ delay: 0.8 + i * 0.05 }}
                   style={{
-                    background: m.score >= 4 ? '#22c55e' : m.score >= 3 ? '#f59e0b' : '#ef4444',
+                    background: m.score >= 4 ? 'var(--success)' : m.score >= 3 ? 'var(--warning)' : 'var(--danger)',
                     opacity: 0.6,
                   }}
                 />
               ))}
             </div>
           )}
+          </SuitePanel>
         </motion.div>
 
         {/* Search pace — counted, never projected. There is no honest weeks-to-offer
             number without the user's own offer conversion, which needs an offer. */}
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
-          className="min-w-0 rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base text-blue-500">speed</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">speed</span>
             Search pace
           </h3>
           {profile.pipeline.appliedApps > 0 ? (
@@ -1435,7 +1290,7 @@ export default function IntelligencePage() {
                   </div>
                 ))}
               </dl>
-              <p className="premium-copy-wrap mt-3 text-[10px] leading-4 text-[var(--text-muted)]">
+              <p className="premium-copy-wrap mt-3 text-[11px] leading-4 text-[var(--text-muted)]">
                 Counted from what you have tracked here. No timeline is projected from it.
               </p>
             </div>
@@ -1449,7 +1304,7 @@ export default function IntelligencePage() {
                 <button
                   type="button"
                   onClick={() => router.push('/suite/applications')}
-                  className="btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                  className="btn-secondary inline-flex min-h-11 items-center gap-1.5 px-3 py-2 text-xs font-semibold"
                 >
                   <span className="material-symbols-rounded text-[14px]">add</span>
                   Track an application
@@ -1457,11 +1312,13 @@ export default function IntelligencePage() {
               }
             />
           )}
+          </SuitePanel>
         </motion.div>
       </div>
 
+      </div></details>
       </>)}
-      </>)}
+      </div>)}
     </SuiteToolShell>
   );
 }

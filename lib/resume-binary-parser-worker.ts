@@ -6,11 +6,13 @@ import {
   ResumeParserSafetyError,
 } from '@/lib/resume-parser-safety';
 
-type BinaryResumeType = 'pdf' | 'docx' | 'doc';
+type BinaryResumeType = 'pdf' | 'docx';
 
 interface BinaryParseResult {
   text: string;
   pageCount?: number;
+  originalCharacterCount?: number;
+  truncated?: boolean;
 }
 
 const WORKER_SOURCE = String.raw`
@@ -52,17 +54,42 @@ async function parse() {
   const buffer = Buffer.from(workerData.bytes);
   const type = workerData.type;
   if (type === 'pdf') {
-    const pdfModule = require('pdf-parse');
-    const pdfParse = typeof pdfModule.default === 'function' ? pdfModule.default : pdfModule;
-    const data = await pdfParse(buffer, { max: workerData.limits.maxPdfPages });
-    const pages = Number(data.numpages);
+    // pdf-parse v1 bundles an old PDF.js parser that rejects valid PDFs with
+    // modern xref streams when loaded in a fresh worker. Use the installed
+    // PDF.js 4 legacy build directly and keep extraction page-bounded.
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const path = require('node:path');
+    const pdfjsRoot = path.dirname(require.resolve('pdfjs-dist/package.json'));
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(buffer), disableWorker: true, isEvalSupported: false, useSystemFonts: false,
+      cMapUrl: path.join(pdfjsRoot, 'cmaps') + path.sep, cMapPacked: true,
+      standardFontDataUrl: path.join(pdfjsRoot, 'standard_fonts') + path.sep,
+    });
+    const document = await loadingTask.promise;
+    const pages = Number(document.numPages);
     if (!Number.isFinite(pages) || pages < 1) {
       fail('PARSE_FAILED', 'This PDF does not contain readable pages.');
     }
     if (pages > workerData.limits.maxPdfPages) {
       fail('PARSE_FAILED', 'This PDF has more than ' + workerData.limits.maxPdfPages + ' pages. Upload a shorter resume.');
     }
-    return { text: String(data.text || '').slice(0, workerData.limits.maxExtractedChars), pageCount: pages };
+    const pageText = [];
+    for (let pageNumber = 1; pageNumber <= pages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      let line = '';
+      for (const item of content.items) {
+        if (typeof item.str !== 'string') continue;
+        line += item.str;
+        if (item.hasEOL) { pageText.push(line.trimEnd()); line = ''; }
+        else line += ' ';
+      }
+      if (line) pageText.push(line.trimEnd());
+      page.cleanup();
+    }
+    await document.cleanup();
+    const text = pageText.join('\n');
+    return { text: text.slice(0, workerData.limits.maxExtractedChars), originalCharacterCount: text.length, truncated: text.length > workerData.limits.maxExtractedChars, pageCount: pages };
   }
 
   if (type === 'docx') {
@@ -70,7 +97,8 @@ async function parse() {
   }
   const mammoth = require('mammoth');
   const result = await mammoth.extractRawText({ buffer });
-  return { text: String(result.value || '').slice(0, workerData.limits.maxExtractedChars) };
+  const text = String(result.value || '');
+  return { text: text.slice(0, workerData.limits.maxExtractedChars), originalCharacterCount: text.length, truncated: text.length > workerData.limits.maxExtractedChars };
 }
 
 parse()

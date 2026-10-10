@@ -12,6 +12,8 @@
  */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { workspacePreviewResponse } from '@/lib/workspace-preview-response';
+import { isIsolatedWorkspacePreview } from '@/lib/workspace-preview';
 
 // Track repeated 401s per IP for abuse detection
 const authFailures = new Map<string, { count: number; resetAt: number }>();
@@ -69,6 +71,26 @@ const BLOCKED_PATHS = [
 ];
 
 export function proxy(request: NextRequest) {
+  if (isIsolatedWorkspacePreview() && request.method === 'POST'
+    && ['127.0.0.1', 'localhost', '[::1]'].includes(request.nextUrl.hostname)
+    && request.nextUrl.pathname === '/api/gauntlet/parse-resume') {
+    const localImport = request.nextUrl.clone();
+    localImport.pathname = '/api/workspace-preview/resume-import';
+    return addSecurityHeaders(NextResponse.rewrite(localImport), request);
+  }
+  if (request.nextUrl.pathname === '/api/workspace-preview/resume-import'
+    && !isIsolatedWorkspacePreview()) {
+    return addSecurityHeaders(NextResponse.json({ error: 'Not found' }, { status: 404 }), request);
+  }
+  // Preview imports read the user's actual local file, never a fictional resume.
+  // This dedicated route cannot contact external services and repeats the guard.
+  if (isIsolatedWorkspacePreview() && request.method === 'POST'
+    && ['127.0.0.1', 'localhost', '[::1]'].includes(request.nextUrl.hostname)
+    && request.nextUrl.pathname === '/api/workspace-preview/resume-import') {
+    return addSecurityHeaders(NextResponse.next(), request);
+  }
+  const previewResponse = workspacePreviewResponse(request);
+  if (previewResponse) return addSecurityHeaders(previewResponse, request);
   const { pathname } = request.nextUrl;
 
   // ── 0. MAINTENANCE MODE GATE ──
@@ -178,6 +200,9 @@ export function proxy(request: NextRequest) {
  * Proxy headers apply to ALL responses including API routes.
  */
 function addSecurityHeaders(response: NextResponse, request: NextRequest): NextResponse {
+  if (isIsolatedWorkspacePreview()) {
+    response.headers.set('Content-Security-Policy', "connect-src 'self' ws://127.0.0.1:* ws://localhost:*; form-action 'self'");
+  }
   // Prevent clickjacking
   response.headers.set('X-Frame-Options', 'DENY');
   // Prevent MIME-type sniffing

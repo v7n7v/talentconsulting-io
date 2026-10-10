@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const snapshot = await db
       .collection('study_vault')
       .where('userId', '==', guard.user?.uid || 'anonymous')
-      .limit(200)
+      .limit(500)
       .get();
 
     const allItems = snapshot.docs
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => {
         const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bTime - aTime;
+        return bTime - aTime || b.id.localeCompare(a.id);
       });
 
     const filtered = allItems.filter(item => {

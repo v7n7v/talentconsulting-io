@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { guardApiRoute, incrementUsage } from '@/lib/api-auth';
+import { guardApiRoute } from '@/lib/api-auth';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { groqJSONCompletion } from '@/lib/ai/groq-client';
+import { z } from 'zod';
+import { requirePractice, resolvePracticeEvidence, practiceError } from '@/lib/practice-session-server';
 import { monitor } from '@/lib/monitor';
 
 type TranscriptEntry = { role: 'user' | 'ai'; text: string };
@@ -22,67 +24,11 @@ function clampScore(score: number): number {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-function fallbackGrade(transcript: TranscriptEntry[], telemetry: any) {
-  const userWords = transcript
-    .filter(entry => entry.role === 'user')
-    .flatMap(entry => entry.text.split(/\s+/).filter(Boolean)).length;
-  const questionCount = transcript.filter(entry => entry.role === 'ai' && entry.text.includes('?')).length;
-  const starScore = Number(telemetry?.starScore || 0);
-  const keywordCoverage = Number(telemetry?.keywordCoverage || 0);
-  const fillerRatio = Number(telemetry?.fillerRatio || 0);
-  const wpm = Number(telemetry?.wpm || 0);
-
-  const pacingScore = wpm === 0 ? 55 : wpm < 110 || wpm > 175 ? 68 : 84;
-  const fillerScore = fillerRatio > 6 ? 58 : fillerRatio > 3 ? 72 : 86;
-  const depthScore = userWords > 500 ? 84 : userWords > 180 ? 72 : 58;
-  const score = clampScore((starScore * 0.25) + (keywordCoverage * 0.2) + (pacingScore * 0.2) + (fillerScore * 0.15) + (depthScore * 0.2));
-
-  return {
-    score,
-    summary: questionCount > 0
-      ? 'Taco created a deterministic debrief from your transcript and delivery telemetry because AI grading was unavailable.'
-      : 'The session was too short for a full mock debrief. Add more answers to unlock stronger coaching.',
-    strengths: [
-      userWords > 180 ? 'You gave enough answer volume for meaningful coaching.' : 'You started the practice flow and created a baseline.',
-      fillerRatio <= 3 ? 'Your filler-word rate looks controlled.' : 'You have clear filler-word targets to practice next.',
-      keywordCoverage > 40 ? 'You referenced several role-relevant keywords.' : 'The transcript gives Taco a starting point for targeted drills.',
-    ],
-    improvements: [
-      starScore < 60 ? 'Use a clearer STAR arc: situation, task, action, result.' : 'Keep tightening STAR structure so every answer lands with impact.',
-      keywordCoverage < 55 ? 'Mirror more of the target role language from the job description.' : 'Connect keywords to concrete outcomes, not just mentions.',
-      wpm > 175 ? 'Slow down slightly and leave room for emphasis.' : wpm < 110 ? 'Add more energy and detail so answers do not feel underdeveloped.' : 'Preserve your current pacing while adding sharper examples.',
-    ],
-    answerFeedback: transcript.filter(entry => entry.role === 'user').slice(0, 5).map((entry, index) => ({
-      questionIndex: index + 1,
-      score: clampScore(score - 4 + index),
-      feedback: entry.text.split(/\s+/).length < 45
-        ? 'This answer is short. Add context, your direct action, and a measurable result.'
-        : 'This answer has enough substance. Tighten the opening and make the result more specific.',
-    })),
-    rubric: [
-      { label: 'Structure', score: clampScore(starScore || 55), note: 'Measured through STAR markers and answer organization.' },
-      { label: 'Delivery', score: clampScore((pacingScore + fillerScore) / 2), note: 'Measured through pacing and filler-word telemetry.' },
-      { label: 'Role Fit', score: clampScore(keywordCoverage || 50), note: 'Measured through job-description keyword coverage.' },
-    ],
-    recommendations: [
-      'Practice one behavioral answer with a measurable result.',
-      'Run a five-minute drill on the weakest category from this debrief.',
-      'Save strong answers into Story Bank so Taco can reuse them later.',
-    ],
-    nextDrills: [
-      { title: 'STAR Compression', focus: 'Answer in 90 seconds with one metric.' },
-      { title: 'Keyword Bridge', focus: 'Tie one role requirement to a real project.' },
-    ],
-    weakCategories: [
-      starScore < 60 ? 'STAR' : null,
-      fillerRatio > 3 ? 'filler_words' : null,
-      keywordCoverage < 55 ? 'specificity' : null,
-    ].filter(Boolean),
-  };
-}
-
 export async function POST(req: NextRequest) {
-  const guard = await guardApiRoute(req, { rateLimit: 8, rateLimitWindow: 60_000, feature: 'gauntlets' });
+  // Grading and retries use the reservation made when the practice was
+  // generated. Rechecking/incrementing the lifetime meter here used to deny a
+  // Free user's final debrief after their last permitted practice.
+  const guard = await guardApiRoute(req, { rateLimit: 8, rateLimitWindow: 60_000, skipUsageCap: true });
   if (guard.error) return guard.error;
 
   try {
@@ -91,13 +37,21 @@ export async function POST(req: NextRequest) {
     const telemetry = body?.telemetry && typeof body.telemetry === 'object' ? body.telemetry : {};
     const sessionId = cleanString(body?.sessionId, 120);
 
-    if (transcript.length === 0) {
+    const practice = await requirePractice(guard.user.uid, sessionId);
+    const persistedContext = practice.data;
+    const evidence = persistedContext.evidenceSnapshot || await resolvePracticeEvidence(guard.user.uid, persistedContext);
+    let persisted = true;
+    if (persistedContext.scores?.summary) return NextResponse.json({ grade: persistedContext.scores, success: true, persisted: true });
+
+    if (!transcript.some(entry => entry.role === 'user')) {
       return NextResponse.json({ error: 'Transcript required for session grading' }, { status: 400 });
     }
 
+    await practice.session.set({ transcript, updatedAt: new Date().toISOString() }, { merge: true });
+
     const systemPrompt = `You are Taco, a warm but precise interview coach for Talent Studio. Grade a complete practice interview session.
 
-Return concise, user-visible coaching only. Do not reveal hidden reasoning. Do not pretend this was a real employer interview. Use the transcript, telemetry, job description, role, company, persona, and interview type when present.
+Return concise, user-visible coaching only. Do not reveal hidden reasoning. Do not pretend this was a real employer interview. Assess answer content only. Do not infer speaking pace, delivery, or factual verification from text or elapsed time. Use the transcript, job description, role, company, persona, and interview type when present.
 
 Return valid JSON:
 {
@@ -114,12 +68,14 @@ Return valid JSON:
 }`;
 
     const userPrompt = JSON.stringify({
-      role: cleanString(body?.role, 180),
-      company: cleanString(body?.company, 180),
-      jobDescription: cleanString(body?.jobDescription, 5000),
-      persona: cleanString(body?.persona, 80),
-      interviewType: cleanString(body?.interviewType, 80),
-      telemetry,
+      role: cleanString(persistedContext.role || body?.role, 180),
+      company: cleanString(persistedContext.company || body?.company, 180),
+      jobDescription: cleanString(persistedContext.jobDescription || body?.jobDescription, 5000),
+      persona: cleanString(persistedContext.persona || body?.persona, 80),
+      interviewType: cleanString(persistedContext.interviewType || body?.interviewType, 80),
+      resumeVersionId: cleanString(persistedContext.resumeVersionId, 120),
+      selectedStoryIds: Array.isArray(persistedContext.selectedStoryIds) ? persistedContext.selectedStoryIds : [],
+      evidence,
       transcript,
     });
 
@@ -127,28 +83,43 @@ Return valid JSON:
     try {
       grade = await groqJSONCompletion(systemPrompt, userPrompt, { temperature: 0.35, maxTokens: 2600 });
     } catch (error) {
-      grade = fallbackGrade(transcript, telemetry);
+      monitor.warn('Interview grading unavailable', String(error));
+      return NextResponse.json({ error: 'Feedback is unavailable right now. Your saved transcript is still available for retry.', code: 'GRADING_UNAVAILABLE' }, { status: 503 });
     }
+
+    const str = z.string().min(1).max(6000);
+    const score = z.number().min(0).max(100);
+    grade = z.object({
+      score, summary: str, strengths: z.array(str).max(8), improvements: z.array(str).max(8),
+      answerFeedback: z.array(z.object({ questionIndex: z.number().int().positive(), score, feedback: str, rewriteTip: str })).max(120),
+      rubric: z.array(z.object({ label: str, score, note: str })).min(1).max(8),
+      recommendations: z.array(str).max(8), nextDrills: z.array(z.object({ title: str, focus: str })).max(8),
+      storyCandidates: z.array(z.object({ title: str, why: str })).max(8), weakCategories: z.array(str).max(8),
+    }).parse((grade as any)?.result || grade);
+    grade = { ...grade, provenance: 'AI assessment of practice answer content; not factual verification' };
 
     if (sessionId) {
       try {
         await getAdminDb().collection('users').doc(guard.user.uid).collection('interview_sessions').doc(sessionId).set({
           scores: grade,
-          recommendations: Array.isArray(grade?.recommendations) ? grade.recommendations : [],
-          nextDrills: Array.isArray(grade?.nextDrills) ? grade.nextDrills : [],
+          recommendations: Array.isArray((grade as any)?.recommendations) ? (grade as any).recommendations : [],
+          nextDrills: Array.isArray((grade as any)?.nextDrills) ? (grade as any).nextDrills : [],
           status: 'completed',
           completedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }, { merge: true });
-      } catch {
-        // Session persistence is best-effort from this endpoint.
+      } catch (persistError) {
+        persisted = false;
+        monitor.critical('Tool: interview/session-grade persistence', String(persistError));
       }
     }
 
-    incrementUsage(guard.user.uid, 'gauntlets').catch(() => {});
-    return NextResponse.json({ grade, success: true });
+    if (!persisted) {
+      return NextResponse.json({ error: 'Feedback was generated but could not be saved. Retry this session to save it.', code: 'PERSISTENCE_UNAVAILABLE', grade }, { status: 503 });
+    }
+    return NextResponse.json({ grade, success: true, persisted: true });
   } catch (error: any) {
     monitor.critical('Tool: interview/session-grade', String(error));
-    return NextResponse.json({ error: error.message || 'Failed to grade interview session' }, { status: 500 });
+    return NextResponse.json({ error: 'Feedback could not be saved. Retry this session.', code: practiceError(error).code }, { status: practiceError(error).status });
   }
 }

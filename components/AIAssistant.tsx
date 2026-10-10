@@ -205,16 +205,16 @@ export default function AIAssistant() {
         {/* Chat Window */}
         {isOpen && (
           <div className="fixed sm:absolute inset-0 sm:inset-auto sm:bottom-[68px] sm:right-6 w-full sm:w-[400px] h-full sm:h-[520px] pointer-events-auto">
-            <div className="h-full flex flex-col rounded-none sm:rounded-xl border border-[#2d2d2f] bg-[#131314] shadow-2xl shadow-black/50 overflow-hidden">
+            <div className="h-full flex flex-col rounded-none sm:rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] elevation-raised overflow-hidden">
               {/* Header */}
-              <div className="flex items-center justify-between px-4 h-12 border-b border-[#2d2d2f] bg-[#131314]">
+              <div className="flex items-center justify-between px-4 h-12 border-b border-[var(--border-subtle)] bg-[var(--card-bg)]">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#81c995]" />
-                  <span className="text-sm font-medium text-[#e3e3e3]">AI Assistant</span>
+                  <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
+                  <span className="text-sm font-medium text-[var(--text-primary)]">AI Assistant</span>
                 </div>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1 rounded-md hover:bg-[#1f1f21] text-[#8e918f] hover:text-[#e3e3e3] transition-colors duration-100"
+                  className="h-11 w-11 flex items-center justify-center rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors duration-100"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M18 6L6 18M6 6l12 12" />
@@ -231,12 +231,12 @@ export default function AIAssistant() {
                   >
                     <div
                       className={`max-w-[85%] rounded-lg px-3 py-2 ${message.role === 'user'
-                        ? 'bg-[rgba(168,199,250,0.15)] text-[#e3e3e3]'
-                        : 'bg-[#1a1a1b] text-[#e3e3e3]'
+                        ? 'bg-[var(--accent-dim)] text-[var(--text-primary)]'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-primary)]'
                       }`}
                     >
                       <p className="text-xs whitespace-pre-wrap leading-relaxed">{message.content || '...'}</p>
-                      <p className="text-[10px] mt-1 text-[#5f6368]">
+                      <p className="text-[11px] mt-1 text-[var(--text-muted)]">
                         {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -245,11 +245,11 @@ export default function AIAssistant() {
 
                 {isLoading && !isStreaming && (
                   <div className="flex justify-start">
-                    <div className="bg-[#1a1a1b] rounded-lg px-3 py-2">
+                    <div className="bg-[var(--bg-surface)] rounded-lg px-3 py-2">
                       <div className="flex gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#a8c7fa] animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#a8c7fa] animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#a8c7fa] animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-bounce" style={{ animationDelay: '300ms' }} />
                       </div>
                     </div>
                   </div>
@@ -266,7 +266,7 @@ export default function AIAssistant() {
                       <button
                         key={index}
                         onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                        className="text-[10px] px-2.5 py-1.5 rounded-full bg-transparent text-[#8e918f] border border-[#2d2d2f] hover:border-[#444746] hover:text-[#e3e3e3] transition-colors duration-100"
+                        className="inline-flex min-h-[44px] items-center text-[11px] px-2.5 py-1.5 rounded-full bg-transparent text-[var(--text-muted)] border border-[var(--border-subtle)] hover:border-[var(--border)] hover:text-[var(--text-primary)] transition-colors duration-100"
                       >
                         {prompt}
                       </button>
@@ -276,7 +276,7 @@ export default function AIAssistant() {
               )}
 
               {/* Input */}
-              <div className="px-3 py-3 border-t border-[#2d2d2f]">
+              <div className="px-3 py-3 border-t border-[var(--border-subtle)]">
                 <div className="flex gap-2">
                   <input
                     ref={inputRef}
@@ -286,12 +286,12 @@ export default function AIAssistant() {
                     onKeyPress={handleKeyPress}
                     placeholder="Ask about your applications, interviews..."
                     disabled={isLoading}
-                    className="flex-1 rounded-lg px-3 py-2 text-xs outline-none bg-[#1e1e1f] border border-[#2d2d2f] text-[#e3e3e3] placeholder-[#5f6368] focus:border-[#a8c7fa] disabled:opacity-50 transition-colors duration-100"
+                    className="flex-1 min-h-[44px] rounded-lg px-3 py-2 text-base outline-none bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] disabled:opacity-50 transition-colors duration-100"
                   />
                   <button
                     onClick={handleSend}
                     disabled={!input.trim() || isLoading}
-                    className="px-3 py-2 rounded-lg bg-[#a8c7fa] text-[#0b0b0b] hover:bg-[#c2e7ff] disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-100"
+                    className="min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-on)] hover:bg-[var(--accent-active)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-100"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -306,14 +306,14 @@ export default function AIAssistant() {
         {/* Toggle Button — flat, minimal */}
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-10 h-10 rounded-full bg-[#131314] border border-[#444746] flex items-center justify-center pointer-events-auto hover:bg-[#1f1f21] hover:border-[#a8c7fa] transition-colors duration-100 shadow-lg shadow-black/40"
+          className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-11 h-11 rounded-full bg-[var(--card-bg)] border border-[var(--border)] flex items-center justify-center pointer-events-auto text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:border-[var(--accent)] transition-colors duration-100 elevation-raised"
         >
           {isOpen ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e3e3e3" strokeWidth="1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8e918f" strokeWidth="1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           )}

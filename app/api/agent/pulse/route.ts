@@ -1,5 +1,7 @@
+import { invalidateTwin } from '@/lib/career-twin';
 import { NextRequest } from 'next/server';
 import { guardApiRoute } from '@/lib/api-auth';
+import { readApplicationRecords } from '@/lib/application-records-server';
 import { getAdminDb } from '@/lib/firebase-admin';
 import {
   countsAsApplied,
@@ -21,14 +23,12 @@ export async function GET(req: NextRequest) {
     const twoWeeksAgo = now - 14 * 86400000;
 
     // Fetch applications
-    const appsSnap = await db.collection('users').doc(uid).collection('applications')
-      .orderBy('createdAt', 'desc').limit(200).get();
-
-    const apps = appsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+    const applicationRead = await readApplicationRecords(uid);
+    const apps = applicationRead.records;
 
     // Pipeline counts
     const totalApps = apps.length;
-    const thisWeekApps = apps.filter((a: any) => new Date(a.createdAt).getTime() > oneWeekAgo).length;
+    const thisWeekApps = apps.filter((a: any) => countsAsApplied(a.status) && new Date(a.applied_at || '').getTime() > oneWeekAgo && new Date(a.applied_at || '').getTime() <= now).length;
 
     // Every funnel predicate comes from lib/career-graph so this tab and the
     // Overview tab on the same page cannot report different numbers for the
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
       // it would put `responded` above `appliedApps`.
       if (countsAsApplied(s)) {
         appliedApps++;
-        const sentTime = new Date(a.createdAt).getTime();
+        const sentTime = new Date(a.applied_at || '').getTime();
         if (Number.isFinite(sentTime) && sentTime < oldestSentTime) oldestSentTime = sentTime;
 
         if (countsAsInterview(a)) statusCounts.interviews++;
@@ -66,34 +66,37 @@ export async function GET(req: NextRequest) {
     const weeksActive = Number.isFinite(oldestSentTime)
       ? Math.max(1, Math.ceil((now - oldestSentTime) / (7 * 86400000)))
       : 1;
-    const weeklyRate = appliedApps > 0 ? Math.round((appliedApps / weeksActive) * 10) / 10 : 0;
+    const datedSentCount = apps.filter(a => countsAsApplied(a.status) && a.applied_at && Date.parse(a.applied_at) <= now).length;
+    const weeklyRate = datedSentCount > 0 ? Math.round((datedSentCount / weeksActive) * 10) / 10 : null;
 
     // Stale apps (applied > 30 days, no response)
     const staleApps = apps
       .filter((a: any) => {
         const s = (a.status || '').toLowerCase();
-        const daysAgo = Math.floor((now - new Date(a.createdAt).getTime()) / 86400000);
-        return (s === 'applied' || s === 'queued') && daysAgo > 30;
+        const daysAgo = Math.floor((now - new Date(a.applied_at || '').getTime()) / 86400000);
+        return s === 'applied' && daysAgo > 30;
       })
       .slice(0, 5)
       .map((a: any) => ({
+        id: a.id,
         company: a.company || a.companyName || '?',
         role: a.role || a.jobTitle || '?',
-        daysAgo: Math.floor((now - new Date(a.createdAt).getTime()) / 86400000),
+        daysAgo: Math.floor((now - new Date(a.applied_at || '').getTime()) / 86400000),
       }));
 
     // Follow-ups (applied 10-21 days ago, typical response window)
     const followUps = apps
       .filter((a: any) => {
         const s = (a.status || '').toLowerCase();
-        const daysAgo = Math.floor((now - new Date(a.createdAt).getTime()) / 86400000);
-        return (s === 'applied' || s === 'queued') && daysAgo >= 10 && daysAgo <= 21;
+        const daysAgo = Math.floor((now - new Date(a.applied_at || '').getTime()) / 86400000);
+        return s === 'applied' && daysAgo >= 10 && daysAgo <= 21;
       })
       .slice(0, 5)
       .map((a: any) => ({
+        id: a.id,
         company: a.company || a.companyName || '?',
         role: a.role || a.jobTitle || '?',
-        daysSinceApply: Math.floor((now - new Date(a.createdAt).getTime()) / 86400000),
+        daysSinceApply: Math.floor((now - new Date(a.applied_at || '').getTime()) / 86400000),
       }));
 
     /*
@@ -109,12 +112,13 @@ export async function GET(req: NextRequest) {
      */
     const UPCOMING_INTERVIEW_STATUSES = ['interview', 'interviewing', 'interview_scheduled'];
     const upcomingInterviews = apps
-      .filter((a: any) => UPCOMING_INTERVIEW_STATUSES.includes((a.status || '').toLowerCase()))
+      .filter((a: any) => UPCOMING_INTERVIEW_STATUSES.includes((a.status || '').toLowerCase()) && (!a.interview_date || Date.parse(a.interview_date) >= now))
       .slice(0, 3)
       .map((a: any) => ({
+        id: a.id,
         company: a.company || a.companyName || '?',
         role: a.role || a.jobTitle || '?',
-        date: a.interviewDate || a.updatedAt || a.createdAt,
+        date: a.interview_date || null,
       }));
 
     // Morale history
@@ -126,12 +130,14 @@ export async function GET(req: NextRequest) {
 
     // Smart Apply Rate (apps that used full pipeline). Null with no
     // applications — a share of nothing is unknown, not 0%.
-    const morphedCount = apps.filter((a: any) => a.resume_version_id).length;
+    const morphedCount = apps.filter((a: any) => countsAsApplied(a.status) && a.resume_version_id).length;
     const fitAnalyzedCount = apps.filter((a: any) => a.talent_density_score != null && a.talent_density_score > 0).length;
-    const smartApplyRate = totalApps > 0 ? Math.round(morphedCount / totalApps * 100) : null;
+    const smartApplyRate = appliedApps > 0 ? Math.round(morphedCount / appliedApps * 100) : null;
 
     return new Response(JSON.stringify({
       pulse: {
+        complete: applicationRead.complete,
+        unknownSubmissionDates: apps.filter(a => countsAsApplied(a.status) && !a.applied_at).length,
         totalApps,
         appliedApps,
         thisWeekApps,
@@ -164,7 +170,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { morale } = body;
 
-    if (!morale || morale < 1 || morale > 5) {
+    if (!Number.isInteger(morale) || morale < 1 || morale > 5) {
       return new Response(JSON.stringify({ error: 'Morale must be 1-5' }), {
         status: 400, headers: { 'Content-Type': 'application/json' },
       });
@@ -182,6 +188,7 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     }, { merge: true });
 
+    await invalidateTwin(uid).catch(error => console.error('Twin invalidation failed', error));
     return new Response(JSON.stringify({ success: true, week: weekKey }), {
       headers: { 'Content-Type': 'application/json' },
     });

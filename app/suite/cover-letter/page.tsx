@@ -1,5 +1,8 @@
 'use client';
 
+import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep } from '@/lib/tool-story-adapters';
+
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
@@ -39,8 +42,8 @@ function CopyButton({ text, label = 'Copy', className: cn }: { text: string; lab
   return (
     <button
       onClick={handleCopy}
-      className={cn || `flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-        copied ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20'
+      className={cn || `flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all ${
+        copied ? 'bg-[var(--bg-elevated)] text-[var(--success)] border-[var(--border-subtle)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]'
       }`}
     >
       <span className="material-symbols-rounded text-[14px]">{copied ? 'check' : 'content_copy'}</span>
@@ -170,25 +173,13 @@ function buildCoverLetterProofReport(input: {
     });
   });
 
-  const rejectedClaims = missingKeywords.slice(0, 5).map(keyword => ({
-    claim: keyword,
-    reason: 'ATS context marks this as missing or partial.',
-    decision: 'Block from the cover letter until the user provides evidence',
-  }));
-
-  if (!resumeText.trim()) {
-    rejectedClaims.push({
-      claim: 'Resume-specific achievements',
-      reason: 'No resume context is loaded for this cover letter.',
-      decision: 'Use only general positioning until a resume is selected',
-    });
-  }
+  const rejectedClaims: ProofEngineReportData['rejectedClaims'] = [];
 
   return {
-    title: 'Cover letter proof report',
-    description: 'This report checks whether the draft is grounded in the resume, tied to the job description, and still safe for user review before copy, save, or export.',
-    score: Math.max(0, Math.min(100, Math.round(result.toneScore || kitContext.atsResult?.data?.overallScore || 0))),
-    scoreLabel: 'Draft trust',
+    title: 'Draft review notes',
+    description: 'Keyword comparisons and source context help you review. These notes do not independently verify facts or validate later edits.',
+    score: kitContext.atsResult?.data?.overallScore ?? null,
+    scoreLabel: 'Resume–job coverage',
     sourceLabel: jobDescription.trim() ? 'Cover Letter Studio job description' : 'Cover Letter Studio target fields',
     requirements: requirements.slice(0, 12),
     preservedFacts: [
@@ -239,12 +230,12 @@ function buildCoverLetterProofReport(input: {
         tone: result.wordCount >= 200 && result.wordCount <= 375 ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
       },
       {
-        label: 'Tone score',
-        detail: `${result.toneScore}/100 tone score from the cover-letter generator.`,
-        tone: result.toneScore >= 80 ? 'success' as ProofCheckTone : 'warning' as ProofCheckTone,
+        label: 'Opening review',
+        detail: 'Review the opening and evidence for the tone you intend. Style is not a factual assessment.',
+        tone: 'neutral' as ProofCheckTone,
       },
       {
-        label: 'No-invention guard',
+        label: 'Keyword gaps',
         detail: missingKeywords.length > 0
           ? `${missingKeywords.length} keyword gap${missingKeywords.length === 1 ? '' : 's'} remain. Treat them as prompts, not claims.`
           : 'No ATS keyword gaps are attached to this cover-letter context.',
@@ -263,19 +254,18 @@ const TONES = [
   { id: 'conversational', icon: 'chat', label: 'Conversational', desc: 'Warm & natural' },
   { id: 'professional', icon: 'business_center', label: 'Professional', desc: 'Formal & polished' },
   { id: 'confident', icon: 'bolt', label: 'Confident', desc: 'Bold & assertive' },
-  { id: 'storytelling', icon: 'auto_stories', label: 'Storytelling', desc: 'Personal anecdote' },
+  { id: 'storytelling', icon: 'auto_stories', label: 'Reflective', desc: 'Introduce documented examples' },
 ];
 
 const TEMPLATES = [
-  { id: 'classic', icon: 'article', label: 'Classic', desc: '3 paragraphs' },
+  { id: 'classic', icon: 'article', label: 'Classic', desc: 'Evidence paragraphs' },
   { id: 'modern', icon: 'view_list', label: 'Modern', desc: 'Bullet-point style' },
-  { id: 'impact', icon: 'trending_up', label: 'Impact-Led', desc: 'Lead with achievements' },
-  { id: 'pain_point', icon: 'psychology', label: 'Pain Point', desc: 'Solve their problem' },
+  { id: 'impact', icon: 'trending_up', label: 'Reverse order', desc: 'Last source example first' },
 ];
 
 export default function CoverLetterPage() {
   const { user } = useStore();
-  const { context: kitContext, updateContext } = useApplicationKitContext();
+  const { context: kitContext, updateContext, captureGuard } = useApplicationKitContext();
   /* /api/agent/cover-letter answers a free user with 403 + `upgrade: true`, and
      this page used to render that as a red toast with no way out. The page is a
      click away from the Gallery's Career Writing row and from the landing rail,
@@ -296,87 +286,52 @@ export default function CoverLetterPage() {
   const [showSavedLetters, setShowSavedLetters] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  useToolGuidance(buildToolStory({
+    toolId: 'cover-letter', title: 'Cover letter', contextKey: JSON.stringify([kitContext.scopeId, kitContext.resumeVersionId]),
+    purpose: 'Arrange real resume evidence into a draft for this role, then review it before use.',
+    pending: loading || saving, hasResult: Boolean(result), failed: kitContext.coverLetterResult?.status === 'error', stale: kitContext.coverLetterResult?.status === 'stale',
+    blockedReason: !hasResumeContext ? 'Choose a real resume source before generating a letter.' : undefined,
+    work: [
+      storyStep('source', 'Confirm the source', 'Choose the resume and review its source context. Missing experience must stay missing.', 'cover-source'),
+      storyStep('target', 'Name this opening', 'Enter the company and job title; add the posting when available.', 'cover-company'),
+      storyStep('generate', 'Prepare a draft', 'Generate only when the source and target are ready. Help never spends an allowance.', 'cover-generate'),
+    ],
+    result: [
+      storyStep('review', 'Read and edit the letter', 'Check facts and wording in the actual draft. Generated text is not your approval.', 'cover-result'),
+      storyStep('save', 'Choose where it goes', 'Save stores the letter only after success. Copying or downloading does not send an application.', 'cover-save', 'Save appears with a letter for a signed-in account; copy/export choices remain in the result.'),
+    ],
+    recovery: [storyStep('error', 'Read the failed attempt', 'Review the existing generation error. Keep your source and target and choose whether to try again.', 'cover-error'), storyStep('retry', 'Retry explicitly', 'Generate again only when you choose. Earlier retained work is not a new successful result.', 'cover-generate')],
+  }));
   // Preview mode
   const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
-    if (kitContext.resumeSnapshot) {
-      setResumeContext(kitContext.resumeSnapshot);
-      setHasResumeContext(true);
-    }
-    if (kitContext.company && !company) setCompany(kitContext.company);
-    if ((kitContext.jobTitle || kitContext.targetRole) && !jobTitle) setJobTitle(kitContext.jobTitle || kitContext.targetRole || '');
-    if (kitContext.jobDescription && !jobDescription) setJobDescription(kitContext.jobDescription);
-    if (kitContext.coverLetterResult?.status === 'success' && kitContext.coverLetterResult.data && !result) {
-      setResult(kitContext.coverLetterResult.data as CoverLetterResult);
-    }
-  }, [kitContext.updatedAt]);
+    setResumeContext(kitContext.resumeSnapshot || null);
+    setHasResumeContext(Boolean(kitContext.resumeSnapshot));
+    setTone(kitContext.coverLetterTone || 'conversational');
+    setTemplate(kitContext.coverLetterTemplate || 'classic');
+    setCompany(kitContext.company || '');
+    setJobTitle(kitContext.jobTitle || kitContext.targetRole || '');
+    setJobDescription(kitContext.jobDescription || '');
+    const output = kitContext.coverLetterResult;
+    setResult(output?.status === 'success' && output.data ? output.data as CoverLetterResult : null);
+  }, [kitContext.ownerId, kitContext.scopeId, kitContext.revision, kitContext.coverLetterResult]);
 
-  // Auto-populate from Resume Studio draft (sessionStorage)
-  useEffect(() => {
-    try {
-      const draft = sessionStorage.getItem('talent-resume-draft');
-      if (!draft) return;
-      const parsed = JSON.parse(draft);
-
-      const contextPatch: any = {};
-
-      // Set resume context for API
-      if (parsed.morphedResume) {
-        setResumeContext(parsed.morphedResume);
-        setHasResumeContext(true);
-        contextPatch.resumeSnapshot = parsed.morphedResume;
-        contextPatch.resumeSource = 'resume_studio';
-      }
-
-      // Auto-fill company from explicit field, then fallback to regex
-      if (parsed.companyName) {
-        setCompany(parsed.companyName);
-        contextPatch.company = parsed.companyName;
-      } else if (parsed.jobDescription) {
-        const jd = parsed.jobDescription;
-        const companyMatch = jd.match(/(?:at|@|company[:\s]+|employer[:\s]+)\s*([A-Z][A-Za-z0-9\s&.,']+?)(?:\s*[-–—]|\s*\n|\s*is\s|\s*,)/i);
-        if (companyMatch) {
-          setCompany(companyMatch[1].trim());
-          contextPatch.company = companyMatch[1].trim();
-        }
-      }
-
-      // Auto-fill job title from explicit field or morphed resume title
-      if (parsed.jobTitle) {
-        setJobTitle(parsed.jobTitle);
-        contextPatch.jobTitle = parsed.jobTitle;
-        contextPatch.targetRole = parsed.jobTitle;
-      } else if (parsed.morphedResume?.title) {
-        setJobTitle(parsed.morphedResume.title);
-        contextPatch.jobTitle = parsed.morphedResume.title;
-        contextPatch.targetRole = parsed.morphedResume.title;
-      }
-
-      // Auto-fill JD if available
-      if (parsed.jobDescription) {
-        setJobDescription(parsed.jobDescription);
-        contextPatch.jobDescription = parsed.jobDescription;
-      }
-
-      if (Object.keys(contextPatch).length) updateContext(contextPatch);
-
-      showToast('Resume data loaded from your morph. Ready to generate.', 'check_circle');
-    } catch (e) {
-      // Silently fail — sessionStorage might not be available
-    }
-    // Only run on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { setLoading(false); setSaving(false); }, [kitContext.ownerId, kitContext.scopeId, kitContext.revision]);
 
   // Load saved cover letters
   useEffect(() => {
+    let current = true;
+    setSavedLetters([]); setLoading(false); setSaving(false);
     if (!user) return;
-    getCoverLetters().then(r => { if (r.success && r.data) setSavedLetters(r.data); });
+    const uid = user.uid;
+    getCoverLetters().then(r => { if (current && useStore.getState().user?.uid === uid && r.success && r.data) setSavedLetters(r.data); });
+    return () => { current = false; };
   }, [user]);
 
   const handleSaveLetter = async () => {
     if (!result || !company) return;
+    const isCurrent = captureGuard('coverLetterResult');
     setSaving(true);
     try {
       const res = await saveCoverLetter({
@@ -396,53 +351,50 @@ export default function CoverLetterPage() {
           company,
           jobTitle,
           jobDescription,
-          atsScore: kitContext.atsResult?.data?.overallScore || null,
+          atsScore: kitContext.atsResult?.data?.overallScore ?? null,
           keywordGaps: getMissingKeywordsFromAts(kitContext.atsResult?.data),
           sourceTool: 'cover_letter',
         },
       });
+      if (!isCurrent()) return;
       if (res.success) {
         showToast('Cover letter saved!', 'check_circle');
-        getCoverLetters().then(r => { if (r.success && r.data) setSavedLetters(r.data); });
+        getCoverLetters().then(r => { if (isCurrent() && r.success && r.data) setSavedLetters(r.data); });
       } else {
         showToast(res.error || 'Save failed', 'cancel');
       }
-    } catch { showToast('Save failed', 'cancel'); }
-    setSaving(false);
+    } catch { if (isCurrent()) showToast('Save failed', 'cancel'); }
+    finally { if (isCurrent()) setSaving(false); }
   };
 
   const handleDownloadPDF = async () => {
     if (!result) return;
+    const isCurrent = captureGuard('coverLetterResult');
     try {
       const { blob, filename } = await exportDocument(result.coverLetter, {
         title: `Cover Letter - ${company} - ${jobTitle}`,
         format: 'docx',
       });
+      if (!isCurrent()) return;
       downloadBlob(blob, filename);
       showToast('Downloaded!', 'download');
-    } catch { showToast('Download failed', 'cancel'); }
+    } catch { if (isCurrent()) showToast('Download failed', 'cancel'); }
   };
 
   const loadSavedLetter = (letter: CoverLetter) => {
-    setResult({
-      coverLetter: letter.content,
-      subject: letter.subject,
-      keyHighlights: letter.key_highlights || [],
-      wordCount: letter.word_count,
-      toneScore: letter.tone_score,
-    });
-    setCompany(letter.company);
-    setJobTitle(letter.job_title);
-    setTone(letter.tone);
-    setTemplate(letter.template);
-    if (letter.job_description) setJobDescription(letter.job_description);
-    setShowSavedLetters(false);
-    showToast(`Loaded letter for ${letter.company}`, 'check_circle');
+    const data = { coverLetter: letter.content, subject: letter.subject, keyHighlights: letter.key_highlights || [], wordCount: letter.word_count, toneScore: letter.tone_score };
+    updateContext({ company: letter.company, jobTitle: letter.job_title, jobDescription: letter.job_description || '',
+      coverLetterTone: letter.tone, coverLetterTemplate: letter.template,
+      resumeVersionId: letter.resume_version_id || null, resumeSnapshot: null, resumeText: '', resumeVersionName: '',
+      coverLetterResult: { status: 'success', data, updatedAt: new Date().toISOString() } });
+    setResult(data); setShowSavedLetters(false);
+    showToast(`Loaded saved draft for ${letter.company}. Select its source again to regenerate.`, 'check_circle');
   };
 
   const handleDeleteLetter = async (id: string) => {
+    const isCurrent = captureGuard('coverLetterResult');
     const res = await deleteCoverLetter(id);
-    if (res.success) {
+    if (isCurrent() && res.success) {
       setSavedLetters(prev => prev.filter(l => l.id !== id));
       showToast('Deleted', 'check_circle');
     }
@@ -453,7 +405,6 @@ export default function CoverLetterPage() {
       showToast('Company and job title are required', 'warning');
       return;
     }
-    const keywordGaps = getMissingKeywordsFromAts(kitContext.atsResult?.data);
     updateContext({
       company,
       jobTitle,
@@ -461,6 +412,7 @@ export default function CoverLetterPage() {
       jobDescription,
       coverLetterResult: { status: 'loading', updatedAt: new Date().toISOString() },
     });
+    const isCurrent = captureGuard('coverLetterResult');
     setLoading(true);
     try {
       const res = await authFetch('/api/agent/cover-letter', {
@@ -469,16 +421,16 @@ export default function CoverLetterPage() {
         body: JSON.stringify({
           company,
           jobTitle,
-          jobDescription: keywordGaps.length
-            ? `${jobDescription || ''}\n\nATS keyword gaps to address naturally: ${keywordGaps.join(', ')}`
-            : jobDescription,
+          jobDescription,
           tone,
           template,
+          resumeVersionId: kitContext.resumeVersionId,
           // Send morphed resume directly if available — API will use this instead of Firestore
           ...(resumeContext ? { resumeData: resumeContext } : {}),
         }),
       });
       const data = await res.json();
+      if (!isCurrent()) return;
       if (data.success) {
         setResult(data);
         updateContext({ coverLetterResult: { status: 'success', data, updatedAt: new Date().toISOString() } });
@@ -488,10 +440,11 @@ export default function CoverLetterPage() {
         if (!handleApiError(data)) showToast(data.error || 'Failed', 'cancel');
       }
     } catch (error: any) {
+      if (!isCurrent()) return;
       updateContext({ coverLetterResult: { status: 'error', error: error.message || 'Something went wrong', updatedAt: new Date().toISOString() } });
       showToast('Something went wrong', 'cancel');
     }
-    setLoading(false);
+    if (isCurrent()) setLoading(false);
   };
 
   const coverProofReport = result ? buildCoverLetterProofReport({
@@ -511,7 +464,7 @@ export default function CoverLetterPage() {
       <SuiteToolHeader
         tool="cover-letter"
         title="Cover Letter Studio"
-        subtitle="AI-crafted cover letters from your resume."
+        subtitle="Editable drafts that preserve evidence from your selected resume."
         icon="edit_document"
         pageHelpId="cover-letter"
         className="mb-4 md:mb-6"
@@ -530,7 +483,7 @@ export default function CoverLetterPage() {
         }
       />
 
-      <ApplicationKitContextBar
+      <div data-guide="cover-source"><ApplicationKitContextBar
         context={kitContext}
         activeTool="cover-letter"
         onChange={(patch) => {
@@ -547,7 +500,7 @@ export default function CoverLetterPage() {
             setHasResumeContext(true);
           }
         }}
-      />
+      /></div>
 
 
 
@@ -558,24 +511,24 @@ export default function CoverLetterPage() {
             <div className="rounded-2xl p-5" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <span className="material-symbols-rounded text-rose-500 text-lg">folder</span>
+                  <span className="material-symbols-rounded text-[var(--accent)] text-lg">folder</span>
                   Saved Cover Letters
                 </h3>
-                <button onClick={() => setShowSavedLetters(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                <button onClick={() => setShowSavedLetters(false)} className="flex items-center justify-center h-11 w-11 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
                   <span className="material-symbols-rounded text-lg">close</span>
                 </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
                 {savedLetters.map(letter => (
-                  <div key={letter.id} className="p-3 rounded-xl border border-[var(--border-subtle)] group relative" style={{ background: 'var(--bg-elevated)' }}>
-                    <button onClick={() => loadSavedLetter(letter)} className="text-left w-full">
+                  <div key={letter.id} className="p-3 rounded-xl border border-[var(--border-subtle)] elevation-card group relative" style={{ background: 'var(--bg-elevated)' }}>
+                    <button onClick={() => loadSavedLetter(letter)} className="text-left w-full pr-8">
                       <p className="text-[12px] font-bold text-[var(--text-primary)] truncate">{letter.company}</p>
-                      <p className="text-[10px] text-[var(--text-tertiary)]">{letter.job_title}</p>
-                      <p className="text-[9px] text-[var(--text-tertiary)] mt-1">{new Date(letter.created_at).toLocaleDateString()} • {letter.word_count} words</p>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">{letter.job_title}</p>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1">{new Date(letter.created_at).toLocaleDateString()} • {letter.word_count} words</p>
                     </button>
-                    <button onClick={() => handleDeleteLetter(letter.id)}
-                      className="absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-red-500/10 text-red-500 hover:bg-red-500/20">
-                      <span className="material-symbols-rounded text-[14px]">delete</span>
+                    <button onClick={() => handleDeleteLetter(letter.id)} aria-label="Delete cover letter"
+                      className="absolute top-1.5 right-1.5 h-11 w-11 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--danger)] hover:bg-[var(--bg-hover)]">
+                      <span className="material-symbols-rounded text-[16px]">delete</span>
                     </button>
                   </div>
                 ))}
@@ -592,20 +545,20 @@ export default function CoverLetterPage() {
             background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
           }}>
             <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <span className="material-symbols-rounded text-rose-500 text-lg">work</span>
+              <span className="material-symbols-rounded text-[var(--accent)] text-lg">work</span>
               Target Position
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] font-semibold text-[var(--text-tertiary)] block mb-1">Company *</label>
-                <input value={company} onChange={e => { setCompany(e.target.value); updateContext({ company: e.target.value }); }} placeholder="e.g. Stripe"
-                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-rose-500/50" />
+                <input data-guide="cover-company" value={company} onChange={e => { setCompany(e.target.value); updateContext({ company: e.target.value }); }} placeholder="e.g. Stripe"
+                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-base bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]" />
               </div>
               <div>
                 <label className="text-[11px] font-semibold text-[var(--text-tertiary)] block mb-1">Job Title *</label>
                 <input value={jobTitle} onChange={e => { setJobTitle(e.target.value); updateContext({ jobTitle: e.target.value, targetRole: e.target.value }); }} placeholder="e.g. Senior PM"
-                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-rose-500/50" />
+                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-base bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]" />
               </div>
             </div>
 
@@ -614,27 +567,27 @@ export default function CoverLetterPage() {
               <textarea value={jobDescription} onChange={e => { setJobDescription(e.target.value); updateContext({ jobDescription: e.target.value }); }}
                 placeholder="Paste the job description here for the best results..."
                 rows={5}
-                className="w-full px-3 py-2.5 rounded-xl text-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-rose-500/50 resize-none" />
+                className="w-full px-3 py-2.5 rounded-xl text-base bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] resize-none" />
             </div>
           </div>
 
           {/* Tone Picker */}
           <div className="rounded-2xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
             <h4 className="text-xs font-bold text-[var(--text-primary)] mb-2.5 flex items-center gap-1.5">
-              <span className="material-symbols-rounded text-[14px] text-rose-500">tune</span> Tone
+              <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">tune</span> Tone
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {TONES.map(t => (
-                <button key={t.id} onClick={() => setTone(t.id)}
+                <button key={t.id} onClick={() => { setTone(t.id); updateContext({ coverLetterTone: t.id }); }}
                   className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
-                    tone === t.id ? 'border-2 border-rose-500/40' : 'border border-[var(--border-subtle)]'
+                    tone === t.id ? 'border-2 border-[var(--accent)]' : 'border border-[var(--border-subtle)]'
                   }`}
-                  style={{ background: tone === t.id ? 'rgba(244,63,94,0.06)' : 'var(--bg-elevated)' }}
+                  style={{ background: tone === t.id ? 'var(--accent-dim)' : 'var(--bg-elevated)' }}
                 >
-                  <span className={`material-symbols-rounded text-lg ${tone === t.id ? 'text-rose-500' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
+                  <span className={`material-symbols-rounded text-lg ${tone === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
                   <div>
-                    <p className={`text-[11px] font-bold ${tone === t.id ? 'text-rose-500' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
-                    <p className="text-[9px] text-[var(--text-tertiary)]">{t.desc}</p>
+                    <p className={`text-[11px] font-bold ${tone === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">{t.desc}</p>
                   </div>
                 </button>
               ))}
@@ -644,20 +597,20 @@ export default function CoverLetterPage() {
           {/* Template Picker */}
           <div className="rounded-2xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
             <h4 className="text-xs font-bold text-[var(--text-primary)] mb-2.5 flex items-center gap-1.5">
-              <span className="material-symbols-rounded text-[14px] text-rose-500">dashboard</span> Template
+              <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">dashboard</span> Template
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {TEMPLATES.map(t => (
-                <button key={t.id} onClick={() => setTemplate(t.id)}
+                <button key={t.id} onClick={() => { setTemplate(t.id); updateContext({ coverLetterTemplate: t.id }); }}
                   className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
-                    template === t.id ? 'border-2 border-rose-500/40' : 'border border-[var(--border-subtle)]'
+                    template === t.id ? 'border-2 border-[var(--accent)]' : 'border border-[var(--border-subtle)]'
                   }`}
-                  style={{ background: template === t.id ? 'rgba(244,63,94,0.06)' : 'var(--bg-elevated)' }}
+                  style={{ background: template === t.id ? 'var(--accent-dim)' : 'var(--bg-elevated)' }}
                 >
-                  <span className={`material-symbols-rounded text-lg ${template === t.id ? 'text-rose-500' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
+                  <span className={`material-symbols-rounded text-lg ${template === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
                   <div>
-                    <p className={`text-[11px] font-bold ${template === t.id ? 'text-rose-500' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
-                    <p className="text-[9px] text-[var(--text-tertiary)]">{t.desc}</p>
+                    <p className={`text-[11px] font-bold ${template === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">{t.desc}</p>
                   </div>
                 </button>
               ))}
@@ -667,13 +620,14 @@ export default function CoverLetterPage() {
           <motion.button
             whileHover={{ scale: 1.005 }}
             whileTap={{ scale: 0.995 }}
+            data-guide="cover-generate"
             onClick={handleGenerate}
-            disabled={loading || !company || !jobTitle}
-            className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 text-white disabled:opacity-40 relative overflow-hidden group"
-            style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)', boxShadow: '0 4px 20px rgba(244,63,94,0.2)' }}
+            disabled={loading || !company || !jobTitle || !hasResumeContext}
+            className="w-full py-3 min-h-[44px] rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-[var(--accent)] text-[var(--accent-on)] elevation-card disabled:opacity-40 relative overflow-hidden group"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-            {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <div className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"
+              style={{ background: 'linear-gradient(to right, transparent, color-mix(in srgb, var(--text-on-action) 18%, transparent), transparent)' }} />
+            {loading ? <div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--accent-on) 35%, transparent)', borderTopColor: 'var(--accent-on)' }} />
               : <span className="material-symbols-rounded text-lg">auto_fix_high</span>}
             {loading ? 'Writing...' : 'Generate Cover Letter'}
           </motion.button>
@@ -681,23 +635,24 @@ export default function CoverLetterPage() {
           {loading && (
             <AssistantThinkingTile
               variant="resume"
-              accentColor="#f43f5e"
               icon="edit_document"
               title="Taco is drafting your cover letter"
-              description="Personalizing the opening, mapping resume proof, and checking tone."
+              description="Arranging your documented evidence with the selected opening."
               activeStage="writing"
-              stages={['Company hook', 'Resume proof', 'JD coverage', 'Polish']}
+              stages={['Selected source', 'Opening', 'Evidence', 'Review']}
               compact
             />
           )}
 
           {kitContext.coverLetterResult?.status === 'error' && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-500" role="alert">
+            <div data-guide="cover-error" className="rounded-xl border px-3 py-2 text-xs text-[var(--danger)]" role="alert"
+              style={{ background: 'color-mix(in srgb, var(--danger) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--danger) 30%, transparent)' }}>
               {kitContext.coverLetterResult.error || 'Cover letter generation failed. Check the target details and try again.'}
             </div>
           )}
           {kitContext.coverLetterResult?.status === 'success' && result && (
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2 text-xs text-emerald-500">
+            <div className="rounded-xl border px-3 py-2 text-xs text-[var(--success)]"
+              style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--success) 30%, transparent)' }}>
               Cover letter ready. Copy, export DOCX, save, or continue to LinkedIn.
             </div>
           )}
@@ -712,14 +667,14 @@ export default function CoverLetterPage() {
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
               >
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-                    <span className="material-symbols-rounded text-3xl text-rose-500">draw</span>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent-dim)] border border-[var(--border-subtle)] flex items-center justify-center">
+                    <span className="material-symbols-rounded text-3xl text-[var(--accent)]">draw</span>
                   </div>
                   <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Your Cover Letter</h3>
                   <p className="text-sm text-[var(--text-tertiary)] max-w-xs">
                     {hasResumeContext
-                      ? 'Your morphed resume is loaded. Choose tone & template, then generate.'
-                      : 'Choose your tone and template, then generate. We\'ll pull from your resume automatically.'}
+                      ? 'Your selected resume is loaded. Choose an opening and structure, then draft.'
+                      : 'Select a resume first. Drafts use that exact source; no automatic latest-resume fallback.'}
                   </p>
                 </div>
               </motion.div>
@@ -732,18 +687,18 @@ export default function CoverLetterPage() {
                   <div className="flex items-center gap-4">
                     <div className="text-center">
                       <p className="text-lg font-black text-[var(--text-primary)]">{result.wordCount}</p>
-                      <p className="text-[9px] text-[var(--text-tertiary)]">words</p>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">words</p>
                     </div>
                     <div className="w-px h-8" style={{ background: 'var(--border-subtle)' }} />
                     <div className="text-center">
-                      <p className="text-lg font-black text-rose-500">{result.toneScore}</p>
-                      <p className="text-[9px] text-[var(--text-tertiary)]">tone score</p>
+                      <p className="text-lg font-black text-[var(--accent)]">{result.toneScore ?? '—'}</p>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">style signal</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => setShowPreview(!showPreview)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        showPreview ? 'bg-rose-500/20 text-rose-500 border-rose-500/30' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-rose-500/30'
+                      className={`flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all ${
+                        showPreview ? 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)]'
                       }`}>
                       <span className="material-symbols-rounded text-[14px]">{showPreview ? 'edit_note' : 'preview'}</span>
                       {showPreview ? 'Raw' : 'Preview'}
@@ -760,18 +715,18 @@ export default function CoverLetterPage() {
                 }}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Review actions</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Review actions</p>
                       <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Use these after checking evidence, blocked claims, and missing requirements.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <CopyButton text={result.coverLetter} label="Copy letter" />
                       <button onClick={handleDownloadPDF}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20">
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]">
                         <span className="material-symbols-rounded text-[14px]">download</span>DOCX
                       </button>
                       {user && (
-                        <button onClick={handleSaveLetter} disabled={saving}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20 disabled:opacity-50">
+                        <button data-guide="cover-save" onClick={handleSaveLetter} disabled={saving}
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50">
                           <span className="material-symbols-rounded text-[14px]">{saving ? 'hourglass_top' : 'save'}</span>Save
                         </button>
                       )}
@@ -784,23 +739,23 @@ export default function CoverLetterPage() {
                   background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
                 }}>
                   <div>
-                    <p className="text-[10px] font-bold text-[var(--text-tertiary)] mb-0.5">EMAIL SUBJECT</p>
-                    <p className="text-sm text-[var(--text-primary)]">{result.subject}</p>
+                    <p className="text-[11px] font-bold text-[var(--text-tertiary)] mb-0.5">EMAIL SUBJECT</p>
+                    <input aria-label="Editable subject" value={result.subject} maxLength={300} onChange={event => { const data = { ...result, subject: event.target.value }; setResult(data); updateContext({ coverLetterResult: { status: "success", data, updatedAt: new Date().toISOString() } }); }} className="w-full text-sm text-[var(--text-primary)] bg-transparent" />
                   </div>
-                  <CopyButton text={result.subject} label="" className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-rose-500 hover:bg-rose-500/10 transition-all" />
+                  <CopyButton text={result.subject} label="" className="flex items-center justify-center h-11 w-11 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--accent-hover)] transition-all" />
                 </div>
 
                 {/* Cover Letter — Preview or Raw */}
                 {showPreview ? (
-                  <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border-subtle)' }}>
-                    <div className="bg-white p-8 md:p-12 text-slate-800 min-h-[400px]" style={{ fontFamily: "'Georgia', serif" }}>
+                  <div className="rounded-2xl overflow-hidden elevation-card" style={{ border: '1px solid var(--border-subtle)' }}>
+                    <div className="bg-[var(--card-bg)] p-8 md:p-12 text-[var(--text-primary)] min-h-[400px]" style={{ fontFamily: "'Georgia', serif" }}>
                       {/* Letter header */}
                       <div className="mb-8">
-                        <p className="text-sm text-slate-500">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                        <p className="text-sm text-slate-500 mt-1">{company} Hiring Team</p>
+                        <p className="text-sm text-[var(--text-muted)]">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                        <p className="text-sm text-[var(--text-muted)] mt-1">{company} Hiring Team</p>
                       </div>
                       {/* Letter body */}
-                      <div className="space-y-4 text-[15px] leading-relaxed text-slate-700">
+                      <div className="space-y-4 text-[15px] leading-relaxed text-[var(--text-secondary)]">
                         {result.coverLetter.split('\n\n').filter(Boolean).map((para, i) => (
                           <p key={i}>{para}</p>
                         ))}
@@ -811,22 +766,25 @@ export default function CoverLetterPage() {
                   <div className="rounded-2xl p-5" style={{
                     background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
                   }}>
-                    <div className="prose prose-sm max-w-none text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap text-sm">
-                      {result.coverLetter}
-                    </div>
+                    <textarea data-guide="cover-result"
+                      aria-label="Editable cover letter"
+                      value={result.coverLetter}
+                      onChange={(event) => { const data = { ...result, coverLetter: event.target.value, wordCount: event.target.value.trim() ? event.target.value.trim().split(/\s+/).length : 0 }; setResult(data); updateContext({ coverLetterResult: { status: 'success', data, updatedAt: new Date().toISOString() } }); }}
+                      className="min-h-[400px] w-full resize-y rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4 text-sm leading-relaxed text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+                    />
                   </div>
                 )}
 
                 {/* Key Highlights */}
                 {result.keyHighlights.length > 0 && (
                   <div className="rounded-2xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-                    <h4 className="text-[10px] font-bold text-rose-500 mb-2 flex items-center gap-1">
+                    <h4 className="text-xs font-bold text-[var(--accent)] mb-2 flex items-center gap-1">
                       <span className="material-symbols-rounded text-[14px]">star</span> KEY HIGHLIGHTS USED
                     </h4>
                     <div className="space-y-1.5">
                       {result.keyHighlights.map((h, i) => (
                         <div key={i} className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
-                          <span className="material-symbols-rounded text-[14px] text-rose-400 mt-0.5 shrink-0">check_circle</span>
+                          <span className="material-symbols-rounded text-[14px] text-[var(--accent)] mt-0.5 shrink-0">check_circle</span>
                           {h}
                         </div>
                       ))}
@@ -836,7 +794,7 @@ export default function CoverLetterPage() {
 
                 {/* Regenerate */}
                 <button onClick={handleGenerate} disabled={loading}
-                  className="w-full py-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 text-[var(--text-secondary)] border transition-all hover:border-rose-500/30"
+                  className="w-full py-2.5 min-h-[44px] rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 text-[var(--text-secondary)] border transition-all hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
                   style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
                 >
                   <span className="material-symbols-rounded text-[14px]">refresh</span> Regenerate with same settings

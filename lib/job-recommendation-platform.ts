@@ -853,7 +853,7 @@ export async function searchTalentJobSupply(params: JobSearchParams): Promise<Ta
   if (jobs.length === 0 || providerStatus.everJobs !== 'success') {
     const legacy = await searchLegacyJobs(params);
     providerStatus.fallbackUsed = true;
-    providerStatus.fallbackStatus = legacy.source.toLowerCase().includes('(error)')
+    providerStatus.fallbackStatus = legacy.source.toLowerCase().includes('(error)') || /disabled|no key/i.test(legacy.source)
       ? 'error'
       : legacy.jobs.length > 0
         ? 'success'

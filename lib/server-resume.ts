@@ -1,4 +1,5 @@
 import { normalizeVerifiedResumeProvenance } from '@/lib/resume-provenance';
+import { isValidWorkspaceMetadata } from '@/lib/resume-workspace';
 
 type ResumeSource = 'resume_versions' | 'vault' | 'profile';
 
@@ -44,19 +45,25 @@ function normalizeVaultResume(data: any) {
 }
 
 function isGeneratedResumeDraft(data: any) {
-  const source = String(data?.source || '').toLowerCase();
+  const source = String(data?.source || data?.metadata?.savedFrom || '').toLowerCase();
+  const savedFrom = String(data?.metadata?.savedFrom || '').toLowerCase();
   const mode = String(data?.mode || '').toLowerCase();
   const isSonaUpload = source === 'sona_upload' || source === 'sona_resume_upload';
   const hasMorphMetadata = Boolean(
     data?.guardrail_report
     || data?.morph_guardrail_report
-    || data?.morph_effective_percentage,
+    || data?.morph_effective_percentage
+    || data?.metadata?.guardrailReport
+    || data?.skill_graph?.guardrailReport,
   );
 
   return hasMorphMetadata
     || (source.startsWith('sona') && !isSonaUpload)
     || source.includes('agent')
     || source.includes('morph')
+    || source.includes('optimiz')
+    || savedFrom.includes('optimiz')
+    || savedFrom.includes('morph')
     || source.includes('auto_fix')
     || source.includes('nightly')
     || source.includes('apply_pipeline')
@@ -64,7 +71,20 @@ function isGeneratedResumeDraft(data: any) {
     || mode.includes('morph');
 }
 
-function classifyResumeVerification(data: any, source: ResumeSource): ResumeVerification {
+export function classifyResumeVerification(data: any, source: ResumeSource): ResumeVerification {
+  const workspace = data?.metadata?.workspace;
+  if (workspace != null && !isValidWorkspaceMetadata(workspace)) {
+    return { verified: false, kind: 'unverified', reason: 'Workspace lineage envelope is malformed.' };
+  }
+  if (workspace?.schemaVersion === 1) {
+    if (workspace.kind === 'resume') {
+      return { verified: false, kind: 'unverified', reason: 'Resume documents are never promoted to factual source records.' };
+    }
+    if (workspace.kind === 'experience' && (workspace.origin === 'user_upload' || workspace.origin === 'user_authored')) {
+      return { verified: true, kind: 'explicit_user_source', reason: 'Confirmed Experience revision with explicit source lineage.' };
+    }
+    return { verified: false, kind: 'unverified', reason: 'Workspace lineage is generated or unavailable.' };
+  }
   if (isGeneratedResumeDraft(data)) {
     return { verified: false, kind: 'unverified', reason: 'Generated or morphed resume output cannot be a source of truth.' };
   }

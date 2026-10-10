@@ -1,18 +1,35 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import PageHelp from '@/components/PageHelp';
+import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep } from '@/lib/tool-story-adapters';
+
+import { TacoName } from '@/components/BrandLogo';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getJobApplications, type JobApplication } from '@/lib/database-suite';
 import { useStore } from '@/lib/store';
 import AnimatedToolIcon, { type ToolIconTone } from '@/components/AnimatedToolIcon';
 import { AssistantMark } from '@/components/assistant';
-import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
+import {
+  SuiteToolHeader,
+  SuiteToolShell,
+  SuitePanel,
+  SuiteMetricCard,
+  SuiteEmptyState,
+  SuiteUnmeasured,
+} from '@/components/suite/SuiteToolChrome';
+import { networkRequestIsCurrent, saveNetworkDraft } from '@/lib/network-client-state';
 import { showToast } from '@/components/Toast';
 
 type ContactType = 'recruiter' | 'hiring_manager' | 'referral' | 'peer' | 'other';
 type InteractionType = 'email' | 'call' | 'meeting' | 'linkedin' | 'referral' | 'note';
 type ViewMode = 'command' | 'grid' | 'list' | 'company';
 type AttentionFilter = 'all' | 'attention' | 'due' | 'first_touch' | 'dormant' | 'linked';
+// Status carried by hue is one of three tokened meanings, distinct from the blue
+// interaction accent. Categorical contact types use the design system's tag tokens.
+type StatusTone = 'accent' | 'success' | 'warning';
+type TagHue = 'blue' | 'green' | 'amber' | 'purple' | 'neutral';
 
 interface ContactInteraction {
   type: InteractionType | string;
@@ -58,12 +75,11 @@ type ContactInsight = Contact & {
   isDormant: boolean;
   needsFirstTouch: boolean;
   needsAttention: boolean;
-  relationshipStrength: number;
   nextAction: {
     label: string;
     detail: string;
     icon: string;
-    color: string;
+    tone: StatusTone;
     priority: number;
   };
 };
@@ -83,51 +99,51 @@ const EMPTY_FORM: ContactFormState = {
 
 const CONTACT_TYPE_KEYS: ContactType[] = ['recruiter', 'hiring_manager', 'referral', 'peer', 'other'];
 
-const TYPE_CONFIG: Record<ContactType, { icon: string; label: string; tone: ToolIconTone; color: string; description: string }> = {
+const TYPE_CONFIG: Record<ContactType, { icon: string; label: string; tone: ToolIconTone; tag: TagHue; description: string }> = {
   recruiter: {
     icon: 'support_agent',
     label: 'Recruiter',
     tone: 'blue',
-    color: '#2563eb',
+    tag: 'blue',
     description: 'Talent partner, sourcer, or recruiting contact',
   },
   hiring_manager: {
     icon: 'person_pin',
     label: 'Hiring Manager',
     tone: 'emerald',
-    color: '#059669',
+    tag: 'green',
     description: 'Decision maker or future manager',
   },
   referral: {
     icon: 'groups',
     label: 'Referral',
     tone: 'amber',
-    color: '#d97706',
+    tag: 'amber',
     description: 'Warm intro, advocate, or internal sponsor',
   },
   peer: {
     icon: 'handshake',
     label: 'Peer',
     tone: 'violet',
-    color: '#7c3aed',
+    tag: 'purple',
     description: 'Colleague, alumni, or networking peer',
   },
   other: {
     icon: 'person',
     label: 'Other',
     tone: 'slate',
-    color: '#64748b',
+    tag: 'neutral',
     description: 'Useful contact outside the main buckets',
   },
 };
 
-const INTERACTION_CONFIG: Record<InteractionType, { icon: string; label: string; color: string }> = {
-  email: { icon: 'mail', label: 'Email', color: '#2563eb' },
-  call: { icon: 'call', label: 'Call', color: '#059669' },
-  meeting: { icon: 'event_available', label: 'Meeting', color: '#7c3aed' },
-  linkedin: { icon: 'open_in_new', label: 'LinkedIn', color: '#0891b2' },
-  referral: { icon: 'diversity_3', label: 'Referral', color: '#d97706' },
-  note: { icon: 'edit_note', label: 'Note', color: '#64748b' },
+const INTERACTION_CONFIG: Record<InteractionType, { icon: string; label: string }> = {
+  email: { icon: 'mail', label: 'Email' },
+  call: { icon: 'call', label: 'Call' },
+  meeting: { icon: 'event_available', label: 'Meeting' },
+  linkedin: { icon: 'open_in_new', label: 'LinkedIn' },
+  referral: { icon: 'diversity_3', label: 'Referral' },
+  note: { icon: 'edit_note', label: 'Note' },
 };
 
 const ACTIVE_APPLICATION_STATUSES: JobApplication['status'][] = [
@@ -139,9 +155,46 @@ const ACTIVE_APPLICATION_STATUSES: JobApplication['status'][] = [
   'offer',
 ];
 
-function soft(color: string, alpha = '14') {
-  return `${color}${alpha}`;
+// Status hue -> tokened CSS var. Blue accent is interaction; success/warning
+// carry state. Both themes flip automatically through the token cascade.
+function toneVar(tone: StatusTone) {
+  return tone === 'accent' ? '--accent' : tone === 'success' ? '--success' : '--warning';
 }
+
+// A tinted chip/icon-shell (fill + hairline + ink) built entirely from a status
+// token via color-mix, so it stays correct in light and dark with no literals.
+function toneChipStyle(tone: StatusTone): CSSProperties {
+  const v = toneVar(tone);
+  return {
+    color: `var(${v})`,
+    background: `color-mix(in srgb, var(${v}) 12%, transparent)`,
+    borderColor: `color-mix(in srgb, var(${v}) 30%, transparent)`,
+  };
+}
+
+// Categorical contact-type tint from the design system's tag tokens. Colour is
+// the last channel here: the glyph shape and label already identify the type.
+function tagChipStyle(tag: TagHue): CSSProperties {
+  if (tag === 'neutral') {
+    return {
+      color: 'var(--text-secondary)',
+      background: 'var(--bg-elevated)',
+      borderColor: 'var(--border-subtle)',
+    };
+  }
+  return {
+    color: `var(--tag-${tag}-text)`,
+    background: `var(--tag-${tag}-bg)`,
+    borderColor: `color-mix(in srgb, var(--tag-${tag}-text) 30%, transparent)`,
+  };
+}
+
+// Danger-tinted surface (delete/error) from the --danger token, both themes.
+const dangerChipStyle: CSSProperties = {
+  color: 'var(--danger)',
+  background: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+  borderColor: 'color-mix(in srgb, var(--danger) 25%, transparent)',
+};
 
 function normalizeDate(value: unknown): Date | null {
   if (!value) return null;
@@ -228,20 +281,13 @@ function buildInsight(contact: Contact, appMap: Map<string, JobApplication>): Co
   const isFollowUpDue = Boolean(contact.followUpDate && isPastOrToday(contact.followUpDate));
   const isDormant = !needsFirstTouch && (daysSinceLastContact ?? 0) >= 21;
 
-  let relationshipStrength = 1;
-  if (contact.email || contact.phone || contact.linkedin) relationshipStrength += 1;
-  if (interactions.length >= 1) relationshipStrength += 1;
-  if (interactions.length >= 3) relationshipStrength += 1;
-  if (linkedApplication || (daysSinceLastContact !== null && daysSinceLastContact <= 14)) relationshipStrength += 1;
-  relationshipStrength = Math.min(5, relationshipStrength);
-
   let nextAction: ContactInsight['nextAction'];
   if (isFollowUpDue) {
     nextAction = {
       label: 'Follow up today',
       detail: `Due ${formatDate(contact.followUpDate)}`,
       icon: 'notification_important',
-      color: '#d97706',
+      tone: 'warning',
       priority: 1,
     };
   } else if (needsFirstTouch) {
@@ -249,7 +295,7 @@ function buildInsight(contact: Contact, appMap: Map<string, JobApplication>): Co
       label: 'Log first touch',
       detail: 'Add your first email, call, or note',
       icon: 'add_comment',
-      color: '#2563eb',
+      tone: 'accent',
       priority: 2,
     };
   } else if (linkedApplication && ACTIVE_APPLICATION_STATUSES.includes(linkedApplication.status)) {
@@ -257,7 +303,7 @@ function buildInsight(contact: Contact, appMap: Map<string, JobApplication>): Co
       label: 'Use this connection',
       detail: `${linkedApplication.company_name}, ${linkedApplication.job_title || 'active role'}`,
       icon: 'link',
-      color: '#059669',
+      tone: 'success',
       priority: 3,
     };
   } else if (isDormant) {
@@ -265,7 +311,7 @@ function buildInsight(contact: Contact, appMap: Map<string, JobApplication>): Co
       label: 'Reconnect',
       detail: `${daysSinceLastContact} days since last contact`,
       icon: 'history',
-      color: '#7c3aed',
+      tone: 'warning',
       priority: 4,
     };
   } else {
@@ -273,7 +319,7 @@ function buildInsight(contact: Contact, appMap: Map<string, JobApplication>): Co
       label: 'Keep warm',
       detail: daysSinceLastContact === null ? 'Ready for notes' : `Last contact ${daysSinceLastContact} days ago`,
       icon: 'check_circle',
-      color: '#059669',
+      tone: 'success',
       priority: 8,
     };
   }
@@ -286,7 +332,6 @@ function buildInsight(contact: Contact, appMap: Map<string, JobApplication>): Co
     isDormant,
     needsFirstTouch,
     needsAttention: isFollowUpDue || needsFirstTouch || isDormant || Boolean(linkedApplication && ACTIVE_APPLICATION_STATUSES.includes(linkedApplication.status)),
-    relationshipStrength,
     nextAction,
   };
 }
@@ -297,10 +342,14 @@ function dispatchSona(prompt: string, contextLabel = 'Network CRM') {
 
 export default function NetworkPage() {
   const { user } = useStore();
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [applications, setApplications] = useState<JobApplication[]>([]);
+  const [storedContacts, setContacts] = useState<Contact[]>([]);
+  const [loadedOwner, setLoadedOwner] = useState<string | undefined>();
+  const contacts = loadedOwner === user?.uid ? storedContacts : [];
+  const [storedApplications, setApplications] = useState<JobApplication[]>([]);
+  const applications = loadedOwner === user?.uid ? storedApplications : [];
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [storyFailure, setStoryFailure] = useState(false);
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -309,11 +358,18 @@ export default function NetworkPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('command');
   const [addForm, setAddForm] = useState<ContactFormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const addStoryOperation = useRef(0);
+  useEffect(() => { setStoryFailure(false); }, [user?.uid, selectedContactId, showAddPanel]);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
 
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const lifecycle = useRef({ owner: user?.uid, selection: selectedContactId });
+  lifecycle.current = { owner: user?.uid, selection: selectedContactId };
+  const requestSequence = useRef(0);
   const token = (user as any)?.accessToken || (user as any)?.stsTokenManager?.accessToken;
 
-  async function loadData() {
+  async function loadData(cursor?: string) {
+    const owner = user?.uid; const sequence = ++requestSequence.current;
     if (!user || !token) {
       setLoading(false);
       return;
@@ -323,27 +379,30 @@ export default function NetworkPage() {
     setError('');
     try {
       const [networkResponse, appsResult] = await Promise.all([
-        fetch('/api/agent/network', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`/api/agent/network${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { headers: { Authorization: `Bearer ${token}` } }),
         getJobApplications(),
       ]);
       const networkData = await networkResponse.json();
       if (!networkResponse.ok || !networkData.success) throw new Error(networkData.error || 'Failed to fetch contacts.');
-      setContacts(networkData.contacts || []);
+      if (sequence !== requestSequence.current || !networkRequestIsCurrent({ owner }, lifecycle.current)) return;
+      setLoadedOwner(owner);
+      setContacts(previous => cursor ? [...new Map([...previous, ...(networkData.contacts || [])].map(contact => [contact.id, contact])).values()] : networkData.contacts || []);
+      setNextCursor(networkData.nextCursor || null);
       if (appsResult.success) setApplications(appsResult.data || []);
     } catch (loadError: any) {
-      setError(loadError.message || 'Could not load Network CRM.');
+      if (sequence === requestSequence.current && networkRequestIsCurrent({ owner }, lifecycle.current)) setError(loadError.message || 'Could not load Network CRM.');
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current && networkRequestIsCurrent({ owner }, lifecycle.current)) setLoading(false);
     }
   }
 
   useEffect(() => {
+    requestSequence.current++; setContacts([]); setApplications([]); setSelectedContactId(null); setShowAddPanel(false); setAddForm(EMPTY_FORM); setNextCursor(null); setError(''); setSaving(false);
     loadData();
-  }, [user, token]);
+  }, [user?.uid, token]);
 
-  useEffect(() => {
-    if (selectedContactId) drawerCloseRef.current?.focus();
-  }, [selectedContactId]);
+
+  useEffect(() => { setSaving(false); }, [selectedContactId]);
 
   const appMap = useMemo(() => {
     return new Map(applications.map(application => [application.id, application]));
@@ -393,9 +452,6 @@ export default function NetworkPage() {
 
   const metrics = useMemo(() => {
     const interactionCount = contacts.reduce((sum, contact) => sum + (contact.interactions?.length || 0), 0);
-    const avgStrength = enrichedContacts.length
-      ? (enrichedContacts.reduce((sum, contact) => sum + contact.relationshipStrength, 0) / enrichedContacts.length).toFixed(1)
-      : '0';
     return {
       total: contacts.length,
       attention: enrichedContacts.filter(contact => contact.needsAttention).length,
@@ -403,7 +459,6 @@ export default function NetworkPage() {
       referrals: enrichedContacts.filter(contact => contact.type === 'referral').length,
       linked: enrichedContacts.filter(contact => contact.linkedApplication).length,
       interactions: interactionCount,
-      avgStrength,
     };
   }, [contacts, enrichedContacts]);
 
@@ -412,35 +467,30 @@ export default function NetworkPage() {
       label: 'Due follow-ups',
       value: metrics.due,
       icon: 'notification_important',
-      color: '#d97706',
       onClick: () => { setAttentionFilter('due'); setViewMode('command'); },
     },
     {
       label: 'First touch needed',
       value: enrichedContacts.filter(contact => contact.needsFirstTouch).length,
       icon: 'add_comment',
-      color: '#2563eb',
       onClick: () => { setAttentionFilter('first_touch'); setViewMode('command'); },
     },
     {
       label: 'Dormant contacts',
       value: enrichedContacts.filter(contact => contact.isDormant).length,
       icon: 'history',
-      color: '#7c3aed',
       onClick: () => { setAttentionFilter('dormant'); setViewMode('command'); },
     },
     {
       label: 'Warm referrals',
       value: metrics.referrals,
       icon: 'diversity_3',
-      color: '#d97706',
       onClick: () => { setFilterType('referral'); setViewMode('grid'); },
     },
     {
       label: 'Linked to apps',
       value: metrics.linked,
       icon: 'link',
-      color: '#059669',
       onClick: () => { setAttentionFilter('linked'); setViewMode('list'); },
     },
   ];
@@ -448,11 +498,13 @@ export default function NetworkPage() {
   const hasFilters = Boolean(searchQuery.trim()) || filterType !== 'all' || attentionFilter !== 'all';
 
   async function createContact() {
+    const started = { ...lifecycle.current };
     if (!addForm.name.trim()) {
       showToast('Name is required', 'warning');
       return;
     }
-    setSaving(true);
+    const storyOperation = ++addStoryOperation.current;
+    setSaving(true); setStoryFailure(false);
     try {
       const response = await fetch('/api/agent/network', {
         method: 'POST',
@@ -467,19 +519,23 @@ export default function NetworkPage() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'Failed to add contact.');
+      if (!networkRequestIsCurrent(started, lifecycle.current)) return;
       showToast('Contact added', 'person_add');
       setAddForm(EMPTY_FORM);
       setShowAddPanel(false);
       await loadData();
     } catch (createError: any) {
+      if (!networkRequestIsCurrent(started, lifecycle.current)) return;
+      if (storyOperation === addStoryOperation.current) setStoryFailure(true);
       showToast(createError.message || 'Failed to add contact', 'cancel');
     } finally {
-      setSaving(false);
+      if (networkRequestIsCurrent(started, lifecycle.current)) setSaving(false);
     }
   }
 
   async function updateContact(id: string, updates: Partial<ContactFormState>) {
-    setSaving(true);
+    const started = { ...lifecycle.current };
+    setSaving(true); setStoryFailure(false);
     try {
       const payload = {
         ...updates,
@@ -494,17 +550,22 @@ export default function NetworkPage() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'Failed to update contact.');
+      if (!networkRequestIsCurrent(started, lifecycle.current)) return;
       showToast('Contact updated', 'check');
       await loadData();
     } catch (updateError: any) {
+      if (!networkRequestIsCurrent(started, lifecycle.current)) return;
+      setStoryFailure(true);
       showToast(updateError.message || 'Failed to update contact', 'cancel');
     } finally {
-      setSaving(false);
+      if (networkRequestIsCurrent(started, lifecycle.current)) setSaving(false);
     }
   }
 
   async function deleteContact(id: string) {
-    setSaving(true);
+    if (!window.confirm('Delete this contact and its interaction history? This cannot be undone.')) return;
+    const started = { ...lifecycle.current };
+    setSaving(true); setStoryFailure(false);
     try {
       const response = await fetch('/api/agent/network', {
         method: 'POST',
@@ -513,28 +574,32 @@ export default function NetworkPage() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'Failed to delete contact.');
+      if (!networkRequestIsCurrent(started, lifecycle.current)) return;
       setContacts(prev => prev.filter(contact => contact.id !== id));
       if (selectedContactId === id) setSelectedContactId(null);
       showToast('Contact removed', 'delete');
     } catch (deleteError: any) {
+      if (!networkRequestIsCurrent(started, lifecycle.current)) return;
       showToast(deleteError.message || 'Failed to delete contact', 'cancel');
     } finally {
-      setSaving(false);
+      if (networkRequestIsCurrent(started, lifecycle.current)) setSaving(false);
     }
   }
 
-  async function logInteraction(id: string, interactionType: InteractionType, note: string, followUpDate: string) {
+  async function logInteraction(id: string, interactionType: InteractionType, note: string, followUpDate: string, requestId: string): Promise<boolean> {
+    const started = { ...lifecycle.current };
     if (!note.trim()) {
       showToast('Add a short note before logging', 'warning');
-      return;
+      return false;
     }
-    setSaving(true);
+    setSaving(true); setStoryFailure(false);
     try {
       const response = await fetch('/api/agent/network', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           action: 'log_interaction',
+          requestId,
           id,
           interactionType,
           note,
@@ -543,14 +608,26 @@ export default function NetworkPage() {
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'Failed to log interaction.');
+      if (!networkRequestIsCurrent(started, lifecycle.current)) return false;
       showToast('Interaction logged', 'check');
       await loadData();
+      return true;
     } catch (logError: any) {
-      showToast(logError.message || 'Failed to log interaction', 'cancel');
+      if (networkRequestIsCurrent(started, lifecycle.current)) { setStoryFailure(true); showToast(logError.message || 'Failed to log interaction', 'cancel'); }
+      return false;
     } finally {
-      setSaving(false);
+      if (networkRequestIsCurrent(started, lifecycle.current)) setSaving(false);
     }
   }
+
+  useToolGuidance(buildToolStory({
+    toolId: 'network', title: 'Network', contextKey: JSON.stringify([selectedContactId || 'contacts', showAddPanel, viewMode]), modalSurface: showAddPanel ? 'network-add-contact' : selectedContact ? 'network-contact' : undefined,
+    purpose: 'Keep genuine contact context and record interactions or follow-up choices.',
+    pending: loading || saving, hasResult: Boolean(selectedContact && !showAddPanel), failed: Boolean(error) || storyFailure,
+    work: showAddPanel ? [storyStep('form', 'Review the contact details', 'Enter the actual relationship and follow-up context. A failed save leaves the draft available.', 'network-add-form'), storyStep('save', 'Save the real contact', 'Choose Add contact yourself when the details are ready. Guidance never creates a contact or sends outreach.', 'network-save-contact')] : [storyStep('find', 'Find a contact', 'Search the loaded network and choose a genuine contact. Empty history needs a real person you know.', 'network-search'), storyStep('add', 'Add genuine context', 'Use Add contact when you want to create a real record. Guidance does not fill in or save a contact.', 'network-add'), ...(showAddPanel ? [storyStep('form', 'Review the contact details', 'Enter the actual relationship and follow-up context, then save yourself. A failed save leaves the draft available.', 'network-add-form')] : [])],
+    result: [storyStep('context', 'Review the relationship', 'Read this contact and its actual interaction history. Suggested outreach is only a draft.', 'network-detail'), storyStep('record', 'Record what happened', 'Log interaction saves your note after success. It does not send a message to the contact.', 'network-log')],
+    recovery: [storyStep('retry', 'Review the load error', 'Keep current work and use the existing retry control. A failed action does not establish a saved note.', showAddPanel ? 'network-add-form' : selectedContact ? 'network-detail' : 'network-search')],
+  }));
 
   return (
     <SuiteToolShell variant="workbench">
@@ -561,17 +638,18 @@ export default function NetworkPage() {
               <button
                 type="button"
                 onClick={() => dispatchSona('Review my Network CRM and tell me who I should follow up with first.', 'Network CRM')}
-                className="inline-flex items-center gap-2 rounded-[12px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-600 transition-colors hover:bg-cyan-500/15 dark:text-cyan-300"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-[12px] border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-sm font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-hover)]"
               >
                 <AssistantMark size="xs" state="idle" />
-                Ask Taco
+                Ask <TacoName />
               </button>
               <button
                 type="button"
+                data-guide="network-add"
                 onClick={() => setShowAddPanel(true)}
                 disabled={!user || !token}
                 title={!user || !token ? 'Sign in to add contacts' : undefined}
-                className="inline-flex items-center gap-2 rounded-[12px] border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300"
+                className="btn-primary inline-flex min-h-[44px] items-center gap-2 rounded-[12px] px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="material-symbols-rounded text-[18px]">person_add</span>
                 Add contact
@@ -580,51 +658,49 @@ export default function NetworkPage() {
           }
         />
 
+        {/* The cockpit's counts only mean something once real contacts are loaded.
+            Rendering it during loading / signed-out would show measured-zero
+            metrics for data we never measured (MUST6), so it is gated. */}
+        {!loading && !error && user && token && contacts.length > 0 && (
+          <>
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {todayActions.map(action => (
-            <button
+            <SuiteMetricCard
               key={action.label}
-              type="button"
+              label={action.label}
+              value={action.value}
+              icon={action.icon}
               onClick={action.onClick}
-              className="group rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-[13px] border" style={{ color: action.color, background: soft(action.color), borderColor: soft(action.color, '28') }}>
-                  <span className="material-symbols-rounded text-[21px]">{action.icon}</span>
-                </span>
-                <span className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">{action.value}</span>
-              </div>
-              <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{action.label}</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">Open the matching queue</p>
-            </button>
+            />
           ))}
         </section>
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric label="Total contacts" value={metrics.total} icon="group" tone="#7c3aed" />
-          <Metric label="Needs attention" value={metrics.attention} icon="priority_high" tone="#d97706" />
-          <Metric label="Interactions logged" value={metrics.interactions} icon="forum" tone="#0891b2" />
-          <Metric label="Avg strength" value={`${metrics.avgStrength}/5`} icon="network_node" tone="#059669" />
+          <SuiteMetricCard label={nextCursor ? "Contacts loaded" : "Total contacts"} value={metrics.total} icon="group" />
+          <SuiteMetricCard label="Needs attention" value={metrics.attention} icon="priority_high" />
+          <SuiteMetricCard label="Interactions logged" value={metrics.interactions} icon="forum" />
+          <SuiteMetricCard label="Linked applications" value={metrics.linked} icon="link" />
         </section>
 
-        <section className="rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+        <section className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
           <div className="grid gap-2 xl:grid-cols-[1fr_170px_210px_auto]">
             <label className="flex min-w-0 items-center gap-2">
               <span className="pointer-events-none flex h-11 w-11 shrink-0 items-center justify-center rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-muted)]" aria-hidden="true">
                 <span className="material-symbols-rounded block text-[22px] leading-none">search</span>
               </span>
               <input
+                data-guide="network-search"
                 value={searchQuery}
                 onChange={event => setSearchQuery(event.target.value)}
                 placeholder="Search name, company, role, email, notes..."
                 aria-label="Search contacts"
-                className="h-11 min-w-0 flex-1 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+                className="h-11 min-w-0 flex-1 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
               />
             </label>
             <select
               value={filterType}
               onChange={event => setFilterType(event.target.value as ContactType | 'all')}
-              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/25"
+              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
               <option value="all">All types</option>
               {CONTACT_TYPE_KEYS.map(type => <option key={type} value={type}>{TYPE_CONFIG[type].label}</option>)}
@@ -632,7 +708,7 @@ export default function NetworkPage() {
             <select
               value={attentionFilter}
               onChange={event => setAttentionFilter(event.target.value as AttentionFilter)}
-              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/25"
+              className="h-11 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
               <option value="all">All relationship states</option>
               <option value="attention">Needs attention</option>
@@ -653,10 +729,10 @@ export default function NetworkPage() {
                   type="button"
                   aria-label={`${view.label} view`}
                   onClick={() => setViewMode(view.mode)}
-                  className={`group relative grid h-9 w-10 place-items-center rounded-[10px] transition-colors ${viewMode === view.mode ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                  className={`group relative grid h-11 w-11 place-items-center rounded-[10px] transition-colors ${viewMode === view.mode ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] elevation-card' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                 >
                   <span className="material-symbols-rounded text-[18px]" aria-hidden="true">{view.icon}</span>
-                  <span className="pointer-events-none absolute -top-8 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[10px] font-semibold leading-none text-[var(--text-secondary)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  <span className="pointer-events-none absolute -top-8 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] font-semibold leading-none text-[var(--text-secondary)] opacity-0 elevation-card transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                     {view.label}
                   </span>
                 </button>
@@ -664,11 +740,13 @@ export default function NetworkPage() {
             </div>
           </div>
         </section>
+          </>
+        )}
 
         {loading ? (
           <NetworkSkeleton />
         ) : error ? (
-          <ErrorState message={error} onRetry={loadData} />
+          <ErrorState message={error} onRetry={() => loadData()} />
         ) : !user || !token ? (
           <SignedOutState />
         ) : contacts.length === 0 ? (
@@ -690,11 +768,10 @@ export default function NetworkPage() {
           <CompanyView contacts={filteredContacts} onOpen={setSelectedContactId} />
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filteredContacts.map((contact, index) => (
+            {filteredContacts.map(contact => (
               <ContactCard
                 key={contact.id}
                 contact={contact}
-                index={index}
                 onOpen={setSelectedContactId}
                 onDelete={deleteContact}
               />
@@ -703,7 +780,9 @@ export default function NetworkPage() {
         )}
 
 
-      <ContactDrawer
+      {nextCursor && <div className="rounded-xl border p-3"><p className="text-xs">Search and counts cover loaded contacts. Load more to include the rest of your network.</p><button disabled={loading} onClick={() => loadData(nextCursor)} className="min-h-11 px-4">Load more contacts</button></div>}
+
+      <ContactDrawer key={`${user?.uid}-${selectedContactId}`}
         contact={selectedContact}
         applications={applications}
         saving={saving}
@@ -720,24 +799,10 @@ export default function NetworkPage() {
         applications={applications}
         saving={saving}
         onChange={setAddForm}
-        onClose={() => setShowAddPanel(false)}
+        onClose={() => { addStoryOperation.current += 1; setStoryFailure(false); setShowAddPanel(false); }}
         onSubmit={createContact}
       />
     </SuiteToolShell>
-  );
-}
-
-function Metric({ label, value, icon, tone }: { label: string; value: string | number; icon: string; tone: string }) {
-  return (
-    <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="grid h-9 w-9 place-items-center rounded-[12px] border" style={{ color: tone, background: soft(tone), borderColor: soft(tone, '28') }}>
-          <span className="material-symbols-rounded text-[19px]">{icon}</span>
-        </span>
-        <span className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">{value}</span>
-      </div>
-      <p className="mt-3 text-xs font-medium text-[var(--text-secondary)]">{label}</p>
-    </div>
   );
 }
 
@@ -746,7 +811,7 @@ function TypeBadge({ type }: { type: ContactType }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-[10px] border px-2.5 py-1 text-xs font-semibold"
-      style={{ color: config.color, background: soft(config.color), borderColor: soft(config.color, '30') }}
+      style={tagChipStyle(config.tag)}
     >
       <span className="material-symbols-rounded text-[14px]">{config.icon}</span>
       {config.label}
@@ -759,24 +824,11 @@ function ContactIcon({ contact, size = 'sm' }: { contact: ContactInsight; size?:
   return <AnimatedToolIcon icon={config.icon} tone={config.tone} size={size} state={contact.needsAttention ? 'thinking' : 'idle'} />;
 }
 
-function StrengthMeter({ value }: { value: number }) {
-  return (
-    <div className="flex items-center gap-1.5" aria-label={`Relationship strength ${value} of 5`}>
-      {Array.from({ length: 5 }).map((_, index) => (
-        <span
-          key={index}
-          className={`h-2 flex-1 rounded-full ${index < value ? 'bg-emerald-500' : 'bg-[var(--bg-elevated)]'}`}
-        />
-      ))}
-    </div>
-  );
-}
-
 function ActionPill({ contact }: { contact: ContactInsight }) {
   return (
     <span
       className="inline-flex min-w-0 items-center gap-1.5 rounded-[10px] border px-2.5 py-1 text-xs font-semibold"
-      style={{ color: contact.nextAction.color, background: soft(contact.nextAction.color), borderColor: soft(contact.nextAction.color, '30') }}
+      style={toneChipStyle(contact.nextAction.tone)}
     >
       <span className="material-symbols-rounded text-[14px]">{contact.nextAction.icon}</span>
       <span className="truncate">{contact.nextAction.label}</span>
@@ -795,7 +847,7 @@ function CommandView({
 }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-      <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
+      <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Today</p>
@@ -804,10 +856,10 @@ function CommandView({
           <button
             type="button"
             onClick={() => dispatchSona('Look at my network contacts that need attention and tell me what to handle first.', 'Network needs attention')}
-            className="inline-flex items-center gap-2 rounded-[12px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[12px] border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-hover)]"
           >
             <AssistantMark size="xs" state="idle" />
-            Ask Taco
+            Ask <TacoName />
           </button>
         </div>
         <div className="mt-4 space-y-2">
@@ -822,7 +874,7 @@ function CommandView({
         </div>
       </section>
 
-      <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
+      <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Network scan</p>
@@ -839,7 +891,7 @@ function CommandView({
                 <p className="truncate text-xs text-[var(--text-secondary)]">{contact.role || TYPE_CONFIG[contact.type].label}{contact.company ? ` at ${contact.company}` : ''}</p>
               </div>
               <div className="hidden w-24 sm:block">
-                <StrengthMeter value={contact.relationshipStrength} />
+                <span className="text-xs text-[var(--text-secondary)]">{contact.interactions.length} interactions</span>
               </div>
               <span className="material-symbols-rounded text-[18px] text-[var(--text-muted)]">chevron_right</span>
             </button>
@@ -853,24 +905,24 @@ function CommandView({
 function AttentionRow({ contact, onOpen }: { contact: ContactInsight; onOpen: (id: string) => void }) {
   return (
     <div className="flex flex-col gap-3 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 sm:flex-row sm:items-center">
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border" style={{ color: contact.nextAction.color, background: soft(contact.nextAction.color), borderColor: soft(contact.nextAction.color, '28') }}>
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[13px] border" style={toneChipStyle(contact.nextAction.tone)}>
         <span className="material-symbols-rounded text-[20px]">{contact.nextAction.icon}</span>
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{contact.name}</p>
         <p className="truncate text-xs text-[var(--text-secondary)]">{contact.role || TYPE_CONFIG[contact.type].label}{contact.company ? ` at ${contact.company}` : ''}</p>
-        <p className="mt-1 truncate text-xs font-medium" style={{ color: contact.nextAction.color }}>{contact.nextAction.label}: {contact.nextAction.detail}</p>
+        <p className="mt-1 truncate text-xs font-medium" style={{ color: `var(${toneVar(contact.nextAction.tone)})` }}>{contact.nextAction.label}: {contact.nextAction.detail}</p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        <button type="button" onClick={() => onOpen(contact.id)} className="rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+        <button type="button" onClick={() => onOpen(contact.id)} className="min-h-[44px] rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
           Open
         </button>
         <button
           type="button"
           onClick={() => dispatchSona(`What should I do next with ${contact.name}${contact.company ? ` at ${contact.company}` : ''}?`, contact.name)}
-          className="rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300"
+          className="min-h-[44px] rounded-[11px] border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-hover)]"
         >
-          Ask Taco
+          Ask <TacoName />
         </button>
       </div>
     </div>
@@ -879,22 +931,15 @@ function AttentionRow({ contact, onOpen }: { contact: ContactInsight; onOpen: (i
 
 function ContactCard({
   contact,
-  index,
   onOpen,
   onDelete,
 }: {
   contact: ContactInsight;
-  index: number;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03 }}
-      className="rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4"
-    >
+    <SuitePanel as="article">
       <div className="flex items-start justify-between gap-3">
         <button type="button" onClick={() => onOpen(contact.id)} className="flex min-w-0 items-center gap-3 text-left">
           <ContactIcon contact={contact} />
@@ -904,7 +949,12 @@ function ContactCard({
             {contact.company ? <span className="block truncate text-xs text-[var(--text-muted)]">{contact.company}</span> : null}
           </span>
         </button>
-        <button type="button" onClick={() => onDelete(contact.id)} aria-label={`Delete ${contact.name}`} className="rounded-[10px] p-2 text-[var(--text-muted)] hover:bg-red-500/10 hover:text-red-500">
+        <button
+          type="button"
+          onClick={() => onDelete(contact.id)}
+          aria-label={`Delete ${contact.name}`}
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-[var(--text-muted)] transition-colors hover:text-[var(--danger)]"
+        >
           <span className="material-symbols-rounded text-[17px]">delete</span>
         </button>
       </div>
@@ -915,34 +965,34 @@ function ContactCard({
         </div>
         <div>
           <div className="mb-1 flex items-center justify-between text-xs">
-            <span className="text-[var(--text-muted)]">Relationship strength</span>
-            <span className="font-semibold tabular-nums text-[var(--text-primary)]">{contact.relationshipStrength}/5</span>
+            <span className="text-[var(--text-muted)]">Last interaction</span>
+            <span className="font-semibold tabular-nums text-[var(--text-primary)]">{formatDate(getLastInteractionDate(contact))}</span>
           </div>
-          <StrengthMeter value={contact.relationshipStrength} />
+          <span className="text-xs text-[var(--text-secondary)]">{contact.interactions.length} interactions</span>
         </div>
         {contact.notes ? <p className="line-clamp-2 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-xs leading-5 text-[var(--text-secondary)]">{contact.notes}</p> : null}
       </div>
       <div className="mt-4 flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-3 text-xs text-[var(--text-muted)]">
         <span>{contact.interactions?.length || 0} interactions</span>
         <div className="flex gap-1">
-          <button type="button" onClick={() => dispatchSona(`Draft a warm message to ${contact.name}${contact.company ? ` at ${contact.company}` : ''}.`, contact.name)} className="rounded-[10px] px-2 py-1 font-semibold text-cyan-600 hover:bg-cyan-500/10 dark:text-cyan-300">Ask Taco</button>
-          <button type="button" onClick={() => onOpen(contact.id)} className="rounded-[10px] px-2 py-1 font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Details</button>
+          <button type="button" onClick={() => dispatchSona(`Draft a warm message to ${contact.name}${contact.company ? ` at ${contact.company}` : ''}.`, contact.name)} className="min-h-[44px] rounded-[10px] px-2 py-1 font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-dim)]">Ask <TacoName /></button>
+          <button type="button" onClick={() => onOpen(contact.id)} className="min-h-[44px] rounded-[10px] px-2 py-1 font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">Details</button>
         </div>
       </div>
-    </motion.article>
+    </SuitePanel>
   );
 }
 
 function ListView({ contacts, onOpen, onDelete }: { contacts: ContactInsight[]; onOpen: (id: string) => void; onDelete: (id: string) => void }) {
   return (
-    <div className="overflow-x-auto rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+    <div className="elevation-card overflow-x-auto rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
       <table className="w-full min-w-[980px]">
         <thead>
           <tr className="border-b border-[var(--border-subtle)] text-left text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">
             <th className="p-4">Contact</th>
             <th className="p-4">Type</th>
             <th className="p-4">Next action</th>
-            <th className="p-4">Strength</th>
+            <th className="p-4">Last interaction</th>
             <th className="p-4">Follow-up</th>
             <th className="p-4">Linked app</th>
             <th className="p-4 text-right">Actions</th>
@@ -952,7 +1002,7 @@ function ListView({ contacts, onOpen, onDelete }: { contacts: ContactInsight[]; 
           {contacts.map(contact => (
             <tr key={contact.id} className="border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-hover)]">
               <td className="p-4">
-                <button type="button" onClick={() => onOpen(contact.id)} className="flex min-w-0 items-center gap-3 text-left">
+                <button type="button" onClick={() => onOpen(contact.id)} className="flex min-h-[44px] min-w-0 items-center gap-3 py-1 text-left">
                   <ContactIcon contact={contact} size="xs" />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">{contact.name}</span>
@@ -962,12 +1012,12 @@ function ListView({ contacts, onOpen, onDelete }: { contacts: ContactInsight[]; 
               </td>
               <td className="p-4"><TypeBadge type={contact.type} /></td>
               <td className="p-4"><ActionPill contact={contact} /></td>
-              <td className="p-4"><div className="w-28"><StrengthMeter value={contact.relationshipStrength} /></div></td>
+              <td className="p-4"><div className="w-28"><span className="text-xs text-[var(--text-secondary)]">{contact.interactions.length} interactions</span></div></td>
               <td className="p-4 text-sm text-[var(--text-secondary)]">{formatDate(contact.followUpDate)}</td>
               <td className="p-4 text-sm text-[var(--text-secondary)]">{contact.linkedApplication ? contact.linkedApplication.company_name : 'None'}</td>
               <td className="p-4 text-right">
-                <button type="button" onClick={() => onOpen(contact.id)} className="rounded-[10px] px-2 py-1 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]">Open</button>
-                <button type="button" onClick={() => onDelete(contact.id)} className="rounded-[10px] px-2 py-1 text-sm font-semibold text-red-500 hover:bg-red-500/10">Delete</button>
+                <button type="button" onClick={() => onOpen(contact.id)} className="min-h-[44px] rounded-[10px] px-2 py-1 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]">Open</button>
+                <button type="button" onClick={() => onDelete(contact.id)} className="min-h-[44px] rounded-[10px] px-2 py-1 text-sm font-semibold text-[var(--danger)] transition-colors hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]">Delete</button>
               </td>
             </tr>
           ))}
@@ -990,7 +1040,7 @@ function CompanyView({ contacts, onOpen }: { contacts: ContactInsight[]; onOpen:
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       {groups.map(([company, group]) => (
-        <section key={company} className="rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+        <section key={company} className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h2 className="truncate text-lg font-bold text-[var(--text-primary)]">{company}</h2>
@@ -1035,12 +1085,16 @@ function ContactDrawer({
   onClose: () => void;
   onUpdate: (id: string, updates: Partial<ContactFormState>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
-  onLogInteraction: (id: string, type: InteractionType, note: string, followUpDate: string) => Promise<void>;
+  onLogInteraction: (id: string, type: InteractionType, note: string, followUpDate: string, requestId: string) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState<ContactFormState>(EMPTY_FORM);
   const [interactionType, setInteractionType] = useState<InteractionType>('email');
   const [interactionNote, setInteractionNote] = useState('');
   const [interactionFollowUp, setInteractionFollowUp] = useState('');
+  const interactionRequest = useRef({ fingerprint: '', id: '' });
+  const interactionCurrent = useRef({ id: contact?.id, interactionType, interactionNote, interactionFollowUp });
+  interactionCurrent.current = { id: contact?.id, interactionType, interactionNote, interactionFollowUp };
+  const dialogRef = useNetworkDialog(Boolean(contact), onClose);
 
   useEffect(() => {
     if (!contact) return;
@@ -1062,25 +1116,30 @@ function ContactDrawer({
   }
 
   async function submitInteraction() {
-    await onLogInteraction(contact!.id, interactionType, interactionNote, interactionFollowUp);
-    setInteractionType('email');
-    setInteractionNote('');
-    setInteractionFollowUp('');
+    const snapshot = { ...interactionCurrent.current };
+    const fingerprint = JSON.stringify(snapshot);
+    if (interactionRequest.current.fingerprint !== fingerprint) interactionRequest.current = { fingerprint, id: crypto.randomUUID() };
+    await saveNetworkDraft(snapshot, () => onLogInteraction(contact!.id, interactionType, interactionNote, interactionFollowUp, interactionRequest.current.id), () => interactionCurrent.current, () => {
+      setInteractionType('email'); setInteractionNote(''); setInteractionFollowUp(''); interactionRequest.current = { fingerprint: '', id: '' };
+    });
   }
 
   return (
     <AnimatePresence>
       {contact && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-50 bg-[var(--modal-backdrop)]" />
           <motion.aside
+            ref={dialogRef}
             role="dialog"
+            aria-modal="true"
+            data-guide="network-detail" data-guide-surface="network-contact"
             aria-label={`${contact.name} contact details`}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-2xl"
+            className="elevation-raised fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)]"
           >
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] p-4 md:p-5">
               <div className="flex min-w-0 items-center gap-3">
@@ -1094,11 +1153,12 @@ function ContactDrawer({
                 <button
                   type="button"
                   onClick={() => dispatchSona(`Help me with this networking contact: ${contact.name}${contact.company ? ` at ${contact.company}` : ''}. What should I do next?`, contact.name)}
-                  className="rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300"
+                  className="min-h-[44px] rounded-[11px] border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-hover)]"
                 >
-                  Ask Taco
+                  Ask <TacoName />
                 </button>
-                <button ref={closeRef} type="button" onClick={onClose} aria-label="Close contact details" className="grid h-9 w-9 place-items-center rounded-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+                <PageHelp toolId="network" />
+              <button ref={closeRef} type="button" onClick={onClose} aria-label="Close contact details" className="grid h-11 w-11 place-items-center rounded-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
                   <span className="material-symbols-rounded text-[20px]">close</span>
                 </button>
               </div>
@@ -1113,9 +1173,9 @@ function ContactDrawer({
                       <p className="mt-2 text-sm text-[var(--text-secondary)]">{contact.nextAction.detail}</p>
                     </div>
                     <div className="rounded-[15px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
-                      <p className="text-xs font-semibold text-[var(--text-muted)]">Strength</p>
-                      <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--text-primary)]">{contact.relationshipStrength}/5</p>
-                      <div className="mt-2"><StrengthMeter value={contact.relationshipStrength} /></div>
+                      <p className="text-xs font-semibold text-[var(--text-muted)]">Last interaction</p>
+                      <p className="mt-1 text-2xl font-bold tabular-nums text-[var(--text-primary)]">{formatDate(getLastInteractionDate(contact))}</p>
+                      <div className="mt-2"><span className="text-xs text-[var(--text-secondary)]">{contact.interactions.length} interactions</span></div>
                     </div>
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1125,7 +1185,7 @@ function ContactDrawer({
                         type="date"
                         value={draft.followUpDate}
                         onChange={event => setDraft(prev => ({ ...prev, followUpDate: event.target.value }))}
-                        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/25"
+                        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
                       />
                     </label>
                     <label className="text-xs font-semibold text-[var(--text-secondary)]">
@@ -1133,7 +1193,7 @@ function ContactDrawer({
                       <select
                         value={draft.applicationId}
                         onChange={event => setDraft(prev => ({ ...prev, applicationId: event.target.value }))}
-                        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/25"
+                        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
                       >
                         <option value="">No linked application</option>
                         {applications.map(app => (
@@ -1165,11 +1225,11 @@ function ContactDrawer({
                       onChange={event => setDraft(prev => ({ ...prev, notes: event.target.value }))}
                       rows={4}
                       placeholder="Add context, relationship history, referral angle, or message notes."
-                      className="mt-1 w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+                      className="mt-1 w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
                     />
                   </label>
                   {dirty && (
-                    <button type="button" onClick={saveDraft} disabled={saving || !draft.name.trim()} className="mt-3 rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 disabled:opacity-50 dark:text-cyan-300">
+                    <button type="button" onClick={saveDraft} disabled={saving || !draft.name.trim()} className="btn-primary mt-3 inline-flex min-h-[44px] items-center rounded-[11px] px-3 py-2 text-xs font-semibold disabled:opacity-50">
                       Save changes
                     </button>
                   )}
@@ -1189,20 +1249,20 @@ function ContactDrawer({
                       onChange={event => setInteractionNote(event.target.value)}
                       rows={3}
                       placeholder="Reached out about the role, got a referral offer, scheduled a coffee chat..."
-                      className="mt-1 w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+                      className="mt-1 w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
                     />
                   </label>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={submitInteraction} disabled={saving || !interactionNote.trim()} className="rounded-[11px] border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50 dark:text-emerald-300">
+                    <button data-guide="network-log" type="button" onClick={submitInteraction} disabled={saving || !interactionNote.trim()} className="btn-primary inline-flex min-h-[44px] items-center rounded-[11px] px-3 py-2 text-xs font-semibold disabled:opacity-50">
                       Log interaction
                     </button>
                     <button
                       type="button"
                       onClick={() => dispatchSona(`Draft a follow-up message to ${contact.name}${contact.company ? ` at ${contact.company}` : ''}. Use this context: ${interactionNote || contact.notes || contact.nextAction.detail}`, contact.name)}
-                      className="inline-flex items-center gap-2 rounded-[11px] border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-600 dark:text-cyan-300"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-[11px] border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-hover)]"
                     >
                       <AssistantMark size="xs" state="idle" />
-                      Draft with Taco
+                      Draft with <TacoName />
                     </button>
                   </div>
                 </DrawerSection>
@@ -1219,7 +1279,7 @@ function ContactDrawer({
                         return (
                           <div key={`${interaction.date}-${index}`} className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: config.color }}>
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)]">
                                 <span className="material-symbols-rounded text-[15px]">{config.icon}</span>
                                 {config.label}
                               </span>
@@ -1234,7 +1294,7 @@ function ContactDrawer({
                 </DrawerSection>
 
                 <div className="flex justify-end border-t border-[var(--border-subtle)] pt-4">
-                  <button type="button" onClick={() => onDelete(contact.id)} disabled={saving} className="rounded-[11px] border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-600 disabled:opacity-50 dark:text-red-300">
+                  <button type="button" onClick={() => onDelete(contact.id)} disabled={saving} className="inline-flex min-h-[44px] items-center rounded-[11px] border px-3 py-2 text-xs font-semibold disabled:opacity-50" style={dangerChipStyle}>
                     Delete contact
                   </button>
                 </div>
@@ -1264,19 +1324,23 @@ function AddContactPanel({
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const dialogRef = useNetworkDialog(open, onClose);
   return (
     <AnimatePresence>
       {open && (
         <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 z-50 bg-[var(--modal-backdrop)]" />
           <motion.aside
+            ref={dialogRef}
             role="dialog"
+            aria-modal="true"
+            data-guide="network-add-form" data-guide-surface="network-add-contact"
             aria-label="Add network contact"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-2xl"
+            className="elevation-raised fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col border-l border-[var(--border-subtle)] bg-[var(--bg-surface)]"
           >
             <div className="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] p-4 md:p-5">
               <div className="flex items-center gap-3">
@@ -1286,7 +1350,8 @@ function AddContactPanel({
                   <p className="text-sm text-[var(--text-secondary)]">Capture the person, context, and next follow-up.</p>
                 </div>
               </div>
-              <button type="button" onClick={onClose} aria-label="Close add contact" className="grid h-9 w-9 place-items-center rounded-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
+              <PageHelp toolId="network" />
+              <button type="button" onClick={onClose} aria-label="Close add contact" className="grid h-11 w-11 place-items-center rounded-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">
                 <span className="material-symbols-rounded text-[20px]">close</span>
               </button>
             </div>
@@ -1317,16 +1382,16 @@ function AddContactPanel({
                     onChange={event => onChange({ ...form, notes: event.target.value })}
                     rows={4}
                     placeholder="How did you meet? What should future-you remember?"
-                    className="mt-1 w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+                    className="mt-1 w-full resize-none rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
                   />
                 </label>
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-[var(--border-subtle)] p-4 md:p-5">
-              <button type="button" onClick={onClose} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+              <button type="button" onClick={onClose} className="btn-secondary inline-flex min-h-[44px] items-center rounded-[12px] px-4 py-2 text-sm font-semibold">
                 Cancel
               </button>
-              <button type="button" onClick={onSubmit} disabled={saving || !form.name.trim()} className="rounded-[12px] border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-50 dark:text-emerald-300">
+              <button data-guide="network-save-contact" type="button" onClick={onSubmit} disabled={saving || !form.name.trim()} className="btn-primary inline-flex min-h-[44px] items-center rounded-[12px] px-4 py-2 text-sm font-semibold disabled:opacity-50">
                 Add contact
               </button>
             </div>
@@ -1369,7 +1434,7 @@ function TextField({
         type={type}
         value={value}
         onChange={event => onChange(event.target.value)}
-        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
       />
     </label>
   );
@@ -1392,7 +1457,7 @@ function SelectField({
       <select
         value={value}
         onChange={event => onChange(event.target.value)}
-        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-cyan-500/25"
+        className="mt-1 h-11 w-full rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-base text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--accent)]"
       >
         {children}
       </select>
@@ -1404,7 +1469,7 @@ function NetworkSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading contacts">
       {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+        <div key={index} className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
           <div className="flex items-center gap-3">
             <div className="h-14 w-14 rounded-[18px] bg-[var(--bg-elevated)]" />
             <div className="flex-1 space-y-2">
@@ -1421,13 +1486,19 @@ function NetworkSkeleton() {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <section className="rounded-[22px] border border-red-500/20 bg-red-500/10 px-5 py-10 text-center">
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-[18px] border border-red-500/25 text-red-500">
+    <section
+      className="elevation-card rounded-[22px] border px-5 py-10 text-center"
+      style={{ borderColor: 'color-mix(in srgb, var(--danger) 25%, transparent)', background: 'color-mix(in srgb, var(--danger) 8%, transparent)' }}
+    >
+      <div
+        className="mx-auto grid h-14 w-14 place-items-center rounded-[18px] border text-[var(--danger)]"
+        style={{ borderColor: 'color-mix(in srgb, var(--danger) 25%, transparent)' }}
+      >
         <span className="material-symbols-rounded text-[30px]">error</span>
       </div>
       <h2 className="mt-4 text-xl font-bold text-[var(--text-primary)]">Network CRM could not load</h2>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">{message}</p>
-      <button type="button" onClick={onRetry} className="mt-5 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+      <button type="button" onClick={onRetry} className="btn-secondary mt-5 inline-flex min-h-[44px] items-center rounded-[12px] px-4 py-2 text-sm font-semibold">
         Try again
       </button>
     </section>
@@ -1436,13 +1507,11 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 function SignedOutState() {
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-12 text-center">
-      <AnimatedToolIcon icon="lock" tone="slate" size="md" state="locked" />
-      <h2 className="mt-5 text-xl font-bold text-[var(--text-primary)]">Sign in to use Network CRM</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
-        Your contacts, follow-ups, and interaction history are saved to your private workspace.
-      </p>
-    </section>
+    <SuiteEmptyState
+      icon="lock"
+      title="Sign in to use Network CRM"
+      description="Your contacts, follow-ups, and interaction history are saved to your private workspace."
+    />
   );
 }
 
@@ -1458,34 +1527,56 @@ function EmptyState({
   onClear?: () => void;
 }) {
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-12 text-center">
-      <div className="mx-auto w-fit">
-        <AnimatedToolIcon icon={mode === 'empty' ? 'person_add' : 'filter_alt_off'} tone={mode === 'empty' ? 'emerald' : 'slate'} size="md" />
-      </div>
-      <h2 className="mt-5 text-xl font-bold text-[var(--text-primary)]">{mode === 'empty' ? 'Start with the next useful person' : 'No contacts match these filters'}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--text-secondary)]">
-        {mode === 'empty'
+    <SuiteEmptyState
+      icon={mode === 'empty' ? 'person_add' : 'filter_alt_off'}
+      title={mode === 'empty' ? 'Start with the next useful person' : 'No contacts match these filters'}
+      description={
+        mode === 'empty'
           ? 'Add recruiters, referrals, hiring managers, and peers. Then set the next follow-up so the network keeps moving.'
-          : 'Clear the filters or search for a different contact, company, role, email, or note.'}
-      </p>
-      <div className="mt-5 flex flex-wrap justify-center gap-2">
-        {mode === 'empty' ? (
-          <>
-            <button type="button" onClick={onAdd} className="inline-flex items-center gap-2 rounded-[12px] border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+          : 'Clear the filters or search for a different contact, company, role, email, or note.'
+      }
+      action={
+        mode === 'empty' ? (
+          <div className="flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={onAdd} className="btn-primary inline-flex min-h-[44px] items-center gap-2 rounded-[12px] px-4 py-2 text-sm font-semibold">
               <span className="material-symbols-rounded text-[18px]">person_add</span>
               Add first contact
             </button>
-            <button type="button" onClick={onAsk} className="inline-flex items-center gap-2 rounded-[12px] border border-cyan-500/25 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-600 dark:text-cyan-300">
+            <button type="button" onClick={onAsk} className="inline-flex min-h-[44px] items-center gap-2 rounded-[12px] border border-[var(--accent)] bg-[var(--accent-dim)] px-4 py-2 text-sm font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-hover)]">
               <AssistantMark size="xs" state="idle" />
-              Ask Taco
+              Ask <TacoName />
             </button>
-          </>
+          </div>
         ) : (
-          <button type="button" onClick={onClear} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+          <button type="button" onClick={onClear} className="btn-secondary inline-flex min-h-[44px] items-center rounded-[12px] px-4 py-2 text-sm font-semibold">
             Clear filters
           </button>
-        )}
-      </div>
-    </section>
+        )
+      }
+    />
   );
+}
+
+function useNetworkDialog(open: boolean, onClose: () => void) {
+  const ref = useRef<HTMLElement | null>(null);
+  const close = useRef(onClose); close.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const root = ref.current;
+    const selectors = 'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]';
+    const first = root?.querySelector<HTMLElement>(selectors); first?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); close.current(); }
+      if (event.key !== 'Tab' || !root) return;
+      const nodes = Array.from(root.querySelectorAll<HTMLElement>(selectors));
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (!first) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => { document.removeEventListener('keydown', keydown); if (opener?.isConnected) opener.focus(); };
+  }, [open]);
+  return ref;
 }

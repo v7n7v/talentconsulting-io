@@ -58,7 +58,7 @@ test('Studio consumes the canonical catalog and exposes focusable entitlement-aw
   assert.doesNotMatch(page, /FEATURED_TEMPLATE_IDS/);
   assert.match(page, /recommendTemplateIds\(signalText, 3\)/);
   assert.match(page, /CuratedTemplateMiniature/);
-  assert.ok((page.match(/tabIndex=\{0\}/g) || []).length >= 2);
+  assert.equal((page.match(/tabIndex=\{0\}/g) || []).length, 1);
   assert.match(page, /searchParams\.get\('template'\)/);
   assert.match(page, /requested\.tier === 'pro' && !isPro/);
   assert.match(page, /resume-template-card-\$\{requestedLockedTemplateId\}/);
@@ -93,7 +93,9 @@ test('all three export surfaces explicitly integrate the curated registries', ()
   assert.match(pdf, /NEW_SIGNATURE_TEMPLATE_IDS\.map/);
   assert.match(studio, /buildCuratedSignatureDocxBlob/);
   assert.match(applications, /buildCuratedSignatureDocxBlob/);
-  assert.match(applications, /downloadResumePDF\(linkedResume\.content as any, colors, undefined, templateId\)/);
+  assert.match(applications, /downloadResumePDF\(linkedResume\.content as any, colors, undefined, templateId, undefined, design\?\.pageSize \|\| 'A4', design \|\| undefined\)/);
+  assert.match(applications, /getPersistedResumeDesign\(linkedResume, normalizeResume/);
+  assert.match(applications, /buildResumeDesignDocxBlob/);
   assert.match(applications, /isResumeTemplateSelectionEntitled\(templateId, isPro\)/);
   assert.equal(
     (applications.match(/isResumeTemplateSelectionEntitled\(templateId, isPro\)/g) || []).length,
@@ -176,7 +178,7 @@ test('public gallery is catalog-backed, deep-linked, tier truthful, and avoids u
     assert.match(gallery, new RegExp(href.replace(/\//g, '\\/')));
   }
   assert.match(gallery, /Frequently Asked Questions/);
-  assert.match(gallery, /17 new curated signature designs require Standard/);
+  assert.match(gallery, /new curated signature designs require Standard/);
   assert.match(gallery, /opacity-100[^"]*md:opacity-0[^"]*md:group-hover:opacity-100[^"]*md:group-focus-within:opacity-100/);
 });
 
@@ -267,7 +269,9 @@ test('development visual harness covers direct IDs plus full, sparse, and long f
   assert.match(lab, /getSelectableTemplates\(\)/);
   assert.match(lab, /data-template-lab/);
   assert.match(lab, /ResizeObserver/);
-  assert.match(lab, /TEMPLATE_DESIGN_WIDTH/);
+  assert.match(lab, /PAGE_WIDTH\[design\.pageSize\]/);
+  assert.match(lab, /ResumeDesignPanel/);
+  assert.match(lab, /ResumeExportPreview/);
   assert.match(lab, /data-template-lab-scale/);
   assert.match(lab, /PLAN_IDENTITIES\.pro\.label/);
   assert.doesNotMatch(lab, /template\.tier\.toUpperCase\(\)/);
@@ -293,9 +297,12 @@ test('development visual harness covers direct IDs plus full, sparse, and long f
 
 test('existing bespoke template implementations remain byte-identical to the pre-build baseline', () => {
   const expected = new Map([
-    ['components/resume-templates/editorial-authority.tsx', 'C94AE5C7A4E83AA7BB7B0BDEB63061FE9BF4F2149298F172CAB08BE743402110'],
-    ['components/resume-templates/technical-signal.tsx', 'B932384617CF536DFD391858FE6DC502E19202D7CE2F3AE3BBE17CB6F31074BE'],
-    ['components/resume-templates/brutalist-voltage.tsx', '2E1176A49B5F055222FF4036074C6851A171A372F30C43BC5C67CE4752F4004E'],
+    // Updated intentionally: the editorial renderer now preserves generic links[]
+    // and additionalSections in the HTML companion.
+    ['components/resume-templates/editorial-authority.tsx', '678CDFB49D10BE30191E1F0F730C439C2BD83BDB0808632AA48562E74A82338D'],
+    // These bespoke renderers now preserve generic links[] and additionalSections.
+    ['components/resume-templates/technical-signal.tsx', '05D77077CF6CA788F0FC975747A37D83C1EF80205EAB51793C8A7EADEDCA121D'],
+    ['components/resume-templates/brutalist-voltage.tsx', '57B6218A31E9117A85353FDA0B4D7B3904B373E6A724BAD7FC019C7F7866D969'],
   ]);
   const crypto = require('node:crypto');
   for (const [relative, hash] of expected) {

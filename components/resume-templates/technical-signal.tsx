@@ -52,6 +52,7 @@ export function TechnicalSignalTemplate({ resume, colors }: TechnicalSignalProps
     cleanResumeText(resume.location),
     cleanResumeText(resume.linkedin),
     cleanResumeText(resume.website),
+    ...(resume.links || []).map(cleanResumeText),
   ].filter(Boolean);
   const coreSystems = resume.skills.flatMap(group => group.items).slice(0, 14);
   const name = cleanResumeText(resume.name) || 'Resume';
@@ -123,7 +124,7 @@ export function TechnicalSignalTemplate({ resume, colors }: TechnicalSignalProps
             <div className="mt-[1.15cqw]">
               {resume.skills.map((group, index) => (
                 <div
-                  key={`${group.category}-${index}`}
+                  key={group.id || `${group.category}-${index}`}
                   className="grid grid-cols-[19%_81%] border-b border-black/15 py-[0.45cqw] last:border-b-0"
                 >
                   <h3
@@ -169,7 +170,7 @@ export function TechnicalSignalTemplate({ resume, colors }: TechnicalSignalProps
             <SignalSectionTitle colors={colors}>Experience</SignalSectionTitle>
             <div className="mt-[1.25cqw] space-y-[2cqw]">
               {resume.experience.map((experience, experienceIndex) => (
-                <article key={`${experience.company}-${experience.role}-${experienceIndex}`} className="break-inside-avoid">
+                <article key={experience.id || `${experience.company}-${experience.role}-${experienceIndex}`} className="break-inside-avoid">
                   <div className="flex items-start justify-between gap-[2cqw]">
                     <div className="min-w-0">
                       <h3 className="font-mono font-bold uppercase" style={{ fontSize: '1.12cqw' }}>
@@ -228,7 +229,7 @@ export function TechnicalSignalTemplate({ resume, colors }: TechnicalSignalProps
             <div className="mt-[1cqw] space-y-[0.45cqw]">
               {resume.education.map((education, index) => (
                 <div
-                  key={`${education.institution}-${index}`}
+                  key={education.id || `${education.institution}-${index}`}
                   className="grid grid-cols-[32%_1fr_auto] gap-[1.4cqw] font-mono"
                   style={{ fontSize: '0.9cqw' }}
                 >
@@ -240,6 +241,17 @@ export function TechnicalSignalTemplate({ resume, colors }: TechnicalSignalProps
             </div>
           </section>
         )}
+
+        {(resume.additionalSections || []).map((section) => {
+          const items = section.items.map(cleanResumeText).filter(Boolean);
+          if (!cleanResumeText(section.title) && items.length === 0) return null;
+          return <section key={section.id} className="mt-[2.55cqw]">
+            <SignalSectionTitle colors={colors}>{cleanResumeText(section.title) || 'Additional information'}</SignalSectionTitle>
+            <ul className="mt-[1cqw] space-y-[0.3cqw] font-mono" style={{ fontSize: '0.9cqw' }}>
+              {items.map((item) => <li key={item}><span aria-hidden="true" style={{ color: colors.accent }}>—</span> {item}</li>)}
+            </ul>
+          </section>;
+        })}
 
         <footer className="mt-[2.8cqw] flex items-center justify-between gap-[2cqw] border-t border-black/75 pt-[0.75cqw] font-mono uppercase">
           <p style={{ fontSize: '0.72cqw' }}>

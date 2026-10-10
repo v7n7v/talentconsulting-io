@@ -114,11 +114,11 @@ export function packetResumeRequiredRecovery(): JobPacketRecovery {
 export function packetUpgradeRecovery(limitReached = false): JobPacketRecovery {
   return recovery({
     code: limitReached ? 'packet_limit_reached' : 'packet_upgrade_required',
-    title: limitReached ? 'Packet limit reached' : 'Standard or Max required',
+    title: limitReached ? 'Packet limit reached' : 'Max required for prepared packets',
     message: limitReached
       ? 'Your current packet allowance is used. Existing drafts remain available and nothing was submitted.'
-      : 'Application packets are available with Standard or Max. This role remains available for review and nothing was submitted.',
-    nextAction: limitReached ? 'Review plan limits' : 'View Standard and Max',
+      : 'Prepared application packets are included with Max. You can still review this role and use the tools included in your plan. Nothing was submitted.',
+    nextAction: limitReached ? 'Review plan limits' : 'View Max',
     action: 'upgrade',
     retryable: false,
     trackerDraftState: 'not_created',
@@ -220,4 +220,19 @@ export function classifyJobPacketFailure(error: unknown): JobPacketRecovery {
     retryable: true,
     trackerDraftState: 'unknown',
   });
+}
+
+/** All entry points use the persisted readiness contract, not HTTP success alone. */
+export function readPreparedPacketResponse(value: unknown) {
+  const data = value && typeof value === 'object' ? value as Record<string, any> : {};
+  const atsScore = data.atsResult?.overallScore;
+  const ready = data.success === true && data.packetStatus === 'ready_for_review'
+    && typeof data.applicationId === 'string' && /^[\w-]{1,180}$/.test(data.applicationId)
+    && typeof data.morphedVersionId === 'string' && /^[\w-]{1,180}$/.test(data.morphedVersionId)
+    && typeof data.coverLetter === 'string' && !!data.coverLetter.trim()
+    && typeof atsScore === 'number' && Number.isFinite(atsScore) && atsScore >= 0 && atsScore <= 100;
+  return { ready, data, recovery: ready ? null : readJobPacketRecovery(data.recovery) || packetIncompleteRecovery({
+    morphSucceeded: !!data.morphedVersionId, coverLetterSucceeded: typeof data.coverLetter === 'string' && !!data.coverLetter.trim(),
+    atsSucceeded: typeof atsScore === 'number' && Number.isFinite(atsScore) && atsScore >= 0 && atsScore <= 100,
+  }) };
 }

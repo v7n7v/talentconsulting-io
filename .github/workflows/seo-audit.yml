@@ -2,6 +2,22 @@ name: Biweekly SEO/GEO Audit
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/seo-audit.js'
+      - 'scripts/seo-audit.test.js'
+      - 'scripts/seo-audit.config.json'
+      - '.github/workflows/seo-audit.yml'
+      - 'app/layout.tsx'
+      - 'app/page.tsx'
+      - 'app/sitemap.ts'
+      - 'app/robots.ts'
+      - 'app/**/layout.tsx'
+      - 'app/**/page.tsx'
+      - 'lib/seo.ts'
+      - 'public/robots.txt'
+      - 'next.config.js'
+      - 'firebase.json'
   schedule:
     - cron: '0 13 * * 1'
 
@@ -9,8 +25,31 @@ permissions:
   contents: read
 
 jobs:
-  seo-audit:
+  route-policy-fixtures:
+    name: Deterministic SEO route policies
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run local SEO fixtures
+        run: node --test scripts/seo-audit.test.js
+
+      - name: Validate configured route policies
+        run: |
+          node -e "const { validateRoutePolicies, validateRedirectChecks } = require('./scripts/seo-audit'); const config = require('./scripts/seo-audit.config.json'); validateRoutePolicies(config.routePolicies); validateRedirectChecks(config.redirectChecks, new URL(config.siteUrl).origin);"
+
+  seo-audit:
+    name: Live public SEO audit
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       SEO_AUDIT_ANCHOR_MONDAY: '2026-06-29'
     steps:
@@ -39,7 +78,8 @@ jobs:
 
       - name: Skip off-week
         if: steps.cadence.outputs.run != 'true'
-        run: echo "Skipping SEO/GEO audit: ${{ steps.cadence.outputs.reason }}"
+        run: |
+          echo "Skipping SEO/GEO audit: ${{ steps.cadence.outputs.reason }}"
 
       - name: Checkout
         if: steps.cadence.outputs.run == 'true'

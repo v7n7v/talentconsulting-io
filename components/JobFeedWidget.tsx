@@ -1,5 +1,6 @@
 'use client';
 
+import { TacoName, TacoText } from '@/components/BrandLogo';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
@@ -42,13 +43,6 @@ interface SuggestedJob {
   outboundLinkVerified?: boolean;
 }
 
-function getScoreColor(score: number): string {
-  if (score >= 80) return '#10b981';
-  if (score >= 60) return '#3b82f6';
-  if (score >= 40) return '#f59e0b';
-  return '#ef4444';
-}
-
 function formatSalary(min: number | null, max: number | null): string {
   if (!min && !max) return '';
   const fmt = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`;
@@ -75,6 +69,7 @@ export default function JobFeedWidget() {
   const userId = String((user as any)?.uid || '');
   const accessToken = String((user as any)?.accessToken || (user as any)?.stsTokenManager?.accessToken || '');
   const [jobs, setJobs] = useState<SuggestedJob[]>([]);
+  const jobsRef = useRef<SuggestedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [recovery, setRecovery] = useState<JobDiscoveryRecovery | null>(null);
@@ -107,9 +102,10 @@ export default function JobFeedWidget() {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const data = await res.json();
-      if (requestId !== suggestionsRequestIdRef.current) return;
+      if (requestId !== suggestionsRequestIdRef.current || useStore.getState().user?.uid !== userId) return;
       if (data.needsSetup) {
         setNeedsSetup(true);
+        jobsRef.current = [];
         setJobs([]);
         localStorage.setItem(jobCountKey(userId), '0');
         window.dispatchEvent(new Event('job-count-updated'));
@@ -117,12 +113,13 @@ export default function JobFeedWidget() {
       } else if (res.ok && data.success && Array.isArray(data.jobs)) {
         const nextJobs = data.jobs as SuggestedJob[];
         setNeedsSetup(false);
-        setJobs(previousJobs => {
-          const visibleJobs = data.partial ? mergePreservedJobResults(previousJobs, nextJobs) : nextJobs;
-          localStorage.setItem(jobCountKey(userId), visibleJobs.length.toString());
-          window.dispatchEvent(new Event('job-count-updated'));
-          return visibleJobs;
-        });
+        const visibleJobs = data.partial ? mergePreservedJobResults(jobsRef.current, nextJobs) : nextJobs;
+        jobsRef.current = visibleJobs;
+        setJobs(visibleJobs);
+        // Notify sibling navigation after the async result, never during a
+        // React state updater (which React may run while rendering).
+        localStorage.setItem(jobCountKey(userId), visibleJobs.length.toString());
+        window.dispatchEvent(new Event('job-count-updated'));
         setRecovery(data.partial
           ? readJobDiscoveryRecovery(data.recovery) || jobSuggestionsPartialRecovery()
           : null);
@@ -156,6 +153,7 @@ export default function JobFeedWidget() {
 
   useEffect(() => {
     suggestionsRequestIdRef.current += 1;
+    jobsRef.current = [];
     setJobs([]);
     setNeedsSetup(false);
     setRecovery(null);
@@ -270,24 +268,20 @@ export default function JobFeedWidget() {
         className="mb-6"
       >
         <div
-          className="rounded-2xl border p-5 cursor-pointer hover:border-cyan-500/25 transition-all group"
-          style={{
-            background: 'var(--bg-surface)',
-            borderColor: 'var(--border-subtle)',
-          }}
+          className="elevation-interactive group flex min-h-11 cursor-pointer rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 transition-colors hover:border-[var(--border)]"
           onClick={() => router.push('/suite/job-search')}
         >
           <div className="flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center shadow-lg shadow-cyan-500/15 shrink-0">
-              <span className="material-symbols-rounded text-white text-lg">radar</span>
-            </div>
+            <span className="icon-shell-neutral inline-grid h-11 w-11 shrink-0 place-items-center rounded-xl border">
+              <span className="material-symbols-rounded icon-neutral text-lg">radar</span>
+            </span>
             <div className="flex-1 min-w-0">
               <h3 className="text-[13px] font-semibold text-[var(--text-primary)] mb-0.5">Set up your Opportunity Radar</h3>
-              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+              <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
                 Tell us your target roles and preferred locations to get explainable job matches with one consistent fit score.
               </p>
             </div>
-            <span className="material-symbols-rounded text-[var(--text-muted)] group-hover:text-cyan-500 transition-colors shrink-0">arrow_forward</span>
+            <span className="material-symbols-rounded text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors shrink-0">arrow_forward</span>
           </div>
         </div>
       </motion.div>
@@ -349,19 +343,19 @@ export default function JobFeedWidget() {
       {/* Header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
-            <span className="material-symbols-rounded text-white text-[13px]">radar</span>
-          </div>
-          <h2 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+          <span className="icon-shell-neutral inline-grid h-6 w-6 shrink-0 place-items-center rounded-lg border">
+            <span className="material-symbols-rounded icon-neutral text-[13px]">radar</span>
+          </span>
+          <h2 className="text-[12px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
             Top Opportunities
           </h2>
-          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/10 text-cyan-500">
+          <span className="px-1.5 py-0.5 text-[11px] font-bold rounded-full bg-[var(--accent-dim)] text-[var(--accent)]">
             {jobs.length}
           </span>
         </div>
         <button
           onClick={() => router.push('/suite/job-search')}
-          className="text-[11px] font-medium text-[var(--text-secondary)] hover:text-cyan-500 transition-colors flex items-center gap-1"
+          className="flex min-h-11 items-center gap-1 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--accent)]"
         >
           View all
           <span className="material-symbols-rounded text-[13px]">arrow_forward</span>
@@ -377,28 +371,21 @@ export default function JobFeedWidget() {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden mb-3"
           >
-            <div
-              className="rounded-xl border"
-              style={{
-                background: 'rgba(16,185,129,0.04)',
-                borderColor: 'rgba(16,185,129,0.15)',
-              }}
-            >
+            <div className="elevation-card rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
               <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="material-symbols-rounded shrink-0 text-lg text-emerald-500">mail</span>
+                  <span className="material-symbols-rounded shrink-0 text-lg text-[var(--text-secondary)]">mail</span>
                   <p className="truncate text-[12px] text-[var(--text-secondary)]">
-                    Get weekly picks in your inbox with Career Picks by Taco
+                    Get weekly picks in your inbox with Career Picks by <TacoName />
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1 sm:gap-2">
                   <button
                     onClick={handleEnableAlerts}
                     disabled={enablingAlerts}
-                    className="min-h-11 rounded-lg px-3 py-2 text-[11px] font-semibold text-white transition-all disabled:opacity-60"
-                    style={{ background: '#10b981' }}
+                    className="btn-primary min-h-11 rounded-lg px-3 py-2 text-[11px] font-semibold disabled:opacity-60"
                   >
-                    {enablingAlerts ? '...' : 'Enable Career Picks by Taco'}
+                    <TacoText text={enablingAlerts ? 'Enabling...' : 'Enable Career Picks by Taco'} />
                   </button>
                   <button
                     onClick={handleDismissPrompt}
@@ -410,7 +397,7 @@ export default function JobFeedWidget() {
                 </div>
               </div>
               {alertError && (
-                <p className="border-t border-rose-400/20 px-4 py-2 text-xs leading-5 text-rose-700 dark:text-rose-300" role="status" aria-live="polite">
+                <p className="border-t border-[var(--border-subtle)] px-4 py-2 text-[12px] leading-5 text-[var(--danger)]" role="status" aria-live="polite">
                   {alertError}
                 </p>
               )}
@@ -428,32 +415,21 @@ export default function JobFeedWidget() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
-              className="rounded-xl border p-4 transition-all hover:border-cyan-500/25 group relative overflow-hidden"
-              style={{
-                background: 'var(--bg-surface)',
-                borderColor: 'var(--border-subtle)',
-              }}
+              className="elevation-interactive group relative overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 transition-colors hover:border-[var(--border)]"
             >
-              {/* Ambient glow */}
-              <div
-                className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20 pointer-events-none blur-xl"
-                style={{ background: getScoreColor(job.acceptanceChance) }}
-              />
-
-              {/* Score badge */}
+              {/* Match strength — a model estimate; guarded so a missing/zero score renders as a labelled absence, never a fabricated 0% */}
               <div className="flex items-center justify-between mb-2.5 relative">
-                <span
-                  className="px-2 py-0.5 text-[11px] font-bold rounded-md border"
-                  style={{
-                    color: getScoreColor(job.acceptanceChance),
-                    background: `${getScoreColor(job.acceptanceChance)}12`,
-                    borderColor: `${getScoreColor(job.acceptanceChance)}25`,
-                  }}
-                >
-                  {job.acceptanceChance}% match
-                </span>
+                {Number.isFinite(job.acceptanceChance) && job.acceptanceChance > 0 ? (
+                  <span className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-bold text-[var(--text-secondary)]">
+                    {job.acceptanceChance}% match · est.
+                  </span>
+                ) : (
+                  <span className="rounded-md border border-dashed border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)]">
+                    Match not scored
+                  </span>
+                )}
                 {(job.salary?.min || job.salary?.max) && (
-                  <span className="text-[10px] text-emerald-500 font-medium">
+                  <span className="text-[11px] text-[var(--text-secondary)] font-medium">
                     {formatSalary(job.salary.min, job.salary.max)}
                   </span>
                 )}
@@ -464,23 +440,25 @@ export default function JobFeedWidget() {
                 {job.title}
               </h4>
               <p className="text-[11px] text-[var(--text-secondary)] font-medium mb-1">{job.company}</p>
-              <p className="text-[10px] text-[var(--text-tertiary)] flex items-center gap-1 mb-3">
+              <p className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1 mb-3">
                 <span className="material-symbols-rounded text-[11px]">location_on</span>
                 {job.location}
               </p>
 
-              <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-[var(--text-secondary)]">
-                <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1">
-                  {(job.sourceMeta?.sourceConfidence || 'low').replace(/^./, value => value.toUpperCase())} source confidence
-                </span>
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-[var(--text-secondary)]">
+                {job.sourceMeta?.sourceConfidence && (
+                  <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1">
+                    {(job.sourceMeta?.sourceConfidence || 'low').replace(/^./, value => value.toUpperCase())} source confidence
+                  </span>
+                )}
               </div>
 
               {/* Recommendation evidence */}
-              <p className="mb-2 line-clamp-2 text-[10px] leading-4 text-[var(--text-tertiary)]">
+              <p className="mb-2 line-clamp-2 text-[11px] leading-4 text-[var(--text-tertiary)]">
                 {job.acceptanceReason}
               </p>
               {job.riskNotes?.[0] && (
-                <p className="mb-3 line-clamp-2 text-[10px] leading-4 text-amber-700 dark:text-amber-300">
+                <p className="mb-3 line-clamp-2 text-[11px] leading-4 text-[var(--warning)]">
                   {job.riskNotes[0]}
                 </p>
               )}
@@ -489,12 +467,7 @@ export default function JobFeedWidget() {
               <div className="flex gap-2 pt-2.5 border-t border-[var(--border-subtle)]">
                 <button
                   onClick={(e) => { e.stopPropagation(); handleMorph(job); }}
-                  className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-semibold transition-all"
-                  style={{
-                    background: 'rgba(6,182,212,0.08)',
-                    border: '1px solid rgba(6,182,212,0.18)',
-                    color: '#06b6d4',
-                  }}
+                  className="btn-secondary flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-semibold"
                 >
                   <span className="material-symbols-rounded text-[12px]">{job.preparationEligible === true ? 'auto_fix_high' : 'fact_check'}</span>
                   <span className="truncate">{job.preparationEligible === true ? 'Morph' : job.nextAction || 'Review evidence'}</span>
@@ -505,7 +478,7 @@ export default function JobFeedWidget() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[var(--text-primary)] px-2 py-2 text-[10px] font-semibold text-[var(--bg-deep)]"
+                    className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg bg-[var(--text-primary)] px-2 py-2 text-[11px] font-semibold text-[var(--bg-deep)]"
                   >
                     <span className="material-symbols-rounded text-[12px]">open_in_new</span>
                     <span className="truncate">Open posting</span>

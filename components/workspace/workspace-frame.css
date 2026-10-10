@@ -1,0 +1,242 @@
+/* Workspace-only visual boundary. The marketing landing and admin rail keep
+   their own surfaces; these tokens apply to signed-in user workspace chrome. */
+.taco-workspace {
+  --taco-action: var(--taco-coral);
+  --taco-action-ink: var(--taco-ink);
+  --workspace-paper: var(--bg-deep);
+  --workspace-ink: var(--text-primary);
+  --workspace-line: var(--border-subtle);
+  --workspace-coral: var(--taco-coral);
+  --preview-paper: var(--taco-paper);
+  --preview-ink: var(--taco-ink);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+}
+
+.taco-workspace main {
+  background-color: var(--bg-deep);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--text-primary) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--text-primary) 4%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.taco-workspace .mobile-tool-shell,
+.taco-workspace .suite-tool-header,
+.taco-workspace .taco-suite-panel,
+.taco-workspace .taco-suite-header,
+.taco-workspace .taco-suite-metric,
+.taco-workspace .taco-review-packet,
+.taco-workspace .taco-review-proof,
+.taco-workspace .taco-review-state-rail,
+.taco-workspace .suite-tool-header + section,
+.taco-workspace .taco-home-shell > section > .elevation-card,
+.taco-workspace .taco-home-shell > section > div > .elevation-card {
+  border-radius: 4px;
+  border-color: var(--workspace-ink);
+  box-shadow: var(--elevation-card);
+}
+
+.taco-workspace .mobile-tool-shell:hover,
+.taco-workspace .elevation-interactive:hover {
+  box-shadow: var(--elevation-raised);
+}
+
+.taco-workspace .workspace-sidebar,
+.taco-workspace .workspace-sidebar__header,
+.taco-workspace .workspace-sidebar__nav,
+.taco-workspace .workspace-sidebar__group,
+.taco-workspace .workspace-sidebar__utility {
+  color: var(--text-primary);
+}
+
+/* The navigation rail has legacy theme classes with stronger utility
+   specificity. Keep its contrast and active state inside the workspace
+   boundary so the admin rail and marketing chrome retain their own system. */
+.taco-workspace .workspace-sidebar {
+  background: var(--taco-ink) !important;
+  border-color: var(--taco-ink) !important;
+  color: var(--taco-paper) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--elevation-raised) !important;
+}
+
+.taco-workspace .workspace-sidebar__header,
+.taco-workspace .workspace-sidebar__nav,
+.taco-workspace .workspace-sidebar__utility {
+  color: var(--taco-paper) !important;
+}
+
+.taco-workspace .workspace-sidebar__header button,
+.taco-workspace .workspace-sidebar__nav button,
+.taco-workspace .workspace-sidebar__nav a,
+.taco-workspace .workspace-sidebar__utility button,
+.taco-workspace .workspace-sidebar__utility a {
+  color: var(--taco-paper) !important;
+  border-radius: 3px !important;
+}
+
+.taco-workspace .workspace-sidebar :is([aria-current="page"], [aria-current="location"]) {
+  background: var(--taco-coral) !important;
+  border-color: var(--workspace-coral) !important;
+  color: var(--taco-ink) !important;
+}
+
+.taco-workspace .workspace-sidebar :is([aria-current="page"], [aria-current="location"]) * {
+  color: inherit !important;
+}
+
+.taco-workspace .workspace-sidebar .workspace-sidebar__group {
+  border-color: color-mix(in srgb, var(--workspace-paper) 28%, transparent) !important;
+}
+
+.taco-workspace .taco-home-shell > .taco-home-next-action { order: 1; }
+.taco-workspace .taco-home-shell > .taco-home-today { order: 2; }
+.taco-workspace .taco-home-shell > .taco-home-context { order: 3; }
+.taco-workspace .taco-home-shell > .taco-home-opportunities { order: 4; }
+.taco-workspace .taco-home-shell > .taco-home-recent { order: 5; }
+.taco-workspace .taco-home-shell > .taco-home-tools { order: 6; }
+.taco-workspace .taco-home-shell > .taco-home-secondary { order: 7; }
+.taco-workspace .taco-home-shell > .taco-home-memory { order: 8; }
+
+.taco-workspace .taco-home-tools > h2,
+.taco-workspace .taco-home-secondary > h2,
+.taco-workspace .taco-home-recent h2 {
+  color: var(--workspace-ink);
+  letter-spacing: 0.16em;
+}
+
+.taco-workspace .taco-home-legacy-context {
+  display: none;
+}
+
+.taco-workspace .taco-home-greeting {
+  order: 0;
+}
+
+.taco-workspace .taco-applications-context {
+  border-color: var(--workspace-ink);
+}
+
+.taco-workspace .taco-applications-context a {
+  border-radius: 2px;
+}
+
+.taco-workspace .taco-queue-header {
+  border-radius: 4px;
+  box-shadow: var(--elevation-card);
+}
+
+.taco-workspace .taco-queue-header h1 {
+  letter-spacing: -0.025em;
+}
+
+.taco-workspace .taco-queue-metrics {
+  gap: 0.5rem;
+}
+
+.taco-workspace .taco-queue-metrics > * {
+  min-height: 0;
+}
+
+.taco-workspace .taco-queue-metrics > button {
+  border-radius: 4px;
+  padding: 0.75rem;
+  box-shadow: var(--elevation-card);
+}
+
+.taco-workspace .taco-queue-metrics > button:hover {
+  box-shadow: var(--elevation-raised);
+}
+
+@media (max-width: 767px) {
+  .taco-workspace main {
+    background-size: 24px 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .taco-workspace .elevation-interactive {
+    transition: none;
+  }
+}
+
+/* Deliberately override the legacy global !important radius rules only on
+   workspace controls and shared panels, never employer document previews. */
+.taco-workspace .taco-suite-panel,
+.taco-workspace .taco-suite-header,
+.taco-workspace .taco-suite-metric,
+.taco-workspace .taco-review-packet,
+.taco-workspace .taco-review-proof,
+.taco-workspace .taco-review-state-rail,
+.taco-workspace .taco-queue-header,
+.taco-workspace .mobile-tool-shell {
+  border-radius: 2px !important;
+  border-color: var(--workspace-ink) !important;
+  box-shadow: var(--elevation-card) !important;
+}
+.taco-workspace {
+  --icon-shell-bg: var(--bg-elevated);
+  --icon-shell-border: var(--workspace-line);
+  --icon-static: var(--workspace-ink);
+  --accent-dim: color-mix(in srgb, var(--workspace-coral) 12%, transparent);
+  --accent-light: var(--workspace-coral);
+  --theme-bg-card: var(--bg-surface);
+  --sidebar-bg: var(--bg-surface);
+  --modal-backdrop: color-mix(in srgb, var(--text-primary) 46%, transparent);
+  --theme-surface-hover: var(--bg-hover);
+  --theme-border: var(--border-subtle);
+}
+.taco-workspace .icon-shell-neutral { border-radius: 2px !important; }
+.taco-workspace .taco-home-shell { gap: 0; }
+.taco-workspace .taco-home-today a > span:last-child { border-radius: 2px; }
+.taco-workspace .taco-primary-action {
+  border: 1px solid var(--workspace-ink);
+  border-radius: 2px;
+  background: var(--workspace-coral) !important;
+  color: var(--taco-action-ink) !important;
+  box-shadow: var(--elevation-raised);
+}
+.taco-workspace .taco-primary-action:hover { background: var(--accent-active) !important; color: var(--accent-on) !important; }
+.taco-workspace .workspace-preview-bar { --text-primary: var(--preview-ink); --text-secondary: var(--preview-ink); --text-muted: var(--preview-ink); --bg-input: var(--preview-paper); }
+.taco-workspace .workspace-sidebar {
+  --text-primary: var(--taco-paper);
+  --text-muted: color-mix(in srgb, var(--taco-paper) 76%, var(--taco-ink));
+  --text-secondary: var(--taco-paper);
+  --icon-static: var(--taco-paper);
+  --theme-bg-card: var(--taco-ink);
+  --theme-surface-hover: color-mix(in srgb, var(--taco-paper) 12%, var(--taco-ink));
+}
+.taco-workspace .workspace-sidebar__wordmark { width: 116px; height: auto; display: block; }
+.taco-workspace .workspace-sidebar__compact-brand { display: block; width: 36px; height: auto; margin: 8px 0; }
+.taco-workspace .workspace-sidebar img[src="/taco-icon-512.png"] { filter: none; }
+.taco-workspace .taco-suite-shell { background: transparent; }
+.taco-workspace :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--workspace-coral); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .taco-workspace *, .taco-workspace *::before, .taco-workspace *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.taco-workspace .taco-application-drawer { background: var(--bg-surface) !important; }
+.taco-workspace .taco-application-drawer-section,
+.taco-workspace .taco-application-actions > button { border-radius: 2px !important; border-color: var(--workspace-line); }
+.taco-workspace .taco-application-drawer-section button { border-radius: 2px !important; }
+.taco-workspace .mobile-quick-tools__item { border-radius: 2px !important; }
+.taco-workspace img[src="/taco-icon-512.png"] { filter: none; }
+
+/* Queue surfaces are application controls, never employer resume templates. */
+.taco-workspace :is(.taco-queue-workspace, .taco-writing-workspace) :is(.elevation-card, .elevation-interactive, .elevation-raised, button, input, select, textarea, article) {
+  border-radius: 2px !important;
+}
+.taco-workspace :is(.taco-queue-workspace, .taco-writing-workspace) :is(.elevation-card, .elevation-interactive, .elevation-raised) {
+  border-color: var(--workspace-line) !important;
+  box-shadow: var(--elevation-card) !important;
+}
+.taco-workspace .taco-queue-workspace [role="dialog"] {
+  border-color: var(--workspace-ink) !important;
+  background: var(--bg-surface) !important;
+}

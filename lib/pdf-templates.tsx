@@ -1,4 +1,5 @@
 'use client';
+import { ResumeFlagshipPDFDocument } from './resume-design/flagship-pdf';
 
 /**
  * Text-based PDF Templates using @react-pdf/renderer
@@ -20,6 +21,7 @@ import { saveAs } from 'file-saver';
 import type { ReactElement } from 'react';
 import type { CanonicalResume } from '@/lib/resume-normalizer';
 import { cleanResumeText, normalizeResume } from '@/lib/resume-normalizer';
+import { assertResumeGlyphCoverage } from '@/lib/resume-design/glyph-coverage';
 import { getEditorialImpacts, isEditorialImpactAchievement } from '@/components/resume-templates/editorial-authority-impact';
 import {
   CURATED_SIGNATURE_PDF_MAP,
@@ -30,6 +32,8 @@ import {
   getRegisteredTemplate,
 } from '@/lib/resume-templates/catalog';
 import { requireResumeTemplateRegistryEntry } from '@/lib/resume-templates/registry';
+import type { ResumeDesignConfig } from '@/lib/resume-design/types';
+import { ResumeDesignPDFPage } from '@/lib/resume-design/pdf';
 
 // ============================================================
 // FONT REGISTRATION — physical files for ATS compatibility
@@ -55,6 +59,18 @@ interface TemplateColors {
 interface PDFTemplateProps {
   resume: CanonicalResume;
   colors: TemplateColors;
+  pageSize?: 'A4' | 'LETTER';
+}
+
+type ResumeWithAdditionalSections = CanonicalResume & { additionalSections?: { id: string; title: string; items: string[] }[] };
+
+function PDFAdditionalSections({ resume, colors }: { resume: CanonicalResume; colors: TemplateColors }) {
+  const sections = [...((resume as ResumeWithAdditionalSections).additionalSections || []), ...(resume.links?.length ? [{ id: 'additional-links', title: 'Links', items: resume.links }] : [])];
+  return <>{sections.map((section, index) => {
+    const items = (section.items || []).filter((item) => cleanResumeText(item));
+    if (!section.title && items.length === 0) return null;
+    return <View key={section.id || `${section.title}-${index}`}><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">{cleanResumeText(section.title) || 'Additional information'}</PDFSectionTitle>{items.map((item, itemIndex) => <Text key={itemIndex} style={{ fontSize: 9.5, marginBottom: 2, color: '#333333' }}>•  {item}</Text>)}</View>;
+  })}</>;
 }
 
 type PDFHeaderDensity = 'hero' | 'standard' | 'compact';
@@ -435,73 +451,78 @@ function PDFCertifications({ certs, colors }: { certs: string[]; colors: Templat
 // ============================================================
 
 // Executive: Professional serif, border-bottom header
-function ExecutivePDF({ resume, colors }: PDFTemplateProps) {
+function ExecutivePDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="executive" />
       {resume.summary && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Professional Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
       {resume.education.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} /></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Skills</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} /></View>}
       <PDFCertifications certs={resume.certifications} colors={colors} />
+      <PDFAdditionalSections resume={resume} colors={colors} />
     </Page>
   );
 }
 
 // Minimal: Light, centered header
-function MinimalPDF({ resume, colors }: PDFTemplateProps) {
+function MinimalPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="minimal" />
       {resume.summary && <View style={{ borderTopWidth: 1, borderTopColor: '#e0e0e0', paddingTop: 10 }}><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#555555', textAlign: 'center' }}>{resume.summary}</Text></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color="#999999">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
       {resume.education.length > 0 && <View><PDFSectionTitle color="#999999">Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} /></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color="#999999">Skills</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} layout="inline" /></View>}
+      <PDFAdditionalSections resume={resume} colors={colors} />
     </Page>
   );
 }
 
 // Compact: Dense, small type
-function CompactPDF({ resume, colors }: PDFTemplateProps) {
+function CompactPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 9, color: colors.text, padding: '30 40', lineHeight: 1.4 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 9, color: colors.text, padding: '30 40', lineHeight: 1.4 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="compact" />
       {resume.summary && <View style={{ marginBottom: 8, backgroundColor: `${colors.primary}08`, padding: 8, borderRadius: 4 }}><Text style={{ fontSize: 9, color: '#444444', lineHeight: 1.5 }}>{resume.summary}</Text></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Core Competencies</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} layout="inline" /></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Professional Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
       {resume.education.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} /></View>}
       <PDFCertifications certs={resume.certifications} colors={colors} />
+      <PDFAdditionalSections resume={resume} colors={colors} />
     </Page>
   );
 }
 
 // Technical: Monospace style
-function TechnicalPDF({ resume, colors }: PDFTemplateProps) {
+function TechnicalPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="technical" />
       {resume.summary && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Technical Skills</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} /></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
       {resume.education.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} /></View>}
+      <PDFAdditionalSections resume={resume} colors={colors} />
     </Page>
   );
 }
 
 // Harvard: Education-first, centered header
-function HarvardPDF({ resume, colors }: PDFTemplateProps) {
+function HarvardPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="harvard" />
       {resume.education.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} companyFirst /></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} companyFirst /></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Skills and Interests</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} layout="inline" /></View>}
       {resume.summary && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Summary</PDFSectionTitle><Text style={{ fontSize: 10, color: '#555555', lineHeight: 1.6 }}>{resume.summary}</Text></View>}
+      <PDFAdditionalSections resume={resume} colors={colors} />
     </Page>
   );
 }
 
-function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
+function EditorialAuthorityPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   const impacts = getEditorialImpacts(resume);
   const contact = [resume.email, resume.phone, resume.location, resume.linkedin, resume.website]
     .filter((item): item is string => Boolean(item));
@@ -537,7 +558,7 @@ function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
 
   return (
     <Page
-      size="A4"
+      size={pageSize}
       wrap
       style={{
         fontFamily: 'Inter',
@@ -551,10 +572,9 @@ function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
         lineHeight: 1.45,
       }}
     >
-      <View
-        fixed
-        render={({ pageNumber }) => pageNumber === 1 ? (
-          <View style={{ position: 'absolute', left: 38, top: 42, width: railWidth - 60 }}>
+      <View fixed style={{ position: 'absolute', left: 0, top: 0, width: railWidth }}>
+        <View style={{ width: railWidth, height: pageSize === 'LETTER' ? 792 : 841.89, flexDirection: 'column' }}>
+          <View style={{ flexShrink: 0, paddingLeft: 38, paddingTop: 42, paddingBottom: 24, paddingRight: 22, width: railWidth }}>
             <Text style={{ fontFamily: 'Times-Roman', fontSize: resume.name.length > 24 ? 31 : 39, lineHeight: 0.9, color: colors.primary, textTransform: 'uppercase' }}>
               {resume.name || 'Resume'}
             </Text>
@@ -564,21 +584,52 @@ function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
                 {resume.title}
               </Text>
             ) : null}
-            {contact.length > 0 ? (
-              <View style={{ marginTop: 22 }}>
-                <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary, textTransform: 'uppercase', letterSpacing: 1.3, marginBottom: 6 }}>
-                  Contact
+            {contact.length > 0 ? <View style={{ marginTop: 22 }}>
+              <Text style={{ fontSize: 8, fontWeight: 'bold', color: colors.primary, textTransform: 'uppercase', letterSpacing: 1.3, marginBottom: 6 }}>Contact</Text>
+              {railContact.map((item, index) => <Text key={`${item}-${index}`} style={{ fontSize: 7.6, color: colors.text, marginBottom: 3 }}>{item}</Text>)}
+            </View> : null}
+          </View>
+          <View style={{ flexGrow: 1, flexShrink: 0, backgroundColor: colors.primary, paddingTop: 27, paddingHorizontal: 38, color: '#ffffff' }}>
+            {railSkills.length > 0 ? (
+              <View style={{ marginBottom: 19 }}>
+                <Text style={{ fontSize: 8.4, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.3, paddingBottom: 5, borderBottomWidth: 0.6, borderBottomColor: '#94a3b8' }}>
+                  Areas of Expertise
                 </Text>
-                {railContact.map((item, index) => (
-                  <Text key={`${item}-${index}`} style={{ fontSize: 7.6, color: colors.text, marginBottom: 3 }}>
-                    {item}
-                  </Text>
+                {railSkills.map((group, index) => (
+                  <View key={`${group.category}-${index}`} style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 7.2, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.4 }}>{group.category}</Text>
+                    <Text style={{ marginTop: 2, fontSize: 6.9, lineHeight: 1.38, color: '#dbe4ef' }}>{group.items.join(' · ')}</Text>
+                  </View>
                 ))}
               </View>
             ) : null}
+            {railEducation.length > 0 ? (
+              <View style={{ marginBottom: 18 }}>
+                <Text style={{ fontSize: 8.4, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.3, paddingBottom: 5, borderBottomWidth: 0.6, borderBottomColor: '#94a3b8' }}>Education</Text>
+                {railEducation.map((education, index) => (
+                  <View key={`${education.institution}-${index}`} style={{ marginTop: 8 }}>
+                    {education.degree ? <Text style={{ fontSize: 7.2, fontWeight: 'bold', textTransform: 'uppercase' }}>{education.degree}</Text> : null}
+                    <Text style={{ marginTop: 2, fontSize: 6.9, lineHeight: 1.38, color: '#dbe4ef' }}>{[education.institution, education.year].filter(Boolean).join(' · ')}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {railCertifications.length > 0 ? (
+              <View>
+                <Text style={{ fontSize: 8.4, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.3, paddingBottom: 5, borderBottomWidth: 0.6, borderBottomColor: '#94a3b8' }}>Certifications</Text>
+                {railCertifications.map((certification, index) => (
+                  <Text key={`${certification}-${index}`} style={{ marginTop: 6, fontSize: 6.9, lineHeight: 1.38, color: '#dbe4ef' }}>{certification}</Text>
+                ))}
+                {hasCredentialOverflow ? (
+                  <Text style={{ marginTop: 10, fontSize: 6.4, lineHeight: 1.35, color: '#dbe4ef', fontStyle: 'italic' }}>
+                    Full credential details continue in the main document.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
           </View>
-        ) : null}
-      />
+        </View>
+      </View>
 
       {resume.summary ? (
         <View>
@@ -663,6 +714,13 @@ function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
         </View>
       ) : null}
 
+      {resume.education.length > 0 ? (
+        <View style={{ marginTop: 24 }}>
+          <Text style={{ fontSize: 9.2, fontWeight: 'bold', color: colors.accent, textTransform: 'uppercase', letterSpacing: 1.6, paddingBottom: 5, borderBottomWidth: 0.7, borderBottomColor: '#718096' }}>Education</Text>
+          {resume.education.map((education, index) => <Text key={`${education.institution}-${index}`} style={{ marginTop: 5, fontSize: 8.2, color: colors.text }}>{[education.degree, education.institution, education.year, education.details].filter(Boolean).join(' · ')}</Text>)}
+        </View>
+      ) : null}
+
       {hasCredentialOverflow ? (
         <View style={{ marginTop: 24 }}>
           <Text style={{ fontSize: 9.2, fontWeight: 'bold', color: colors.accent, textTransform: 'uppercase', letterSpacing: 1.6, paddingBottom: 5, borderBottomWidth: 0.7, borderBottomColor: '#718096' }}>
@@ -709,60 +767,12 @@ function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
         </View>
       ) : null}
 
-      <View
-        fixed
-        render={({ pageNumber }) => pageNumber === 1 ? (
-          <View style={{ position: 'absolute', left: 0, top: 174, bottom: 0, width: railWidth, backgroundColor: colors.primary, paddingTop: 27, paddingHorizontal: 38, color: '#ffffff' }}>
-            {railSkills.length > 0 ? (
-              <View style={{ marginBottom: 19 }}>
-                <Text style={{ fontSize: 8.4, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.3, paddingBottom: 5, borderBottomWidth: 0.6, borderBottomColor: '#94a3b8' }}>
-                  Areas of Expertise
-                </Text>
-                {railSkills.map((group, index) => (
-                  <View key={`${group.category}-${index}`} style={{ marginTop: 8 }}>
-                    <Text style={{ fontSize: 7.2, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.4 }}>{group.category}</Text>
-                    <Text style={{ marginTop: 2, fontSize: 6.9, lineHeight: 1.38, color: '#dbe4ef' }}>{group.items.join(' · ')}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            {railEducation.length > 0 ? (
-              <View style={{ marginBottom: 18 }}>
-                <Text style={{ fontSize: 8.4, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.3, paddingBottom: 5, borderBottomWidth: 0.6, borderBottomColor: '#94a3b8' }}>Education</Text>
-                {railEducation.map((education, index) => (
-                  <View key={`${education.institution}-${index}`} style={{ marginTop: 8 }}>
-                    {education.degree ? <Text style={{ fontSize: 7.2, fontWeight: 'bold', textTransform: 'uppercase' }}>{education.degree}</Text> : null}
-                    <Text style={{ marginTop: 2, fontSize: 6.9, lineHeight: 1.38, color: '#dbe4ef' }}>{[education.institution, education.year].filter(Boolean).join(' · ')}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-            {railCertifications.length > 0 ? (
-              <View>
-                <Text style={{ fontSize: 8.4, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.3, paddingBottom: 5, borderBottomWidth: 0.6, borderBottomColor: '#94a3b8' }}>Certifications</Text>
-                {railCertifications.map((certification, index) => (
-                  <Text key={`${certification}-${index}`} style={{ marginTop: 6, fontSize: 6.9, lineHeight: 1.38, color: '#dbe4ef' }}>{certification}</Text>
-                ))}
-                {hasCredentialOverflow ? (
-                  <Text style={{ marginTop: 10, fontSize: 6.4, lineHeight: 1.35, color: '#dbe4ef', fontStyle: 'italic' }}>
-                    Full credential details continue in the main document.
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-        ) : (
-          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 42, paddingHorizontal: 40, backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontFamily: 'Times-Roman', fontSize: 14, color: '#ffffff', textTransform: 'uppercase' }}>{resume.name || 'Resume'}</Text>
-            <Text style={{ fontSize: 7.4, color: '#dbe4ef', textTransform: 'uppercase', letterSpacing: 0.8 }}>{resume.title}</Text>
-          </View>
-        )}
-      />
+      <PDFAdditionalSections resume={resume} colors={colors} />
     </Page>
   );
 }
 
-function TechnicalSignalPDF({ resume, colors }: PDFTemplateProps) {
+function TechnicalSignalPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   const contact = [resume.email, resume.phone, resume.location, resume.linkedin, resume.website]
     .filter((item): item is string => Boolean(item));
   const signalGreen = '#0a9f36';
@@ -777,7 +787,7 @@ function TechnicalSignalPDF({ resume, colors }: PDFTemplateProps) {
 
   return (
     <Page
-      size="A4"
+      size={pageSize}
       wrap
       style={{
         backgroundColor: '#fbfbfa',
@@ -865,7 +875,7 @@ function TechnicalSignalPDF({ resume, colors }: PDFTemplateProps) {
           {sectionTitle('Selected Credentials')}
           {resume.certifications.map((certification, index) => (
             <Text key={`${certification}-${index}`} style={{ marginBottom: 3, fontSize: 7.3 }}>
-              <Text style={{ color: signalGreen }}>//  </Text>{certification}
+              <Text style={{ color: signalGreen }}>{'//  '}</Text>{certification}
             </Text>
           ))}
         </View>
@@ -884,17 +894,18 @@ function TechnicalSignalPDF({ resume, colors }: PDFTemplateProps) {
         </View>
       ) : null}
 
+      <PDFAdditionalSections resume={resume} colors={colors} />
       <View fixed style={{ position: 'absolute', left: 34, right: 34, bottom: 14, borderTopWidth: 0.6, borderTopColor: '#111111', paddingTop: 4, flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 5.8, textTransform: 'uppercase' }}>/ Reliable systems. Measurable impact. /</Text>
-        <Text style={{ fontSize: 5.8, color: colors.accent, textTransform: 'uppercase' }}>Technical Signal // v1.0</Text>
+        <Text style={{ fontSize: 5.8, textTransform: 'uppercase' }}>{'/ Reliable systems. Measurable impact. /'}</Text>
+        <Text style={{ fontSize: 5.8, color: colors.accent, textTransform: 'uppercase' }}>Technical Signal {'//'} v1.0</Text>
       </View>
     </Page>
   );
 }
 
-function BrutalistVoltagePDF({ resume, colors }: PDFTemplateProps) {
+function BrutalistVoltagePDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   const impacts = getEditorialImpacts(resume);
-  const contact = [resume.website, resume.email, resume.phone, resume.location]
+  const contact = [resume.website, resume.linkedin, resume.email, resume.phone, resume.location]
     .filter((item): item is string => Boolean(item));
   const lime = '#dfff00';
   const cream = '#f7f0e3';
@@ -905,7 +916,7 @@ function BrutalistVoltagePDF({ resume, colors }: PDFTemplateProps) {
   );
 
   return (
-    <Page size="A4" wrap style={{ backgroundColor: cream, color: colors.text, fontFamily: 'Helvetica', fontSize: 8, lineHeight: 1.35 }}>
+    <Page size={pageSize} wrap style={{ backgroundColor: cream, color: colors.text, fontFamily: 'Helvetica', fontSize: 8, lineHeight: 1.35 }}>
       <View wrap={false} style={{ flexDirection: 'row' }}>
         <View style={{ width: '64%', flexDirection: 'row', paddingTop: 22, paddingBottom: 18 }}>
           <View style={{ width: 56, alignItems: 'center', justifyContent: 'center' }}>
@@ -1024,6 +1035,7 @@ function BrutalistVoltagePDF({ resume, colors }: PDFTemplateProps) {
         </View>
       ) : null}
 
+      <PDFAdditionalSections resume={resume} colors={colors} />
       <View
         fixed
         render={({ pageNumber }) => pageNumber > 1 ? (
@@ -1038,7 +1050,7 @@ function BrutalistVoltagePDF({ resume, colors }: PDFTemplateProps) {
 }
 
 // Generic single-column PDF for: Elegant, Nordic, Modern, Creative, Cascade, Columnist, Metro, Consultant, Startup, ATS Ultra, FAANG, Federal, Academic
-function GenericSingleColumnPDF({ resume, colors, sectionOrder, templateId = 'executive' }: PDFTemplateProps & { sectionOrder?: string[]; templateId?: string }) {
+function GenericSingleColumnPDF({ resume, colors, pageSize = 'A4', sectionOrder, templateId = 'executive' }: PDFTemplateProps & { sectionOrder?: string[]; templateId?: string }) {
   const order = sectionOrder || ['summary', 'experience', 'skills', 'education', 'certifications'];
   const sections: Record<string, ReactElement | null> = {
     summary: resume.summary ? <View key="summary"><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Professional Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View> : null,
@@ -1046,11 +1058,13 @@ function GenericSingleColumnPDF({ resume, colors, sectionOrder, templateId = 'ex
     skills: resume.skills.length > 0 ? <View key="skills"><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Skills</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} /></View> : null,
     education: resume.education.length > 0 ? <View key="education"><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} /></View> : null,
     certifications: resume.certifications.length > 0 ? <View key="certifications"><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Certifications</PDFSectionTitle><PDFCertifications certs={resume.certifications} colors={colors} /></View> : null,
+    additional: <PDFAdditionalSections key="additional" resume={resume} colors={colors} />,
   };
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId={templateId} />
       {order.map(s => sections[s]).filter(Boolean)}
+      <PDFAdditionalSections resume={resume} colors={colors} />
     </Page>
   );
 }
@@ -1063,12 +1077,13 @@ function createCuratedPDFPage(templateId: CuratedSignatureTemplateId): React.FC<
   const metadata = getRegisteredTemplate(templateId);
   if (!metadata) throw new Error(`Missing curated PDF metadata for "${templateId}".`);
 
-  return function CuratedPDFPage({ resume, colors }: PDFTemplateProps) {
+  return function CuratedPDFPage({ resume, colors, pageSize }: PDFTemplateProps) {
     return (
       <CuratedPage
         resume={resume}
         colors={{ ...metadata.colors, ...colors }}
         metadata={metadata}
+        pageSize={pageSize}
       />
     );
   };
@@ -1118,11 +1133,24 @@ export function ResumePDFDocument({
   resume,
   templateId = 'executive',
   colors = { primary: '#1a365d', accent: '#2b6cb0', text: '#1a202c' },
+  pageSize = 'A4',
+  design,
+  mode = 'designed',
+  composition = 'standard',
 }: {
   resume: CanonicalResume;
   templateId?: string;
   colors?: TemplateColors;
+  pageSize?: 'A4' | 'LETTER';
+  design?: ResumeDesignConfig;
+  mode?: 'designed' | 'application';
+  composition?: 'standard' | 'flagship-experiment';
 }) {
+  if (composition === 'flagship-experiment' || (design?.rendererVersion === 3 && design.composition === 'taco-signature')) {
+    if (!design) throw new Error('The Signature experiment requires a current design.');
+    return <ResumeFlagshipPDFDocument resume={resume} design={design} mode={mode} />;
+  }
+  if (design) return <ResumeDesignPDFPage resume={resume} design={design} mode={mode} />;
   const TemplateComponent = requireResumeTemplateRegistryEntry(PDF_TEMPLATE_MAP, templateId, 'pdf');
   const templateMetadata = getRegisteredTemplate(templateId);
   const documentTitle = [cleanResumeText(resume.name), cleanResumeText(resume.title)].filter(Boolean).join(' — ') || 'Resume';
@@ -1144,7 +1172,8 @@ export function ResumePDFDocument({
       keywords="resume, experience, education, skills"
       language="en-US"
     >
-      <TemplateComponent resume={resume} colors={colors} />
+      {/* eslint-disable-next-line react-hooks/static-components */}
+      <TemplateComponent resume={resume} colors={colors} pageSize={pageSize} />
     </Document>
   );
 }
@@ -1186,7 +1215,7 @@ export function JDPDFDocument({ jd, editableText }: { jd?: GeneratedJD; editable
           <Text style={jdStyles.sectionTitle}>About the Role</Text>
           <Text style={jdStyles.body}>{jd.overview}</Text>
           {jd.first90Days?.length > 0 && <View><Text style={jdStyles.sectionTitle}>First 90 Days</Text>{jd.first90Days.map((m, i) => <Text key={i} style={jdStyles.bullet}>•  {m.day}: {m.milestone}</Text>)}</View>}
-          {jd.coreRequirements?.length > 0 && <View><Text style={jdStyles.sectionTitle}>What You'll Bring</Text>{jd.coreRequirements.map((r, i) => <Text key={i} style={jdStyles.bullet}>•  {r}</Text>)}</View>}
+          {jd.coreRequirements?.length > 0 && <View><Text style={jdStyles.sectionTitle}>What You&apos;ll Bring</Text>{jd.coreRequirements.map((r, i) => <Text key={i} style={jdStyles.bullet}>•  {r}</Text>)}</View>}
           {jd.niceToHave?.length > 0 && <View><Text style={jdStyles.sectionTitle}>Nice to Have</Text>{jd.niceToHave.map((r, i) => <Text key={i} style={jdStyles.bullet}>•  {r}</Text>)}</View>}
           {jd.culturePulse?.length > 0 && <View><Text style={jdStyles.sectionTitle}>Our Culture</Text>{jd.culturePulse.map((c, i) => <View key={i} style={{ marginBottom: 4 }}><Text style={jdStyles.subheading}>{c.trait}</Text><Text style={jdStyles.body}>{c.description}</Text></View>)}</View>}
           {jd.talentDensity && <View><Text style={jdStyles.sectionTitle}>What Exceptional Looks Like</Text><Text style={jdStyles.body}>{jd.talentDensity}</Text></View>}
@@ -1207,13 +1236,51 @@ export async function downloadResumePDF(
   resume: any,
   colors?: TemplateColors,
   filename?: string,
-  templateId?: string
+  templateId?: string,
+  shouldDownload: () => boolean = () => true,
+  pageSize: 'A4' | 'LETTER' = 'A4',
+  design?: ResumeDesignConfig,
+  mode: 'designed' | 'application' = 'designed',
 ) {
-  // Normalize + ATS-clean
-  const normalized = atsNormalizeResume(normalizeResume(resume));
-  const doc = <ResumePDFDocument resume={normalized} templateId={templateId || 'executive'} colors={colors} />;
-  const blob = await pdf(doc).toBlob();
+  const { blob } = await buildResumePDFArtifact(resume, colors, templateId, pageSize, design, mode);
+  const normalized = normalizeResume(resume);
+  if (!shouldDownload()) return;
   saveAs(blob, `${filename || normalized.name?.replace(/\s+/g, '_') || 'resume'}.pdf`);
+}
+
+export async function buildResumePDFArtifact(
+  resume: CanonicalResume,
+  colors?: TemplateColors,
+  templateId = 'executive',
+  pageSize: 'A4' | 'LETTER' = 'A4',
+  design?: ResumeDesignConfig,
+  mode: 'designed' | 'application' = 'designed',
+  composition: 'standard' | 'flagship-experiment' = 'standard',
+): Promise<{ blob: Blob; pageCount: number | null }> {
+  const normalized = normalizeResume(resume);
+  const withAdditional = {
+    ...normalized,
+    additionalSections: (resume as CanonicalResume & { additionalSections?: unknown }).additionalSections
+      ?? (normalized as CanonicalResume & { additionalSections?: unknown }).additionalSections,
+  } as CanonicalResume;
+  if (composition === 'flagship-experiment' && !design) throw new Error('The Signature experiment requires a current design.');
+  if (design) await assertResumeGlyphCoverage(withAdditional, design, mode);
+  const doc = <ResumePDFDocument resume={withAdditional} templateId={templateId} colors={colors} pageSize={pageSize} design={design} mode={mode} composition={composition} />;
+  const blob = await pdf(doc).toBlob();
+  let pageCount: number | null = null;
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    if (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+    }
+    const loadingTask = pdfjs.getDocument({ data: await blob.arrayBuffer() });
+    const document = await loadingTask.promise;
+    pageCount = document.numPages;
+    await document.destroy();
+  } catch {
+    pageCount = null;
+  }
+  return { blob, pageCount };
 }
 
 export async function downloadJDPDF(

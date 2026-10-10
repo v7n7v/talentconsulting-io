@@ -314,7 +314,10 @@ export async function searchJobs(params: JobSearchParams): Promise<JobSearchResu
     if (result.jobs.length > 0) return result;
 
     // Fallback: Remotive
-    return await searchJobsRemotive(params);
+    const fallback = await searchJobsRemotive(params);
+    // A disabled/error fallback must not erase a successful empty primary result.
+    if (result.source === 'Adzuna' && fallback.jobs.length === 0) return result;
+    return fallback;
 }
 
 /**

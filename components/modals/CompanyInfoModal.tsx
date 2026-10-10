@@ -48,7 +48,7 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
 
     if (!isOpen) return null;
 
-    const inputClass = "w-full px-4 py-2.5 rounded-xl text-sm outline-none transition-all";
+    const inputClass = "w-full min-h-[44px] px-4 py-2.5 rounded-xl text-base outline-none transition-all";
     const inputStyle = {
         background: 'var(--bg-input, var(--bg-hover))',
         border: '1px solid var(--border-subtle)',
@@ -65,7 +65,8 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onCancel}
-                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+                        className="fixed inset-0 backdrop-blur-sm z-[100]"
+                        style={{ background: 'var(--modal-backdrop)' }}
                     />
 
                     {/* Modal */}
@@ -75,9 +76,9 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.96, y: 12 }}
                             transition={{ duration: 0.18, ease: 'easeOut' }}
-                            className="relative w-full max-w-lg rounded-2xl overflow-hidden shadow-xl"
+                            className="relative w-full max-w-lg rounded-2xl overflow-hidden elevation-raised"
                             style={{
-                                background: 'var(--bg-surface)',
+                                background: 'var(--card-bg)',
                                 border: '1px solid var(--border-subtle)',
                             }}
                         >
@@ -95,7 +96,7 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
                                     </div>
                                     <button
                                         onClick={onCancel}
-                                        className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
+                                        className="ml-auto w-11 h-11 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
                                         style={{ color: 'var(--text-muted)' }}
                                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -123,7 +124,7 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
 
                                     <div>
                                         <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                                            Job Title <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>(optional)</span>
+                                            Job Title <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>(optional)</span>
                                         </label>
                                         <input
                                             type="text"
@@ -137,7 +138,7 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
 
                                     <div>
                                         <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                                            Application URL <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>(optional)</span>
+                                            Application URL <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>(optional)</span>
                                         </label>
                                         <input
                                             type="url"
@@ -154,7 +155,7 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
                                         <button
                                             onClick={handleExtractFromJD}
                                             disabled={isExtracting}
-                                            className="w-full px-4 py-2 rounded-xl text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+                                            className="w-full min-h-[44px] px-4 py-2 rounded-xl text-xs font-medium disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
                                             style={{
                                                 background: 'var(--accent-dim)',
                                                 color: 'var(--accent)',
@@ -182,7 +183,7 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
                                 <div className="flex gap-2.5 mt-6">
                                     <button
                                         onClick={onCancel}
-                                        className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                                        className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
                                         style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
                                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -199,7 +200,7 @@ export default function CompanyInfoModal({ isOpen, onSubmit, onCancel, jobDescri
                                 </div>
 
                                 {/* Helper text */}
-                                <p className="text-[10px] mt-3 text-center" style={{ color: 'var(--text-muted)' }}>
+                                <p className="text-[11px] mt-3 text-center" style={{ color: 'var(--text-muted)' }}>
                                     <span className="material-symbols-rounded align-middle mr-0.5 text-[12px]">lightbulb</span>
                                     Your resume will be auto-saved as "Resume_{companyName}_{jobTitle}_{new Date().getFullYear()}"
                                 </p>

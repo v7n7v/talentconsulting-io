@@ -144,7 +144,7 @@ test('job APIs distinguish supply failure from a successful empty result', () =>
 
 test('Job Search and Career Picks by Taco preserve prior results and render named recovery actions', () => {
   const page = fs.readFileSync(path.join(repoRoot, 'app/suite/job-search/page.tsx'), 'utf8');
-  const weekly = fs.readFileSync(path.join(repoRoot, 'app/suite/job-search/WeeklyPicksSection.tsx'), 'utf8');
+  assert.equal(fs.existsSync(path.join(repoRoot, 'app/suite/job-search/WeeklyPicksSection.tsx')), false);
   const widget = fs.readFileSync(path.join(repoRoot, 'components/JobFeedWidget.tsx'), 'utf8');
   const sidebar = fs.readFileSync(path.join(repoRoot, 'components/SuiteSidebar.tsx'), 'utf8');
   const panel = fs.readFileSync(path.join(repoRoot, 'components/jobs/JobDiscoveryRecoveryPanel.tsx'), 'utf8');
@@ -156,7 +156,7 @@ test('Job Search and Career Picks by Taco preserve prior results and render name
   assert.match(page, /Edit search/);
   assert.match(page, /id="job-search-target-role"/);
   assert.match(page, /localStorage\.setItem\(jobCountKey\(jobCountUserId\)/);
-  assert.match(page, /pendingSearchAfterAuthRef\.current = \{ query, location, salaryMin \}/);
+  assert.match(page, /pendingSearchAfterAuthRef\.current = \{ query, location, salaryMin, owner: jobCountUserId, accessToken: jobSearchAccessToken \}/);
   assert.match(page, /fetchJobs\(1, pending\.query, pending\.location, pending\.salaryMin\)/);
   assert.match(page, /readJobPacketRecovery\(data\.recovery\)/);
   assert.match(page, /setPackets\(readStoredPackets\(JSON\.parse\(savedPackets\)\)\)/);
@@ -164,25 +164,11 @@ test('Job Search and Career Picks by Taco preserve prior results and render name
   assert.match(page, /applicationUrl: job\.outboundLinkVerified \? job\.url : undefined/);
   assert.match(page, /job\.outboundLinkVerified && job\.url/);
 
-  assert.match(weekly, /setRecovery\(classifyJobDiscoveryFailure\(error, 'suggestions'\)\)/);
-  assert.match(weekly, /data\.partial \? mergePreservedJobResults\(previousJobs, nextJobs\) : nextJobs/);
-  assert.match(weekly, /suggestionsRequestIdRef\.current = requestId/);
-  assert.match(weekly, /replacement \|\| \(data\.partial \? current : null\)/);
-  assert.match(weekly, /getJobResultIdentity\(job\) === currentIdentity/);
-  assert.match(weekly, /key=\{getJobResultIdentity\(job\)\}/);
-  assert.doesNotMatch(weekly, /job\.id === current\.id/);
-  assert.match(weekly, /motion\.button/);
-  assert.match(weekly, /handleRecoveryAction/);
-  assert.match(weekly, /setAuthModal\(recovery\.action === 'create_account' \? 'signup' : 'login'\)/);
-  assert.match(weekly, /JobDiscoveryRecoveryPanel/);
-  assert.match(weekly, /!loading && !recovery && jobs\.length === 0/);
-  assert.doesNotMatch(weekly, /Network error loading suggestions/);
-  assert.doesNotMatch(weekly, /setError\(/);
 
   assert.match(widget, /setRecovery\(classifyJobDiscoveryFailure\(error, 'suggestions'\)\)/);
   assert.match(widget, /setRecovery\(classifyJobDiscoveryResponse\(data, 'suggestions', res\.status\)\)/);
   assert.ok(widget.indexOf('if (data.needsSetup)') < widget.indexOf('res.ok && data.success && Array.isArray(data.jobs)'));
-  assert.match(widget, /data\.partial \? mergePreservedJobResults\(previousJobs, nextJobs\) : nextJobs/);
+  // Actual multi-response partial merge is exercised by job-widget-behavior.test.js.
   assert.match(widget, /suggestionsRequestIdRef\.current = requestId/);
   assert.match(widget, /JobDiscoveryRecoveryPanel recovery=\{recovery\}/);
   assert.match(widget, /handleRecoveryAction/);

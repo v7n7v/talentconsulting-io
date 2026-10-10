@@ -1,511 +1,81 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import { useTheme } from '@/components/ThemeProvider';
+import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
+import { buildToolStory, storyStep } from '@/lib/tool-story-adapters';
+
+import { useState } from 'react';
 import { useStore } from '@/lib/store';
+import { useOwnedResource } from '@/hooks/useOwnedResource';
 import { authFetch } from '@/lib/auth-fetch';
-import { SuiteToolHeader, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
+import { SuiteToolShell, SuiteToolHeader, SuitePanel, SuiteMetricCard, SuiteEmptyState } from '@/components/suite/SuiteToolChrome';
 import SuiteSignedOut from '@/components/suite/SuiteSignedOut';
 
-interface PulseData {
-  // Pipeline
-  totalApps: number;
-  /** Records actually marked as sent. The denominator for every rate here. */
-  appliedApps: number;
-  thisWeekApps: number;
-  responded: number;
-  interviews: number;
-  offers: number;
-  rejected: number;
-  ghosted: number;
-  // Velocity — applications sent per week, one decimal.
-  weeklyRate: number;
-  // Actions
+type Pulse = {
+  totalApps: number; appliedApps: number; thisWeekApps: number; responded: number; interviews: number; offers: number;
+  weeklyRate: number | null; complete?: boolean; unknownSubmissionDates?: number;
   staleApps: { company: string; role: string; daysAgo: number }[];
-  upcomingInterviews: { company: string; role: string; date: string }[];
-  followUps: { company: string; role: string; daysSinceApply: number }[];
-  // Morale
+  followUps: { id?: string; company: string; role: string; daysSinceApply: number }[];
+  upcomingInterviews: { id?: string; company: string; role: string; date: string | null }[];
   moraleHistory: { week: string; score: number }[];
-  /** Null until there is at least one application to divide by. */
-  smartApplyRate?: number | null;
-  morphedCount?: number;
-  fitAnalyzedCount?: number;
+  smartApplyRate?: number | null; morphedCount?: number;
+};
+
+function validPulse(value: unknown): boolean {
+  const pulse = (value as { pulse?: Pulse } | null)?.pulse;
+  return !!pulse && ['totalApps','appliedApps','thisWeekApps','responded','interviews','offers'].every(key => typeof pulse[key as keyof Pulse] === 'number')
+    && Array.isArray(pulse.moraleHistory) && pulse.moraleHistory.every(item => typeof item.week === 'string' && typeof item.score === 'number')
+    && Array.isArray(pulse.staleApps) && Array.isArray(pulse.followUps) && Array.isArray(pulse.upcomingInterviews)
+    && [...pulse.followUps, ...pulse.upcomingInterviews].every(item => typeof item.company === 'string' && typeof item.role === 'string');
 }
-
-export function PulseContent() {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
-  const { user } = useStore();
-  const router = useRouter();
-
-  const [pulse, setPulse] = useState<PulseData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [moraleScore, setMoraleScore] = useState<number | null>(null);
-  const [savingMorale, setSavingMorale] = useState(false);
-
-  useEffect(() => {
-    /* Clear the flag on the way out. `loading` starts true and loadPulse is its
-       only other writer, so a bare return left the skeleton below as the whole
-       of /suite/pulse for a signed-out visitor - WorkspaceFrame renders suite
-       routes signed out rather than redirecting. The signed-out panel below is
-       gated separately, because merely clearing the flag would have shown the
-       "no applications yet" empty state to someone with no account, which is a
-       claim about a record they never had. */
-    if (!user) { setLoading(false); return; }
-    loadPulse();
-  }, [user]);
-
-  const loadPulse = async () => {
-    setLoading(true);
-    try {
-      const res = await authFetch('/api/agent/pulse');
-      if (res.ok) {
-        const data = await res.json();
-        setPulse(data.pulse);
-      }
-    } catch { /* silent */ }
-    finally { setLoading(false); }
-  };
-
+export function PulseContent({ embedded = false, onCheckIn }: { embedded?: boolean; onCheckIn?: () => void } = {}) {
+  const owner = useStore(state => state.user?.uid);
+  const { data: response, loading, error, reload } = useOwnedResource<{ pulse: Pulse }>('/api/agent/pulse', validPulse);
+  const data = response?.pulse;
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<{ owner: string; text: string } | null>(null);
   const saveMorale = async (score: number) => {
-    setMoraleScore(score);
-    setSavingMorale(true);
+    if (!owner || saving === owner) return;
+    const actor = owner;
+    setSaving(actor); setSaveError(null);
     try {
-      await authFetch('/api/agent/pulse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ morale: score }),
-      });
-    } catch { /* silent */ }
-    finally { setSavingMorale(false); }
+      const result = await authFetch('/api/agent/pulse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ morale: score }) });
+      if (!result.ok) throw new Error('Your check-in could not be saved. Try again.');
+      if (useStore.getState().user?.uid === actor) { await reload(); onCheckIn?.(); }
+    } catch (cause) {
+      if (useStore.getState().user?.uid === actor) setSaveError({ owner: actor, text: cause instanceof Error ? cause.message : 'Could not save this check-in.' });
+    } finally { setSaving(previous => previous === actor ? null : previous); }
   };
+  useToolGuidance(buildToolStory({
+    toolId: embedded ? 'intelligence' : 'pulse', title: 'Weekly review', contextKey: 'weekly-review',
+    purpose: 'Read recorded activity, inspect dated follow-ups and optionally record your own weekly reflection.',
+    pending: loading || saving === owner, hasResult: Boolean(data), failed: Boolean(error || saveError?.owner === owner), stale: Boolean(error && data),
+    work: [storyStep('refresh', 'Read the current week', 'Refresh reads your account records. Unknown submission dates and bounded samples remain labelled.', 'pulse-refresh'), storyStep('records', 'Review real activity', 'The review describes what was recorded. It does not establish an application was sent unless you recorded submission.', 'pulse-report', 'A recorded weekly report appears after the account read succeeds.')],
+    result: [storyStep('review', 'Inspect follow-up context', 'Follow-up windows are reminders, not predictions. Open a specific application or interview prep only when useful.', 'pulse-report'), storyStep('reflection', 'Choose a personal check-in', 'A check-in records your own feeling after a successful save. Help does not pick a feeling or manufacture progress.', 'pulse-checkin'), storyStep('saved', 'Read the recorded state', 'The last recorded week comes from saved account data. A pending or failed save has no new confirmed check-in.', 'pulse-checkin')],
+    recovery: [storyStep('retry', 'Review the failed read or save', 'Keep any retained report and choose the existing retry or check-in control yourself. Earlier information may be stale.', 'pulse-report', 'When no report loaded, use the displayed load error and Try again.')],
+  }));
 
-  const cardBg = isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)';
-  const cardBorder = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
-
-  /*
-   * There is no health verdict here any more.
-   *
-   * It was `weeklyRate >= 5 ? 'On Track' : weeklyRate >= 3 ? 'Keep Pushing' :
-   * 'Needs Attention'`, with a red broken-heart icon on the last branch. The 5
-   * and the 3 were the "5-10 apps/week for active searchers" claim printed a
-   * few lines below — step 6 deleted the citation and left the verdict it was
-   * supposed to justify, so a user on day one was told their search needed
-   * attention. There is no threshold in this product that the product can
-   * source, so there is no badge.
-   */
-
-  const data = pulse || {
-    totalApps: 0, appliedApps: 0, thisWeekApps: 0, responded: 0, interviews: 0,
-    offers: 0, rejected: 0, ghosted: 0, weeklyRate: 0,
-    staleApps: [], upcomingInterviews: [],
-    followUps: [], moraleHistory: [],
-  };
-
-  // Rates divide by applications actually sent, and are null without one.
-  const appliedApps = data.appliedApps ?? 0;
-  const responseRate = appliedApps > 0 ? Math.round(data.responded / appliedApps * 100) : null;
-  const funnelStages = [
-    { label: 'Applied', value: appliedApps, color: '#3b82f6', icon: 'send' },
-    { label: 'Responded', value: data.responded, color: '#06b6d4', icon: 'mark_email_read' },
-    { label: 'Interviews', value: data.interviews, color: '#8b5cf6', icon: 'groups' },
-    { label: 'Offers', value: data.offers, color: '#22c55e', icon: 'emoji_events' },
-  ];
-
-  /* Signed out returns here rather than falling through. `data` is
-     `pulse || {…zeros}`, and the funnel, the velocity row and the stat cards
-     below are not gated on `loading` at all, so a visitor with no account
-     would have been shown a full pipeline of measured zeros - the one thing
-     this product does not do. Every hook above has already run, so the early
-     return does not change hook order. */
-  if (!user) {
-    return (
-      <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto space-y-5 px-4 py-3 md:space-y-6 md:p-6">
-        <SuiteToolHeader
-          tool="pulse"
-          title="Weekly Career Pulse"
-          subtitle="Pipeline health, velocity, and next actions"
-          icon="monitor_heart"
-          pageHelpId="pulse"
-        />
-        <SuiteSignedOut
-          title="Sign in to see your Career Pulse"
-          description="Pulse counts the applications, replies and interviews saved to your account. Signed out there is nothing to count — not zero of them, none recorded."
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="mobile-app-content min-h-dvh max-w-4xl mx-auto space-y-5 px-4 py-3 md:space-y-6 md:p-6">
-      <SuiteToolHeader
-        tool="pulse"
-        title="Weekly Career Pulse"
-        subtitle="Pipeline health, velocity, and next actions"
-        icon="monitor_heart"
-        pageHelpId="pulse"
-        actions={
-          <button onClick={loadPulse}
-            className="flex items-center gap-1.5 rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]">
-            <span className="material-symbols-rounded text-[14px]">refresh</span>
-            Refresh
-          </button>
-        }
-      />
-
-      {loading && (
-        <div className="space-y-4">
-          <div className="h-24 rounded-xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />
-          <div className="grid grid-cols-4 gap-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-28 rounded-xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />
-            ))}
-          </div>
-          <div className="h-32 rounded-xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />
+  const latest = data?.moraleHistory.at(-1);
+  return <SuiteToolShell variant="standard" noBackground={embedded} className={embedded ? '!min-h-0 !p-0' : undefined}>
+    {embedded ? <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-semibold">Weekly review</h2><p className="text-sm text-[var(--text-secondary)]">Your recorded activity and next steps.</p></div><button data-guide="pulse-refresh" onClick={() => void reload()} disabled={loading} className="btn-secondary min-h-11 px-3">Refresh</button></div> : <SuiteToolHeader tool="pulse" title="Weekly review" subtitle="Your recorded activity, follow-ups and next interviews." icon="calendar_month" pageHelpId="pulse"
+      actions={<button data-guide="pulse-refresh" className="min-h-11 border border-[var(--border)] px-4" disabled={loading} onClick={() => void reload()}>{loading ? 'Loading…' : 'Refresh'}</button>} />}
+    {!owner ? <SuiteSignedOut title="Your weekly review" description="Sign in to review your recorded applications and check-ins." /> : <>
+      {error && <div role="alert" className="border border-[var(--danger)] p-4">{error}{data && <p>Last loaded information is shown below and may be out of date.</p>}<button onClick={() => void reload()} className="mt-2 block min-h-11 underline">Try again</button></div>}
+      {loading && !data && <p role="status">Loading your weekly review…</p>}
+      {!loading && !error && data && data.totalApps === 0 && <SuiteEmptyState icon="work" title="Start with an application" description="Track a role you are pursuing. Your own recorded activity will appear here." action={<a href="/suite/applications" className="btn-primary inline-flex min-h-11 items-center">Open Applications</a>} />}
+      {data && <div data-guide="pulse-report" className="space-y-4">
+        {data.complete === false && <p role="status">This summary covers a bounded sample of your application history.</p>}
+        <div className="grid gap-4 sm:grid-cols-3">
+          <SuiteMetricCard label="Sent in seven days" value={String(data.thisWeekApps)} icon="send" description="Uses your recorded submission dates" />
+          <SuiteMetricCard label="Employer responses" value={`${data.responded} of ${data.appliedApps}`} icon="mark_email_read" description="Across applications marked as sent" />
+          <SuiteMetricCard label="Recorded pace" value={data.weeklyRate == null ? 'Not measured' : `${data.weeklyRate} / week`} icon="calendar_month" description="Applications with a known sent date" />
         </div>
-      )}
-
-      {/* This week, stated. No ring scaled by a bare 15 (which quietly made
-          6.67 apps/week the implied 100%), no red heart, no verdict. */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex min-w-0 flex-wrap items-center justify-between gap-4 p-5 rounded-xl"
-        style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-      >
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full"
-            style={{ background: 'var(--bg-elevated)', border: `1px solid ${cardBorder}` }}>
-            <span className="material-symbols-rounded text-lg text-[var(--text-muted)]">monitor_heart</span>
-          </div>
-          <div className="min-w-0">
-            <p className="whitespace-nowrap text-lg font-bold tabular-nums text-[var(--text-primary)]">
-              {appliedApps > 0
-                ? `${data.weeklyRate} sent / week`
-                : 'Nothing sent yet'}
-            </p>
-            <p className="premium-copy-wrap text-xs text-[var(--text-muted)]">
-              {appliedApps > 0
-                ? `${data.responded} of ${appliedApps} answered${responseRate === null ? '' : ` — ${responseRate}%`}`
-                : 'Mark an application as sent and this starts counting.'}
-            </p>
-          </div>
+        {!!data.unknownSubmissionDates && <p className="text-sm text-[var(--text-secondary)]">{data.unknownSubmissionDates} sent applications have no submission date. Add those dates to include them in timing metrics.</p>}
+        <div className="grid gap-4 md:grid-cols-2">
+          <SuitePanel><h2 className="mb-3 text-lg font-semibold">Follow-ups to consider</h2>{data.followUps.length ? <ul className="space-y-3">{data.followUps.map((item, i) => <li key={i}><p className="font-medium">{item.role} · {item.company}</p><p className="text-sm">Sent {item.daysSinceApply} days ago</p>{item.id && <a className="inline-flex min-h-11 items-center underline" href={`/suite/applications?application=${encodeURIComponent(item.id)}`}>Review this application</a>}</li>)}</ul> : <p>No unanswered applications fall in the 10–21 day reminder window.</p>}<a href="/suite/applications?mobileView=followups" className="mt-4 inline-flex min-h-11 items-center underline">Review applications</a><p className="mt-2 text-xs text-[var(--text-muted)]">A reminder window, not a prediction of employer response time.</p></SuitePanel>
+          <SuitePanel><h2 className="mb-3 text-lg font-semibold">Upcoming interviews</h2>{data.upcomingInterviews.length ? <ul className="space-y-3">{data.upcomingInterviews.map((item, i) => <li key={i}><p className="font-medium">{item.role} · {item.company}</p><p className="text-sm">{item.date ? new Date(item.date).toLocaleDateString() : 'Date not recorded'}</p>{item.id && <a className="inline-flex min-h-11 items-center underline" href={`/suite/interview-sim?application=${encodeURIComponent(item.id)}`}>Prepare for this role</a>}</li>)}</ul> : <p>No upcoming interviews recorded.</p>}<a href="/suite/interview-sim" className="mt-4 inline-flex min-h-11 items-center underline">Open interview prep</a></SuitePanel>
         </div>
-        <div className="shrink-0 text-right">
-          <p className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">{data.thisWeekApps}</p>
-          <p className="text-[10px] text-[var(--text-muted)]">this week</p>
-        </div>
-      </motion.div>
-
-      {/* Pipeline Funnel */}
-      <div className="grid grid-cols-4 gap-3">
-        {funnelStages.map((stage, i) => (
-          <motion.div
-            key={stage.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="rounded-xl p-4 text-center"
-            style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-          >
-            <div className="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center"
-              style={{ background: `${stage.color}12`, border: `1px solid ${stage.color}20` }}>
-              <span className="material-symbols-rounded text-lg" style={{ color: stage.color }}>{stage.icon}</span>
-            </div>
-            <p className="text-2xl font-bold text-[var(--text-primary)]">{stage.value}</p>
-            <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider font-bold">{stage.label}</p>
-            {i > 0 && funnelStages[i - 1].value > 0 && (
-              <p className="text-[9px] mt-1" style={{ color: stage.color }}>
-                {Math.round(stage.value / funnelStages[i - 1].value * 100)}% conversion
-              </p>
-            )}
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Outcome Breakdown */}
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: 'Rejected', value: data.rejected, color: '#ef4444', icon: 'cancel' },
-          { label: 'Ghosted', value: data.ghosted, color: '#6b7280', icon: 'visibility_off' },
-          { label: 'Awaiting reply', value: Math.max(0, appliedApps - data.responded), color: '#f59e0b', icon: 'hourglass_top' },
-        ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 + i * 0.08 }}
-            className="rounded-xl p-3.5 flex items-center gap-3"
-            style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-          >
-            <span className="material-symbols-rounded text-lg" style={{ color: stat.color }}>{stat.icon}</span>
-            <div>
-              <p className="text-lg font-bold text-[var(--text-primary)]">{stat.value}</p>
-              <p className="text-[10px] text-[var(--text-muted)]">{stat.label}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Smart Apply Rate */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="rounded-xl p-5"
-        style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-      >
-        <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-          <span className="material-symbols-rounded text-base" style={{ color: '#f59e0b' }}>verified</span>
-          Smart Apply Rate
-        </h3>
-        <p className="text-[11px] text-[var(--text-muted)] mb-3">
-          % of applications that used the full intelligence pipeline (morphed resume + fit analysis). Quality over volume.
-        </p>
-        {/* Gated on having applications. Without them the `??` fallback never
-            fired (the route already returned a hard 0), so a new account was
-            shown "0%" in red, "0/0 apps used full pipeline", and the
-            "Spray & Pray" tier highlighted as their verdict. */}
-        {data.totalApps === 0 ? (
-          <SuiteUnmeasured
-            label="No applications to measure"
-            reason="This is the share of your applications that went through a resume morph. You have not tracked any applications yet, so there is no share to compute — not a share of zero."
-          />
-        ) : (() => {
-          const smartRate = data.smartApplyRate ?? Math.round((data.morphedCount ?? 0) / data.totalApps * 100);
-          const barColor = smartRate >= 70 ? '#22c55e' : smartRate >= 40 ? '#f59e0b' : '#ef4444';
-          return (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-3xl font-bold" style={{ color: barColor }}>{smartRate}%</span>
-                <span className="text-[10px] text-[var(--text-muted)]">
-                  {data.morphedCount ?? 0}/{data.totalApps} apps used full pipeline
-                </span>
-              </div>
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: barColor }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, Math.max(0, smartRate))}%` }}
-                  transition={{ duration: 1 }}
-                />
-              </div>
-              <div className="mt-3 flex gap-2">
-                {[
-                  { label: 'Spray & Pray', desc: 'No morph, no analysis', range: '0-30%', match: smartRate < 30 },
-                  { label: 'Selective', desc: 'Some pipeline use', range: '30-70%', match: smartRate >= 30 && smartRate < 70 },
-                  { label: 'Precision', desc: 'Full pipeline every time', range: '70-100%', match: smartRate >= 70 },
-                ].map(tier => (
-                  <div
-                    key={tier.label}
-                    className="flex-1 rounded-lg p-2 text-center"
-                    style={{
-                      background: tier.match ? `${barColor}10` : cardBg,
-                      border: `1px solid ${tier.match ? `${barColor}30` : cardBorder}`,
-                    }}
-                  >
-                    <p className="text-[10px] font-bold" style={{ color: tier.match ? barColor : 'var(--text-muted)' }}>{tier.label}</p>
-                    <p className="text-[8px] text-[var(--text-muted)]">{tier.desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-      </motion.div>
-
-      {/* Action Items */}
-      {(data.staleApps.length > 0 || data.followUps.length > 0 || data.upcomingInterviews.length > 0) && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          className="rounded-xl overflow-hidden"
-          style={{ border: `1px solid ${cardBorder}` }}
-        >
-          <div className="px-4 py-3 flex items-center gap-2" style={{
-            background: isLight ? 'rgba(139,92,246,0.04)' : 'rgba(139,92,246,0.06)',
-            borderBottom: `1px solid ${cardBorder}`,
-          }}>
-            <span className="material-symbols-rounded text-sm text-purple-500">task_alt</span>
-            <span className="text-xs font-bold text-[var(--text-primary)]">Action Items</span>
-          </div>
-
-          <div className="divide-y" style={{ borderColor: cardBorder }}>
-            {data.upcomingInterviews.map((item, i) => (
-              <div key={`int-${i}`} className="flex items-center gap-3 px-4 py-3">
-                <span className="material-symbols-rounded text-base text-purple-500">event</span>
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-[var(--text-primary)]">Interview: {item.company} — {item.role}</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">{new Date(item.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
-                </div>
-                <a href="/suite/interview-debrief" className="text-[10px] text-purple-500 font-bold">Prep →</a>
-              </div>
-            ))}
-
-            {data.followUps.map((item, i) => (
-              <div key={`fu-${i}`} className="flex items-center gap-3 px-4 py-3">
-                <span className="material-symbols-rounded text-base text-amber-500">forward_to_inbox</span>
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-[var(--text-primary)]">Follow up: {item.company} — {item.role}</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Applied {item.daysSinceApply} days ago — in the response window</p>
-                </div>
-                <span className="text-[10px] text-amber-500 font-bold">Send follow-up</span>
-              </div>
-            ))}
-
-            {data.staleApps.map((item, i) => (
-              <div key={`stale-${i}`} className="flex items-center gap-3 px-4 py-3">
-                <span className="material-symbols-rounded text-base text-red-500">schedule</span>
-                <div className="flex-1">
-                  <p className="text-xs font-medium text-[var(--text-primary)]">{item.company} — {item.role}</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">{item.daysAgo} days with no response — consider archiving</p>
-                </div>
-                <span className="text-[10px] text-red-500 font-bold">Archive</span>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      )}
-
-      {/* Velocity Context */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-        className="rounded-xl p-5"
-        style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-      >
-        <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-          <span className="material-symbols-rounded text-base text-blue-500">speed</span>
-          Application Velocity
-        </h3>
-        <div className="flex min-w-0 flex-wrap items-center gap-6">
-          <div className="min-w-0">
-            <p className="whitespace-nowrap text-3xl font-bold tabular-nums text-[var(--text-primary)]">{data.weeklyRate}</p>
-            <p className="text-[10px] text-[var(--text-muted)]">sent / week</p>
-          </div>
-          <div className="min-w-0 flex-1 space-y-1.5 text-xs text-[var(--text-secondary)]">
-            {data.totalApps > 0 ? (
-              <>
-                <p className="flex min-w-0 items-start gap-1.5">
-                  <span className="material-symbols-rounded shrink-0 text-[14px] text-[var(--text-muted)]">inventory_2</span>
-                  <span className="min-w-0">
-                    <strong className="tabular-nums">{data.totalApps}</strong> tracked,{' '}
-                    <strong className="tabular-nums">{appliedApps}</strong> marked as sent,{' '}
-                    <strong className="tabular-nums">{data.thisWeekApps}</strong> in the last 7 days
-                  </span>
-                </p>
-                <p className="flex min-w-0 items-start gap-1.5">
-                  <span className="material-symbols-rounded shrink-0 text-[14px] text-[var(--text-muted)]">mark_email_read</span>
-                  <span className="min-w-0">
-                    {responseRate === null
-                      ? 'No response rate yet — a rate needs an application marked as sent.'
-                      : <>
-                          <strong className="tabular-nums">{responseRate}%</strong> response rate across{' '}
-                          {appliedApps} sent {appliedApps === 1 ? 'application' : 'applications'}
-                        </>}
-                  </span>
-                </p>
-              </>
-            ) : (
-              <p className="min-w-0 text-[var(--text-muted)]">
-                Velocity is counted from the applications you track here. Nothing logged yet.
-              </p>
-            )}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Morale Check-in */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8 }}
-        className="rounded-xl p-5"
-        style={{ background: '#8b5cf608', border: '1px solid #8b5cf615' }}
-      >
-        <h3 className="text-sm font-bold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-          <span className="material-symbols-rounded text-base" style={{ color: '#8b5cf6' }}>self_improvement</span>
-          How Are You Feeling?
-        </h3>
-        <p className="text-[11px] text-[var(--text-muted)] mb-3">Job searching is tough. Track your morale to spot burnout early.</p>
-        <div className="flex gap-3">
-          {[
-            { score: 1, icon: 'sentiment_very_dissatisfied', label: 'Struggling', color: '#ef4444' },
-            { score: 2, icon: 'sentiment_dissatisfied', label: 'Low', color: '#f59e0b' },
-            { score: 3, icon: 'sentiment_neutral', label: 'Neutral', color: '#6b7280' },
-            { score: 4, icon: 'sentiment_satisfied', label: 'Good', color: '#22c55e' },
-            { score: 5, icon: 'sentiment_very_satisfied', label: 'Great', color: '#10b981' },
-          ].map(m => (
-            <button
-              key={m.score}
-              onClick={() => saveMorale(m.score)}
-              disabled={savingMorale}
-              className="flex-1 py-3 rounded-xl text-center transition-all"
-              style={{
-                background: moraleScore === m.score ? '#8b5cf615' : cardBg,
-                border: `2px solid ${moraleScore === m.score ? '#8b5cf6' : cardBorder}`,
-              }}
-            >
-              <span className="material-symbols-rounded text-[24px] block" style={{ color: m.color }}>{m.icon}</span>
-              <span className="text-[9px] text-[var(--text-muted)] mt-1 block">{m.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Morale History */}
-        {data.moraleHistory.length > 0 && (
-          <div className="mt-4 pt-3" style={{ borderTop: `1px solid ${cardBorder}` }}>
-            <div className="flex items-end gap-1 h-12">
-              {data.moraleHistory.slice(-8).map((m, i) => (
-                <motion.div
-                  key={m.week}
-                  initial={{ height: 0 }}
-                  animate={{ height: `${m.score * 20}%` }}
-                  transition={{ delay: i * 0.05 }}
-                  className="flex-1 rounded-t-sm"
-                  title={`Week of ${m.week}: ${m.score}/5`}
-                  style={{
-                    background: m.score >= 4 ? '#22c55e' : m.score >= 3 ? '#f59e0b' : '#ef4444',
-                    opacity: 0.7,
-                  }}
-                />
-              ))}
-            </div>
-            <p className="text-[9px] text-[var(--text-muted)] text-center mt-1">Morale over last 8 weeks</p>
-          </div>
-        )}
-      </motion.div>
-
-      {/* Empty State */}
-      {!loading && data.totalApps === 0 && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-12">
-          <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-teal-500/5" />
-            <div className="relative">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-                <span className="material-symbols-rounded text-3xl text-cyan-500">monitor_heart</span>
-              </div>
-              <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Your Pulse is Waiting</h3>
-              <p className="text-sm text-[var(--text-tertiary)] mb-5">
-                Start tracking applications to see pipeline health, velocity metrics, and personalized action items.
-              </p>
-              <button
-                onClick={() => router.push('/suite/applications')}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #06b6d4, #0d9488)', boxShadow: '0 4px 16px rgba(6,182,212,0.3)' }}
-              >
-                <span className="material-symbols-rounded text-sm">add</span>
-                Track Your First Application
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </div>
-  );
+        <SuitePanel><div data-guide="pulse-checkin"><h2 className="mb-2 text-lg font-semibold">Your check-in</h2><p className="text-sm text-[var(--text-secondary)]">How does your search feel this week? This is your own reflection.</p><div className="mt-4 flex flex-wrap gap-2">{['Difficult', 'Low', 'Okay', 'Good', 'Great'].map((label, i) => <button key={label} aria-pressed={latest?.score === i + 1} disabled={saving === owner} onClick={() => void saveMorale(i + 1)} className="min-h-11 border border-[var(--border)] px-4 aria-pressed:bg-[var(--accent)] aria-pressed:text-[var(--text-on-action)]">{label}</button>)}</div>{saveError?.owner === owner && <p role="alert" className="mt-2 text-[var(--danger)]">{saveError.text}</p>}{saving === owner && <p role="status">Saving check-in…</p>}{latest && <p className="mt-3 text-xs text-[var(--text-muted)]">Last recorded week: {latest.week}</p>}</div></SuitePanel>
+      </div>}
+    </>}
+  </SuiteToolShell>;
 }

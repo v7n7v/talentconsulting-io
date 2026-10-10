@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { authHelpers } from '@/lib/firebase';
 import { useStore } from '@/lib/store';
 import LogoutModal from './modals/LogoutModal';
 import AuthModal from './modals/AuthModal';
 import { useUserTier, type PlanTier } from '@/hooks/use-user-tier';
 import { AssistantMark } from '@/components/assistant';
-import { TalentConsultingMark, TalentConsultingWordmark } from '@/components/BrandLogo';
+import { TacoBrandSymbol, TacoWordmark } from '@/components/BrandLogo';
 import { authFetch } from '@/lib/auth-fetch';
 import { getPlanIdentity } from '@/lib/plan-identity';
 import { PlanBadge } from '@/components/plan/PlanIdentity';
@@ -16,6 +16,7 @@ import { UPGRADE_COPY } from '@/lib/product-copy';
 import { useTheme } from '@/components/ThemeProvider';
 import { NavigationRailRow } from '@/components/navigation/NavigationRailRow';
 import { getSidebarPresentation, getSidebarUpgradeRouteOwner } from '@/lib/sidebar-navigation';
+import { assistantWorkspaceDestination, getGuestWorkspaceHref, getWorkspaceRoute, isWorkspaceDestinationActive, moreWorkspaceDestinations, primaryWorkspaceDestinations, type WorkspaceDestination } from '@/lib/workspace-navigation';
 
 // Dynamic job count hook for the sidebar badge. Only the count is stored locally,
 // scoped to the signed-in user; tailored job payloads stay server-side.
@@ -33,6 +34,8 @@ function useJobCount(enabled = true) {
 
   useEffect(() => {
     if (!enabled) {
+      // Clear the external user cache view when the badge is disabled.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCount(0);
       return undefined;
     }
@@ -83,210 +86,6 @@ function useJobCount(enabled = true) {
   return count;
 }
 
-interface NavigationItem {
-  id: string;
-  label: string;
-  description: string;
-  path: string;
-  badge?: string;
-  iconName: string;
-  color: { iconColor: string };
-}
-
-interface NavigationGroup {
-  label: string;
-  icon: string;
-  items: NavigationItem[];
-}
-
-const navGroups: NavigationGroup[] = [
-  // ─── Pinned: Ask Taco ───
-  {
-    label: '',
-    icon: '',
-    items: [
-      {
-        id: 'agent',
-        label: 'Ask Taco',
-        description: 'Career Intelligence AI',
-        path: '/suite/agent',
-        badge: 'MAX',
-        iconName: 'auto_awesome',
-        color: { iconColor: '#f43f5e' },
-      },
-    ],
-  },
-  // ─── Phase 1: Build your materials ───
-  {
-    label: 'Build',
-    icon: 'construction',
-    items: [
-      {
-        id: 'resume',
-        label: 'Resume Studio',
-        description: 'Resume Builder + AI Morph',
-        path: '/suite/resume',
-        iconName: 'description',
-        color: { iconColor: '#f59e0b' },
-      },
-      {
-        id: 'ats-analyzer',
-        label: 'ATS Analyzer',
-        description: 'Preview + Match Score',
-        path: '/suite/ats-analyzer',
-        iconName: 'scanner',
-        color: { iconColor: '#06b6d4' },
-      },
-      {
-        id: 'writing-toolkit',
-        label: 'Writing Toolkit',
-        description: 'Cover letters, LinkedIn, humanizer, and messages',
-        path: '/suite/gallery',
-        iconName: 'widgets',
-        color: { iconColor: '#8b5cf6' },
-      },
-    ],
-  },
-  // ─── Phase 2: Find & track jobs ───
-  {
-    label: 'Search and Apply',
-    icon: 'work',
-    items: [
-      {
-        id: 'job-search',
-        label: 'Job Search',
-        description: 'AI Opportunity Radar',
-        path: '/suite/job-search',
-        iconName: 'radar',
-        color: { iconColor: '#06b6d4' },
-      },
-      {
-        id: 'oracle',
-        label: 'Market Oracle',
-        description: 'JD Decoder + Fit Score',
-        path: '/suite/market-oracle',
-        iconName: 'troubleshoot',
-        color: { iconColor: '#a855f7' },
-      },
-      {
-        id: 'applications',
-        label: 'Applications',
-        description: 'Pipeline Tracker',
-        path: '/suite/applications',
-        iconName: 'work',
-        color: { iconColor: '#1a73e8' },
-      },
-      {
-        id: 'network',
-        label: 'Network CRM',
-        description: 'Contact Tracker',
-        path: '/suite/network',
-        iconName: 'contacts',
-        color: { iconColor: '#8b5cf6' },
-      },
-      {
-        id: 'agent-queue',
-        label: 'Agent Queue',
-        description: 'AI-Prepared Applications',
-        path: '/suite/agent/queue',
-        iconName: 'smart_toy',
-        color: { iconColor: '#06b6d4' },
-      },
-    ],
-  },
-  // ─── Phase 3: Prepare for interviews ───
-  {
-    label: 'Prepare',
-    icon: 'school',
-    items: [
-      {
-        id: 'interview-sim',
-        label: 'Interview Studio',
-        description: 'Taco Mock + Avatar + Debrief',
-        path: '/suite/interview-sim',
-        iconName: 'interpreter_mode',
-        color: { iconColor: '#06b6d4' },
-      },
-      {
-        id: 'stories',
-        label: 'Story Bank',
-        description: 'STAR Stories + Answer RAG',
-        path: '/suite/agent/stories',
-        iconName: 'auto_stories',
-        color: { iconColor: '#2563eb' },
-      },
-      {
-        id: 'skill-bridge',
-        label: 'Skill Bridge',
-        description: 'Gap-to-Ready Paths',
-        path: '/suite/skill-bridge',
-        iconName: 'route',
-        color: { iconColor: '#64748b' },
-      },
-    ],
-  },
-  // ─── Phase 4: Close & grow ───
-  {
-    label: 'Grow',
-    icon: 'trending_up',
-    items: [
-      {
-        id: 'intelligence',
-        label: 'Career Intelligence',
-        description: 'Health Score + Pulse + Insights',
-        path: '/suite/intelligence',
-        iconName: 'neurology',
-        color: { iconColor: '#8b5cf6' },
-      },
-    ],
-  },
-];
-
-/* Signed-out preview destinations. These were `/?tool=…` links, but nothing
-   reads that param: neither app/page.tsx, TalentLanding.tsx nor
-   talentLandingMotion.ts touches useSearchParams or location.search, so a guest
-   landed on the marketing homepage with the query string silently discarded.
-   They point at the real public tool pages instead. The reader is deliberately
-   not built - app/page.tsx is 'use client' with no Suspense boundary, so
-   useSearchParams there would cost the LCP-critical page its prerender, and
-   CLAUDE.md §9.8 requires that page to work with no script at all.
-   Keyed by `item.path`, which is how handleNav looks it up, so every key must be
-   a path some navGroups entry actually declares. '/suite/writing-tools' was not
-   one - the Writing Toolkit item is `path: '/suite/gallery'` - so that entry
-   could never be read.
-   The constant name is asserted by scripts/suite-sidebar-parity.test.js.
-
-   Two of the three now resolve to the suite route itself, because that route
-   genuinely works signed out and sending the visitor to a marketing page
-   instead was the sidebar contradicting the page they arrived from:
-   TalentLanding.tsx links a guest straight at /suite/resume and at
-   /suite/ats-analyzer?tab=score, and this map used to bounce that same guest
-   off both back to /tools/*. Verified reachable without an account -
-   WorkspaceFrame renders suite routes signed out rather than redirecting, and
-   /api/resume/parse, /api/resume/ats-score and /api/gallery/run are all
-   allowAnonymous with their own ANON_CAPS. Everything not listed here still
-   falls through to the signup modal with a postAuthRedirect, which is correct
-   for the routes that really do need an account. */
-const GUEST_PREVIEW_BY_SUITE_PATH: Record<string, string> = {
-  '/suite/resume': '/suite/resume',
-  // The tab matters: ATS Preview reads a saved resume a guest does not have.
-  '/suite/ats-analyzer': '/suite/ats-analyzer?tab=score',
-  '/suite/gallery': '/suite/gallery',
-};
-
-/* Inert today, deliberately kept. It only participates when `pathname === '/'`
-   (see isItemActive and isDashboardActive), and SuiteSidebar is mounted solely
-   by WorkspaceFrame from app/suite/layout.tsx, so that pathname never reaches
-   it. Nothing emits `/?tool=` any more either. It stays because
-   scripts/suite-sidebar-parity.test.js pins both this map and `hasMappedRootTool`
-   as the route-ownership contract; delete it together with those assertions if
-   the root workspace never comes back. */
-const ROOT_TOOL_BY_ITEM_ID: Record<string, string[]> = {
-  resume: ['resume-check'],
-  'ats-analyzer': ['ats-analyzer'],
-  'writing-toolkit': ['quick-polish', 'writing-trust'],
-};
-
 function isMobileViewport() {
   return typeof window !== 'undefined' && window.innerWidth < 1024;
 }
@@ -297,6 +96,7 @@ interface SidebarUtilityRowsProps {
   isPro: boolean;
   isCollapsed: boolean;
   loading: boolean;
+  error: string | null;
   billingLoading: boolean;
   usageUsed: number;
   usageCap: number;
@@ -305,6 +105,7 @@ interface SidebarUtilityRowsProps {
   handleNav: (path: string) => void;
   onUpgrade: (path?: string) => void;
   onManageBilling: () => void;
+  onRetryPlan: () => void;
   onLogout: () => void;
   onSignIn: () => void;
 }
@@ -315,6 +116,7 @@ function SidebarUtilityRows({
   isPro,
   isCollapsed,
   loading,
+  error,
   billingLoading,
   usageUsed,
   usageCap,
@@ -323,6 +125,7 @@ function SidebarUtilityRows({
   handleNav,
   onUpgrade,
   onManageBilling,
+  onRetryPlan,
   onLogout,
   onSignIn,
 }: SidebarUtilityRowsProps) {
@@ -333,27 +136,31 @@ function SidebarUtilityRows({
   const upgradeRouteActive = isActive('/suite/upgrade');
   const remainingUsage = Math.max(0, usageCap - usageUsed);
   const usageExhausted = usageCap > 0 && usageUsed >= usageCap;
+  const planKnown = !loading && !error;
+  const billingLabel = loading ? 'Checking plan' : error ? 'Plan unavailable' : isPro ? plan.displayName : 'Upgrade';
+  const billingDescription = error ? 'Retry plan lookup' : loading || isPro ? undefined : 'Plans, billing & limits';
+  const billingTitle = loading ? 'Checking your plan' : error ? 'Plan unavailable. Retry plan lookup.' : isPro ? `${plan.displayName} active - manage billing` : UPGRADE_COPY.sidebarPlanChoice;
   const utilityRows = [
     <NavigationRailRow
       key="billing"
-      icon={loading && user ? 'hourglass_top' : isPro ? plan.icon : 'diamond'}
+      icon={loading ? 'hourglass_top' : error ? 'refresh' : isPro ? plan.icon : 'diamond'}
       /* Paid: the plan name is the label, so it can't truncate the way
          "Talent Max · Manage billing" did on one line. Free keeps the second
          line - that copy is the offer, not a restatement of the label. */
-      label={loading && user ? 'Loading plan' : isPro ? plan.displayName : 'Upgrade'}
-      description={isPro ? undefined : 'Plans, billing & limits'}
+      label={billingLabel}
+      description={billingDescription}
       density={isPro ? 'compact' : 'default'}
-      trailing={!isCollapsed ? <PlanBadge tier={isPro ? plan.id : 'free'} size="xs" active={isPro} /> : undefined}
-      active={upgradeRouteOwner === 'upgrade' && upgradeRouteActive}
+      trailing={!isCollapsed && planKnown ? <PlanBadge tier={isPro ? plan.id : 'free'} size="xs" active={isPro} /> : undefined}
+      active={planKnown && upgradeRouteOwner === 'upgrade' && upgradeRouteActive}
       compact={isCollapsed}
       disabled={loading || billingLoading}
-      onClick={isPro ? onManageBilling : () => onUpgrade()}
-      ariaCurrent={upgradeRouteOwner === 'upgrade' && upgradeRouteActive ? 'page' : undefined}
-      ariaLabel={isPro ? `${plan.displayName} active. Manage billing.` : 'Upgrade. Plans, billing and limits.'}
-      markerLayoutId={upgradeRouteOwner === 'upgrade' ? 'suiteSidebarActiveIndicator' : undefined}
-      title={isPro ? `${plan.displayName} active - manage billing` : UPGRADE_COPY.sidebarPlanChoice}
+      onClick={error ? onRetryPlan : isPro ? onManageBilling : () => onUpgrade()}
+      ariaCurrent={planKnown && upgradeRouteOwner === 'upgrade' && upgradeRouteActive ? 'page' : undefined}
+      ariaLabel={billingTitle}
+      markerLayoutId={planKnown && upgradeRouteOwner === 'upgrade' ? 'suiteSidebarActiveIndicator' : undefined}
+      title={billingTitle}
     />,
-    ...(isPro && !isMax
+    ...(planKnown && isPro && !isMax
       ? [
           <NavigationRailRow
             key="explore-max"
@@ -369,7 +176,7 @@ function SidebarUtilityRows({
           />,
         ]
       : []),
-    ...(!isPro
+    ...(planKnown && !isPro
       ? [
           <NavigationRailRow
             key="usage"
@@ -447,6 +254,17 @@ function SidebarUtilityRows({
       title="Settings"
     />,
     <NavigationRailRow
+      key="help"
+      icon="help"
+      label="Help and feedback"
+      density="compact"
+      active={isActive('/suite/feedback')}
+      compact={isCollapsed}
+      onClick={() => handleNav('/suite/feedback')}
+      ariaCurrent={isActive('/suite/feedback') ? 'page' : undefined}
+      title="Help and feedback"
+    />,
+    <NavigationRailRow
       key="account"
       icon={user ? 'logout' : 'login'}
       label={user ? 'Sign out' : 'Sign in'}
@@ -458,7 +276,7 @@ function SidebarUtilityRows({
   ];
 
   return (
-    <div className="shrink-0 space-y-1.5 px-2 pb-2">
+    <div className="workspace-sidebar__utility shrink-0 space-y-1.5 px-2 pb-2">
       {utilityRows}
     </div>
   );
@@ -472,8 +290,6 @@ interface SuiteSidebarProps {
 export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false }: SuiteSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const { theme } = useTheme();
   const { user, setUser } = useStore();
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
   const asideRef = useRef<HTMLElement>(null);
@@ -481,26 +297,26 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const { tier, isPro, usage, caps, loading: tierLoading } = useUserTier();
+  const { tier, isPro, usage, caps, loading: tierLoading, error: tierError, refetch: retryTier } = useUserTier();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState<'login' | 'signup' | null>(null);
   const [postAuthRedirect, setPostAuthRedirect] = useState<string | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [hasAdminAccess, setHasAdminAccess] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({ 'More tools': true });
   const jobCount = useJobCount(!suppressDynamicBadges);
   const usageKeys = Object.keys(caps || {});
   const usageUsed = usageKeys.reduce((sum, key) => sum + (usage[key as keyof typeof usage] || 0), 0);
   const usageCap = usageKeys.reduce((sum, key) => sum + (caps?.[key] || 0), 0);
   const sidebarPresentation = getSidebarPresentation(isMobile, isCollapsed, suppressDynamicBadges);
   const isCompactRail = sidebarPresentation.compact;
-  const activeRootTool = searchParams.get('tool') || '';
-  const hasMappedRootTool = Object.values(ROOT_TOOL_BY_ITEM_ID).some(tools => tools.includes(activeRootTool));
-  const isDashboardActive = pathname === '/suite' || (pathname === '/' && !hasMappedRootTool);
+  const activeRoute = getWorkspaceRoute(pathname || '');
 
   useEffect(() => {
     let cancelled = false;
     if (suppressDynamicBadges) {
+      // This existing preview mode supplies an already-authorized admin shell.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setHasAdminAccess(true);
       return () => { cancelled = true; };
     }
@@ -536,6 +352,8 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
   }, []);
 
   useEffect(() => {
+    // Navigation is an external event: never leave its old drawer over a new page.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMobileOpen(false);
   }, [pathname]);
 
@@ -552,12 +370,14 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
       setIsCollapsed(resumeStudioCollapseRef.current.wasCollapsed);
       resumeStudioCollapseRef.current = null;
     }
-  }, [isMobile, pathname]);
+  }, [isMobile, pathname, isCollapsed]);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem('tc-sidebar-collapsed-groups');
-      if (stored) setCollapsedGroups(JSON.parse(stored));
+      // Read the saved preference after hydration so server and client markup agree.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (stored) setCollapsedGroups({ 'More tools': true, ...JSON.parse(stored) });
     } catch {}
   }, []);
 
@@ -613,7 +433,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
 
   const handleNav = (path: string) => {
     closeMobileMenu(true);
-    const guestPreview = GUEST_PREVIEW_BY_SUITE_PATH[path];
+    const guestPreview = getGuestWorkspaceHref(path);
     if (!user && guestPreview) {
       router.push(guestPreview);
       onNavigate?.();
@@ -655,7 +475,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
       const res = await authFetch('/api/stripe/portal', { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.url) {
-        window.location.href = data.url;
+        window.location.assign(data.url);
         return;
       }
     } catch {
@@ -665,15 +485,6 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
     setBillingLoading(false);
     handleNav('/suite/settings?tab=subscription');
   };
-
-  useEffect(() => {
-    if (!user || !postAuthRedirect) return;
-    const target = postAuthRedirect;
-    setPostAuthRedirect(null);
-    setShowAuthModal(null);
-    handleNav(target);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, postAuthRedirect]);
 
   const confirmLogout = async () => {
     const uid = String((user as any)?.uid || '');
@@ -686,18 +497,30 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
     setShowLogoutModal(false);
   };
 
-  const isActive = (path: string) => {
-    if (path === '/suite') return isDashboardActive;
-    if (path === '/suite/agent') return pathname === path || pathname === '/suite/agent/quality';
-    return pathname?.startsWith(path) || false;
-  };
-  const isItemActive = (item: NavigationItem) => {
-    const rootTools = ROOT_TOOL_BY_ITEM_ID[item.id];
-    if (pathname === '/' && rootTools?.includes(activeRootTool)) return true;
-    if (item.id === 'writing-toolkit') {
-      return ['/suite/gallery', '/suite/cover-letter', '/suite/linkedin', '/suite/writing-tools'].some(path => pathname?.startsWith(path));
-    }
-    return isActive(item.path);
+  const isActive = (path: string) => pathname === path || Boolean(pathname?.startsWith(`${path}/`));
+  const renderDestination = (item: WorkspaceDestination) => {
+    const active = isWorkspaceDestinationActive(item.id, pathname || '');
+    const primary = item.placement === 'primary';
+    return (
+      <NavigationRailRow
+        key={item.id}
+        icon={item.id === 'assistant'
+          ? <AssistantMark size="xs" state="idle" className="!h-6 !w-6 !rounded-lg" />
+          : item.icon}
+        label={item.label}
+        description={item.description}
+        density="compact"
+        active={active}
+        compact={isCompactRail}
+        trailing={item.id === 'roles' && jobCount > 0
+          ? <span className="text-xs font-semibold tabular-nums">{jobCount}</span>
+          : undefined}
+        onClick={() => handleNav(item.path)}
+        ariaCurrent={active ? (primary && activeRoute?.destinationId !== item.id ? 'location' : 'page') : undefined}
+        markerLayoutId={primary ? 'suiteSidebarActiveIndicator' : undefined}
+        title={isCompactRail ? item.label : item.description}
+      />
+    );
   };
   const shellWidth = sidebarPresentation.width;
   const shellOffset = isMobile ? 10 : 10;
@@ -724,9 +547,10 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           aria-label="Open main menu"
           aria-expanded={false}
           aria-controls="suite-sidebar"
-          className="fixed left-3 top-3 z-[60] flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] shadow-lg transition-[background-color,color] duration-200 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+          className="elevation-raised fixed left-3 top-3 z-[60] flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] transition-[background-color,color] duration-200 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
-          <span className="material-symbols-rounded text-2xl" aria-hidden="true">menu</span>
+          <TacoBrandSymbol className="h-6 w-8" decorative />
+          <span className="material-symbols-rounded absolute bottom-0.5 right-0.5 text-[12px]" aria-hidden="true">menu</span>
         </button>
       )}
 
@@ -736,7 +560,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           type="button"
           aria-label="Close main menu"
           onClick={() => closeMobileMenu(true)}
-          className="fixed inset-0 z-40 bg-black/50"
+          className="fixed inset-0 z-40 bg-[var(--modal-backdrop)]"
         />
       )}
 
@@ -757,31 +581,21 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           height: `calc(100dvh - ${shellVerticalOffset * 2}px)`,
           transform: isMobile ? (isMobileOpen ? 'translateX(0)' : 'translateX(calc(-100% - 16px))') : 'translateX(0)',
         }}
-        className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] shadow-[var(--theme-shadow)] transition-all duration-200 ease-out"
+        className="workspace-sidebar elevation-raised fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] transition-all duration-200 ease-out"
       >
         {/* Header */}
-        <div className={`flex shrink-0 p-2 ${isCompactRail ? 'flex-col items-center gap-1.5' : 'items-center justify-between'}`}>
-          {isCompactRail ? (
-            <TalentConsultingMark className="h-8 w-8 rounded-[10px]" />
-          ) : (
-            <div className="flex min-w-0 items-center gap-2.5">
-              <TalentConsultingMark className="h-8 w-8 rounded-[10px]" />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <TalentConsultingWordmark
-                  className="w-[132px] max-w-full"
-                  transparent={theme === 'light'}
-                  darkSurface={theme === 'dark'}
-                />
-                <span className="block truncate text-[11px] leading-tight text-[var(--text-tertiary)]">Career command</span>
-              </div>
-            </div>
-          )}
+        <div className={`workspace-sidebar__header flex shrink-0 p-2 ${isCompactRail ? 'flex-col items-center gap-1.5' : 'items-center justify-between'}`}>
+          <div className="flex min-w-0 items-center gap-2.5">
+            {isCompactRail
+              ? <TacoBrandSymbol className="workspace-sidebar__compact-brand" />
+              : <TacoWordmark className="workspace-sidebar__wordmark" light sizes="116px" />}
+          </div>
           {!isMobile && (
             <button
               type="button"
               onClick={() => setIsCollapsed(!isCollapsed)}
               aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               <span className="material-symbols-rounded text-[22px]" aria-hidden="true">
@@ -794,111 +608,47 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
               type="button"
               onClick={() => closeMobileMenu(true)}
               aria-label="Close main menu"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             >
               <span className="material-symbols-rounded text-2xl" aria-hidden="true">close</span>
             </button>
           )}
         </div>
 
-        {/* Primary navigation */}
         <nav
           id="suite-primary-navigation"
-          aria-label="TalentConsulting tools"
-          className="scrollbar-hide min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden p-2"
+          aria-label="Your workspace"
+          className="workspace-sidebar__nav scrollbar-hide min-h-0 flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden p-2"
         >
-          <NavigationRailRow
-            icon="home"
-            label="Dashboard"
-            description="Career command center"
-            active={isDashboardActive}
-            compact={isCompactRail}
-            onClick={() => handleNav('/')}
-            ariaCurrent={isDashboardActive ? 'page' : undefined}
-            markerLayoutId="suiteSidebarActiveIndicator"
-            title="Dashboard"
-          />
-
-        {/* Navigation — full tool directory in expanded mode, compact icon rail when collapsed */}
-          {navGroups.map((group, groupIndex) => {
-            const isExpanded = !group.label || !collapsedGroups[group.label];
-            const hasActiveChild = group.items.some(item => isItemActive(item));
-            const groupId = `suite-sidebar-group-${group.label.toLowerCase().replace(/[^a-z0-9]+/g, '-') || groupIndex}`;
-
-            return (
-              <div key={group.label || `pinned-${groupIndex}`} className="space-y-1.5">
-                {group.label && !isCompactRail && (
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.label)}
-                    aria-expanded={isExpanded}
-                    aria-controls={groupId}
-                    className="mt-2 flex min-h-7 w-full items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
-                  >
-                    <span
-                      className="material-symbols-rounded text-base transition-transform duration-150"
-                      style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                      aria-hidden="true"
-                    >
-                      chevron_right
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
-                    {hasActiveChild && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                    )}
-                  </button>
-                )}
-
-                {group.label && isCompactRail && (
-                  <div className="mx-auto my-1.5 h-px w-8 bg-[var(--theme-border)]" aria-hidden="true" />
-                )}
-
-                {(isExpanded || isCompactRail) && (
-                  <div id={groupId} className="space-y-1.5">
-                    {group.items.map((item) => {
-                      const active = isItemActive(item);
-                      const trailing = item.id === 'job-search' && jobCount > 0
-                        ? (
-                            <span className="text-xs font-semibold tabular-nums text-[var(--text-secondary)]">
-                              {jobCount}
-                            </span>
-                          )
-                        : item.badge === 'STANDARD' || item.badge === 'MAX'
-                          ? <PlanBadge tier={item.badge === 'MAX' ? 'studio' : 'pro'} size="xs" active={active} />
-                          : item.badge
-                            ? <span className="text-xs font-semibold text-[var(--text-secondary)]">{item.badge}</span>
-                            : undefined;
-
-                      return (
-                        <NavigationRailRow
-                          key={item.id}
-                          icon={item.id === 'agent'
-                            ? (
-                                <AssistantMark
-                                  size="xs"
-                                  state={active ? 'responding' : 'idle'}
-                                  className="!h-6 !w-6 !rounded-lg"
-                                />
-                              )
-                            : item.iconName}
-                          label={item.label}
-                          description={item.description}
-                          active={active}
-                          trailing={trailing}
-                          compact={isCompactRail}
-                          onClick={() => handleNav(item.path)}
-                          ariaCurrent={active ? 'page' : undefined}
-                          markerLayoutId="suiteSidebarActiveIndicator"
-                          title={isCompactRail ? item.label : item.description}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+          {primaryWorkspaceDestinations.map(renderDestination)}
+          <div className="workspace-sidebar__group border-t border-[var(--theme-border)] pt-2">
+            {renderDestination(assistantWorkspaceDestination)}
+          </div>
+          <div className="workspace-sidebar__group">
+            <NavigationRailRow
+              icon="apps"
+              label="More tools"
+              density="compact"
+              compact={isCompactRail}
+              active={activeRoute?.section === 'more'}
+              ariaCurrent={activeRoute?.section === 'more' ? 'location' : undefined}
+              ariaExpanded={!isCompactRail && !collapsedGroups['More tools']}
+              ariaControls="suite-sidebar-more-tools"
+              onClick={() => {
+                if (isCompactRail) {
+                  setIsCollapsed(false);
+                  setCollapsedGroups(previous => ({ ...previous, 'More tools': false }));
+                } else toggleGroup('More tools');
+              }}
+              trailing={<span className="material-symbols-rounded text-lg" aria-hidden="true">{collapsedGroups['More tools'] ? 'expand_more' : 'expand_less'}</span>}
+              title="Browse all tools"
+            />
+            {!isCompactRail && !collapsedGroups['More tools'] && (
+              <div id="suite-sidebar-more-tools" className="space-y-1 border-l border-[var(--theme-border)] pl-2">
+                {moreWorkspaceDestinations.map(renderDestination)}
               </div>
-            );
-          })}
-
+            )}
+          </div>
         </nav>
 
         <SidebarUtilityRows
@@ -907,6 +657,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           isPro={isPro}
           isCollapsed={isCompactRail}
           loading={tierLoading}
+          error={tierError}
           billingLoading={billingLoading}
           usageUsed={usageUsed}
           usageCap={usageCap}
@@ -915,6 +666,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           handleNav={handleNav}
           onUpgrade={handleUpgrade}
           onManageBilling={handleManageBilling}
+          onRetryPlan={retryTier}
           onLogout={() => {
             closeMobileMenu(false);
             setShowLogoutModal(true);
@@ -935,7 +687,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
       {showAuthModal && (
         <AuthModal
           mode={showAuthModal}
-          onClose={() => setShowAuthModal(null)}
+          onClose={() => { setShowAuthModal(null); setPostAuthRedirect(null); }}
           onSwitchMode={() => setShowAuthModal(showAuthModal === 'login' ? 'signup' : 'login')}
           postAuthRedirect={postAuthRedirect}
           returnFocusSelector={isMobile ? '[data-suite-menu-toggle="true"]' : undefined}

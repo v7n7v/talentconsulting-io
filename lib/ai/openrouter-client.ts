@@ -108,8 +108,10 @@ IMPORTANT: Respond with ONLY a valid JSON object. No markdown, no prose before o
         response_format: { type: 'json_object' },
       }),
     });
-  } finally {
+  } catch (error) {
     if (timeout) clearTimeout(timeout);
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(`OpenRouter ${model} timed out`);
+    throw error;
   }
 
   if (!res.ok) {
@@ -117,7 +119,11 @@ IMPORTANT: Respond with ONLY a valid JSON object. No markdown, no prose before o
     throw new Error(`OpenRouter ${model} error ${res.status}: ${errText.slice(0, 220)}`);
   }
 
-  const data = await res.json();
+  const body = await res.text();
+  if (timeout) clearTimeout(timeout);
+  if (body.length > 2_000_000) throw new Error(`OpenRouter ${model} response too large`);
+  let data: any;
+  try { data = JSON.parse(body); } catch { throw new Error(`OpenRouter ${model} returned truncated JSON`); }
   const content = data.choices?.[0]?.message?.content;
   if (!content || typeof content !== 'string') {
     throw new Error(`OpenRouter ${model} returned empty content`);

@@ -39,6 +39,7 @@ export async function groqCompletion(
   options: {
     temperature?: number;
     maxTokens?: number;
+    signal?: AbortSignal;
     topP?: number;
   } = {}
 ): Promise<string> {
@@ -118,6 +119,7 @@ export async function groqJSONCompletion<T = any>(
   options: {
     temperature?: number;
     maxTokens?: number;
+    signal?: AbortSignal;
   } = {}
 ): Promise<T> {
   try {
@@ -134,7 +136,7 @@ export async function groqJSONCompletion<T = any>(
       temperature: options.temperature ?? 0.3,
       max_tokens: options.maxTokens ?? 2048,
       response_format: { type: "json_object" },
-    });
+    }, options.signal ? { signal: options.signal } : undefined);
 
     const content = response.choices[0]?.message?.content;
 

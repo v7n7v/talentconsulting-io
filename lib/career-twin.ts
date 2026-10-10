@@ -6,6 +6,9 @@
  * Provides a structured, export-ready career profile.
  */
 
+import { randomUUID } from 'node:crypto';
+import { readCareerSourceRecords, careerRecordTime } from '@/lib/career-source-records';
+import { readApplicationRecords } from '@/lib/application-records-server';
 import { getAdminDb } from '@/lib/firebase-admin';
 import { computeCareerProfile, type CareerProfile } from '@/lib/career-graph';
 
@@ -14,6 +17,7 @@ import { computeCareerProfile, type CareerProfile } from '@/lib/career-graph';
 export interface CareerTwin extends CareerProfile {
   version: number;
   stale: boolean;
+  cacheOrigin?: 'persisted' | 'computed';
 
   // Structured background (enriched from resume data)
   background: {
@@ -122,7 +126,8 @@ const TWIN_DOC_PATH = 'career_twin';
 //     breakdown computed under the old, wrong gates. Also adds
 //     skills.weakEvidenceCategories, interviews.resolvedOutcomeCount /
 //     questionCount and memory.activeSearch.fitAnalysisCount.
-const TWIN_VERSION = 5;
+export const TWIN_VERSION = 6;
+export const TWIN_TTL_MS = 60_000;
 
 // Standard behavioral question categories
 const BEHAVIORAL_CATEGORIES = [
@@ -160,14 +165,17 @@ export async function getTwin(uid: string): Promise<CareerTwin | null> {
   const data = doc.data() as CareerTwin;
 
   // Check if stale or from an older schema; recompute instead of serving partial memory.
-  if (data.stale || !hasCurrentTwinShape(data)) return null;
+  if (data.stale || !hasCurrentTwinShape(data) || !Number.isFinite(Date.parse(data.computedAt)) || Date.now() - Date.parse(data.computedAt) >= TWIN_TTL_MS || Date.parse(data.computedAt) > Date.now()) return null;
 
-  return data;
+  return { ...data, cacheOrigin: 'persisted' };
 }
 
 /** Compute fresh profile and persist as twin */
 export async function computeAndPersistTwin(uid: string): Promise<CareerTwin> {
   const db = getAdminDb();
+  const twinRef = db.collection('users').doc(uid).collection('profile').doc(TWIN_DOC_PATH);
+  const baseline = await twinRef.get();
+  const invalidatedAt = baseline.data()?.invalidatedAt || null;
   const profile = await computeCareerProfile(uid);
 
   // Enrich with background data from resume
@@ -185,6 +193,7 @@ export async function computeAndPersistTwin(uid: string): Promise<CareerTwin> {
     ...profile,
     version: TWIN_VERSION,
     stale: false,
+    cacheOrigin: 'computed',
     background,
     behavioralBank,
     completeness,
@@ -193,9 +202,11 @@ export async function computeAndPersistTwin(uid: string): Promise<CareerTwin> {
   };
 
   // Persist to Firestore
-  await db.collection('users').doc(uid)
-    .collection('profile').doc(TWIN_DOC_PATH)
-    .set(twin, { merge: false });
+  await db.runTransaction(async transaction => {
+    const current = await transaction.get(twinRef);
+    if ((current.data()?.invalidatedAt || null) !== invalidatedAt) throw new Error('Career sources changed during refresh. Please retry.');
+    transaction.set(twinRef, { ...twin, invalidatedAt });
+  });
 
   return twin;
 }
@@ -203,13 +214,8 @@ export async function computeAndPersistTwin(uid: string): Promise<CareerTwin> {
 /** Mark twin as stale (called when source data changes) */
 export async function invalidateTwin(uid: string): Promise<void> {
   const db = getAdminDb();
-  try {
-    await db.collection('users').doc(uid)
-      .collection('profile').doc(TWIN_DOC_PATH)
-      .update({ stale: true });
-  } catch {
-    // Doc might not exist yet, that's fine
-  }
+  await db.collection('users').doc(uid).collection('profile').doc(TWIN_DOC_PATH)
+    .set({ stale: true, invalidatedAt: randomUUID() }, { merge: true });
 }
 
 /** Get twin with auto-refresh: tries cache first, recomputes if stale */
@@ -338,13 +344,12 @@ async function extractBackground(uid: string, db: FirebaseFirestore.Firestore) {
     education: [] as string[],
   };
 
-  try {
+  {
     // Get latest resume for title/education
-    const resumeSnap = await db.collection('users').doc(uid)
-      .collection('resume_versions').orderBy('created_at', 'desc').limit(1).get();
-
-    if (!resumeSnap.empty) {
-      const resume = resumeSnap.docs[0].data();
+    const resumes = await readCareerSourceRecords(uid, 'resume_versions');
+    resumes.sort((a,b) => careerRecordTime(b)-careerRecordTime(a));
+    if (resumes.length) {
+      const resume = resumes[0];
       const content = resume.content || {};
 
       // Current title from most recent experience
@@ -377,8 +382,6 @@ async function extractBackground(uid: string, db: FirebaseFirestore.Firestore) {
         if (prefs.industries) background.industries = prefs.industries;
       }
     }
-  } catch {
-    // Non-critical — return partial background
   }
 
   return background;
@@ -440,22 +443,19 @@ async function buildMemory(
   behavioral: { coverageScore: number; totalStories: number },
   completeness: { score: number; missing: string[] }
 ): Promise<CareerTwinMemory> {
-  const [profileSnap, prefsSnap, queueSnap, appsSnap] = await Promise.all([
-    db.collection('users').doc(uid).collection('profile').doc('main').get().catch(() => null),
-    db.collection('users').doc(uid).collection('settings').doc('jobPreferences').get().catch(() => null),
-    db.collection('users').doc(uid).collection('agent_queue').where('status', 'in', ['pending', 'approved']).limit(20).get().catch(() => null),
-    db.collection('users').doc(uid).collection('applications').limit(50).get().catch(() => null),
+  const [profileSnap, prefsSnap, queueRecords, applicationRead] = await Promise.all([
+    db.collection('users').doc(uid).collection('profile').doc('main').get(),
+    db.collection('users').doc(uid).collection('settings').doc('jobPreferences').get(),
+    readCareerSourceRecords(uid, 'agent_queue'),
+    readApplicationRecords(uid),
   ]);
-
-  const onboarding = profileSnap?.exists ? profileSnap.data() || {} : {};
-  const prefs = prefsSnap?.exists ? prefsSnap.data() || {} : {};
-  const staleApplications = (appsSnap?.docs || []).filter(doc => {
-    const app = doc.data();
-    const status = String(app.status || '').toLowerCase();
-    if (status !== 'applied') return false;
-    const updatedAt = app.updatedAt || app.last_updated || app.createdAt || app.created_at;
-    if (!updatedAt) return false;
-    return Date.now() - new Date(updatedAt).getTime() > 7 * 24 * 60 * 60 * 1000;
+  if (!applicationRead.complete) throw new Error('Application history exceeds the intelligence summary limit.');
+  const onboarding = profileSnap.exists ? profileSnap.data() || {} : {};
+  const prefs = prefsSnap.exists ? prefsSnap.data() || {} : {};
+  const queuedApplications = queueRecords.filter(record => ['pending','approved'].includes(record.status)).length;
+  const staleApplications = applicationRead.records.filter(app => {
+    if (app.status !== 'applied' || !app.applied_at) return false;
+    return Date.now() - Date.parse(app.applied_at) > 7 * 86400000;
   }).length;
 
   const targetRoles = cleanStrings([
@@ -508,12 +508,12 @@ async function buildMemory(
       sentApplications: profile.pipeline.appliedApps,
       responseRate: profile.pipeline.responseRate,
       velocity: profile.pipeline.velocity,
-      queuedApplications: queueSnap?.size || 0,
+      queuedApplications: queuedApplications,
       staleApplications,
       skillGaps: cleanStrings(profile.skills.gap, 10),
       fitAnalysisCount: profile.skills.fitAnalysisCount,
     },
-    nextBestActions: buildNextBestActions(profile, behavioral, completeness, queueSnap?.size || 0, staleApplications),
+    nextBestActions: buildNextBestActions(profile, behavioral, completeness, queuedApplications, staleApplications),
   };
 }
 
@@ -527,7 +527,7 @@ function buildNextBestActions(
   const actions: CareerTwinAction[] = [];
 
   if (!profile.hasResume) {
-    actions.push({ id: 'upload-resume', label: 'Upload a resume', reason: 'Taco needs a verified source of truth before preparing applications.', path: '/suite/resume', priority: 'critical' });
+    actions.push({ id: 'upload-resume', label: 'Upload a resume', reason: 'Add your resume as a source for preparing applications; review its claims before use.', path: '/suite/resume', priority: 'critical' });
   }
   if (queuedApplications > 0) {
     actions.push({ id: 'review-queue', label: `Review ${queuedApplications} queued application${queuedApplications === 1 ? '' : 's'}`, reason: 'Prepared packets lose value if they sit too long.', path: '/suite/agent/queue', priority: 'high' });
@@ -539,7 +539,7 @@ function buildNextBestActions(
     actions.push({ id: 'prove-skill-gap', label: `Prove ${profile.skills.gap[0]}`, reason: 'This gap appears in target roles but is missing from confirmed resume evidence.', path: '/suite/skill-bridge', priority: 'medium' });
   }
   if (behavioral.totalStories < 3 || behavioral.coverageScore < 25) {
-    actions.push({ id: 'story-bank', label: 'Build Story Bank coverage', reason: 'More verified stories make interview answers and screening questions stronger.', path: '/suite/agent/stories', priority: 'medium' });
+    actions.push({ id: 'story-bank', label: 'Build Story Bank coverage', reason: 'Prepare complete stories from your own experience for interview review.', path: '/suite/agent/stories', priority: 'medium' });
   }
   if (completeness.score < 60 && actions.length < 5) {
     actions.push({ id: 'complete-profile', label: 'Complete Career Twin memory', reason: `Missing: ${completeness.missing.slice(0, 3).join(', ')}`, path: '/suite/intelligence', priority: 'medium' });

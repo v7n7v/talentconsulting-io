@@ -42,14 +42,14 @@ export default function Toast() {
         <div
           key={toast.id}
           role="status"
-          className="glass flex w-full max-w-full items-center gap-3 rounded-xl px-4 py-3 neon-border animate-in slide-in-from-right duration-300 sm:px-6 sm:py-4"
+          className="elevation-card flex w-full max-w-full items-center gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-[var(--text-primary)] animate-in slide-in-from-right duration-300 sm:px-6 sm:py-4"
         >
           {isMaterialIcon(toast.icon) ? (
             <span className="material-symbols-rounded text-xl">{toast.icon}</span>
           ) : (
             <span className="text-xl">{toast.icon}</span>
           )}
-          <span className="text-sm">{toast.message}</span>
+          <span className="text-sm text-[var(--text-primary)]">{toast.message}</span>
         </div>
       ))}
     </div>

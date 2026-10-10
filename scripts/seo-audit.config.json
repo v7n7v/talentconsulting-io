@@ -3,6 +3,92 @@
   "thinContentWordThreshold": 250,
   "minInternalLinks": 3,
   "minInboundLinksForPriorityPages": 2,
+  "routePolicies": [
+    {
+      "path": "/privacy",
+      "expectedStatus": [200],
+      "bodyClass": "public-content",
+      "crawl": "allowed",
+      "index": "index",
+      "canonical": "self",
+      "sitemap": "optional"
+    },
+    {
+      "path": "/terms",
+      "expectedStatus": [200],
+      "bodyClass": "public-content",
+      "crawl": "allowed",
+      "index": "index",
+      "canonical": "self",
+      "sitemap": "optional"
+    },
+    {
+      "path": "/suite",
+      "expectedStatus": [200],
+      "bodyClass": "safe-shell",
+      "crawl": "either",
+      "index": "noindex",
+      "canonical": "omitted",
+      "sitemap": "forbidden"
+    },
+    {
+      "path": "/suite/resume",
+      "expectedStatus": [200],
+      "bodyClass": "safe-shell",
+      "crawl": "either",
+      "index": "noindex",
+      "canonical": "omitted",
+      "sitemap": "forbidden"
+    },
+    {
+      "path": "/suite/admin",
+      "expectedStatus": [200],
+      "bodyClass": "safe-shell",
+      "crawl": "either",
+      "index": "noindex",
+      "canonical": "omitted",
+      "sitemap": "forbidden"
+    },
+    {
+      "path": "/settings",
+      "expectedStatus": [200],
+      "bodyClass": "safe-shell",
+      "crawl": "either",
+      "index": "noindex",
+      "canonical": "omitted",
+      "sitemap": "forbidden"
+    },
+    {
+      "path": "/auth/reset-password",
+      "expectedStatus": [200],
+      "bodyClass": "safe-shell",
+      "crawl": "either",
+      "index": "noindex",
+      "canonical": "omitted",
+      "sitemap": "forbidden"
+    },
+    {
+      "path": "/does-not-exist-seo-audit",
+      "expectedStatus": [404],
+      "bodyClass": "not-found",
+      "crawl": "either",
+      "index": "noindex",
+      "canonical": "ignore",
+      "sitemap": "forbidden"
+    }
+  ],
+  "redirectChecks": [
+    {
+      "url": "http://talentconsulting.io/",
+      "finalUrl": "https://talentconsulting.io/",
+      "expectedRedirectStatus": [301, 308]
+    },
+    {
+      "url": "https://www.talentconsulting.io/",
+      "finalUrl": "https://talentconsulting.io/",
+      "expectedRedirectStatus": [301, 308]
+    }
+  ],
   "priorityMappings": [
     {
       "query": "free AI resume builder",

@@ -1,4 +1,5 @@
 'use client';
+import { ResumeFlagshipHTML } from './flagship';
 
 /**
  * Deterministic resume templates spanning ATS-conscious linear layouts and
@@ -12,6 +13,8 @@ import { TechnicalSignalTemplate } from './technical-signal';
 import { BrutalistVoltageTemplate } from './brutalist-voltage';
 import { CURATED_HTML_TEMPLATE_MAP } from './curated';
 import { requireResumeTemplateRegistryEntry } from '@/lib/resume-templates';
+import type { ResumeDesignConfig } from '@/lib/resume-design/types';
+import { ResumeDesignHTML } from './design-v2';
 
 interface TemplateProps {
   resume: CanonicalResume;
@@ -692,11 +695,15 @@ const TEMPLATE_MAP: Record<string, React.FC<TemplateProps>> = {
   'venture': VentureTemplate,
 };
 
-export function ResumeTemplate({ resume, templateId, colors }: {
+export function ResumeTemplate({ resume, templateId, colors, design, mode }: {
   resume: CanonicalResume;
   templateId: string;
   colors: { primary: string; accent: string; text: string };
+  design?: ResumeDesignConfig;
+  mode?: 'designed' | 'application';
 }) {
+  if (design?.rendererVersion === 3 && design.composition === 'taco-signature') return <ResumeFlagshipHTML resume={resume} design={design} mode={mode} />;
+  if (design) return <ResumeDesignHTML resume={resume} design={design} mode={mode} />;
   const Component = requireResumeTemplateRegistryEntry(TEMPLATE_MAP, templateId, 'html');
   return (
     <div
@@ -708,6 +715,7 @@ export function ResumeTemplate({ resume, templateId, colors }: {
         position: 'relative',
       }}
     >
+      {/* eslint-disable-next-line react-hooks/static-components */}
       <Component resume={resume} colors={colors} />
     </div>
   );

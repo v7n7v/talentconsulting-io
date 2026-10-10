@@ -33,12 +33,12 @@ function section(source, start, end) {
 
 test('a completed Taco review offers a named email-alert consent handoff', () => {
   assert.match(agentPage, /queuedCount > 0 && \(/);
-  assert.match(agentPage, /getSonaHarnessNotificationStatus\(result\.notification\)/);
+  assert.match(agentPage, /getSonaHarnessNotificationStatus\(\s*result\.notification,?\s*\)/);
   assert.match(notificationStatus, /Email remains off until you save alert consent\./);
   assert.match(agentPage, /href="\/suite\/job-search\?controls=alerts#sona-picks-controls"/);
   assert.match(agentPage, /Choose email alerts/);
   assert.match(agentPage, /min-h-11/);
-  assert.match(agentPage, /sessionStorage\.setItem\(SONA_ALERT_TARGET_ROLE_KEY, targetRole\)/);
+  assert.match(agentPage, /sessionStorage\.setItem\(\s*SONA_ALERT_TARGET_ROLE_KEY,\s*targetRole,?\s*\)/);
 });
 
 test('the consent deep link opens and focuses the existing Career Picks by Taco controls', () => {

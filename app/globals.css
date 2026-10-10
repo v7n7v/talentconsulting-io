@@ -12,26 +12,27 @@
 /* Default (dark) — also used by FOUC prevention script */
 :root,
 [data-theme="dark"] {
-  --bg-deep: #01081F;
-  --bg-surface: #071231;
-  --bg-elevated: #0B1839;
-  --bg-input: #0B1839;
-  --bg-hover: #122045;
-  --border: #4767AD;
-  --border-subtle: #16264C;
-  --border-hover: #5F82C9;
-  --text-primary: #EEF2FF;
-  --text-secondary: #A8B4D4;
-  --text-tertiary: #8492B6;
-  --text-muted: #7182A8;
-  --accent: #00C2CD;
-  --accent-active: #00E0EC;
-  --accent-dim: rgba(0, 194, 205, 0.08);
-  --accent-hover: rgba(0, 194, 205, 0.12);
-  --accent-on: #01081F;
-  --danger: #FF9A8F;
-  --success: #8AE47A;
-  --warning: #F5C860;
+  --bg-deep: var(--taco-surface);
+  --bg-surface: var(--taco-surface);
+  --bg-elevated: var(--taco-surface-raised);
+  --bg-input: var(--taco-surface);
+  --bg-hover: var(--taco-surface-hover);
+  --border: var(--taco-border-strong);
+  --border-subtle: var(--taco-border);
+  --border-hover: var(--taco-border-strong);
+  --text-primary: var(--taco-text);
+  --text-secondary: var(--taco-text-secondary);
+  --text-tertiary: var(--taco-text-muted);
+  --text-muted: var(--taco-text-muted);
+  --accent: var(--taco-accent-text);
+  --accent-active: var(--taco-action);
+  --accent-dim: var(--taco-coral-soft);
+  --accent-hover: var(--taco-coral-soft);
+  --accent-on: var(--taco-action-ink);
+  --text-on-action: var(--taco-action-ink);
+  --danger: var(--taco-accent-text);
+  --success: var(--taco-text);
+  --warning: var(--taco-accent-text);
   --icon-static: var(--text-muted);
   --icon-shell-bg: var(--bg-elevated);
   --icon-shell-border: var(--border-subtle);
@@ -40,29 +41,40 @@
      landing page's module stylesheet, so retiring that file left a global rule
      pointing at a token nothing defined. The default belongs here. */
   --tool-accent: var(--accent);
-  --sidebar-bg: #071231;
-  --sidebar-active: rgba(0, 194, 205, 0.08);
-  --sidebar-text: #8492B6;
-  --sidebar-text-active: #00C2CD;
-  --card-bg: #0B1839;
-  --theme-surface-hover: #122045;
-  --theme-surface-active: #122045;
-  --modal-backdrop: rgba(1, 8, 31, 0.7);
+  --sidebar-bg: var(--taco-surface);
+  --sidebar-active: var(--taco-coral-soft);
+  --sidebar-text: var(--taco-text-secondary);
+  --sidebar-text-active: var(--taco-accent-text);
+  --card-bg: var(--taco-surface);
+  --theme-surface-hover: var(--taco-surface-hover);
+  --theme-surface-active: var(--taco-surface-hover);
+  --modal-backdrop: color-mix(in srgb, var(--taco-ink) 66%, transparent);
+
+  /* Elevation — the redesign expresses depth with tokenised shadows (never raw
+     literals; the design-audit css-shadow rule permits only var(--elevation-*)).
+     On the navy dark surfaces shadow is subtle; the accent glow carries the
+     "lit" hero look from the Proof Engine card. */
+  --elevation-card: 4px 4px 0 var(--taco-shadow);
+  --elevation-raised: 6px 6px 0 var(--taco-shadow);
+  --elevation-glow-accent: 4px 4px 0 var(--taco-shadow);
+  /* Printed-document surface (resume/cover-letter previews): white paper in
+     BOTH themes — a document preview is a sheet of paper, not a themed card. */
+  --paper: #FFFFFF;
 
   /* Tag hues, re-solved against the brand accent rather than inherited from
      Material. Purple resolves to the same pair as blue: purple is not an
      accent in this system, and a token that quietly keeps one is how it comes
      back. */
-  --tag-amber-bg: rgba(245, 200, 96, 0.15);
-  --tag-amber-text: #F5C860;
-  --tag-blue-bg: rgba(46, 155, 255, 0.15);
-  --tag-blue-text: #7FB6FF;
-  --tag-purple-bg: rgba(46, 155, 255, 0.15);
-  --tag-purple-text: #7FB6FF;
-  --tag-green-bg: rgba(138, 228, 122, 0.15);
-  --tag-green-text: #8AE47A;
-  --tag-rose-bg: rgba(255, 154, 143, 0.15);
-  --tag-rose-text: #FF9A8F;
+  --tag-amber-bg: var(--taco-coral-soft);
+  --tag-amber-text: var(--taco-accent-text);
+  --tag-blue-bg: var(--taco-coral-soft);
+  --tag-blue-text: var(--taco-accent-text);
+  --tag-purple-bg: var(--taco-coral-soft);
+  --tag-purple-text: var(--taco-accent-text);
+  --tag-green-bg: var(--taco-coral-soft);
+  --tag-green-text: var(--taco-accent-text);
+  --tag-rose-bg: var(--taco-coral-soft);
+  --tag-rose-text: var(--taco-accent-text);
 
   color-scheme: dark;
 }
@@ -75,54 +87,73 @@
      --bg-hover was light enough to put accent-coloured text below 4.5:1
      wherever a row was hovered. --bg-hover and --theme-surface-active are the
      darkest of them, and they are what the accent is solved against. */
-  --bg-deep: #FFFFFF;
-  --bg-surface: #F5F7FC;
-  --bg-elevated: #EEF2FA;
-  --bg-input: #FFFFFF;
-  --bg-hover: #EAEFF9;
-  --border: #7C8EB0;
-  --border-subtle: #DFE5F2;
-  --border-hover: #5F7196;
-  --text-primary: #010E2F;
-  --text-secondary: #31405F;
-  --text-tertiary: #47557A;
-  --text-muted: #5C6890;
-  --accent: #00787F;
-  --accent-active: #00666D;
-  --accent-dim: rgba(0, 120, 127, 0.06);
-  --accent-hover: rgba(0, 120, 127, 0.1);
-  --accent-on: #FFFFFF;
-  --danger: #B3261E;
-  --success: #2A7A2E;
-  --warning: #8A5200;
+  --bg-deep: var(--taco-surface);
+  --bg-surface: var(--taco-surface);
+  --bg-elevated: var(--taco-surface-raised);
+  --bg-input: var(--taco-surface);
+  --bg-hover: var(--taco-surface-hover);
+  --border: var(--taco-border-strong);
+  --border-subtle: var(--taco-border);
+  --border-hover: var(--taco-border-strong);
+  --text-primary: var(--taco-text);
+  --text-secondary: var(--taco-text-secondary);
+  --text-tertiary: var(--taco-text-muted);
+  --text-muted: var(--taco-text-muted);
+  --accent: var(--taco-accent-text);
+  --accent-active: var(--taco-action);
+  --accent-dim: var(--taco-coral-soft);
+  --accent-hover: var(--taco-coral-soft);
+  --accent-on: var(--taco-action-ink);
+  --text-on-action: var(--taco-action-ink);
+  --danger: var(--taco-accent-text);
+  --success: var(--taco-text);
+  --warning: var(--taco-accent-text);
   --icon-static: var(--text-muted);
   --icon-shell-bg: var(--bg-elevated);
   --icon-shell-border: var(--border-subtle);
-  --sidebar-bg: #F5F7FC;
-  --sidebar-active: rgba(0, 120, 127, 0.08);
-  --sidebar-text: #31405F;
-  --sidebar-text-active: #010E2F;
-  --card-bg: #FFFFFF;
-  --theme-surface-hover: #EEF2FA;
-  --theme-surface-active: #EAEFF9;
-  --modal-backdrop: rgba(1, 14, 47, 0.4);
+  --sidebar-bg: var(--taco-surface);
+  --sidebar-active: var(--taco-coral-soft);
+  --sidebar-text: var(--taco-text-secondary);
+  --sidebar-text-active: var(--taco-accent-text);
+  --card-bg: var(--taco-surface);
+  --theme-surface-hover: var(--taco-surface-hover);
+  --theme-surface-active: var(--taco-surface-hover);
+  --modal-backdrop: color-mix(in srgb, var(--taco-ink) 66%, transparent);
+
+  /* Elevation — see the dark block. On near-white surfaces a soft neutral drop
+     reads as a raised card; the accent glow is lighter here to stay calm. */
+  --elevation-card: 4px 4px 0 var(--taco-shadow);
+  --elevation-raised: 6px 6px 0 var(--taco-shadow);
+  --elevation-glow-accent: 4px 4px 0 var(--taco-shadow);
+  --paper: #FFFFFF;
 
   /* Tag hues, re-solved against the brand accent rather than inherited from
      Material. Purple resolves to the same pair as blue: purple is not an
      accent in this system. */
-  --tag-amber-bg: rgba(138, 82, 0, 0.12);
-  --tag-amber-text: #8A5200;
-  --tag-blue-bg: rgba(21, 76, 158, 0.12);
-  --tag-blue-text: #154C9E;
-  --tag-purple-bg: rgba(21, 76, 158, 0.12);
-  --tag-purple-text: #154C9E;
-  --tag-green-bg: rgba(42, 122, 46, 0.12);
-  --tag-green-text: #2A7A2E;
-  --tag-rose-bg: rgba(179, 38, 30, 0.12);
-  --tag-rose-text: #B3261E;
+  --tag-amber-bg: var(--taco-coral-soft);
+  --tag-amber-text: var(--taco-accent-text);
+  --tag-blue-bg: var(--taco-coral-soft);
+  --tag-blue-text: var(--taco-accent-text);
+  --tag-purple-bg: var(--taco-coral-soft);
+  --tag-purple-text: var(--taco-accent-text);
+  --tag-green-bg: var(--taco-coral-soft);
+  --tag-green-text: var(--taco-accent-text);
+  --tag-rose-bg: var(--taco-coral-soft);
+  --tag-rose-text: var(--taco-accent-text);
 
   color-scheme: light;
 }
+
+/* Elevation utilities — apply a tokenised shadow. Tailwind's arbitrary
+   `shadow-[var(--x)]` is parsed as a shadow COLOR (not a full box-shadow) and
+   silently drops, so components use these classes instead. */
+.elevation-card { box-shadow: var(--elevation-card); }
+.elevation-raised { box-shadow: var(--elevation-raised); }
+.elevation-interactive {
+  box-shadow: var(--elevation-card);
+  transition: box-shadow 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+.elevation-interactive:hover { box-shadow: var(--elevation-raised); }
 
 /* ===========================================================================
    THE BRAND SURFACE — .tcl
@@ -148,21 +179,21 @@
      one colour and the mark reads as one folded object; they diverge only as
      the planes open. Left plane runs to blue (hue 250), right to cyan (196).
      Matches brand/tc-mark.svg exactly. */
-  --rl0:#005065; --rl1:#005F84; --rl2:#006E9F; --rl3:#2E9BFF;
-  --rr0:#005065; --rr1:#00727E; --rr2:#008B97; --rr3:#00D8DA;
-  --deep:#01081F; --surface:#071231; --elevated:#0B1839; --hover:#122045;
-  --line:#16264C; --line-2:#24376A;
-  --ink:#EEF2FF; --ink-2:#A8B4D4; --ink-3:#8492B6;
-  --accent:#00C2CD; --ok:#6FE3A6; --warn:#F5C860;
+  --rl0:var(--accent); --rl1:var(--accent); --rl2:var(--accent); --rl3:var(--accent);
+  --rr0:var(--accent); --rr1:var(--accent); --rr2:var(--accent); --rr3:var(--accent);
+  --deep:var(--taco-surface); --surface:var(--taco-surface); --elevated:var(--taco-surface-raised); --hover:var(--taco-surface-hover);
+  --line:var(--taco-border); --line-2:var(--taco-border-strong);
+  --ink:var(--taco-text); --ink-2:var(--taco-text-secondary); --ink-3:var(--taco-text-muted);
+  --accent:var(--taco-accent-text); --ok:var(--taco-text); --warn:var(--taco-accent-text);
   /* the Taco mark's own ramp - lighter at the apex so the glyph reads at 24px */
-  --taco-0:#4FD8E4; --taco-1:#00C2CD; --taco-2:#2E9BFF;
-  --ramp-text:linear-gradient(104deg,#009BA6,#00C2CD 48%,#00E0EC);
+  --taco-0:var(--accent); --taco-1:var(--accent); --taco-2:var(--accent);
+  --ramp-text:var(--taco-coral);
   --ui:var(--font-inter,Inter),Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --display:var(--font-poppins,Poppins),Poppins,'Century Gothic','URW Gothic',Futura,'Avenir Next','Trebuchet MS',var(--ui);
   /* The buttons used to paint themselves from the MARK ramp, which is why they
      stayed violet after the accent was cooled. They now have their own fill. */
-  --cta:linear-gradient(112deg,#00A9B4,#00D0DB 55%,#00E5F2);
-  --cta-ink:#01081F; --cta-edge:rgba(0,210,222,.5);
+  --cta:var(--taco-coral);
+  --cta-ink:var(--taco-action-ink); --cta-edge:var(--taco-coral);
   --gut:20px; --ease:cubic-bezier(.16,.84,.24,1); --r:16px;
 
   /* ---------------------------------------------------------- theme island
@@ -175,17 +206,17 @@
      file can reach. So rather than fight those rules, the app's own token
      names are re-pointed at the landing palette for the subtree. Anything
      that leaks in now leaks in wearing the right colour, in either theme. */
-  --bg-deep:var(--deep); --bg-surface:var(--surface); --bg-elevated:var(--elevated);
-  --bg-input:var(--elevated); --bg-hover:var(--hover); --card-bg:var(--surface);
-  --border:var(--line-2); --border-subtle:var(--line); --border-hover:var(--line-2);
-  --text-primary:var(--ink); --text-secondary:var(--ink-2);
-  --text-tertiary:var(--ink-3); --text-muted:var(--ink-3);
-  --accent-active:var(--accent); --accent-on:var(--cta-ink);
-  --success:var(--ok); --warning:var(--warn);
-  --theme-bg:var(--deep); --theme-bg-elevated:var(--elevated);
-  --theme-text:var(--ink); --theme-text-secondary:var(--ink-2);
-  --theme-border:var(--line); --theme-accent:var(--accent);
-  --theme-surface-hover:var(--hover); --theme-surface-active:var(--hover);
+  --bg-deep:var(--taco-surface); --bg-surface:var(--taco-surface); --bg-elevated:var(--taco-surface-raised);
+  --bg-input:var(--taco-surface); --bg-hover:var(--taco-surface-hover); --card-bg:var(--taco-surface);
+  --border:var(--taco-border-strong); --border-subtle:var(--taco-border); --border-hover:var(--taco-border-strong);
+  --text-primary:var(--taco-text); --text-secondary:var(--taco-text-secondary);
+  --text-tertiary:var(--taco-text-muted); --text-muted:var(--taco-text-muted);
+  --accent-active:var(--taco-action); --accent-on:var(--taco-action-ink);
+  --success:var(--taco-text); --warning:var(--taco-accent-text);
+  --theme-bg:var(--taco-surface); --theme-bg-elevated:var(--taco-surface-raised);
+  --theme-text:var(--taco-text); --theme-text-secondary:var(--taco-text-secondary);
+  --theme-border:var(--taco-border); --theme-accent:var(--taco-accent-text);
+  --theme-surface-hover:var(--taco-surface-hover); --theme-surface-active:var(--taco-surface-hover);
 }
 
 /* ─── CTA Shimmer Sweep ─── */
@@ -201,7 +232,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.18) 45%, rgba(255,255,255,0.22) 50%, rgba(255,255,255,0.18) 55%, transparent 70%);
+  background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--bg-surface) 18%, transparent) 45%, color-mix(in srgb, var(--bg-surface) 22%, transparent) 50%, color-mix(in srgb, var(--bg-surface) 18%, transparent) 55%, transparent 70%);
   background-size: 200% 100%;
   animation: cta-shimmer 3s ease-in-out infinite;
   pointer-events: none;
@@ -210,14 +241,14 @@
 
 /* ─── Pricing Featured Glow ─── */
 @keyframes pricing-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(16,185,129,0.06), 0 0 0 1px rgba(16,185,129,0.25); }
-  50% { box-shadow: 0 0 35px rgba(16,185,129,0.12), 0 0 0 1px rgba(16,185,129,0.35); }
+  0%, 100% { box-shadow: var(--elevation-card); }
+  50% { box-shadow: var(--elevation-card); }
 }
 
 /* ─── Section Divider ─── */
 .section-divider {
   height: 1px;
-  background: linear-gradient(to right, transparent, rgba(16,185,129,0.22), rgba(56,189,248,0.12), transparent);
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--accent-dim) 22%, transparent), color-mix(in srgb, var(--accent-dim) 12%, transparent), transparent);
 }
 
 * {
@@ -251,9 +282,9 @@ body {
 }
 
 .help-dark-page {
-  --help-text-primary: #f8fafc;
-  --help-text-secondary: rgba(226, 232, 240, 0.84);
-  --help-text-muted: #64748b;
+  --help-text-primary: var(--taco-text);
+  --help-text-secondary: var(--taco-text-secondary);
+  --help-text-muted: var(--taco-text-muted);
 }
 
 .help-dark-page .text-white {
@@ -309,19 +340,18 @@ body {
    Stitch-informed "quiet authority" layer for SEO and tool pages.
    ============================================ */
 .premium-brand-page {
-  --brand-bg: #f7f9fb;
-  --brand-surface: #ffffff;
-  --brand-surface-soft: #eef2f4;
-  --brand-surface-rail: #e3e8eb;
-  --brand-line: #d9e0e4;
-  --brand-line-strong: #aebbc2;
-  --brand-ink: #15191c;
-  --brand-copy: #4b555b;
-  --brand-muted: #778188;
-  --brand-accent: #08724f;
-  --brand-accent-strong: #065f43;
+  --brand-bg: var(--taco-paper);
+  --brand-surface: var(--taco-paper);
+  --brand-surface-soft: var(--taco-soft);
+  --brand-surface-rail: var(--taco-soft);
+  --brand-line: var(--taco-line);
+  --brand-line-strong: var(--taco-ink);
+  --brand-ink: var(--taco-ink);
+  --brand-copy: var(--taco-muted);
+  --brand-muted: var(--taco-muted);
+  --brand-accent: var(--taco-coral);
+  --brand-accent-strong: var(--taco-coral-ink);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 249, 251, 0) 320px),
     var(--brand-bg) !important;
   color: var(--brand-ink) !important;
 }
@@ -337,7 +367,7 @@ body {
   border: 1px solid var(--brand-line);
   border-radius: 10px;
   background: var(--brand-surface);
-  box-shadow: none;
+  box-shadow: var(--elevation-card);
 }
 
 .premium-brand-page .premium-brand-hero {
@@ -414,7 +444,7 @@ body {
 .premium-brand-page .premium-brand-primary {
   border-radius: 8px !important;
   background: var(--brand-accent) !important;
-  color: #f8fafc !important;
+  color: var(--text-primary) !important;
   box-shadow: none !important;
 }
 
@@ -451,7 +481,7 @@ body {
 .premium-brand-page .premium-brand-panel {
   border-color: var(--brand-line) !important;
   background: var(--brand-surface) !important;
-  box-shadow: none !important;
+  box-shadow: var(--elevation-card) !important;
 }
 
 .premium-brand-page .material-symbols-rounded:not(.icon-status-success):not(.icon-status-warning):not(.icon-status-danger) {
@@ -479,15 +509,16 @@ body {
    rules (.text-white → var(--text-primary), etc.)
    ============================================ */
 .btn-primary {
-  background-color: #2563eb !important;
-  color: #ffffff !important;
+  background-color: var(--taco-action) !important;
+  color: var(--accent-on) !important;
   border-radius: 12px;
   font-weight: 500;
+  min-height: 44px;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--elevation-card);
 }
 .btn-primary:hover {
-  background-color: #1d4ed8 !important;
+  background-color: var(--taco-action) !important;
 }
 .btn-primary:disabled {
   opacity: 0.5;
@@ -521,7 +552,7 @@ body {
 .elevation-1:hover {
   border-color: var(--border);
   background: var(--card-bg);
-  box-shadow: none;
+  box-shadow: var(--elevation-raised);
 }
 
 .glass-card::before {
@@ -549,19 +580,20 @@ body {
    BUTTONS — Flat, pill-shaped, fast transitions
    ============================================ */
 .btn-primary {
-  background: var(--accent);
-  color: #0b0b0b;
+  background: var(--taco-action);
+  color: var(--accent-on);
   font-weight: 600;
   font-size: 14px;
   border: none;
   border-radius: 100px;
   padding: 8px 24px;
+  min-height: 44px;
   cursor: pointer;
   transition: background 0.1s ease;
 }
 
 .btn-primary:hover {
-  background: var(--accent-active);
+  background: var(--taco-action);
   transform: none;
 }
 
@@ -1200,20 +1232,20 @@ input[type="range"].slider-enhanced::-webkit-slider-thumb {
 }
 
 .badge-warning {
-  background: rgba(253, 214, 99, 0.08);
-  border-color: rgba(253, 214, 99, 0.2);
+  background: color-mix(in srgb, var(--accent-dim) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--warning);
 }
 
 .badge-success {
-  background: rgba(129, 201, 149, 0.08);
-  border-color: rgba(129, 201, 149, 0.2);
+  background: color-mix(in srgb, var(--accent-dim) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--success);
 }
 
 .badge-info {
   background: var(--accent-dim);
-  border-color: rgba(168, 199, 250, 0.2);
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--accent);
 }
 
@@ -1287,7 +1319,7 @@ input[type="range"].slider-enhanced::-webkit-slider-thumb {
   background: linear-gradient(
     90deg,
     transparent 40%,
-    rgba(255, 255, 255, 0.2) 50%,
+    color-mix(in srgb, var(--bg-surface) 20%, transparent) 50%,
     transparent 60%
   );
   animation: badgeShimmer 3s ease-in-out infinite;
@@ -1304,7 +1336,7 @@ input[type="range"].slider-enhanced::-webkit-slider-thumb {
   position: absolute;
   inset: 0;
   transform: translateX(-125%);
-  background: linear-gradient(90deg, transparent 35%, rgba(255, 255, 255, 0.28) 50%, transparent 65%);
+  background: linear-gradient(90deg, transparent 35%, color-mix(in srgb, var(--bg-surface) 28%, transparent) 50%, transparent 65%);
   animation: planBadgeSheen 4.2s ease-in-out infinite;
   pointer-events: none;
 }
@@ -1382,12 +1414,12 @@ input[type="range"].slider-enhanced::-webkit-slider-thumb {
 }
 
 ::selection {
-  background: rgba(168, 199, 250, 0.3);
+  background: color-mix(in srgb, var(--accent-dim) 30%, transparent);
   color: var(--text-primary);
 }
 
 ::-moz-selection {
-  background: rgba(168, 199, 250, 0.3);
+  background: color-mix(in srgb, var(--accent-dim) 30%, transparent);
   color: var(--text-primary);
 }
 
@@ -1412,7 +1444,7 @@ canvas {
   background: var(--accent-dim);
   padding: 2px 6px;
   border-radius: 4px;
-  border: 1px solid rgba(168, 199, 250, 0.15);
+  border: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
   font-weight: 500;
 }
 
@@ -1465,12 +1497,12 @@ canvas {
   background: conic-gradient(
     from var(--shimmer-angle, 0deg),
     transparent 0%,
-    var(--shimmer-color-1, rgba(168,199,250,0.4)) 10%,
-    var(--shimmer-color-2, rgba(129,201,149,0.3)) 20%,
+    var(--shimmer-color-1, color-mix(in srgb, var(--accent-dim) 40%, transparent)) 10%,
+    var(--shimmer-color-2, color-mix(in srgb, var(--accent-dim) 30%, transparent)) 20%,
     transparent 30%,
     transparent 70%,
-    var(--shimmer-color-3, rgba(253,214,99,0.3)) 80%,
-    var(--shimmer-color-1, rgba(168,199,250,0.4)) 90%,
+    var(--shimmer-color-3, color-mix(in srgb, var(--accent-dim) 30%, transparent)) 80%,
+    var(--shimmer-color-1, color-mix(in srgb, var(--accent-dim) 40%, transparent)) 90%,
     transparent 100%
   );
   animation: shimmer-rotate 4s linear infinite;
@@ -1606,7 +1638,7 @@ canvas {
 .mobile-bottom-sheet-handle {
   width: 36px; height: 4px;
   border-radius: 2px;
-  background: rgba(128,128,128,0.3);
+  background: color-mix(in srgb, var(--bg-surface) 30%, transparent);
   margin: 8px auto 12px;
 }
 
@@ -1699,7 +1731,7 @@ canvas {
   border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg-deep) 94%, transparent);
-  box-shadow: -12px 0 18px var(--bg-deep), 0 6px 18px rgba(15, 23, 42, 0.1);
+  box-shadow: var(--elevation-card);
   color: var(--text-primary);
   font-size: 10px;
   font-weight: 800;
@@ -1730,7 +1762,7 @@ canvas {
   inset: 0;
   min-height: 0;
   width: 100%;
-  background: rgba(0, 0, 0, 0.45);
+  background: color-mix(in srgb, var(--bg-surface) 45%, transparent);
 }
 
 .mobile-quick-tools-sheet__panel {
@@ -1743,7 +1775,7 @@ canvas {
   border-radius: 0 0 24px 24px;
   background: var(--bg-deep);
   padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--mobile-shell-gutter) 16px;
-  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.26);
+  box-shadow: var(--elevation-card);
 }
 
 .mobile-quick-tools-sheet__header {
@@ -1876,7 +1908,7 @@ canvas {
   border: 1px solid var(--border-subtle);
   border-radius: 22px;
   background: color-mix(in srgb, var(--bg-surface) 95%, transparent);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--elevation-card);
   padding: 8px;
   backdrop-filter: blur(18px);
 }
@@ -2054,7 +2086,7 @@ canvas {
 }
 
 .mobile-result-panel__summary strong {
-  color: #6ee7b7;
+  color: var(--accent);
   font-size: 30px;
   font-weight: 900;
   line-height: 1;
@@ -2129,7 +2161,7 @@ canvas {
   .glass-card,
   .glass-button {
     background: white !important;
-    border: 1px solid #ddd !important;
+    border: 1px solid var(--border-subtle) !important;
     box-shadow: none !important;
   }
 
@@ -2160,55 +2192,55 @@ canvas {
    Scoped to data-theme so light mode works too.
    ============================================ */
 [data-theme="dark"] {
-  --theme-bg: #0b0b0b;
-  --theme-bg-elevated: #131314;
-  --theme-bg-card: #131314;
-  --theme-bg-input: #1e1e1f;
-  --theme-bg-hover: #1f1f21;
-  --theme-text: #f1f1f1;
-  --theme-text-secondary: #9ca0a0;
-  --theme-text-muted: #5f6368;
-  --theme-border: #2d2d2f;
-  --theme-border-hover: #444746;
+  --theme-bg: var(--taco-surface);
+  --theme-bg-elevated: var(--taco-surface-raised);
+  --theme-bg-card: var(--taco-surface);
+  --theme-bg-input: var(--taco-surface);
+  --theme-bg-hover: var(--taco-surface-hover);
+  --theme-text: var(--taco-text);
+  --theme-text-secondary: var(--taco-text-secondary);
+  --theme-text-muted: var(--taco-text-muted);
+  --theme-border: var(--taco-border);
+  --theme-border-hover: var(--taco-border-strong);
   --theme-glow: transparent;
-  --theme-shadow: rgba(0, 0, 0, 0.3);
-  --theme-accent: #a8c7fa;
-  --theme-accent-soft: rgba(168, 199, 250, 0.08);
-  --theme-overlay: rgba(11, 11, 11, 0.9);
-  --theme-radial-from: #131314;
-  --theme-radial-to: #0b0b0b;
-  --obsidian: #0b0b0b;
-  --charcoal: #131314;
-  --silver: #8e918f;
-  --cyber-cyan: #a8c7fa;
-  --vercel-blue: #a8c7fa;
-  --hairline: #2d2d2f;
+  --theme-shadow: var(--taco-shadow);
+  --theme-accent: var(--taco-accent-text);
+  --theme-accent-soft: var(--taco-coral-soft);
+  --theme-overlay: color-mix(in srgb, var(--taco-ink) 66%, transparent);
+  --theme-radial-from: var(--taco-surface-raised);
+  --theme-radial-to: var(--taco-surface);
+  --obsidian: var(--taco-surface);
+  --charcoal: var(--taco-surface-raised);
+  --silver: var(--taco-text-muted);
+  --cyber-cyan: var(--taco-accent-text);
+  --vercel-blue: var(--taco-accent-text);
+  --hairline: var(--taco-border);
 }
 
 [data-theme="light"] {
-  --theme-bg: #ffffff;
-  --theme-bg-elevated: #f8f9fa;
-  --theme-bg-card: #ffffff;
-  --theme-bg-input: #ffffff;
-  --theme-bg-hover: #e8eaed;
-  --theme-text: #111111;
-  --theme-text-secondary: #444746;
-  --theme-text-muted: #9aa0a6;
-  --theme-border: #e8eaed;
-  --theme-border-hover: #dadce0;
+  --theme-bg: var(--taco-surface);
+  --theme-bg-elevated: var(--taco-surface-raised);
+  --theme-bg-card: var(--taco-surface);
+  --theme-bg-input: var(--taco-surface);
+  --theme-bg-hover: var(--taco-surface-hover);
+  --theme-text: var(--taco-text);
+  --theme-text-secondary: var(--taco-text-secondary);
+  --theme-text-muted: var(--taco-text-muted);
+  --theme-border: var(--taco-border);
+  --theme-border-hover: var(--taco-border-strong);
   --theme-glow: transparent;
-  --theme-shadow: rgba(0, 0, 0, 0.08);
-  --theme-accent: #1a73e8;
-  --theme-accent-soft: rgba(26, 115, 232, 0.06);
-  --theme-overlay: rgba(0, 0, 0, 0.4);
-  --theme-radial-from: #f8f9fa;
-  --theme-radial-to: #ffffff;
-  --obsidian: #ffffff;
-  --charcoal: #f8f9fa;
-  --silver: #5f6368;
-  --cyber-cyan: #1a73e8;
-  --vercel-blue: #1a73e8;
-  --hairline: #e8eaed;
+  --theme-shadow: var(--taco-shadow);
+  --theme-accent: var(--taco-accent-text);
+  --theme-accent-soft: var(--taco-coral-soft);
+  --theme-overlay: color-mix(in srgb, var(--taco-ink) 66%, transparent);
+  --theme-radial-from: var(--taco-surface-raised);
+  --theme-radial-to: var(--taco-surface);
+  --obsidian: var(--taco-surface);
+  --charcoal: var(--taco-surface-raised);
+  --silver: var(--taco-text-muted);
+  --cyber-cyan: var(--taco-accent-text);
+  --vercel-blue: var(--taco-accent-text);
+  --hairline: var(--taco-border);
 }
 
 /* ============================================
@@ -2278,17 +2310,17 @@ canvas {
 
 [class*="border-emerald-"],
 [class*="border-green-"] {
-  border-color: rgba(129, 201, 149, 0.12) !important;
+  border-color: color-mix(in srgb, var(--accent) 12%, transparent) !important;
 }
 
 [class*="from-emerald-"],
 [class*="from-green-"] {
-  --tw-gradient-from: #81c995 !important;
+  --tw-gradient-from: var(--accent) !important;
 }
 
 [class*="to-emerald-"],
 [class*="to-green-"] {
-  --tw-gradient-to: rgba(129, 201, 149, 0.3) !important;
+  --tw-gradient-to: color-mix(in srgb, var(--accent) 30%, transparent) !important;
 }
 
 .bg-green-400 {
@@ -2351,7 +2383,7 @@ canvas {
 }
 
 [class*="border-amber-"] {
-  border-color: rgba(253, 214, 99, 0.1) !important;
+  border-color: color-mix(in srgb, var(--accent) 10%, transparent) !important;
 }
 
 /* ---- RED → Muted danger ---- */
@@ -2367,7 +2399,7 @@ canvas {
 }
 
 [class*="border-red-"] {
-  border-color: rgba(242, 139, 130, 0.1) !important;
+  border-color: color-mix(in srgb, var(--accent) 10%, transparent) !important;
 }
 
 .bg-red-500\/40 {
@@ -2468,13 +2500,13 @@ canvas {
   border: 1px solid var(--border-subtle) !important;
   border-radius: 12px !important;
   padding: 16px !important;
-  box-shadow: none !important;
+  box-shadow: var(--elevation-card) !important;
 }
 
 .elevation-1:hover {
   border-color: var(--border) !important;
   background: var(--card-bg) !important;
-  box-shadow: none !important;
+  box-shadow: var(--elevation-raised) !important;
 }
 
 /* Glass cards → flat dark */
@@ -2484,13 +2516,13 @@ canvas {
   border-radius: 12px !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow: none !important;
+  box-shadow: var(--elevation-card) !important;
 }
 
 .glass-card:hover {
   border-color: var(--border) !important;
   background: var(--card-bg) !important;
-  box-shadow: none !important;
+  box-shadow: var(--elevation-raised) !important;
   transform: none !important;
 }
 
@@ -2570,7 +2602,7 @@ canvas {
 }
 
 .animated-tool-icon__shine {
-  background: linear-gradient(115deg, transparent 0%, transparent 38%, rgba(255,255,255,0.24) 50%, transparent 62%, transparent 100%);
+  background: linear-gradient(115deg, transparent 0%, transparent 38%, color-mix(in srgb, var(--bg-surface) 24%, transparent) 50%, transparent 62%, transparent 100%);
   transform: translateX(-120%);
   animation: animated-tool-icon-shine 3.6s ease-in-out infinite;
   mix-blend-mode: screen;
@@ -2651,8 +2683,8 @@ canvas {
   background: linear-gradient(
     110deg,
     transparent 18%,
-    rgba(255, 255, 255, 0.82) 44%,
-    rgba(125, 211, 252, 0.46) 54%,
+    color-mix(in srgb, var(--bg-surface) 82%, transparent) 44%,
+    color-mix(in srgb, var(--accent-dim) 46%, transparent) 54%,
     transparent 78%
   );
   mix-blend-mode: screen;
@@ -2738,7 +2770,7 @@ input[type="range"].slider-enhanced::-webkit-slider-thumb {
 }
 
 input[type="range"].slider-enhanced::-webkit-slider-thumb:hover {
-  background: #c2e7ff !important;
+  background: var(--accent-dim) !important;
   transform: none !important;
   box-shadow: none !important;
 }
@@ -3140,15 +3172,15 @@ select:focus {
 
 /* Market Oracle HUD panels — always dark regardless of theme */
 .oracle-panel {
-  background: rgba(6, 6, 18, 0.92) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 8%, transparent) !important;
   backdrop-filter: blur(24px) !important;
   -webkit-backdrop-filter: blur(24px) !important;
   border-radius: 16px;
   color: white;
 }
 .oracle-panel.oracle-panel--emerald {
-  border-color: rgba(6, 214, 160, 0.2) !important;
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent) !important;
 }
 
 /* Input backgrounds in light mode */
@@ -3169,7 +3201,7 @@ select:focus {
 
 /* Btn colors in light mode */
 [data-theme="light"] .btn-primary {
-  background: var(--accent) !important;
+  background: var(--taco-action) !important;
   color: var(--accent-on) !important;
 }
 
@@ -3188,7 +3220,7 @@ select:focus {
 
 /* Selection in light mode */
 [data-theme="light"] ::selection {
-  background: rgba(26, 115, 232, 0.2);
+  background: color-mix(in srgb, var(--accent-dim) 20%, transparent);
   color: var(--text-primary);
 }
 
@@ -3216,7 +3248,7 @@ select:focus {
 }
 
 .ba-evidence {
-  background-image: linear-gradient(to right, rgba(16, 185, 129, 0.45), rgba(16, 185, 129, 0.45));
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--accent-dim) 45%, transparent), color-mix(in srgb, var(--accent-dim) 45%, transparent));
   background-position: bottom left;
   background-repeat: no-repeat;
   background-size: 0% 2px;
@@ -3226,7 +3258,7 @@ select:focus {
 
 .ba-weak {
   text-decoration: line-through;
-  text-decoration-color: rgba(244, 63, 94, 0.5);
+  text-decoration-color: color-mix(in srgb, var(--accent) 50%, transparent);
   text-decoration-thickness: 2px;
   opacity: 0.5;
   transition: opacity 0.4s ease, text-decoration-color 0.4s ease;
@@ -3294,7 +3326,7 @@ select:focus {
 
 [data-theme] .help-dark-page .glass-card input,
 .help-dark-page .glass-card input {
-  color: #0f172a !important;
+  color: var(--text-primary) !important;
 }
 
 [data-theme] .help-dark-page .placeholder-silver\/50::placeholder,
@@ -3340,59 +3372,59 @@ select:focus {
    controls — dark while the app itself is in light mode.
    ============================================ */
 .tc-dark-surface {
-  color-scheme: dark;
+  color-scheme: inherit;
 
   /* ink */
-  --text-primary: #f8fafc;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
+  --text-primary: var(--taco-text);
+  --text-secondary: var(--taco-text-secondary);
+  --text-muted: var(--taco-text-muted);
 
   /* surfaces */
-  --bg-surface: #131314;
-  --bg-elevated: #1e1e1f;
-  --bg-input: #1e1e1f;
-  --card-bg: #131314;
-  --sidebar-bg: #0b0b0b;
+  --bg-surface: var(--taco-surface);
+  --bg-elevated: var(--taco-surface-raised);
+  --bg-input: var(--taco-surface);
+  --card-bg: var(--taco-surface);
+  --sidebar-bg: var(--taco-surface);
 
   /* borders — these pages express elevation with hairlines, not shadow */
-  --border-subtle: rgba(255, 255, 255, 0.1);
-  --border: rgba(255, 255, 255, 0.2);
-  --border-hover: rgba(255, 255, 255, 0.3);
+  --border-subtle: var(--taco-border);
+  --border: var(--taco-border-strong);
+  --border-hover: var(--taco-border-strong);
 
   /* accent. --accent-dim is what every bg-white/N tint collapses to via the
      unscoped rules at 2432-2453, so it has to read as a white film on dark
      rather than as a hue, or those cards stop looking translucent. */
-  --accent: #00c2cd;
-  --accent-dim: rgba(255, 255, 255, 0.05);
+  --accent: var(--taco-accent-text);
+  --accent-dim: var(--taco-coral-soft);
 
   /* status hues. The emerald/amber/red utility classes are remapped to these
      tokens at 2256+, so on a permanently dark page they need the dark-theme
      step or the light one lands at 3.08:1. */
-  --success: #8ae47a;
-  --warning: #f5c860;
-  --danger: #ff9a8f;
+  --success: var(--taco-text);
+  --warning: var(--taco-accent-text);
+  --danger: var(--taco-accent-text);
 
   /* legacy --theme-* family, verbatim from [data-theme="dark"] above */
-  --theme-bg: #0b0b0b;
-  --theme-bg-elevated: #131314;
-  --theme-bg-card: #131314;
-  --theme-bg-input: #1e1e1f;
-  --theme-bg-hover: #1f1f21;
-  --theme-text: #f1f1f1;
-  --theme-text-secondary: #9ca0a0;
-  --theme-text-muted: #5f6368;
-  --theme-border: #2d2d2f;
-  --theme-border-hover: #444746;
-  --theme-shadow: rgba(0, 0, 0, 0.3);
-  --theme-accent: #a8c7fa;
-  --theme-accent-soft: rgba(168, 199, 250, 0.08);
-  --theme-overlay: rgba(11, 11, 11, 0.9);
-  --theme-radial-from: #131314;
-  --theme-radial-to: #0b0b0b;
-  --obsidian: #0b0b0b;
-  --charcoal: #131314;
-  --silver: #8e918f;
-  --hairline: #2d2d2f;
+  --theme-bg: var(--taco-surface);
+  --theme-bg-elevated: var(--taco-surface-raised);
+  --theme-bg-card: var(--taco-surface);
+  --theme-bg-input: var(--taco-surface);
+  --theme-bg-hover: var(--taco-surface-hover);
+  --theme-text: var(--taco-text);
+  --theme-text-secondary: var(--taco-text-secondary);
+  --theme-text-muted: var(--taco-text-muted);
+  --theme-border: var(--taco-border);
+  --theme-border-hover: var(--taco-border-strong);
+  --theme-shadow: var(--taco-shadow);
+  --theme-accent: var(--taco-accent-text);
+  --theme-accent-soft: var(--taco-coral-soft);
+  --theme-overlay: color-mix(in srgb, var(--taco-ink) 66%, transparent);
+  --theme-radial-from: var(--taco-surface-raised);
+  --theme-radial-to: var(--taco-surface);
+  --obsidian: var(--taco-surface);
+  --charcoal: var(--taco-surface-raised);
+  --silver: var(--taco-text-muted);
+  --hairline: var(--taco-border);
 }
 
 /* ============================================
@@ -3452,4 +3484,24 @@ select:focus {
     animation: none !important;
     background: var(--accent);
   }
+}
+
+/* Legacy surface names still used by older tools resolve to the shared palette. */
+:root, [data-theme] {
+  --bg-card: var(--taco-surface);
+  --bg-page: var(--taco-surface);
+  --bg-primary: var(--taco-surface);
+  --observability-success: var(--taco-text);
+}
+
+/* Filled actions have a separate color role from readable accent text. */
+.premium-brand-page .premium-brand-primary,
+.premium-brand-page a[class*="from-emerald"] {
+  background: var(--taco-action) !important;
+  color: var(--taco-action-ink) !important;
+}
+.premium-brand-page .premium-brand-primary:hover,
+.premium-brand-page a[class*="from-emerald"]:hover {
+  background: var(--taco-coral-ink) !important;
+  color: var(--taco-paper) !important;
 }

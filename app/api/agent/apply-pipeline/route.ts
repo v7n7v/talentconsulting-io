@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { guardApiRoute } from '@/lib/api-auth';
+import { getPacketSourceContent, packetJobDescriptionHash } from '@/lib/job-packet-review';
+import { canPrepareApplicationPackets } from '@/lib/assistant/workload-policy';
 import { checkUsageAllowed, incrementUsage } from '@/lib/usage-tracker';
 import { groqJSONCompletion } from '@/lib/ai/groq-client';
 import { sanitizeForAI } from '@/lib/sanitize';
@@ -149,7 +151,7 @@ export async function POST(req: NextRequest) {
     const guard = await guardApiRoute(req, { rateLimit: 5, rateLimitWindow: 60_000 });
     if (guard.error) return guard.error;
 
-    if (guard.user.tier === 'free') {
+    if (!canPrepareApplicationPackets(guard.user.tier)) {
       const recovery = packetUpgradeRecovery(false);
       return NextResponse.json(
         { error: recovery.title, code: recovery.code, retryable: recovery.retryable, recovery, upgrade: true },
@@ -182,6 +184,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const jobDescriptionHash = packetJobDescriptionHash(jobDescription);
     const safeJD = sanitizeForAI(jobDescription || `${jobTitle} at ${company}`);
     const userId = guard.user.uid;
     const db = getAdminDb();
@@ -245,6 +248,7 @@ export async function POST(req: NextRequest) {
     // Step 1: Fetch user's latest resume from Vault
     let baseResume: any = null;
     let baseResumeId: string | null = null;
+    let baseResumeSource: 'resume_versions' | 'vault' | 'profile' | null = null;
     if (requestedResumeVersionId) {
       const selectedResume = await getVerifiedResumeForUserById(db, userId, requestedResumeVersionId);
       if (!selectedResume.resume || !selectedResume.id) {
@@ -256,12 +260,14 @@ export async function POST(req: NextRequest) {
       }
       baseResume = selectedResume.resume;
       baseResumeId = selectedResume.id;
+      baseResumeSource = selectedResume.source;
     }
 
     if (!requestedResumeVersionId && (!baseResume || !baseResumeId)) {
       const latestResume = await getLatestResumeForUser(db, userId);
       baseResume = latestResume.resume;
       baseResumeId = latestResume.id;
+      baseResumeSource = latestResume.source;
     }
     if (!baseResume || !baseResumeId) {
       const recovery = packetResumeRequiredRecovery();
@@ -271,7 +277,11 @@ export async function POST(req: NextRequest) {
       );
     }
     const baseResumeHash = crypto.createHash('sha256').update(JSON.stringify(baseResume)).digest('hex');
+    if (body.expectedSourceHash && body.expectedSourceHash !== baseResumeHash) {
+      return NextResponse.json({ error: 'Your confirmed source changed after analysis. Analyze this role again before preparing.', code: 'packet_source_changed' }, { status: 409 });
+    }
 
+    const sourceReference = db.collection('users').doc(userId).collection(baseResumeSource || 'resume_versions').doc(baseResumeId);
     const generationOwner = crypto.randomUUID();
     const generationStartedAt = new Date();
     const generationLeaseExpiresAt = new Date(generationStartedAt.getTime() + 10 * 60_000).toISOString();
@@ -287,8 +297,16 @@ export async function POST(req: NextRequest) {
       const linkedResumeArtifact = linkedResumeSnapshot?.exists
         ? linkedResumeSnapshot.data() || null
         : null;
+      const sourceSnapshot = await transaction.get(sourceReference);
+      const currentSource = sourceSnapshot.exists ? getPacketSourceContent(sourceSnapshot.data() || {}, baseResumeSource || 'resume_versions') : null;
+      if (!currentSource || crypto.createHash('sha256').update(JSON.stringify(currentSource)).digest('hex') !== baseResumeHash) {
+        return { state: 'source_changed' as const, data: currentData };
+      }
       const currentSourceMatches = currentData.morph_source_resume_id === baseResumeId
-        && currentData.morph_source_resume_hash === baseResumeHash;
+        && currentData.morph_source_resume_hash === baseResumeHash
+        && currentData.packet_job_description_hash === jobDescriptionHash
+        && currentData.job_title === jobTitle
+        && currentData.company_name === company;
       if (currentSourceMatches && isPersistedJobPacketReady(currentData, linkedResumeArtifact)) {
         return { state: 'ready' as const, data: currentData, linkedResumeArtifact };
       }
@@ -298,11 +316,13 @@ export async function POST(req: NextRequest) {
       transaction.set(applicationRef, {
         user_id: userId,
         job_id: jobId || null,
-        company_name: company,
-        job_title: jobTitle,
+        company_name: currentData.company_name || company,
+        job_title: currentData.job_title || jobTitle,
         application_link: trustedJobUrl,
         packet_identity_hash: packetIdentity.identityHash,
         packet_status: 'needs_attention',
+        packet_revision: generationOwner,
+        human_review: null,
         packet_generation_state: 'running',
         packet_generation_owner: generationOwner,
         packet_generation_lease_expires_at: generationLeaseExpiresAt,
@@ -312,6 +332,9 @@ export async function POST(req: NextRequest) {
       return { state: 'acquired' as const, data: currentData };
     });
 
+    if (leaseResult.state === 'source_changed') {
+      return NextResponse.json({ error: 'Your source changed. Reload it before preparing this packet.', code: 'packet_source_changed', retryable: true }, { status: 409 });
+    }
     if (leaseResult.state === 'ready') {
       return existingApplicationResponse(
         applicationRef.id,
@@ -327,12 +350,12 @@ export async function POST(req: NextRequest) {
       );
     }
     existingApplicationData = leaseResult.data;
+    activeLease = { db, ref: applicationRef, owner: generationOwner };
     const existingResumeArtifact = await loadGuardedResumeArtifact(
       db,
       userId,
       existingApplicationData.resume_version_id,
     );
-    activeLease = { db, ref: applicationRef, owner: generationOwner };
 
     // Step 2: Morph resume (if base exists)
     let morphedResume = baseResume;
@@ -388,6 +411,7 @@ export async function POST(req: NextRequest) {
       currentSourceResumeHash: baseResumeHash,
       currentJobTitle: jobTitle,
       currentCompany: company,
+      currentJobDescriptionHash: jobDescriptionHash,
       morphSucceeded,
       coverLetterSucceeded,
       coverLetter,
@@ -441,6 +465,7 @@ export async function POST(req: NextRequest) {
       company_name: company,
       job_title: jobTitle,
       job_description: jobDescription || null,
+      packet_job_description_hash: jobDescriptionHash,
       resume_version_id: priorMorphVersionId,
       morphed_resume_name: `${company} — ${jobTitle}`,
       talent_density_score: packetMatchScore,
@@ -456,6 +481,7 @@ export async function POST(req: NextRequest) {
           : null),
       morph_source_resume_id: effectiveMorphSucceeded ? baseResumeId : null,
       morph_source_resume_hash: effectiveMorphSucceeded ? baseResumeHash : null,
+      morph_source_resume_type: effectiveMorphSucceeded ? baseResumeSource : null,
       morph_succeeded: effectiveMorphSucceeded,
       cover_letter_succeeded: effectiveCoverLetterSucceeded,
       cover_letter_guardrail_report: effectiveCoverLetterReport,
@@ -511,6 +537,7 @@ export async function POST(req: NextRequest) {
         guardrail_report: morphGuardrailReport,
         guardrail_validator_version: morphGuardrailReport?.validatorVersion || null,
         source_resume_id: baseResumeId,
+        source_resume_type: baseResumeSource,
         source_resume_hash: baseResumeHash,
         morph_effective_percentage: morphAccess.effectiveMorphPercentage,
         mode: 'technical',
@@ -542,7 +569,11 @@ export async function POST(req: NextRequest) {
       const linkedResumeArtifact = linkedResumeSnapshot?.exists
         ? linkedResumeSnapshot.data() || null
         : null;
-      const persistedReady = isPersistedJobPacketReady({
+      const sourceSnapshot = await transaction.get(sourceReference);
+      const currentSource = sourceSnapshot.exists ? getPacketSourceContent(sourceSnapshot.data() || {}, baseResumeSource || 'resume_versions') : null;
+      const sourceStillMatches = Boolean(currentSource)
+        && crypto.createHash('sha256').update(JSON.stringify(currentSource)).digest('hex') === baseResumeHash;
+      const persistedReady = sourceStillMatches && isPersistedJobPacketReady({
         ...currentData,
         resume_version_id: linkedResumeVersionId,
         packet_status: 'ready_for_review',

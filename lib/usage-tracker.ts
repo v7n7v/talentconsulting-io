@@ -8,6 +8,7 @@
  */
 
 import { getAdminDb } from '@/lib/firebase-admin';
+import { randomUUID } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { PlanTier } from './pricing-tiers';
 
@@ -112,6 +113,20 @@ export interface WritingWordUsage {
   month: string;
 }
 
+export interface WritingWordReservation {
+  allowed: boolean;
+  requestId: string;
+  chargedWords: number;
+  usedWords: number;
+  capWords: number;
+  remainingWords: number;
+  replay: boolean;
+  status?: 'reserved' | 'pending' | 'success' | 'failed';
+  cachedResponse?: unknown;
+  leaseToken?: string;
+  limitKind?: 'words' | 'runs';
+}
+
 const DEFAULT_USAGE: UsageData = {
   morphs: 0,
   gauntlets: 0,
@@ -139,6 +154,10 @@ function voiceDocRef(uid: string) {
 
 function writingDocRef(uid: string) {
   return getAdminDb().collection('users').doc(uid).collection('usage').doc('writing_monthly');
+}
+
+function writingReceiptRef(uid: string, requestId: string) {
+  return writingDocRef(uid).collection('receipts').doc(requestId);
 }
 
 /** Current month key for reset detection */
@@ -339,8 +358,9 @@ export async function getWritingWordUsage(uid: string): Promise<WritingWordUsage
       return { usedWords: data.usedWords ?? 0, month: thisMonth };
     }
     return { usedWords: 0, month: currentMonthKey() };
-  } catch {
-    return { usedWords: 0, month: currentMonthKey() };
+  } catch (error) {
+    console.error(`Failed to read writing usage for ${uid}`, error);
+    throw new Error('WRITING_USAGE_UNAVAILABLE');
   }
 }
 
@@ -374,25 +394,70 @@ export async function checkWritingWordsAllowed(
 export async function recordWritingWords(uid: string, words: number): Promise<void> {
   try {
     const thisMonth = currentMonthKey();
-    const current = await getWritingWordUsage(uid);
-
-    if (current.month !== thisMonth) {
-      await writingDocRef(uid).set({
-        usedWords: words,
-        month: thisMonth,
-        lastUsed: new Date().toISOString(),
-      });
-    } else {
-      await writingDocRef(uid).set(
-        {
-          usedWords: FieldValue.increment(words),
-          month: thisMonth,
-          lastUsed: new Date().toISOString(),
-        },
-        { merge: true }
-      );
-    }
+    await getAdminDb().runTransaction(async transaction => {
+      const ref = writingDocRef(uid);
+      const snap = await transaction.get(ref);
+      const data = snap.exists ? snap.data() || {} : {};
+      const usedWords = data.month === thisMonth ? Number(data.usedWords || 0) : 0;
+      transaction.set(ref, { usedWords: usedWords + Math.max(0, words), month: thisMonth, lastUsed: new Date().toISOString() }, { merge: true });
+    });
   } catch (err) {
     console.error(`Failed to record writing word usage for ${uid}`, err);
   }
+}
+
+/** Each receipt binds one payload and one active worker; failed attempts are refundable. */
+export const WRITING_LEASE_MS = 5 * 60_000;
+export async function reserveWritingWords(uid: string, tier: PlanTier, words: number, requestId: string, payloadHash = ''): Promise<WritingWordReservation> {
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId) || !payloadHash || !Number.isInteger(words) || words < 1) throw new Error('WRITING_REQUEST_INVALID');
+  const capWords = tier === 'god' ? Infinity : WRITING_WORD_CAPS[tier as Exclude<PlanTier, 'god'>] || 0;
+  const amount = words;
+  return getAdminDb().runTransaction(async transaction => {
+    const ref = writingDocRef(uid), receiptRef = writingReceiptRef(uid, requestId), lifetimeRef = usageDocRef(uid);
+    const [snap, receiptSnap, lifetimeSnap] = await Promise.all([transaction.get(ref), transaction.get(receiptRef), transaction.get(lifetimeRef)]);
+    const month = currentMonthKey();
+    const data = snap.data() || {}, receipt = receiptSnap.data() || {};
+    let used = data.month === month ? Number(data.usedWords || 0) : 0;
+    let runs = Number(lifetimeSnap.data()?.writingTools || 0);
+    const result = (extra: Partial<WritingWordReservation>): WritingWordReservation => ({allowed:false,requestId,chargedWords:amount,usedWords:used,capWords,remainingWords:Math.max(0,capWords-used),replay:receiptSnap.exists,...extra});
+    if (receiptSnap.exists) {
+      if (receipt.payloadHash !== payloadHash) throw new Error('WRITING_REQUEST_PAYLOAD_MISMATCH');
+      if (receipt.status === 'success') return result({allowed:true,status:'success',cachedResponse:receipt.response});
+      if (receipt.status === 'reserved') {
+        if (Number(receipt.leaseExpiresAt || 0) > Date.now()) return result({status:'pending'});
+        // Recover only this expired reservation; a prior-month failure cannot refund this month's usage.
+        if (receipt.month === month) used = Math.max(0,used-Number(receipt.words || 0));
+        if (receipt.lifetimeReserved) runs = Math.max(0,runs-1);
+        transaction.set(ref,{month,usedWords:used},{merge:true});
+        transaction.set(lifetimeRef,{writingTools:runs},{merge:true});
+        transaction.set(receiptRef,{status:'failed'},{merge:true});
+      }
+    }
+    if (used+amount > capWords) return result({limitKind:'words'});
+    if (tier === 'free' && runs >= FREE_CAPS.writingTools) return result({limitKind:'runs'});
+    const leaseToken = randomUUID();
+    used += amount;
+    transaction.set(ref,{month,usedWords:used},{merge:true});
+    transaction.set(lifetimeRef,{writingTools:runs+1},{merge:true});
+    transaction.set(receiptRef,{requestId,payloadHash,words:amount,month,status:'reserved',leaseToken,leaseExpiresAt:Date.now()+WRITING_LEASE_MS,lifetimeReserved:true,createdAt:new Date().toISOString()});
+    return result({allowed:true,status:'reserved',leaseToken});
+  });
+}
+
+export async function settleWritingWords(uid: string, requestId: string, outcome: 'success' | 'failed', response?: unknown, leaseToken?: string): Promise<void> {
+  await getAdminDb().runTransaction(async transaction => {
+    const receiptRef = writingReceiptRef(uid,requestId);
+    const receiptSnap = await transaction.get(receiptRef);
+    const receipt = receiptSnap.data();
+    if (!receipt || !leaseToken || receipt.leaseToken !== leaseToken) throw new Error('WRITING_LEASE_LOST');
+    if (receipt.status === 'success' || receipt.status === 'failed') return;
+    if (outcome === 'failed') {
+      const usageRef=writingDocRef(uid), lifetimeRef=usageDocRef(uid);
+      const [usageSnap,lifetimeSnap] = await Promise.all([transaction.get(usageRef),transaction.get(lifetimeRef)]);
+      const data=usageSnap.data()||{};
+      if (data.month === receipt.month) transaction.set(usageRef,{usedWords:Math.max(0,Number(data.usedWords||0)-Number(receipt.words||0))},{merge:true});
+      if (receipt.lifetimeReserved) transaction.set(lifetimeRef,{writingTools:Math.max(0,Number(lifetimeSnap.data()?.writingTools||0)-1)},{merge:true});
+    }
+    transaction.set(receiptRef,{status:outcome,...(outcome==='success'?{response}:{}),settledAt:new Date().toISOString()},{merge:true});
+  });
 }

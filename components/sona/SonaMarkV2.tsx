@@ -100,7 +100,7 @@ function SonaMarkV2({
           <motion.path
             d={ribbonPath}
             fill="none"
-            stroke={normalizedState === 'success' ? '#72ddb0' : normalizedState === 'error' ? '#dc8190' : '#66dfe9'}
+            stroke={normalizedState === 'success' ? 'var(--taco-coral)' : normalizedState === 'error' ? 'var(--taco-coral-ink)' : 'var(--taco-coral)'}
             strokeWidth="25"
             strokeLinecap="round"
             opacity={normalizedState === 'thinking' ? 0.24 : 0.14}

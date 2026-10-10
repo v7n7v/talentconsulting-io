@@ -1,0 +1,548 @@
+/* The marketing palette intentionally remains paper/ink in either host theme. */
+/* Clip sideways paper accents without creating a nested scroll container.
+   A main with overflow-x:hidden also computes overflow-y:auto and traps sticky. */
+.taco-landing > #main-content {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.taco-landing .career-journey {
+  max-width: 1180px;
+  margin: auto;
+  padding: var(--landing-section-space) clamp(20px, 5vw, 48px);
+}
+
+.taco-landing .career-journey-intro {
+  max-width: 900px;
+}
+
+.taco-landing .career-journey-intro h2 {
+  margin: 20px 0;
+  font-size: clamp(42px, 5.3vw, 74px);
+}
+
+.taco-landing .career-journey-intro > p:last-child {
+  max-width: 510px;
+  color: var(--landing-muted);
+  font-size: 17px;
+}
+
+.taco-landing .career-journey-track {
+  margin-top: var(--landing-section-content-gap);
+}
+
+.taco-landing .career-journey-shell {
+  border: 1px solid var(--landing-ink);
+  background: var(--landing-paper);
+  box-shadow: 12px 12px 0 var(--landing-shadow);
+}
+
+.taco-landing .career-journey-toolbar {
+  border-bottom: 1px solid var(--landing-ink);
+  background: var(--landing-paper);
+}
+
+/* A paper ribbon connects the existing steps; only the original blue mark moves. */
+.taco-landing .career-journey-trail {
+  position: relative;
+  height: 56px;
+  border-top: 1px solid var(--landing-line);
+}
+
+.taco-landing .career-journey-trail svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.taco-landing .career-journey-trail-line,
+.taco-landing .career-journey-trail-ink {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.taco-landing .career-journey-trail-line {
+  stroke: var(--landing-line);
+}
+
+.taco-landing .career-journey-trail-ink {
+  stroke: var(--landing-coral-ink);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 640ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.taco-landing .career-journey-trail circle {
+  fill: var(--landing-paper);
+  stroke: var(--landing-line);
+  stroke-width: 1.5;
+}
+
+.taco-landing .career-journey-trail circle.is-visited {
+  fill: var(--landing-coral-ink);
+  stroke: var(--landing-coral-ink);
+}
+
+.taco-landing .career-journey-traveler {
+  position: absolute;
+  top: 50%;
+  left: 16.666667%;
+  display: grid;
+  width: 48px;
+  height: 40px;
+  place-items: center;
+  background: var(--landing-paper);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: left 640ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.taco-landing .career-journey-traveler-symbol {
+  display: grid;
+  place-items: center;
+  animation: career-taco-arrive 640ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.taco-landing .career-journey-traveler-symbol img {
+  display: block;
+  width: 36px;
+  height: auto;
+}
+
+.taco-landing .career-journey-trail[data-stage="1"] .career-journey-traveler {
+  left: 50%;
+}
+
+.taco-landing .career-journey-trail[data-stage="2"] .career-journey-traveler {
+  left: 83.333333%;
+}
+
+.taco-landing .career-journey-trail[data-stage="1"] .career-journey-trail-ink {
+  stroke-dashoffset: .5;
+}
+
+.taco-landing .career-journey-trail[data-stage="2"] .career-journey-trail-ink {
+  stroke-dashoffset: 0;
+}
+
+@keyframes career-taco-arrive {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  45% { transform: translateY(-4px) rotate(-5deg); }
+}
+
+.taco-landing .career-journey[data-layout="flow"][data-wayfinder="pinned"] .career-journey-toolbar {
+  position: sticky;
+  top: 16px;
+  z-index: 2;
+}
+
+.taco-landing .career-journey[data-wayfinder="pinned"] .career-journey-document {
+  scroll-margin-top: 176px;
+}
+
+.taco-landing .career-journey[data-motion="static"] .career-journey-traveler,
+.taco-landing .career-journey[data-motion="static"] .career-journey-trail-ink {
+  transition: none;
+}
+
+.taco-landing .career-journey[data-motion="static"] .career-journey-traveler-symbol {
+  animation: none;
+}
+
+.taco-landing .career-journey-tabs {
+  display: flex;
+}
+
+.taco-landing .career-journey-tabs > a,
+.taco-landing .career-journey-tabs > button {
+  flex: 1;
+  min-width: 0;
+  min-height: 70px;
+  padding: 14px 22px;
+  border: 0;
+  border-right: 1px solid var(--landing-line);
+  background: var(--landing-paper);
+  color: var(--landing-ink);
+  text-align: left;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.taco-landing .career-journey-tabs > :last-child {
+  border-right: 0;
+}
+
+.taco-landing .career-journey-tabs > a span,
+.taco-landing .career-journey-tabs > button span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--landing-muted);
+  font-size: 12px;
+}
+
+.taco-landing .career-journey-tabs > [aria-current="step"],
+.taco-landing .career-journey-tabs > [aria-selected="true"] {
+  background: var(--landing-ink);
+  color: var(--landing-paper);
+}
+
+.taco-landing .career-journey-tabs > [aria-current="step"] span,
+.taco-landing .career-journey-tabs > [aria-selected="true"] span {
+  color: var(--landing-coral);
+}
+
+.taco-landing .career-journey-documents {
+  display: grid;
+  gap: 28px;
+  padding: 28px clamp(22px, 3vw, 40px) 38px;
+}
+
+.taco-landing .career-journey-document {
+  min-width: 0;
+  padding: 0;
+  scroll-margin-top: 24px;
+}
+
+.taco-landing .career-journey-document-heading {
+  margin-bottom: 18px;
+}
+
+.taco-landing .career-journey-kicker,
+.taco-landing .career-journey-document-label {
+  color: var(--landing-coral-ink);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.taco-landing .career-journey-document-heading h3 {
+  margin-top: 10px;
+  color: var(--landing-ink);
+  font-size: clamp(25px, 3vw, 36px);
+  line-height: 1.08;
+}
+
+.taco-landing .career-journey-sheet {
+  min-width: 0;
+  border: 1px solid var(--landing-ink);
+  background: var(--landing-paper);
+  box-shadow: 8px 9px 0 var(--landing-shadow);
+}
+
+.taco-landing .career-journey-document-1 .career-journey-sheet {
+  box-shadow: 8px 9px 0 var(--landing-shadow);
+}
+
+.taco-landing .career-journey-sheet-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--landing-line);
+  color: var(--landing-muted);
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.taco-landing .career-journey-sheet-top > span,
+.taco-landing .career-journey-evidence-list li > span {
+  min-width: 0;
+}
+
+.taco-landing .career-journey-sheet-brand {
+  color: var(--landing-ink);
+  font-weight: 700;
+}
+
+.taco-landing .career-journey-sheet-body {
+  padding: clamp(22px, 3vw, 32px);
+}
+
+.taco-landing .career-journey-sheet h4,
+.taco-landing .career-journey-draft {
+  margin: 10px 0 15px;
+  color: var(--landing-ink);
+  font-size: clamp(25px, 3vw, 36px);
+  line-height: 1.1;
+}
+
+.taco-landing .career-journey-source {
+  position: relative;
+  max-width: 780px;
+  padding-bottom: 10px;
+  font-size: clamp(17px, 2vw, 21px);
+  line-height: 1.55;
+}
+
+.taco-landing .career-journey-source::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--landing-coral);
+  content: "";
+  transform: scaleX(var(--career-ink, 1));
+  transform-origin: left;
+}
+
+.taco-landing .career-journey-rule {
+  height: 1px;
+  margin: 22px 0 18px;
+  background: var(--landing-line);
+}
+
+.taco-landing .career-journey-tags,
+.taco-landing .career-journey-retained-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 13px 0 0;
+  list-style: none;
+}
+
+.taco-landing .career-journey-tags li,
+.taco-landing .career-journey-retained-facts li {
+  position: relative;
+  padding: 8px 10px;
+  font-size: 16px;
+}
+
+.taco-landing .career-journey-tags li {
+  background: var(--landing-soft);
+  font-weight: 700;
+}
+
+.taco-landing .career-journey-sheet-note {
+  color: var(--landing-muted);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.taco-landing .career-journey-evidence-list {
+  display: grid;
+  gap: 11px;
+  padding: 0;
+  margin: 20px 0 0;
+  list-style: none;
+}
+
+.taco-landing .career-journey-evidence-list li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 11px;
+  background: var(--landing-soft);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.taco-landing .career-journey-evidence-list li.is-review {
+  border-left: 3px solid var(--landing-coral);
+}
+
+.taco-landing .career-journey-evidence-mark {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--landing-line);
+  font-weight: 700;
+}
+
+.taco-landing .career-journey-evidence-list .is-review .career-journey-evidence-mark {
+  background: var(--landing-coral);
+}
+
+.taco-landing .career-journey-evidence-list strong,
+.taco-landing .career-journey-evidence-list small {
+  display: block;
+}
+
+.taco-landing .career-journey-evidence-list small {
+  margin-top: 3px;
+  color: var(--landing-muted);
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.taco-landing .career-journey-draft {
+  max-width: 780px;
+  font-family: var(--display, Georgia, serif);
+  font-weight: 500;
+  line-height: 1.18;
+}
+
+.taco-landing .career-journey-retained-facts li {
+  background: var(--landing-soft);
+}
+
+.taco-landing .career-journey-tags li::after,
+.taco-landing .career-journey-evidence-list .is-supported::after,
+.taco-landing .career-journey-retained-facts li::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--landing-coral-ink);
+  content: "";
+  transform: scaleX(var(--career-marker-0, 1));
+  transform-origin: left;
+}
+
+.taco-landing .career-journey-document li:nth-child(2)::after {
+  transform: scaleX(var(--career-marker-1, 1));
+}
+
+.taco-landing .career-journey-document li:nth-child(3)::after {
+  transform: scaleX(var(--career-marker-2, 1));
+}
+
+.taco-landing .career-journey-document li:nth-child(4)::after {
+  transform: scaleX(var(--career-marker-3, 1));
+}
+
+.taco-landing .career-journey-stamp-slot {
+  position: relative;
+  width: 136px;
+  min-height: 88px;
+  margin: 32px 0 0 auto;
+}
+
+.taco-landing .career-journey-stamp,
+.taco-landing .career-journey-stamp-impact {
+  position: absolute;
+  inset: 16px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 3px solid var(--landing-coral);
+  color: var(--landing-ink);
+  font-size: 13px;
+  letter-spacing: .06em;
+}
+
+.taco-landing .career-journey-stamp {
+  opacity: var(--career-stamp-opacity, 1);
+  transform: translateY(var(--career-stamp-y, 0px)) scale(var(--career-stamp-scale, 1)) rotate(var(--career-stamp-rotation, -8deg));
+}
+
+.taco-landing .career-journey-stamp b {
+  font-weight: 800;
+}
+
+.taco-landing .career-journey-stamp i {
+  font-size: 18px;
+  font-style: normal;
+}
+
+.taco-landing .career-journey-stamp-impact {
+  opacity: calc(var(--career-stamp-impact, 0) * .65);
+  transform: rotate(-8deg) scale(1.08);
+}
+
+/* Measurement uses the exact pinned grid without duplicating articles or IDs. */
+.taco-landing .career-journey:is([data-layout="measure"], [data-layout="sticky"]) .career-journey-documents {
+  gap: 0;
+}
+
+.taco-landing .career-journey:is([data-layout="measure"], [data-layout="sticky"]) .career-journey-document {
+  grid-area: 1 / 1;
+  align-self: start;
+}
+
+.taco-landing .career-journey[data-layout="sticky"] .career-journey-track {
+  height: calc(var(--career-shell-height) + 300px);
+}
+
+.taco-landing .career-journey[data-layout="sticky"] .career-journey-shell {
+  position: sticky;
+  top: 32px;
+}
+
+.taco-landing .career-journey[data-layout="sticky"] .career-journey-document {
+  opacity: var(--career-opacity, 0);
+  visibility: var(--career-visibility, hidden);
+  transform: translateY(var(--career-y, 0px));
+  pointer-events: none;
+}
+
+.taco-landing .career-journey[data-layout="sticky"] .career-journey-document[data-active="true"] {
+  pointer-events: auto;
+}
+
+@media (max-width: 600px) {
+  .taco-landing .career-journey-tabs > a,
+  .taco-landing .career-journey-tabs > button {
+    min-height: 64px;
+    padding: 12px 10px;
+    font-size: 13px;
+  }
+
+  .taco-landing .career-journey-documents {
+    gap: 28px;
+    padding: 24px 16px 32px;
+  }
+
+  .taco-landing .career-journey-sheet-body {
+    padding: 22px;
+  }
+
+  .taco-landing .career-journey-sheet-top {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 430px) {
+  .taco-landing .career-journey-tabs > a,
+  .taco-landing .career-journey-tabs > button {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+
+  .taco-landing .career-journey-stamp-slot {
+    width: 120px;
+    min-height: 80px;
+  }
+
+  .taco-landing .career-journey-stamp,
+  .taco-landing .career-journey-stamp-impact {
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .taco-landing .career-journey-traveler,
+  .taco-landing .career-journey-trail-ink {
+    transition: none;
+  }
+
+  .taco-landing .career-journey-traveler-symbol {
+    animation: none;
+  }
+
+  .taco-landing .career-journey-stamp {
+    opacity: 1;
+    transform: rotate(-8deg);
+  }
+
+  .taco-landing .career-journey-stamp-impact {
+    opacity: 0;
+  }
+
+  .taco-landing .career-journey-source::after,
+  .taco-landing .career-journey-document li::after {
+    transform: none;
+  }
+}
