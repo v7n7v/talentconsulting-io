@@ -58,6 +58,19 @@ function validAggregateLimit(limit: number): number {
 function validSlug(slug: string): boolean {
   return /^[a-z0-9][a-z0-9-]{0,99}$/i.test(slug);
 }
+type JsonRecord = Record<string, unknown>;
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => isString(value) && Boolean(value));
+}
+function isJobSalary(value: JobSalary | undefined): value is JobSalary {
+  return value !== undefined;
+}
 function clone<T>(value: T): T {
   return structuredClone(value);
 }
@@ -176,7 +189,7 @@ async function fetchBoard(
   key: string,
   provider: string,
   url: string,
-  parse: (data: any) => PortalSearchResult,
+  parse: (data: unknown) => PortalSearchResult,
 ): Promise<PortalSearchResult> {
   const old = cacheGet(key);
   if (old) return { ...old, cached: true };
@@ -189,19 +202,25 @@ async function fetchBoard(
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) {
-        const e: any = new Error(`${provider}: ${res.status}`);
-        e.status = res.status;
+        const e = Object.assign(new Error(`${provider}: ${res.status}`), {
+          status: res.status,
+        });
         throw e;
       }
       const raw = await res.json();
       const r = parse(raw);
       if (r.status === "success" || r.status === "empty") cachePut(key, r);
       return r;
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const error = isRecord(e) ? e : undefined;
+      const httpStatus =
+        typeof error?.status === "number" && Number.isFinite(error.status)
+          ? error.status
+          : undefined;
       const status =
-        e?.status === 429
+        httpStatus === 429
           ? "rate_limited"
-          : e?.name === "SyntaxError"
+          : error?.name === "SyntaxError"
             ? "malformed"
             : classifyProviderFailure(e);
       return {
@@ -210,7 +229,13 @@ async function fetchBoard(
         source: `${provider} (error)`,
         company: key.split(":").pop() || "",
         status,
-        diagnostics: [{ provider, status, httpStatus: e?.status }],
+        diagnostics: [
+          {
+            provider,
+            status,
+            ...(httpStatus === undefined ? {} : { httpStatus }),
+          },
+        ],
       };
     } finally {
       inFlight.delete(key);
@@ -220,16 +245,16 @@ async function fetchBoard(
   return p;
 }
 function validRows(
-  rows: any[],
+  rows: unknown[],
   provider: string,
-  map: (j: any) => PortalJob | null,
+  map: (j: JsonRecord) => PortalJob | null,
   company: string,
 ): PortalSearchResult {
   let rejected = 0;
   const jobs: PortalJob[] = [];
   const observedAt = new Date().toISOString();
   for (const row of rows) {
-    if (!row || typeof row !== "object" || Array.isArray(row)) {
+    if (!isRecord(row)) {
       rejected++;
       continue;
     }
@@ -282,10 +307,12 @@ export async function searchGreenhouse(
     "Greenhouse",
     `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(companySlug)}/jobs?content=true`,
     (d) => {
-      if (!d || !Array.isArray(d.jobs))
+      if (!isRecord(d) || !Array.isArray(d.jobs))
         throw new JobPayloadError("Expected jobs array");
+      const name = isString(d.name) && d.name ? d.name : companySlug;
+      const rows = d.jobs;
       return validRows(
-        d.jobs,
+        rows,
         "Greenhouse",
         (j) => {
           const url = j.absolute_url
@@ -302,14 +329,24 @@ export async function searchGreenhouse(
             return null;
           const body = textContent(j.content);
           const published = normalizeJobDate(j.first_published || j.created_at);
+          const location = isRecord(j.location) ? j.location.name : undefined;
+          const firstDepartment = Array.isArray(j.departments)
+            ? j.departments[0]
+            : undefined;
+          const department = isRecord(firstDepartment)
+            ? firstDepartment.name
+            : undefined;
+          const locationName = isString(location) && location
+            ? location
+            : undefined;
           return {
             id: `gh-${j.id}`,
             sourceJobId: String(j.id),
             title: j.title,
-            company: d.name || companySlug,
-            location: j.location?.name || "Not Specified",
-            locations: j.location?.name ? [j.location.name] : [],
-            department: j.departments?.[0]?.name || "",
+            company: name,
+            location: locationName || "Not Specified",
+            locations: locationName ? [locationName] : [],
+            department: isString(department) ? department || "" : "",
             url,
             applyUrl: url,
             postedDate: published,
@@ -325,7 +362,7 @@ export async function searchGreenhouse(
             },
           };
         },
-        d.name || companySlug,
+        name,
       );
     },
   );
@@ -365,29 +402,39 @@ export async function searchLever(
             [
               j.descriptionPlain || j.description,
               (Array.isArray(j.lists) ? j.lists : [])
-                .filter((x: any) => x && typeof x === "object")
-                .map(
-                  (x: any) => `${x.text || x.title || ""}\n${x.content || ""}`,
-                )
+                .filter(isRecord)
+                .map((x) => {
+                  return `${x.text || x.title || ""}\n${x.content || ""}`;
+                })
                 .join("\n"),
               j.additionalPlain || j.additional || j.closing,
             ]
               .filter(Boolean)
               .join("\n\n"),
           );
-          const allLocations = j.categories?.allLocations || j.allLocations;
-          const loc = j.categories?.location || "Not Specified";
-          const locations = Array.isArray(allLocations) ? allLocations : [loc];
+          const categories = isRecord(j.categories) ? j.categories : undefined;
+          const allLocations = categories?.allLocations || j.allLocations;
+          const location = categories?.location;
+          const loc = isString(location) && location ? location : "Not Specified";
+          const locations = Array.isArray(allLocations)
+            ? allLocations.filter(isString)
+            : [loc];
+          const department = categories?.department;
+          const team = categories?.team;
+          const salaryRange = isRecord(j.salaryRange) ? j.salaryRange : undefined;
           const pub = normalizeJobDate(j.createdAt);
           return {
             id: `lv-${j.id}`,
             sourceJobId: String(j.id),
             title: j.text,
             company: companySlug,
-            location: typeof loc === "string" ? loc : locations.join(", "),
+            location: loc,
             locations,
-            country: typeof j.country === "string" ? j.country : undefined,
-            department: j.categories?.department || j.categories?.team || "",
+            country: isString(j.country) ? j.country : undefined,
+            department:
+              (isString(department) && department) ||
+              (isString(team) && team) ||
+              "",
             url,
             applyUrl: validUrl(j.applyUrl) || url,
             postedDate: pub,
@@ -395,13 +442,13 @@ export async function searchLever(
             source: "lever",
             description: body.text,
             descriptionPreview: body.text.slice(0, 500),
-            employmentType: normalizeEmploymentType(j.categories?.commitment),
+            employmentType: normalizeEmploymentType(categories?.commitment),
             remoteMode: normalizeWorkplaceType(j.workplaceType),
             salary: salary(
-              j.salaryRange?.min,
-              j.salaryRange?.max,
-              j.salaryRange?.currency,
-              j.salaryRange?.interval,
+              salaryRange?.min,
+              salaryRange?.max,
+              salaryRange?.currency,
+              salaryRange?.interval,
             ),
             ingestion: {
               parserVersion: "2",
@@ -429,9 +476,12 @@ export async function searchAshby(
     "Ashby",
     `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(companySlug)}?includeCompensation=true`,
     (d) => {
-      if (!d || !Array.isArray(d.jobs))
+      if (!isRecord(d) || !Array.isArray(d.jobs))
         throw new JobPayloadError("Expected jobs array");
-      const visible = d.jobs.filter((x: any) => x?.isListed !== false);
+      const organizationName = firstString(d.organizationName) || companySlug;
+      const visible = d.jobs.filter(
+        (row) => !isRecord(row) || row.isListed !== false,
+      );
       const r = validRows(
         visible,
         "Ashby",
@@ -449,28 +499,39 @@ export async function searchAshby(
           const locations = [
             j.location,
             ...(Array.isArray(j.secondaryLocations)
-              ? j.secondaryLocations.map((x: any) =>
-                  typeof x === "string" ? x : x?.location,
+              ? j.secondaryLocations.map((x) =>
+                  isString(x) ? x : isRecord(x) ? x.location : undefined,
                 )
               : []),
-          ].filter((x: any) => typeof x === "string" && x);
-          const summary = Array.isArray(j.compensation?.summaryComponents)
-            ? j.compensation.summaryComponents
+          ].filter((x): x is string => isString(x) && Boolean(x));
+          const compensation = isRecord(j.compensation)
+            ? j.compensation
+            : undefined;
+          const address = isRecord(j.address) ? j.address : undefined;
+          const postalAddress = isRecord(address?.postalAddress)
+            ? address.postalAddress
+            : undefined;
+          const summary = Array.isArray(compensation?.summaryComponents)
+            ? compensation.summaryComponents
             : null;
           const tierComponents = Array.isArray(
-            j.compensation?.compensationTiers,
+            compensation?.compensationTiers,
           )
-            ? j.compensation.compensationTiers.flatMap((tier: any) =>
-                Array.isArray(tier?.components) ? tier.components : [],
+            ? compensation.compensationTiers.flatMap((tier) =>
+                isRecord(tier) && Array.isArray(tier.components)
+                  ? tier.components.filter(isRecord)
+                  : [],
               )
             : [];
-          const components = summary?.length ? summary : tierComponents;
+          const components = summary?.length
+            ? summary.filter(isRecord)
+            : tierComponents;
           const pays = components
-            .filter((x: any) => x?.compensationType === "Salary")
-            .map((x: any) =>
+            .filter((x) => x.compensationType === "Salary")
+            .map((x) =>
               salary(x.minValue, x.maxValue, x.currencyCode, x.interval),
             )
-            .filter(Boolean) as JobSalary[];
+            .filter(isJobSalary);
           let pay: JobSalary | undefined;
           if (pays.length) {
             const currencies = new Set(pays.map((x) => x.currency));
@@ -495,14 +556,15 @@ export async function searchAshby(
             id: `ash-${j.id}`,
             sourceJobId: String(j.id),
             title: j.title,
-            company: d.organizationName || companySlug,
+            company: organizationName,
             location: locations[0] || "Not Specified",
             locations,
-            country:
-              j.address?.postalAddress?.addressCountry ||
-              j.address?.addressCountry ||
-              undefined,
-            department: j.departmentName || j.department || j.team || "",
+            country: firstString(
+              postalAddress?.addressCountry,
+              address?.addressCountry,
+            ),
+            department:
+              firstString(j.departmentName, j.department, j.team) || "",
             url,
             applyUrl: validUrl(j.applyUrl) || url,
             postedDate: pub,
@@ -522,7 +584,7 @@ export async function searchAshby(
             },
           };
         },
-        d.organizationName || companySlug,
+        organizationName,
       );
       return r;
     },

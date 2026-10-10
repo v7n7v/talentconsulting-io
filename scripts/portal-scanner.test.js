@@ -365,6 +365,213 @@ test(
   },
 );
 test(
+  "normalizes malformed optional provider fields without losing valid rows or siblings",
+  { concurrency: false },
+  async () => {
+    global.fetch = async (url) => {
+      if (String(url).includes("greenhouse")) {
+        return response({
+          name: { unexpected: "company" },
+          jobs: [
+            {
+              id: "gh-malformed-optionals",
+              title: "Greenhouse role",
+              absolute_url: "https://jobs.example/gh-malformed-optionals",
+              location: { name: 42 },
+              departments: [{ name: { unexpected: true } }],
+              first_published: "not a date",
+            },
+            {
+              id: "gh-valid-sibling",
+              title: "Greenhouse sibling",
+              absolute_url: "https://jobs.example/gh-valid-sibling",
+              location: { name: "Berlin" },
+              departments: [{ name: "Engineering" }],
+            },
+          ],
+        });
+      }
+      if (String(url).includes("lever.co")) {
+        return response([
+          {
+            id: "lv-malformed-optionals",
+            text: "Lever role",
+            hostedUrl: "https://jobs.example/lv-malformed-optionals",
+            categories: {
+              location: 42,
+              allLocations: [null, "Remote", "", 7, "Remote"],
+              department: { unexpected: true },
+              team: "People",
+            },
+            country: { unexpected: true },
+              salaryRange: { min: "80000", max: "90000", currency: 5 },
+          },
+          {
+            id: "lv-empty-filtered-locations",
+            text: "Lever location sibling",
+            hostedUrl: "https://jobs.example/lv-empty-filtered-locations",
+            allLocations: [null, {}, 9],
+          },
+        ]);
+      }
+      return response({
+        organizationName: { unexpected: true },
+        jobs: [
+          {
+            id: "ashby-malformed-optionals",
+            title: "Ashby role",
+            jobUrl: "https://jobs.example/ashby-malformed-optionals",
+            location: 42,
+            secondaryLocations: [
+              { location: 7 },
+              { location: "Paris" },
+              null,
+            ],
+            departmentName: {},
+            department: 12,
+            team: "Research",
+            publishedAt: "not a date",
+            address: {
+              postalAddress: { addressCountry: 3 },
+              addressCountry: {},
+            },
+            compensation: {
+              summaryComponents: [],
+              compensationTiers: [
+                null,
+                {
+                  components: [
+                    null,
+                    {
+                      compensationType: "Salary",
+                      currencyCode: "USD",
+                      interval: "1 YEAR",
+                      minValue: 90000,
+                      maxValue: 95000,
+                    },
+                    {
+                      compensationType: "Salary",
+                      currencyCode: 7,
+                      interval: "1 YEAR",
+                      minValue: "100000",
+                      maxValue: "110000",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          ...[[null], [{}], [null, {}]].map((summary, index) => ({
+            id: `summary-precedence-${index}`,
+            title: "Unknown summary pay",
+            jobUrl: "https://jobs.example/summary-precedence",
+            compensation: {
+              summaryComponents: summary,
+              compensationTiers: [
+                {
+                  components: [
+                    {
+                      compensationType: "Salary",
+                      currencyCode: "USD",
+                      interval: "1 YEAR",
+                      minValue: 120000,
+                      maxValue: 130000,
+                    },
+                  ],
+                },
+              ],
+            },
+          })),
+        ],
+      });
+    };
+
+    const greenhouse = await scanner.searchGreenhouse("malformed-optional-gh");
+    assert.equal(greenhouse.status, "success");
+    assert.equal(greenhouse.company, "malformed-optional-gh");
+    assert.equal(greenhouse.diagnostics[0].rejectedRows, 0);
+    assert.equal(greenhouse.jobs[0].location, "Not Specified");
+    assert.deepEqual(greenhouse.jobs[0].locations, []);
+    assert.equal(greenhouse.jobs[0].department, "");
+    assert.equal(greenhouse.jobs[0].postedDate, "");
+    assert.equal(greenhouse.jobs[1].location, "Berlin");
+    assert.equal(greenhouse.jobs[1].department, "Engineering");
+
+    const lever = await scanner.searchLever("malformed-optional-lv");
+    assert.equal(lever.status, "success");
+    assert.equal(lever.diagnostics[0].rejectedRows, 0);
+    assert.equal(lever.jobs[0].location, "Not Specified");
+    assert.deepEqual(lever.jobs[0].locations, ["Remote", "", "Remote"]);
+    assert.equal(lever.jobs[0].department, "People");
+    assert.equal(lever.jobs[0].country, undefined);
+    assert.equal(lever.jobs[0].salary, undefined);
+    assert.equal(lever.jobs[0].postedDate, "");
+    assert.deepEqual(lever.jobs[1].locations, []);
+
+    const ashby = await scanner.searchAshby("malformed-optional-ash");
+    assert.equal(ashby.status, "success");
+    assert.equal(ashby.company, "malformed-optional-ash");
+    assert.equal(ashby.diagnostics[0].rejectedRows, 0);
+    assert.deepEqual(ashby.jobs[0].locations, ["Paris"]);
+    assert.equal(ashby.jobs[0].location, "Paris");
+    assert.equal(ashby.jobs[0].department, "Research");
+    assert.equal(ashby.jobs[0].country, undefined);
+    assert.equal(ashby.jobs[0].postedDate, "");
+    assert.deepEqual(ashby.jobs[0].salary, {
+      min: 90000,
+      max: 95000,
+      currency: "USD",
+      interval: "year",
+    });
+    assert.equal(ashby.jobs.length, 4);
+    for (const job of ashby.jobs.slice(1)) {
+      assert.equal(job.salary, undefined);
+    }
+  },
+);
+test(
+  "does not cache an all-malformed board and omits non-finite HTTP diagnostics",
+  { concurrency: false },
+  async () => {
+    let calls = 0;
+    global.fetch = async () => {
+      calls++;
+      return calls === 1
+        ? response({
+            jobs: [null, 9, { id: "missing-url", title: "No apply link" }],
+          })
+        : response({
+            jobs: [
+              {
+                id: "recovered",
+                title: "Recovered job",
+                jobUrl: "https://jobs.example/recovered",
+              },
+            ],
+          });
+    };
+    const malformed = await scanner.searchAshby("not-cached-malformed");
+    assert.equal(malformed.status, "malformed");
+    assert.equal(malformed.diagnostics[0].rejectedRows, 3);
+    const recovered = await scanner.searchAshby("not-cached-malformed");
+    assert.equal(recovered.status, "success");
+    assert.equal(recovered.jobs[0].sourceJobId, "recovered");
+    assert.equal(calls, 2);
+
+    global.fetch = async () => {
+      throw Object.assign(new Error("synthetic invalid status"), {
+        status: Number.POSITIVE_INFINITY,
+      });
+    };
+    const invalidStatus = await scanner.searchLever("non-finite-status");
+    assert.equal(invalidStatus.status, "unavailable");
+    assert.equal(
+      Object.hasOwn(invalidStatus.diagnostics[0], "httpStatus"),
+      false,
+    );
+  },
+);
+test(
   "preserves 429 and timeout outcomes and aggregates valid empty as empty",
   { concurrency: false },
   async () => {
