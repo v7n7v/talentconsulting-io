@@ -38,17 +38,17 @@ function loadCatalog() {
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
-  const module = { exports: {} };
+  const loadedModule = { exports: {} };
   vm.runInNewContext(output, {
-    module,
-    exports: module.exports,
+    module: loadedModule,
+    exports: loadedModule.exports,
     require,
     console,
     Map,
     Set,
     Object,
   });
-  return module.exports;
+  return loadedModule.exports;
 }
 
 function loadBuilder() {

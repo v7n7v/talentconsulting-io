@@ -88,8 +88,8 @@ async function withIsolatedSearch(options, callback) {
   Object.assign(process.env, options.env || {});
   global.fetch = options.fetch;
   try {
-    const module = await loadRecommendationModule();
-    return await callback(module);
+    const loadedModule = await loadRecommendationModule();
+    return await callback(loadedModule);
   } finally {
     global.fetch = previousFetch;
     for (const key of ENV_KEYS) {
