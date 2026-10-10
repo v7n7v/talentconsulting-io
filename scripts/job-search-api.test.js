@@ -135,6 +135,80 @@ test('malformed Adzuna payload is reported instead of becoming an empty success'
   }));
 });
 
+test('individual malformed Adzuna rows are skipped while a valid sibling and unknown fields survive', { concurrency: false }, async () => {
+  const api = loadApi();
+  const malformedRows = [
+    null,
+    'not a job row',
+    { title: 'Missing identifier', redirect_url: 'https://example.test/no-id' },
+    { id: 4, title: '   ', redirect_url: 'https://example.test/no-title' },
+    { id: 5, title: 'Missing URL' },
+    { id: 6, title: 'Wrong protocol', redirect_url: 'javascript:alert(1)' },
+    { id: 7, title: 'Relative URL', redirect_url: '/jobs/7' },
+  ];
+  const validWithUnknowns = {
+    id: 24,
+    title: 'Analyst',
+    redirect_url: ['https://example.test/coerced'],
+    salary_min: 'not a salary',
+    salary_max: null,
+    created: 'not a date',
+    description: 'Uses Python',
+    company: 'unexpected nested value',
+    location: ['unexpected nested value'],
+    category: [],
+  };
+
+  await withEnv({ ADZUNA_LICENSED: 'true', ADZUNA_APP_ID: 'fixture-id', ADZUNA_API_KEY: 'fixture-key' }, () => withFetch(async () => ({
+    ok: true,
+    json: async () => ({ results: [validWithUnknowns, ...malformedRows] }),
+  }), async () => {
+    const result = await api.searchJobsAdzuna({ query: 'fixture-individual-malformed-rows' });
+    assert.equal(result.status, 'success');
+    assert.equal(result.totalCount, 1);
+    assert.equal(result.jobs.length, 1);
+    assert.equal(result.jobs[0].id, '24');
+    assert.equal(result.jobs[0].url, 'https://example.test/coerced');
+    assert.equal(result.jobs[0].applyUrl, 'https://example.test/coerced');
+    assert.equal(result.jobs[0].salary.min, null);
+    assert.equal(result.jobs[0].salary.max, null);
+    assert.equal(result.jobs[0].salary.interval, 'unknown');
+    assert.equal(result.jobs[0].postedDate, '');
+    assert.equal(result.jobs[0].publishedAt, '');
+    assert.equal(result.jobs[0].company, 'Not listed');
+    assert.equal(result.jobs[0].location, 'Not listed');
+    assert.deepEqual(result.jobs[0].locations, []);
+    assert.equal(result.jobs[0].category, '');
+    assert.deepEqual(result.jobs[0].skills, ['Python']);
+    assert.equal(result.diagnostics[0].rejectedRows, malformedRows.length);
+  }));
+});
+
+test('all malformed Adzuna rows remain malformed, are not cached, and survive disabled fallback', { concurrency: false }, async () => {
+  const api = loadApi();
+  let calls = 0;
+  await withEnv({ ADZUNA_LICENSED: 'true', ADZUNA_APP_ID: 'fixture-id', ADZUNA_API_KEY: 'fixture-key' }, () => withFetch(async () => {
+    calls += 1;
+    return { ok: true, json: async () => ({ results: [
+      null,
+      { id: 1, title: 'Unsafe URL', redirect_url: 'javascript:alert(1)' },
+    ] }) };
+  }, async () => {
+    const first = await api.searchJobs({ query: 'fixture-all-malformed-rows' });
+    const second = await api.searchJobs({ query: 'fixture-all-malformed-rows' });
+    for (const result of [first, second]) {
+      assert.equal(result.status, 'malformed');
+      assert.equal(result.totalCount, 0);
+      assert.deepEqual(result.jobs, []);
+      assert.deepEqual(result.diagnostics.map(diagnostic => [diagnostic.provider, diagnostic.status]), [
+        ['adzuna', 'malformed'], ['remotive', 'disabled'],
+      ]);
+      assert.equal(result.diagnostics[0].rejectedRows, 2);
+    }
+    assert.equal(calls, 2, 'malformed row sets must not enter the success/empty response cache');
+  }));
+});
+
 test('Adzuna classifies rate limits and timeouts without exposing raw errors', { concurrency: false }, async () => {
   const api = loadApi();
   const warnings = [];

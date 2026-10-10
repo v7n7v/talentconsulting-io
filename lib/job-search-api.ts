@@ -189,6 +189,9 @@ const COUNTRY_CURRENCY: Record<string, string> = {
 function safeSalary(value: unknown): number | null {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 }
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 function resultWithOutcome(jobs: RealJob[], source: string, status: ProviderOutcome, diagnostic?: ProviderDiagnostic): JobSearchResult {
     return { jobs, totalCount: jobs.length, source, status, diagnostics: diagnostic ? [diagnostic] : [] };
 }
@@ -256,53 +259,59 @@ export async function searchJobsAdzuna(params: JobSearchParams): Promise<JobSear
             throw Object.assign(new Error(`Adzuna API error: ${response.status} ${response.statusText}`), { status: response.status });
         }
 
-        const data = await response.json();
-        if (!data || typeof data !== 'object' || !Array.isArray(data.results)) {
+        const payload: unknown = await response.json();
+        if (!isRecord(payload) || !Array.isArray(payload.results)) {
             const error = Object.assign(new Error('Malformed Adzuna response'), { name: 'JobPayloadError' });
             throw error;
         }
         const currency = COUNTRY_CURRENCY[(params.country || 'us').toLowerCase()] || 'UNKNOWN';
-        const parsedRows = data.results.map((job: any) => {
-            if (!job || typeof job !== 'object') return null;
+        const rows: unknown[] = payload.results;
+        const parsedRows = rows.map((row: unknown): RealJob | null => {
+            if (!isRecord(row)) return null;
+            const job = row;
             const id = typeof job.id === 'string' || typeof job.id === 'number' ? String(job.id).trim() : '';
             const title = typeof job.title === 'string' ? cleanTitle(job.title) : '';
             let redirectUrl = '';
             try {
-                const parsed = new URL(job.redirect_url);
+                const parsed = new URL(String(job.redirect_url));
                 if (parsed.protocol === 'https:' || parsed.protocol === 'http:') redirectUrl = parsed.toString();
             } catch { /* malformed URL */ }
             if (!id || !title || !redirectUrl) return null;
             const description = typeof job.description === 'string' ? job.description : '';
-            const company = typeof job.company?.display_name === 'string' ? job.company.display_name : 'Not listed';
-            const location = typeof job.location?.display_name === 'string' ? job.location.display_name : 'Not listed';
+            const companyDetails = isRecord(job.company) ? job.company : null;
+            const locationDetails = isRecord(job.location) ? job.location : null;
+            const categoryDetails = isRecord(job.category) ? job.category : null;
+            const company = typeof companyDetails?.display_name === 'string' ? companyDetails.display_name : 'Not listed';
+            const location = typeof locationDetails?.display_name === 'string' ? locationDetails.display_name : 'Not listed';
             const publishedAt = normalizeJobDate(job.created);
-            return {
-            id,
-            title,
-            company,
-            location,
-            salary: {
-                min: safeSalary(job.salary_min),
-                max: safeSalary(job.salary_max),
-                currency,
-                // Annual is inferred from Adzuna's salary thresholds/examples; the response does not carry an interval field.
-                interval: safeSalary(job.salary_min) !== null || safeSalary(job.salary_max) !== null ? 'year' : 'unknown',
-                isPredicted: !!job.salary_is_predicted,
-            },
-            description,
-            skills: extractSkillsFromDescription(description),
-            url: redirectUrl,
-            postedDate: publishedAt,
-            employmentType: job.contract_type === 'contract' ? 'Contract' : job.contract_time === 'full_time' ? 'Full-time' : job.contract_time === 'part_time' ? 'Part-time' : 'Not listed',
-            category: typeof job.category?.label === 'string' ? job.category.label : '',
-            source: 'adzuna' as const,
-            descriptionPreview: description.slice(0, 500),
-            locations: location !== 'Not listed' ? [location] : [],
-            applyUrl: redirectUrl,
-            sourceJobId: id,
-            publishedAt,
-            ingestion: { parserVersion: 'adzuna-v2-annual-interval-inferred', method: 'public_api', descriptionTruncated: false },
-        } as RealJob;
+            const parsedJob: RealJob = {
+                id,
+                title,
+                company,
+                location,
+                salary: {
+                    min: safeSalary(job.salary_min),
+                    max: safeSalary(job.salary_max),
+                    currency,
+                    // Annual is inferred from Adzuna's salary thresholds/examples; the response does not carry an interval field.
+                    interval: safeSalary(job.salary_min) !== null || safeSalary(job.salary_max) !== null ? 'year' : 'unknown',
+                    isPredicted: !!job.salary_is_predicted,
+                },
+                description,
+                skills: extractSkillsFromDescription(description),
+                url: redirectUrl,
+                postedDate: publishedAt,
+                employmentType: job.contract_type === 'contract' ? 'Contract' : job.contract_time === 'full_time' ? 'Full-time' : job.contract_time === 'part_time' ? 'Part-time' : 'Not listed',
+                category: typeof categoryDetails?.label === 'string' ? categoryDetails.label : '',
+                source: 'adzuna',
+                descriptionPreview: description.slice(0, 500),
+                locations: location !== 'Not listed' ? [location] : [],
+                applyUrl: redirectUrl,
+                sourceJobId: id,
+                publishedAt,
+                ingestion: { parserVersion: 'adzuna-v2-annual-interval-inferred', method: 'public_api', descriptionTruncated: false },
+            };
+            return parsedJob;
         });
         const malformedRows = parsedRows.filter((job: RealJob | null) => job === null).length;
         const jobs: RealJob[] = parsedRows.filter((job: RealJob | null): job is RealJob => job !== null);
@@ -343,6 +352,7 @@ function cleanTitle(title: string): string {
 
 /** Remotive is intentionally disabled until its terms and product flow are remediated. */
 export async function searchJobsRemotive(_params: JobSearchParams): Promise<JobSearchResult> {
+    void _params;
     return resultWithOutcome([], 'Remotive', 'disabled', { provider: 'remotive', status: 'disabled' });
 }
 
