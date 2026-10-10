@@ -54,13 +54,27 @@ const isKnownAuthProbe = (pathname) => KNOWN_AUTH_PROBES.includes(pathname);
 // passed to page.evaluate without a build step.
 
 function probe() {
-  const out = { overflow: null, offenders: [], smallTargets: [], smallInputs: [], clipped: [], truncated: [] };
+  const out = { overflow: null, offenders: [], targetBounds: [], inputBounds: [], smallTargets: [], smallInputs: [], clipped: [], truncated: [] };
   const doc = document.documentElement;
+  // Inert/hidden ancestry means the element cannot currently be interacted with.
+  // aria-hidden and offscreen coordinates alone are not visibility exemptions.
+  function measurable(el) {
+    for (let node = el; node && node instanceof Element; node = node.parentElement) {
+      const cs = getComputedStyle(node);
+      if (node.hidden || node.hasAttribute('inert') || cs.display === 'none'
+        || cs.visibility === 'hidden' || cs.visibility === 'collapse'
+        || Number(cs.opacity) === 0 || cs.contentVisibility === 'hidden') return false;
+    }
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+  out.scrollWidths = { document: doc.scrollWidth, body: document.body.scrollWidth, viewport: window.innerWidth };
+
 
   const docW = doc.scrollWidth;
   const winW = window.innerWidth;
-  if (docW > winW + 1) {
-    out.overflow = { documentWidth: docW, viewportWidth: winW, by: docW - winW };
+  if (Math.max(docW, document.body.scrollWidth) > winW + 1) {
+    out.overflow = { documentWidth: docW, bodyWidth: document.body.scrollWidth, viewportWidth: winW, by: Math.max(docW, document.body.scrollWidth) - winW };
     // Name the elements actually sticking out - "there is overflow" is not actionable.
     for (const el of Array.from(document.querySelectorAll('body *')).slice(0, 4000)) {
       const r = el.getBoundingClientRect();
@@ -83,7 +97,8 @@ function probe() {
   const clickable = document.querySelectorAll('button, a[href], [role="button"], input[type="checkbox"], input[type="radio"], select');
   for (const el of clickable) {
     const r = el.getBoundingClientRect();
-    if (r.width === 0 || r.height === 0) continue;          // hidden - not a target
+    if (!measurable(el)) continue;
+    if (out.targetBounds.length < 150) out.targetBounds.push({tag:el.tagName.toLowerCase(),name:el.getAttribute("aria-label") || (el.textContent || "").trim().slice(0,60),x:r.x,y:r.y,width:r.width,height:r.height});
     if (r.width < 44 || r.height < 44) {
       const cls = (typeof el.className === 'string' ? el.className : '').slice(0, 60);
       out.smallTargets.push({
@@ -99,8 +114,9 @@ function probe() {
   // the user at a scrolled-in viewport. It is a real usability bug, not a nitpick.
   for (const el of document.querySelectorAll('input, textarea, select')) {
     const r = el.getBoundingClientRect();
-    if (r.width === 0) continue;
+    if (!measurable(el)) continue;
     const size = parseFloat(getComputedStyle(el).fontSize);
+    if (out.inputBounds.length < 80) out.inputBounds.push({tag:el.tagName.toLowerCase(),name:el.getAttribute("aria-label") || el.getAttribute("name") || el.getAttribute("placeholder"),fontSize:size,x:r.x,y:r.y,width:r.width,height:r.height});
     if (size && size < 16) {
       out.smallInputs.push({ tag: el.tagName.toLowerCase(), fontSize: size,
         name: el.getAttribute('name') || el.getAttribute('placeholder') || '' });
@@ -116,6 +132,7 @@ function probe() {
   //               ("Seniority sign...").
   out.truncated = [];
   for (const el of Array.from(document.querySelectorAll('h1,h2,h3,h4,p,span,div,td,li')).slice(0, 3000)) {
+    if (!measurable(el)) continue;
     if (el.children.length) continue;                        // leaf text nodes only
     const t = (el.textContent || '').trim();
     if (t.length < 4) continue;
@@ -147,6 +164,9 @@ async function main() {
   const has = (f) => argv.includes(f);
   const routes = argv.filter((a) => !a.startsWith('--'));
 
+  if (has('--fixtures')) {
+    return require('./ui-verify-fixtures.cjs').runFixtureMatrix({ argv, probe, WIDTHS, THEMES, HEIGHT });
+  }
   if (!routes.length) {
     console.error('  Usage: node scripts/ui-verify.js <route> [route...] [--base=http://localhost:3000]');
     process.exit(1);
@@ -240,14 +260,14 @@ async function main() {
         if (jsErrors.length) problems.push({ kind: 'console', detail: `${jsErrors.length} JS error(s)`, items: jsErrors.slice(0, 5) });
         if (failedRequests.length) problems.push({ kind: 'request', detail: `${failedRequests.length} failed request(s)`, items: [...new Set(failedRequests)].slice(0, 5) });
         if (r.clipped.length) problems.push({ kind: 'clipped', detail: `${r.clipped.length} clipped text node(s)`, items: r.clipped.slice(0, 5) });
-        // Touch-target and input-size rules are mobile rules; below 768 is where they bite.
-        if (width < 768 && r.smallTargets.length) problems.push({ kind: 'touch-target', detail: `${r.smallTargets.length} under 44px`, items: r.smallTargets.slice(0, 5) });
-        if (width < 768 && r.smallInputs.length) problems.push({ kind: 'input-size', detail: `${r.smallInputs.length} under 16px (iOS zooms on focus)`, items: r.smallInputs.slice(0, 5) });
+        // The actual mobile shell breakpoint is 1024px, including tablets at 768px.
+        if (width < 1024 && r.smallTargets.length) problems.push({ kind: 'touch-target', detail: `${r.smallTargets.length} under 44px`, items: r.smallTargets.slice(0, 5) });
+        if (width < 1024 && r.smallInputs.length) problems.push({ kind: 'input-size', detail: `${r.smallInputs.length} under 16px (iOS zooms on focus)`, items: r.smallInputs.slice(0, 5) });
 
         // Deliberate ellipsis is reported for a human to judge, but never fails the
         // run - a tool that cries wolf about intentional truncation gets muted.
         const notes = [];
-        if (width < 768 && (r.truncated || []).length) notes.push({ kind: 'truncated', detail: `${r.truncated.length} ellipsis truncation(s) - check none hides something load-bearing`, items: r.truncated.slice(0, 5) });
+        if (width < 1024 && (r.truncated || []).length) notes.push({ kind: 'truncated', detail: `${r.truncated.length} ellipsis truncation(s) - check none hides something load-bearing`, items: r.truncated.slice(0, 5) });
         // Surfaced every run so the allowlist stays visible rather than becoming folklore.
         if (allowlistedProbes.length) notes.push({ kind: 'auth-probe', detail: `${allowlistedProbes.length} allowlisted shell auth probe(s)`, items: [...new Set(allowlistedProbes)] });
 
@@ -267,7 +287,7 @@ async function main() {
 
   if (has('--json')) {
     const jsonPath = path.join(outDir, 'result.json');
-    fs.writeFileSync(jsonPath, JSON.stringify({ ok: !findings.length, checks, findings }, null, 2));
+    fs.writeFileSync(jsonPath, JSON.stringify({ ok: !findings.some(f => f.problems.length), checks, findings }, null, 2));
     console.log(`\n  ${jsonPath}`);
   }
 
@@ -297,4 +317,5 @@ async function main() {
   console.log('  Machine checks only - open the screenshots and look at them before calling it done.\n');
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+module.exports = { probe, WIDTHS, THEMES, HEIGHT, KNOWN_AUTH_PROBES, isKnownAuthProbe };
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
