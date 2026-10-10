@@ -243,6 +243,36 @@ test('Resend receipts require a tagged attempt and preserve delivery truth', () 
   assert.equal(normalizeResendJobEmailReceipt({ ...base, data: { email_id: 'email_123', to: ['user@example.com'], tags: {} }, type: 'email.delivered' }), null);
 });
 
+test('Resend receipt parser safely handles malformed nested provider JSON', () => {
+  const base = {
+    created_at: '2026-07-10T03:02:00.000Z',
+    data: {
+      email_id: 'email_123',
+      to: [' User@Example.com ', null, 42, {}, '', 'user@example.com'],
+      tags: { tc_attempt: 'attempt_123' },
+    },
+  };
+
+  const recipients = normalizeResendJobEmailReceipt({ ...base, type: 'email.delivered' });
+  assert.deepEqual(recipients.recipients, ['user@example.com']);
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.bounced', data: { ...base.data, bounce: null } }).error,
+    'The recipient email server rejected the message.');
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.bounced', data: { ...base.data, bounce: 'malformed' } }).error,
+    'The recipient email server rejected the message.');
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.bounced', data: { ...base.data, bounce: { message: 7 } } }).error,
+    'The recipient email server rejected the message.');
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.failed', data: { ...base.data, failed: { reason: false } } }).error,
+    'The email provider could not send the message.');
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.suppressed', data: { ...base.data, suppressed: [] } }).error,
+    'The email provider suppressed the message.');
+
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.delivered', created_at: 'not-a-date' }), null);
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.delivered', data: { ...base.data, tags: [] } }), null);
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.delivered', data: { ...base.data, tags: { tc_attempt: 'attempt/123' } } }), null);
+  assert.equal(normalizeResendJobEmailReceipt({ ...base, type: 'email.delivered', data: [] }), null);
+  assert.equal(normalizeResendJobEmailReceipt([]), null);
+});
+
 test('receipt tags and timestamps support idempotent, monotonic updates', () => {
   assert.deepEqual(getResendDeliveryTags('attempt_123', 'job_alert'), [
     { name: 'tc_attempt', value: 'attempt_123' },
