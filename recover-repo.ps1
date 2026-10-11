@@ -32,7 +32,7 @@ param(
     [string]$Source = "C:\Users\super\OneDrive\Documents\Personal-Projects-20260712T175917Z-2-001\Personal-Projects\Talent Consulting 050926 - Codex",
     [string]$Target = "C:\dev\talent-consulting",
     [string]$Branch = "codex/admin-command-grid",
-    [string]$RepoUrl = "https://github.com/v7n7v/Inteviewer.git"
+    [string]$RepoUrl = "https://github.com/v7n7v/talentconsulting-io.git"
 )
 
 $ErrorActionPreference = "Stop"

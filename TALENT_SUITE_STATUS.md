@@ -1,7 +1,7 @@
 # Talent Studio — Status Board
 
 **As of:** 25 July 2026
-**Supersedes:** the January 2026 "Hirely.ai" revision, which described a Supabase/IndexedDB stack and a Liquid Resume / Shadow Interviewer roadmap that were never shipped.
+**Supersedes:** the January 2026 "Hirely.ai" revision, which described a Supabase/IndexedDB stack and a Liquid Resume / mock-interview roadmap that were never shipped.
 
 ---
 

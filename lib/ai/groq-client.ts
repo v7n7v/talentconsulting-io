@@ -157,7 +157,7 @@ export async function groqJSONCompletion<T = any>(
 }
 
 /**
- * Stream-based completion (for real-time features like Shadow Interviewer)
+ * Stream-based completion (for real-time features like interview practice)
  */
 export async function* groqStreamCompletion(
   systemPrompt: string,

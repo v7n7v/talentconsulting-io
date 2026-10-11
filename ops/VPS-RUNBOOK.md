@@ -70,7 +70,7 @@ accounts, applies the memory ceilings, writes the Caddy site files — then
 generates a deploy key and prints it, because it cannot clone a private repo
 without one.
 
-Add that key at **https://github.com/v7n7v/Inteviewer/settings/keys**, ticking
+Add that key at **https://github.com/v7n7v/talentconsulting-io/settings/keys**, ticking
 **Allow write access** so Claude can push from the box.
 
 ```bash
@@ -101,7 +101,7 @@ ssh-keygen -t ed25519 -C "vps-deploy-talent" -f ~/.ssh/id_ed25519 -N ""
 cat ~/.ssh/id_ed25519.pub
 ```
 
-Paste that at `github.com/v7n7v/Inteviewer` → **Settings** → **Deploy keys** →
+Paste that at `github.com/v7n7v/talentconsulting-io` → **Settings** → **Deploy keys** →
 **Add deploy key**, ticking **Allow write access** so Claude can push from the
 box. Repeat as `dev2` against that project's own repo.
 
@@ -127,7 +127,7 @@ or other subdomain sits alongside it and collides with nothing.
 
 ```bash
 su - dev
-git clone git@github.com:v7n7v/Inteviewer.git ~/talent
+git clone git@github.com:v7n7v/talentconsulting-io.git ~/talent
 cd ~/talent
 git checkout landing/talent-landing
 npm ci

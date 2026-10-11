@@ -30,11 +30,11 @@ Main Groq client with three functions:
 - `groqJSONCompletion()` - JSON-structured responses
 - `groqStreamCompletion()` - Streaming responses
 
-### **`lib/ai/hirely-ai.ts`** (NEW!)
+### **`lib/ai/hirely-ai.ts`** (removed 11 October 2026; never imported)
 Specialized Hirely.ai functions:
 - `analyzeResume()` - Liquid Resume Architect
 - `generateJD()` - Mission Blueprint Generator
-- `chatInterview()` - Shadow Interviewer
+- `chatInterview()` - interview practice chat
 - `getMarketInsights()` - Market Oracle
 
 ---
@@ -62,7 +62,7 @@ const resumeAnalysis = await hirelyAI.analyzeResume(cvText, jdText);
 // JD Generator
 const jd = await hirelyAI.generateJD(roleTitle, teamContext);
 
-// Shadow Interviewer
+// Interview practice chat
 const questions = await hirelyAI.chatInterview(messages, transcript);
 
 // Market Oracle

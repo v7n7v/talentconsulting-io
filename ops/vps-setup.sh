@@ -21,7 +21,7 @@ set -euo pipefail
 # ----------------------------------------------------------------- projects
 # name : linux user : directory : dev-server port : public hostname : git remote
 PROJECTS=(
-  "talent:dev:talent:3000:srv1680197.hstgr.cloud:git@github.com:v7n7v/Inteviewer.git"
+  "talent:dev:talent:3000:srv1680197.hstgr.cloud:git@github.com:v7n7v/talentconsulting-io.git"
   "app2:dev2:app2:3001::"
 )
 BRANCH=landing/talent-landing
@@ -376,7 +376,7 @@ for spec in "${PROJECTS[@]}"; do
     warn "Deploy key for '$name' is not on GitHub yet."
     echo
     echo "    Add this as a deploy key WITH WRITE ACCESS at:"
-    echo "      https://github.com/v7n7v/Inteviewer/settings/keys"
+    echo "      https://github.com/v7n7v/talentconsulting-io/settings/keys"
     echo
     sed 's/^/      /' "/home/$user/.ssh/id_ed25519.pub"
     echo

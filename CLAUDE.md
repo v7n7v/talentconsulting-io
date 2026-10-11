@@ -177,7 +177,7 @@ Standing holds: no live payments, no real user emails, no external submission wi
 Bannered as superseded on 25 July 2026:
 
 - `docs/archive/hirely-era/` — 10 Hirely.ai setup guides telling you to configure Supabase. Archived out of the repo root because their filenames (`QUICKSTART.md`, `GETTING_STARTED.md`, `README_NEXTJS.md`) are what a newcomer opens first. They leak a stale Supabase project ref (`qsriqbphmvnnbterqnsv`) — **treat it as a credential to revoke, not to use.**
-- `schema.sql`, `suite_schema.sql`, `suite_migration.sql`, `supabase/` — orphaned Postgres DDL. Safe to delete.
+- `schema.sql`, `suite_schema.sql`, `suite_migration.sql`, `supabase/` — orphaned Postgres DDL. **Deleted 11 October 2026**, along with the unused `lib/ai/hirely-ai.ts` and `lib/ai/talentconsulting-ai.ts`.
 - `TalentConsulting_Architecture_Rebuttal.md` — its `$2.99` pricing argument is superseded.
 
 **Current and correct:** `README.md`, `TALENT_SUITE_ARCHITECTURE.md`, `TALENT_SUITE_STATUS.md`, `CHANGELOG.md`, `GIT-RECOVERY-RUNBOOK.md`, `docs/pricing-reconciliation.md`, `docs/design-system-v2-plan.md`.

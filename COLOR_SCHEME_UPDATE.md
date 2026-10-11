@@ -102,7 +102,7 @@ Blue-500:       #3b82f6  (Electric blue)
 ### **Supporting Colors:**
 ```css
 White:          #ffffff  (Resume feature)
-Red/Pink:       #ff0055  (Shadow Interviewer)
+Red/Pink:       #ff0055  (Interview practice)
 Green:          #00ff88  (Market Oracle)
 Obsidian:       #030303  (Background)
 ```

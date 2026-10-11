@@ -44,7 +44,7 @@
 #### Talent Suite:
 - 📄 **Resume Builder** - Liquid Resume (✨ NEW badge)
 - 💼 **JD Generator** - Persona-JD Engine
-- 🎭 **Practice** - Shadow Interviewer (🔜 SOON badge)
+- 🎭 **Practice** - Interview practice (🔜 SOON badge)
 - 🔮 **Market Oracle** - Career Intelligence (🔜 SOON badge)
 
 ### 3. **Active State Indicator**
@@ -133,7 +133,7 @@
 ```
 /suite/resume              → Liquid Resume Builder ✅
 /suite/jd-generator        → Persona-JD Engine (coming soon)
-/suite/shadow-interview    → Shadow Interviewer (coming soon)
+/suite/interview-sim       → Interview practice
 /suite/market-oracle       → Market Oracle (coming soon)
 ```
 
@@ -169,7 +169,7 @@
 │   B   │  OR                                 │
 │   A   │                                     │
 │   R   │  Resume Builder / JD Gen /          │
-│       │  Shadow Interview / Market Oracle   │
+│       │  Interview practice / Market Oracle   │
 │   📍  │                                     │
 │ USER  │                                     │
 └───────┴─────────────────────────────────────┘

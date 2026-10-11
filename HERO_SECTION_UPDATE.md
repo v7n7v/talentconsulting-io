@@ -30,7 +30,7 @@ A breathtaking new section featuring:
 - 90-Day Roadmap, Bias Shield, Density Score, Culture Pulse
 - Real-time bias detection
 
-**🎭 Shadow Interviewer** (Red/Pink gradient)
+**🎭 Interview practice** (Red/Pink gradient)
 - 24/7 Mock Practice
 - Neural Sphere, Voice Analysis, Stress Mode, AI Personas
 - Stress testing visualization
@@ -74,7 +74,7 @@ Clean, simple cards for:
 Each Talent Suite feature has its own color scheme:
 - **Resume**: White/Cyan (#ffffff, #00f5ff)
 - **JD Generator**: Violet/Purple (#bf00ff)
-- **Shadow Interview**: Red/Pink (#ff0055)
+- **Interview practice**: Red/Pink (#ff0055)
 - **Market Oracle**: Green/Emerald (#00ff88)
 
 ### **Hover Effects:**
@@ -333,7 +333,7 @@ const talentSuiteFeatures = [
 5. Indicator dot moves
 
 **User clicks dot 3:**
-1. Jump to Shadow Interviewer
+1. Jump to Interview practice
 2. Card #3 scales up
 3. Showcase shows Shadow details
 4. Red gradient appears
@@ -353,7 +353,7 @@ const talentSuiteFeatures = [
 - Premium feel
 - Strategic
 
-### **Shadow Interview (Red):**
+### **Interview practice (Red):**
 - Intense, challenging
 - High-stakes practice
 - Performance focus

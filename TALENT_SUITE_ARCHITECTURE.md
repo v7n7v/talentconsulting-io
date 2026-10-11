@@ -211,8 +211,8 @@ Security headers (HSTS, `X-Frame-Options: DENY`, and an identical detailed CSP) 
 
 | Artifact | Status |
 | --- | --- |
-| `supabase/migrations/job_applications.sql` | orphaned |
-| `schema.sql`, `suite_schema.sql`, `suite_migration.sql` | orphaned Postgres DDL |
+| `supabase/migrations/job_applications.sql` | deleted 11 October 2026 |
+| `schema.sql`, `suite_schema.sql`, `suite_migration.sql` | orphaned Postgres DDL, deleted 11 October 2026 |
 | `SUPABASE_SETUP.md`, `STEP_BY_STEP_SUPABASE.md` | orphaned setup guides |
 
 Verification performed 25 July 2026:

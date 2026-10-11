@@ -1,6 +1,6 @@
 # Git Recovery Runbook
 
-**Repository:** `https://github.com/v7n7v/Inteviewer.git` (private)
+**Repository:** `https://github.com/v7n7v/talentconsulting-io.git`
 **Damaged clone:** `C:\Users\super\OneDrive\Documents\Personal-Projects-20260712T175917Z-2-001\Personal-Projects\Talent Consulting 050926 - Codex`
 **Target:** `C:\dev\talent-consulting` — outside OneDrive, deliberately
 **Prepared:** 25 July 2026
@@ -67,7 +67,7 @@ Practically, though: the two branches are from May and June, the working tree ha
 
 - [ ] Close VS Code, any terminal sitting in the project, and any running `npm run dev`
 - [ ] Pause OneDrive sync (system tray → OneDrive → Pause syncing)
-- [ ] Confirm you can reach the private repo: `git ls-remote https://github.com/v7n7v/Inteviewer.git`
+- [ ] Confirm you can reach the private repo: `git ls-remote https://github.com/v7n7v/talentconsulting-io.git`
 - [ ] Check the OneDrive recycle bin for the missing `.pack` (see above)
 
 ### Step 1 — run the migration script
