@@ -160,21 +160,29 @@ async function buildFixture(outDir, materialFont, mutation = null) {
       build.onResolve({ filter: /(?:^@\/lib\/database-suite$|\/database-suite$)/ }, () => ({ path: 'database', namespace: 'ui-fixture' }));
       build.onResolve({ filter: /^next\/(navigation|link|image|dynamic)$/ }, args => ({ path: args.path.split('/')[1], namespace: 'ui-fixture' }));
       build.onLoad({ filter: /.*/, namespace: 'ui-fixture' }, args => ({ contents: modules[args.path], loader: 'jsx', resolveDir: ROOT }));
+      // Each mutation must match its source exactly once-or-more; a silent no-op would make a negative control meaningless.
+      const mutate=(contents,from,to)=>{assert.ok(contents.includes(from),'Negative mutation did not match source: '+from);return contents.replace(from,()=>to)};
       build.onLoad({ filter: /PageHelp\.tsx$/ }, args => {
         let contents=fs.readFileSync(args.path, 'utf8');
-        if(mutation==='help-no-escape')contents=contents.replace("event.key === 'Escape'", "event.key === 'NeverEscape'");
-        if(mutation==='help-no-return-focus')contents=contents.replace("target?.focus({ preventScroll: true });", "void target;");
-        if(mutation==='help-small-trigger')contents=contents.replace('h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-xl','h-6 w-6 min-w-6 shrink-0 items-center justify-center rounded-xl');
-        if(mutation==='help-no-backdrop-close')contents=contents.replace('className="absolute inset-0 bg-[color:var(--modal-backdrop)]"\n        onClick={onClose}', 'className="absolute inset-0 bg-[color:var(--modal-backdrop)]"');
-        if(mutation==='help-small-close')contents=contents.replace('h-11 w-11 min-w-11 shrink-0','h-6 w-6 min-w-6 shrink-0');
-        if(mutation==='help-transparent-backdrop')contents=contents.replace('bg-[color:var(--modal-backdrop)]','bg-transparent');
-        if(mutation==='help-oversize')contents=contents.replace("style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}","style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', minWidth: '600px' }}");
-        if(mutation?.startsWith('help-'))assert.notEqual(contents,fs.readFileSync(args.path,'utf8'),'Negative mutation did not match source');
+        // The 44px square comes from .btn-icon in globals.css; an inline override is the smallest mutation that proves the trigger-size check measures it.
+        if(mutation==='help-small-trigger')contents=mutate(contents,'className="btn-secondary btn-icon"','className="btn-secondary btn-icon" style={{ width: 24, height: 24, minWidth: 24 }}');
+        return {contents,loader:'tsx'};
+      });
+      // help-no-backdrop-close and help-transparent-backdrop were removed: the guidance panel is non-modal and has no backdrop. help-transparent-panel keeps the readable-surface protection.
+      // help-transparent-panel drops .glass-card as well because that class sets its background with !important, which an inline style cannot beat.
+      // help-small-close now targets the "Close guidance" button; help-oversize now targets the panel's own placement style.
+      build.onLoad({ filter: /ToolGuidanceProvider\.tsx$/ }, args => {
+        let contents=fs.readFileSync(args.path, 'utf8');
+        if(mutation==='help-no-escape')contents=mutate(contents,"event.key !== 'Escape'","event.key !== 'NeverEscape'");
+        if(mutation==='help-no-return-focus')contents=mutate(contents,'trigger?.focus();','void trigger;');
+        if(mutation==='help-small-close')contents=mutate(contents,'onClick={controller.close} aria-label="Close guidance"','onClick={controller.close} aria-label="Close guidance" style={{ width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 0 }}');
+        if(mutation==='help-transparent-panel')contents=mutate(contents,'className="tool-guidance-panel glass-card" style={placement}',"className=\"tool-guidance-panel\" style={{ ...placement, background: 'transparent' }}");
+        if(mutation==='help-oversize')contents=mutate(contents,'style={placement} data-guidance-controls data-guidance-panel',"style={{ ...placement, minWidth: '600px' }} data-guidance-controls data-guidance-panel");
         return {contents,loader:'tsx'};
       });
       build.onLoad({filter:/job-display\.ts$/},args=>{let contents=fs.readFileSync(args.path,'utf8');if(mutation==='salary-no-estimate')contents=contents.replace("salary.isPredicted === true","false");return{contents,loader:'ts'}});
       build.onLoad({filter:/job-search-selection\.ts$/},args=>{let contents=fs.readFileSync(args.path,'utf8');if(mutation==='salary-all-intervals')contents=contents.replaceAll('comparableAnnualSalary(right.salary)','(right.salary.max ?? right.salary.min ?? null)').replaceAll('comparableAnnualSalary(left.salary)','(left.salary.max ?? left.salary.min ?? null)');return{contents,loader:'ts'}});
-      build.onLoad({filter:/JobFeedWidget\.tsx$/},args=>{let contents=fs.readFileSync(args.path,'utf8');if(mutation==='fit-badge-wrap'){contents=contents.replace('shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px] font-bold tabular-nums rounded-md border','w-8 px-2 py-0.5 text-[11px] font-bold rounded-md border');assert.notEqual(contents,fs.readFileSync(args.path,'utf8'))}if(mutation==='fit-no-guard'){contents=contents.replace('const fitAvailable = hasFitScore(job.acceptanceChance);','const fitAvailable = true;');assert.notEqual(contents,fs.readFileSync(args.path,'utf8'))}return {contents,loader:'tsx'}});
+      build.onLoad({filter:/JobFeedWidget\.tsx$/},args=>{let contents=fs.readFileSync(args.path,'utf8');if(mutation==='fit-badge-wrap')contents=mutate(contents,'shrink-0 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)]','w-8 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)]');if(mutation==='fit-no-guard')contents=mutate(contents,'const fitAvailable = hasFitScore(job.acceptanceChance);','const fitAvailable = true;');return {contents,loader:'tsx'}});
       build.onLoad({ filter: /\.css$/ }, args => ({ contents: fs.readFileSync(args.path, 'utf8'), loader: 'css' }));
     }}],
   });
@@ -312,66 +320,68 @@ async function runShellStates(page, width, capture) {
     const trigger=page.getByRole('button',{name:'Open main menu',exact:true});
     await trigger.focus();await page.keyboard.press('Enter');await settle(page);
     const drawer=page.getByRole('dialog',{name:'Main menu',exact:true});await drawer.waitFor();
-    for(const name of ['Build','Search and Apply','Prepare','Grow']) {
-      const group=drawer.getByRole('button',{name,exact:true});const rect=await group.boundingBox();assert.ok(rect.width>=44&&rect.height>=44,`Drawer ${name} target ${JSON.stringify(rect)}`);
+    // The sidebar now has one disclosure, "More tools"; the Build/Search and Apply/Prepare/Grow groups no longer exist.
+    for(const name of [/^More tools/]) {
+      const group=drawer.getByRole('button',{name});const rect=await group.boundingBox();assert.ok(rect.width>=44&&rect.height>=44,`Drawer ${name} target ${JSON.stringify(rect)}`);
       const before=await group.getAttribute('aria-expanded');await group.focus();await page.keyboard.press('Enter');assert.notEqual(await group.getAttribute('aria-expanded'),before);await page.keyboard.press('Enter');assert.equal(await group.getAttribute('aria-expanded'),before);
     }
     await page.keyboard.press('Tab');assert.ok(await drawer.evaluate(el=>el.contains(document.activeElement)),'Drawer keyboard focus escaped');
     await capture('drawer-open');await page.keyboard.press('Escape');await settle(page);
     assert.equal(await page.locator('#suite-sidebar').getAttribute('inert'),'');assert.equal(await page.locator('#suite-sidebar').getAttribute('aria-hidden'),'true');assert.ok(await trigger.evaluate(el=>el===document.activeElement),'Drawer Escape did not restore focus');
+    const closedBox=await page.locator('#suite-sidebar').boundingBox();assert.ok(closedBox.x+closedBox.width<=0,'Closed drawer is not off-canvas: '+JSON.stringify(closedBox));
     await trigger.click();await settle(page);await drawer.getByRole('button',{name:'Close main menu',exact:true}).click();await settle(page);assert.ok(await trigger.evaluate(el=>el===document.activeElement));
   } else {
     const expand=page.getByRole('button',{name:'Expand sidebar',exact:true});if(await expand.count())await expand.click();
-    for(const name of ['Build','Search and Apply','Prepare','Grow']) {
-      const group=page.locator('#suite-sidebar').getByRole('button',{name,exact:true});assert.ok((await group.boundingBox()).height<44,'Desktop density changed');
+    for(const name of [/^More tools/]) {
+      // Rows are min-h-11 at every density now, so the old "under 44px" desktop check is obsolete; compact (44px) must still beat the 62px default row.
+      const group=page.locator('#suite-sidebar').getByRole('button',{name});const rowBox=await group.boundingBox();assert.ok(rowBox.height>=44&&rowBox.height<62,'Desktop density changed: '+rowBox.height);
       const before=await group.getAttribute('aria-expanded');await group.click();assert.notEqual(await group.getAttribute('aria-expanded'),before);await group.click();
     }
     await capture('desktop-shell');
   }
   const help=page.getByRole('button',{name:/^How to use /}).filter({visible:true}).first();
   if(!await help.count())return;
-  const title=await help.getAttribute('aria-label');
+  // Guidance is a NON-MODAL region (components/guidance/ToolGuidanceProvider.tsx): no dialog role, no backdrop, no focus trap, no inert background, no scroll lock.
+  const triggerBox=await help.boundingBox();assert.ok(triggerBox.width>=44&&triggerBox.height>=44,`Help trigger target ${JSON.stringify(triggerBox)}`);
   const prior=await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow}));
-  await help.focus();await page.keyboard.press('Enter');await settle(page);
-  const dialog=page.getByRole('dialog',{name:/^How to Use /});await dialog.waitFor();
-  const close=dialog.getByRole('button',{name:/^Close help for /});
-  assert.ok(await close.evaluate(el=>el===document.activeElement),'Help initial focus');
-  const bounds=await dialog.boundingBox();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=width+1&&bounds.y+bounds.height<=900+1,'Help exceeds viewport');
-  for(const key of ['Tab','Shift+Tab']){await page.keyboard.press(key);assert.ok(await dialog.evaluate(el=>el.contains(document.activeElement)),'Help focus trap');}
-  assert.equal(await page.evaluate(()=>document.getElementById('fixture-root').inert),true,'Help background interaction boundary');
-  assert.equal(await page.evaluate(()=>document.documentElement.style.overflow),'hidden');
-  await page.evaluate(()=>{const old=document.createElement('div');old.id='fixture-already-inert';old.inert=true;document.body.appendChild(old);const button=document.createElement('button');button.id='fixture-background-control';button.textContent='Sample background control';button.onclick=()=>{window.__uiFixture.backgroundClicked=true};document.body.appendChild(button)});
-  await page.waitForTimeout(50);assert.equal(await page.locator('#fixture-background-control').evaluate(el=>el.inert),true,'Appended background control not inert');
-  const helpColors=await dialog.evaluate(el=>{const panel=getComputedStyle(el);const text=getComputedStyle(el.querySelector('p'));return {background:panel.backgroundColor,text:text.color}});
-  assert.notEqual(helpColors.background,'rgba(0, 0, 0, 0)','Help surface is transparent');
-  assert.notEqual(helpColors.text,helpColors.background,'Help text is unreadable');
-  await page.waitForTimeout(600);const beforeScroll=await page.evaluate(()=>window.scrollY);await page.mouse.wheel(0,500);await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>window.scrollY),beforeScroll,'Help allowed background scrolling');
-  const scrollBody=dialog.locator('.overflow-y-auto').first();await scrollBody.hover();await page.mouse.wheel(0,500);await page.waitForTimeout(100);assert.ok(await scrollBody.evaluate(el=>el.scrollTop>0||el.scrollHeight<=el.clientHeight),'Help content cannot scroll');
-  await capture('help-open');await page.keyboard.press('Escape');await settle(page);
-  assert.equal(await dialog.count(),0,'Help Escape failed');assert.ok(await help.evaluate(el=>el===document.activeElement),'Help return focus');
-  assert.deepEqual(await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow})),prior,'Help scroll cleanup');
-  assert.equal(await page.locator('#fixture-already-inert').evaluate(el=>el.inert),true);assert.equal(await page.locator('#fixture-background-control').evaluate(el=>el.inert),false);
-  await page.evaluate(()=>{document.getElementById('fixture-already-inert').remove();document.getElementById('fixture-background-control').remove()});
-  await help.click();await settle(page);await close.click();await settle(page);assert.ok(await help.evaluate(el=>el===document.activeElement));
-  await help.click();await settle(page);
-  const overlay=dialog.locator('..');await overlay.locator(':scope > div[aria-hidden="true"]').click({position:{x:1,y:1}});await settle(page);assert.equal(await dialog.count(),0,'Help backdrop close failed');
-  await help.click();await settle(page);await page.keyboard.press('Escape');await page.waitForTimeout(50);await page.evaluate(()=>window.__uiFixture.remount());await settle(page);assert.equal(await dialog.count(),0,'Exit unmount retained help');await help.click();await settle(page);assert.ok(await dialog.isVisible(),'Help reopen after exit interruption failed');await page.keyboard.press('Escape');await settle(page);assert.equal(await page.locator('#fixture-root').evaluate(el=>el.inert),false,'Rapid close leaked inert');
+  const panel=page.getByRole('region',{name:/^How to use /});const closeGuide=panel.getByRole('button',{name:'Close guidance',exact:true});
+  const guidanceOpen=()=>page.evaluate(()=>document.documentElement.hasAttribute('data-tool-guidance-open'));
+  assert.equal(await help.getAttribute('aria-expanded'),'false');assert.equal(await panel.count(),0,'Guidance open before the trigger was used');
+  await help.focus();await page.keyboard.press('Enter');await settle(page);await panel.waitFor();
+  assert.equal(await help.getAttribute('aria-expanded'),'true');assert.equal(await help.getAttribute('aria-controls'),await panel.getAttribute('id'),'Trigger does not control the panel');
+  assert.equal(await page.getByRole('dialog',{name:/^How to [Uu]se /}).count(),0,'Guidance became a modal dialog');assert.ok(await guidanceOpen(),'Guidance open marker missing');
+  assert.ok(await panel.evaluate(el=>el===document.activeElement),'Guidance initial focus');
+  const bounds=await panel.boundingBox();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=width+1&&bounds.y+bounds.height<=900+1,'Guidance exceeds viewport');
+  await page.keyboard.press('Tab');assert.ok(await closeGuide.evaluate(el=>el===document.activeElement),'Keyboard cannot reach Close guidance from the panel');
+  const closeBox=await closeGuide.boundingBox();assert.ok(closeBox.width>=44&&closeBox.height>=44,`Close guidance target ${JSON.stringify(closeBox)}`);
+  assert.equal(await page.evaluate(()=>document.getElementById('fixture-root').inert),false,'Non-modal guidance made the background inert');
+  assert.deepEqual(await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow})),prior,'Non-modal guidance locked page scrolling');
+  const helpColors=await panel.evaluate(el=>{const surface=getComputedStyle(el);const text=getComputedStyle(el.querySelector('p'));return {background:surface.backgroundColor,text:text.color}});
+  assert.notEqual(helpColors.background,'rgba(0, 0, 0, 0)','Guidance surface is transparent');
+  assert.notEqual(helpColors.text,helpColors.background,'Guidance text is unreadable');
+  const scrollBody=panel.locator('.tool-guidance-panel-body');await scrollBody.hover();await page.mouse.wheel(0,500);await page.waitForTimeout(100);assert.ok(await scrollBody.evaluate(el=>el.scrollTop>0||el.scrollHeight<=el.clientHeight),'Guidance content cannot scroll');
+  await capture('help-open');await closeGuide.focus();await page.keyboard.press('Escape');await settle(page);
+  assert.equal(await panel.count(),0,'Guidance Escape failed');assert.ok(await help.evaluate(el=>el===document.activeElement),'Guidance return focus');
+  assert.equal(await help.getAttribute('aria-expanded'),'false');assert.equal(await guidanceOpen(),false,'Guidance open marker leaked after Escape');
+  assert.deepEqual(await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow})),prior,'Guidance scroll cleanup');
+  await help.click();await settle(page);await panel.waitFor();await closeGuide.click();await settle(page);assert.equal(await panel.count(),0,'Close guidance failed');assert.ok(await help.evaluate(el=>el===document.activeElement),'Close guidance did not return focus to the trigger');
+  await help.click();await settle(page);await page.keyboard.press('Escape');await page.waitForTimeout(50);await page.evaluate(()=>window.__uiFixture.remount());await settle(page);assert.equal(await panel.count(),0,'Exit unmount retained guidance');await help.click();await settle(page);assert.ok(await panel.isVisible(),'Guidance reopen after exit interruption failed');await page.keyboard.press('Escape');await settle(page);assert.equal(await guidanceOpen(),false,'Rapid close leaked the open marker');
   await help.click();await settle(page);
   await page.evaluate(()=>{history.pushState({},'', location.pathname==='/suite/job-search'?'/suite/cover-letter':'/suite/job-search');window.dispatchEvent(new Event('ui-fixture:navigate'))});await settle(page);
-  assert.equal(await dialog.count(),0,'Route change retained help');assert.deepEqual(await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow})),prior,'Route-change modal cleanup');
+  assert.equal(await panel.count(),0,'Route change retained guidance');assert.equal(await guidanceOpen(),false,'Route-change open marker leaked');assert.deepEqual(await page.evaluate(()=>({body:document.body.style.overflow,html:document.documentElement.style.overflow})),prior,'Route-change cleanup');
   assert.equal(await page.locator('#fixture-root').evaluate(el=>el.inert),false);await capture('help-route-cleanup');
 }
 async function exerciseSearch(page,state,capture,width) {
-  await page.getByRole('heading',{name:'Start with a role, then let Taco rank the market.',exact:true}).waitFor();await capture('initial');
+  await page.getByRole('heading',{name:/^Start with a role, then let\s*Taco\s*rank the market\.$/}).waitFor();await capture('initial');
   await page.getByRole('textbox',{name:'Target role',exact:true}).fill('Sample engineering role');
   const submit=page.locator('button[type="submit"]').first();state.search=['populated'];state.delay=1400;
   await submit.click();await page.getByText('Scanning sources and ranking roles',{exact:true}).waitFor();await capture('loading');
   await page.getByRole('heading',{name:'4 ranked roles',exact:true}).waitFor();state.delay=0;await settle(page);
   const cards=page.locator('button[aria-controls="opportunity-intelligence-panel"][aria-pressed]');
-  assert.ok(await page.getByText('$100K – $120K/yr',{exact:true}).first().isVisible());
-  assert.ok(await page.getByText('GBP 35–45/hr (estimated)',{exact:true}).first().isVisible());
-  assert.ok(await page.getByText('Not listed',{exact:true}).first().isVisible());
-  assert.ok(await page.getByText('Unknown',{exact:true}).first().isVisible());
+  assert.ok(await cards.filter({hasText:'$100K – $120K/yr'}).first().getByText('$100K – $120K/yr').first().isVisible(),'Annual USD salary not shown inside its job card');
+  assert.ok(await cards.filter({hasText:'GBP 35–45/hr (estimated)'}).first().getByText('GBP 35–45/hr (estimated)').first().isVisible(),'Foreign hourly estimated salary not shown inside its job card');
+  // Unknown pay and unknown posting date are both stated in the card's sentence, never rendered as a number.
+  assert.match(await cards.filter({hasText:'Sample unknown-pay role'}).first().innerText(),/· Not listed · Posted Unknown/,'Unknown pay/date not stated honestly in its job card');
   assert.ok(!(await page.locator('main').innerText()).includes('0%'),'Unknown fit rendered as measured zero');
   await capture('populated');
   state.search=['salary-adversarial'];await submit.click();await page.getByRole('heading',{name:'5 ranked roles',exact:true}).waitFor();
@@ -394,26 +404,30 @@ async function exerciseSearch(page,state,capture,width) {
   else await cards.nth(1).click();
   await page.locator('#opportunity-intelligence-panel').waitFor();await settle(page);await capture('detail-open');
   const close=page.getByRole('button',{name:'Close role details',exact:true});if(await close.isVisible())await close.click();
-  state.search=['empty'];await submit.click();await page.getByText('No roles matched these filters.',{exact:true}).waitFor();await capture('empty');
+  state.search=['empty'];await submit.click();await page.getByText('No roles found for this search.',{exact:true}).waitFor();await capture('empty');
   state.search=['interrupted','populated'];await submit.click();await page.getByRole('button',{name:/Retry search/}).waitFor();await capture('interrupted');
   assert.equal(await cards.count(),0,'Failure scenario became success before retry');await page.getByRole('button',{name:/Retry search/}).click();await page.getByRole('heading',{name:'4 ranked roles',exact:true}).waitFor();await capture('retry-success');
   await runShellStates(page,width,capture);
 }
-async function assertWidgetBadges(page) {
-  const badges=page.locator('[data-ui-widget-boundary] span').filter({hasText:/^(?:[0-9]+(?:\.[0-9]+)?% match|Fit unavailable)$/});
-  const geometry=await badges.evaluateAll(elements=>elements.map(el=>{const range=document.createRange();range.selectNodeContents(el);const rects=[...range.getClientRects()].filter(rect=>rect.width>0&&rect.height>0);const style=getComputedStyle(el);return {text:el.textContent,whiteSpace:style.whiteSpace,numeric:style.fontVariantNumeric,lineRects:rects.map(rect=>({x:rect.x,y:rect.y,width:rect.width,height:rect.height}))}}));
-  for(const badge of geometry){assert.equal(badge.lineRects.length,1,'Measured fit badge wrapped: '+badge.text);assert.equal(badge.whiteSpace,'nowrap','Fit badge missing nowrap');assert.ok(badge.numeric.includes('tabular-nums'),'Fit badge lost tabular numbers')}
+async function assertWidgetBadges(page,minimum=0) {
+  const badges=page.locator('[data-ui-widget-boundary] span').filter({hasText:/^(?:[0-9]+(?:\.[0-9]+)?% match · est\.|Match not scored)$/});
+  const geometry=await badges.evaluateAll(elements=>elements.map(el=>{const range=document.createRange();range.selectNodeContents(el);const rects=[...range.getClientRects()].filter(rect=>rect.width>0&&rect.height>0);const style=getComputedStyle(el);// The count is a number plus a string, i.e. two adjacent text nodes with one client rect each; rects are grouped into visual lines by vertical position so one line is not mistaken for a wrap.
+    const lines=[];for(const rect of rects)if(!lines.some(top=>Math.abs(top-rect.y)<rect.height/2))lines.push(rect.y);
+    return {text:el.textContent,whiteSpace:style.whiteSpace,numeric:style.fontVariantNumeric,lines:lines.length,lineRects:rects.map(rect=>({x:rect.x,y:rect.y,width:rect.width,height:rect.height}))}}));
+  // A regex that silently matches nothing would pass every badge check; callers that know badges must exist say how many.
+  assert.ok(geometry.length>=minimum,`Expected at least ${minimum} fit badge(s), found ${geometry.length}: the badge selector no longer matches the product`);
+  for(const badge of geometry){assert.equal(badge.lines,1,'Measured fit badge wrapped: '+badge.text);if(/% match/.test(badge.text)){assert.equal(badge.whiteSpace,'nowrap','Fit badge missing nowrap');assert.ok(badge.numeric.includes('tabular-nums'),'Fit badge lost tabular numbers')}}
   return geometry;
 }
 async function exerciseWidget(page,state,capture,width) {
   const boundary=page.locator('[data-ui-widget-boundary="JobFeedWidget"]');await boundary.waitFor();
   await boundary.locator('.animate-pulse').first().waitFor();await capture('loading');
   await boundary.getByRole('heading',{name:'Top Opportunities',exact:true}).waitFor();await settle(page);state.delay=0;
-  assert.equal(await boundary.locator('h4').count(),3,'Widget top-three count');await assertWidgetBadges(page);
+  assert.equal(await boundary.locator('h4').count(),3,'Widget top-three count');const badgeTexts=(await assertWidgetBadges(page,3)).map(b=>b.text);
   assert.ok((await boundary.innerText()).includes('GBP 35–45/hr (estimated)'));
-  assert.ok((await boundary.innerText()).includes('0% match'),'Widget valid finite zero lost its measurement');
+  assert.ok(badgeTexts.includes('0% match · est.'),'Widget valid finite zero lost its measurement');assert.ok(badgeTexts.includes('75% match · est.'),'Widget measured 75 lost its badge');
   assert.ok(!(await boundary.innerText()).includes('\n% match'),'Widget missing fit rendered a bare percentage');
-  assert.ok(await boundary.getByText('Fit unavailable',{exact:true}).isVisible(),'Widget missing fit is not labelled');
+  assert.ok(badgeTexts.includes('Match not scored')&&await boundary.getByText('Match not scored',{exact:true}).isVisible(),'Widget missing fit is not labelled');
   assert.equal(await page.evaluate(()=>localStorage.getItem('talent-job-curated-count:sample-ui-fixture-01')),'4');await capture('populated-top-three-partial');
   // A partial response itself provides the real retry control. Its next response must merge picks.
   state.suggestions=['partial-next'];await boundary.getByRole('button',{name:'Retry suggestions',exact:true}).click();await boundary.getByRole('heading',{name:'Top Opportunities',exact:true}).waitFor();await settle(page);
@@ -470,17 +484,18 @@ async function runSupplemental(browser,origin,assets,outDir,probe) {
     const result={theme,states:[],problems:[]};results.push(result);
     try {
       await page.goto(origin+'/suite/cover-letter');await settle(page);
-      const help=page.getByRole('button',{name:'How to use Cover Letter Studio',exact:true}).filter({visible:true});
+      const help=page.getByRole('button',{name:'How to use Cover letter',exact:true}).filter({visible:true});
       await help.focus();await page.keyboard.press('Enter');await settle(page);
-      const dialog=page.getByRole('dialog',{name:'How to Use Cover Letter Studio',exact:true});
-      const region=dialog.getByRole('region',{name:'Help instructions for Cover Letter Studio',exact:true});
-      await page.keyboard.press('Tab');assert.ok(await region.evaluate(el=>el===document.activeElement),'Keyboard cannot reach help instructions');
-      assert.ok(await region.evaluate(el=>el.scrollHeight>el.clientHeight),'Short viewport must genuinely overflow help content');
-      await page.keyboard.press('PageDown');await page.keyboard.press('ArrowDown');await page.waitForTimeout(250);
-      const scroll=await region.evaluate(el=>({top:el.scrollTop,height:el.clientHeight,scrollHeight:el.scrollHeight}));assert.ok(scroll.top>0,'Keyboard cannot scroll overflowing instructions');
+      const panel=page.getByRole('region',{name:'How to use Cover letter',exact:true});await panel.waitFor();
+      const region=panel.locator('.tool-guidance-panel-body');
+      assert.ok(await region.evaluate(el=>el.scrollHeight>el.clientHeight),'Short viewport must genuinely overflow guidance content');
+      // The panel is non-modal and not a trap: Tab walks its controls, bringing overflowing ones into view, then leaves it.
+      let reached=0;let top=0;for(let i=0;i<14;i++){await page.keyboard.press('Tab');if(!await panel.evaluate(el=>el.contains(document.activeElement)))break;reached++;top=Math.max(top,await region.evaluate(el=>el.scrollTop));}
+      await page.waitForTimeout(250);assert.ok(reached>=2,'Keyboard cannot reach guidance controls');
+      const scroll={top,reached,height:await region.evaluate(el=>el.clientHeight),scrollHeight:await region.evaluate(el=>el.scrollHeight)};assert.ok(scroll.top>0,'Keyboard cannot scroll overflowing guidance to its later controls');
       const keyboardScreenshot=path.join(outDir,'supplemental-help-keyboard-'+theme+'-320x600.png');await page.screenshot({path:keyboardScreenshot,fullPage:true});
       result.states.push({name:'short-viewport-keyboard-scroll',scroll,screenshot:keyboardScreenshot});
-      await page.keyboard.press('Escape');await settle(page);assert.ok(await help.evaluate(el=>el===document.activeElement));
+      await panel.getByRole('button',{name:'Close guidance',exact:true}).focus();await page.keyboard.press('Escape');await settle(page);assert.ok(await help.evaluate(el=>el===document.activeElement));
       await page.setViewportSize({width:1440,height:900});await settle(page);await help.focus();await page.keyboard.press('Enter');await settle(page);
       await page.setViewportSize({width:390,height:900});await settle(page);await page.keyboard.press('Escape');await settle(page);
       assert.ok(await help.evaluate(el=>el===document.activeElement),'Responsive resize did not restore visible equivalent trigger');
@@ -500,7 +515,7 @@ async function runSupplemental(browser,origin,assets,outDir,probe) {
     const state={search:['populated'],suggestions:['defensive-fit-'+index],calls:{},delay:0};const seen=await attachContainment(context,origin,assets,state);const page=await context.newPage();
     const result={name:'actual-widget-defensive-fit-'+index,problems:[],scope:'Defensive missing/malformed response only, not valid server unknown-fit certification'};results.push(result);
     try{await page.goto(origin+'/suite');const boundary=page.locator('[data-ui-widget-boundary]');await boundary.getByRole('heading',{name:'Top Opportunities',exact:true}).waitFor();
-      const text=await boundary.innerText();if(index<2)assert.ok(text.includes((index===0?'0':'75')+'% match'));else assert.ok(text.includes('Fit unavailable'));result.text=text;
+      const text=await boundary.innerText();if(index<2)assert.ok(text.includes((index===0?'0':'75')+'% match · est.'));else {assert.ok(text.includes('Match not scored'));assert.ok(!/% match/.test(text),'Malformed fit rendered as a measurement');}result.text=text;
       result.problems.push(...seen.errors,...seen.failed,...seen.unexpected);
     }catch(error){result.problems.push({kind:'behavior',detail:error.message})}finally{await context.close()}
   }
@@ -508,15 +523,17 @@ async function runSupplemental(browser,origin,assets,outDir,probe) {
 }
 async function runBehaviorMutationControls(browser,origin,assets,outDir,fontFile) {
   const results=[];
-  const specs=[['help-no-escape','escape'],['help-no-return-focus','return-focus'],['help-small-close','target'],['help-small-trigger','trigger-target'],['help-no-backdrop-close','backdrop-close'],['help-transparent-backdrop','backdrop'],['help-oversize','geometry'],['salary-no-estimate','estimate'],['salary-all-intervals','salary'],['fit-no-guard','fit'],['fit-badge-wrap','badge-wrap']];
-  const sourceFiles=['components/PageHelp.tsx','components/JobFeedWidget.tsx','lib/job-display.ts','lib/job-search-selection.ts'];
+  // Third item: the assertion message the mutation must trip. Any other failure (timeout, broken selector) is a harness fault, not a detection.
+  const specs=[['help-no-escape','escape',/Guidance Escape failed/],['help-no-return-focus','return-focus',/Close guidance did not return focus/],['help-small-close','target',/Close guidance target below 44px/],['help-small-trigger','trigger-target',/Help trigger target below 44px/],['help-transparent-panel','surface',/Guidance surface transparent/],['help-oversize','geometry',/Guidance oversized panel outside viewport/],['salary-no-estimate','estimate',/Predicted salary lost estimate label/],['salary-all-intervals','salary',/Foreign monthly salary entered annual USD ordering/],['fit-no-guard','fit',/Unknown fit lost unavailable label/],['fit-badge-wrap','badge-wrap',/Measured fit badge wrapped|Fit badge missing nowrap/]];
+  const sourceFiles=['components/PageHelp.tsx','components/guidance/ToolGuidanceProvider.tsx','components/JobFeedWidget.tsx','lib/job-display.ts','lib/job-search-selection.ts'];
   const before=Object.fromEntries(sourceFiles.map(file=>[file,hash(fs.readFileSync(path.join(ROOT,file)))]));
-  for(const [mutation,contract] of specs){
+  for(const [mutation,contract,expected] of specs){
     const result={name:'actual behavior rejects '+mutation,mutation,ok:false};results.push(result);
     let context;
     try{
       const bundle=await buildFixture(path.join(outDir,'negative-bundles',mutation),fontFile,mutation);result.mutatedBundleSha256=hash(fs.readFileSync(path.join(bundle.target,'fixture.js')));
-      context=await browser.newContext({viewport:{width:320,height:900},serviceWorkers:'block'});
+      // Dark, like the matrix: light mode's global `[data-theme="light"] aside{background-color:...!important}` repaints any <aside>, so a transparent-surface mutation could only be seen in dark.
+      context=await browser.newContext({viewport:{width:320,height:900},colorScheme:'dark',serviceWorkers:'block'});await context.addInitScript(()=>{try{localStorage.setItem('talent-studio-theme','dark')}catch{}if(document.documentElement)document.documentElement.setAttribute('data-theme','dark')});
       const state={search:[contract==='salary'?'salary-adversarial':'populated'],suggestions:[contract==='badge-wrap'?'defensive-fit-1':'defensive-fit-2'],calls:{},delay:0,assetOverrides:new Map([['/__ui_verify__/fixture.js',fs.readFileSync(path.join(bundle.target,'fixture.js'))]])};
       const seen=await attachContainment(context,origin,assets,state);const page=await context.newPage();page.setDefaultTimeout(10000);
       const route=['estimate','salary'].includes(contract)?'/suite/job-search':['fit','badge-wrap'].includes(contract)?'/suite':'/suite/cover-letter';await page.goto(origin+route);await settle(page);
@@ -527,21 +544,20 @@ async function runBehaviorMutationControls(browser,origin,assets,outDir,fontFile
           await page.getByRole('heading',{name:contract==='salary'?'5 ranked roles':'4 ranked roles',exact:true}).waitFor();
           if(contract==='estimate')assert.ok(await page.getByText('GBP 35–45/hr (estimated)',{exact:true}).count(),'Predicted salary lost estimate label');
           else {await page.getByRole('combobox',{name:'Sort opportunities'}).selectOption('salary');assert.match(await page.locator('button[aria-controls="opportunity-intelligence-panel"][aria-pressed]').first().innerText(),/Sample higher annual role/,'Foreign monthly salary entered annual USD ordering')}
-        }else if(contract==='badge-wrap'){const widget=page.locator('[data-ui-widget-boundary]');await widget.getByRole('heading',{name:'Top Opportunities',exact:true}).waitFor();await assertWidgetBadges(page);
+        }else if(contract==='badge-wrap'){const widget=page.locator('[data-ui-widget-boundary]');await widget.getByRole('heading',{name:'Top Opportunities',exact:true}).waitFor();await assertWidgetBadges(page,1);
         }else if(contract==='fit'){
-          const widget=page.locator('[data-ui-widget-boundary]');await widget.getByRole('heading',{name:'Top Opportunities',exact:true}).waitFor();assert.ok(await widget.getByText('Fit unavailable',{exact:true}).count(),'Unknown fit lost unavailable label');
+          const widget=page.locator('[data-ui-widget-boundary]');await widget.getByRole('heading',{name:'Top Opportunities',exact:true}).waitFor();assert.ok(await widget.getByText('Match not scored',{exact:true}).count(),'Unknown fit lost unavailable label');
         }else {
-          const help=page.getByRole('button',{name:'How to use Cover Letter Studio',exact:true}).filter({visible:true});if(contract==='trigger-target'){const b=await help.boundingBox();assert.ok(b.width>=44&&b.height>=44,'Help trigger target below44px')}await help.focus();await page.keyboard.press('Enter');await settle(page);
-          const dialog=page.getByRole('dialog',{name:'How to Use Cover Letter Studio',exact:true});const close=dialog.getByRole('button',{name:'Close help for Cover Letter Studio',exact:true});
-          if(contract==='escape'){await page.keyboard.press('Escape');await settle(page);assert.equal(await dialog.count(),0,'Help Escape failed')}
-          if(contract==='return-focus'){await close.click();await settle(page);assert.ok(await help.evaluate(el=>el===document.activeElement),'Help return focus failed')}
-          if(contract==='target'){const b=await close.boundingBox();assert.ok(b.width>=44&&b.height>=44,'Help close target below44px')}
-          if(contract==='backdrop-close'){await dialog.locator('..').locator(':scope > div[aria-hidden="true"]').click({position:{x:1,y:1}});await settle(page);assert.equal(await dialog.count(),0,'Backdrop interaction did not close help')}
-          if(contract==='backdrop'){const bg=await dialog.locator('..').locator(':scope > div[aria-hidden="true"]').evaluate(el=>getComputedStyle(el).backgroundColor);assert.notEqual(bg,'rgba(0, 0, 0, 0)','Help backdrop transparent')}
-          if(contract==='geometry'){const b=await dialog.boundingBox();assert.ok(b.x>=0&&b.x+b.width<=321,'Help oversized panel outside viewport')}
+          const help=page.getByRole('button',{name:'How to use Cover letter',exact:true}).filter({visible:true});if(contract==='trigger-target'){const b=await help.boundingBox();assert.ok(b.width>=44&&b.height>=44,'Help trigger target below 44px')}await help.focus();await page.keyboard.press('Enter');await settle(page);
+          const panel=page.getByRole('region',{name:'How to use Cover letter',exact:true});await panel.waitFor();const close=panel.getByRole('button',{name:'Close guidance',exact:true});
+          if(contract==='escape'){await page.keyboard.press('Escape');await settle(page);assert.equal(await panel.count(),0,'Guidance Escape failed')}
+          if(contract==='return-focus'){await close.click();await settle(page);assert.ok(await help.evaluate(el=>el===document.activeElement),'Close guidance did not return focus to the trigger')}
+          if(contract==='target'){const b=await close.boundingBox();assert.ok(b.width>=44&&b.height>=44,'Close guidance target below 44px')}
+          if(contract==='surface'){const bg=await panel.evaluate(el=>getComputedStyle(el).backgroundColor);assert.notEqual(bg,'rgba(0, 0, 0, 0)','Guidance surface transparent')}
+          if(contract==='geometry'){const b=await panel.boundingBox();assert.ok(b.x>=0&&b.x+b.width<=321,'Guidance oversized panel outside viewport')}
         }
       }catch(error){detected=error.message}
-      assert.ok(detected,'Mutation escaped its meaningful real DOM assertion');result.ok=true;result.detected=detected;
+      assert.ok(detected,'Mutation escaped its meaningful real DOM assertion');assert.match(detected,expected,'Mutation failed for an unrelated reason, not its own assertion');result.ok=true;result.detected=detected;
       assert.equal(seen.unexpected.length,0);assert.equal(seen.failed.length,0);assert.equal(seen.errors.length,0);
     }catch(error){result.ok=false;result.error=error.message}finally{if(context)await context.close()}
   }
@@ -573,7 +589,7 @@ async function runFixtureMatrix({argv,probe,WIDTHS,THEMES,HEIGHT}) {
         await page.goto(origin+route,{waitUntil:'load',timeout:30000});await page.waitForFunction(()=>window.__uiFixture?.marker=== 'UI_VERIFY_TEST_ONLY_COMPONENT_BOUNDARY_V1');
         if(route==='/suite/job-search')await exerciseSearch(page,state,capture,width);
         else if(route==='/suite')await exerciseWidget(page,state,capture,width);
-        else {await page.getByRole('button',{name:'How to use Cover Letter Studio',exact:true}).filter({visible:true}).first().waitFor();await capture('baseline');await runShellStates(page,width,capture)}
+        else {await page.getByRole('button',{name:'How to use Cover letter',exact:true}).filter({visible:true}).first().waitFor();await capture('baseline');await runShellStates(page,width,capture)}
       }catch(error){testCase.problems.push({kind:'behavior',detail:error.message});try{await capture('behavior-failure')}catch{}}
       const finalProblems=problemsFor(await page.evaluate(probe),width,observations);testCase.problems.push(...finalProblems.map(problem=>({...problem,state:'after-all-transitions'})));
       testCase.expectedResourceConsoleNotes=observations.expectedResourceConsole;testCase.authProbeNotes=observations.authProbes;testCase.intentionalFailureScenarios=observations.scenarioAborts;testCase.boundaryReads=await page.evaluate(()=>window.__uiFixture?.boundaryReads||[]).catch(()=>[]);

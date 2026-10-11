@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Toast from '@/components/Toast';
+import { ToolGuidanceProvider } from '@/components/guidance/ToolGuidanceProvider';
 import JobSearchPage from '@/app/suite/job-search/page';
 import CoverLetterPage from '@/app/suite/cover-letter/page';
 import JobFeedWidget from '@/components/JobFeedWidget';
@@ -12,6 +13,10 @@ import { SuiteToolShell } from '@/components/suite/SuiteToolChrome';
 import { useStore } from '@/lib/store';
 import { ResumeReviewWorkbench } from '@/components/resume-studio/ResumeReviewWorkbench';
 import '@/components/resume-studio/resume-review-workbench.css';
+// app/layout.tsx imports these after globals.css; without them every --taco-* token (and so --bg-surface) is undefined and surfaces compute transparent.
+import '@/components/taco-theme.css';
+import '@/components/taco-public-palette.css';
+import '@/components/taco-identity.css';
 import { sampleUser } from 'ui-fixture:firebase';
 
 const MARKER = 'UI_VERIFY_TEST_ONLY_COMPONENT_BOUNDARY_V1';
@@ -34,6 +39,6 @@ function App() {
     : pathname === '/suite/cover-letter' ? <CoverLetterPage />
     : pathname === '/suite' ? <SuiteToolShell><section data-ui-widget-boundary="JobFeedWidget"><h1>Sample dashboard widget verification</h1><p>Real JobFeedWidget and Zustand store; component-only fixture, server authorization is not certified.</p><JobFeedWidget /></section></SuiteToolShell>
     : <div><h1>Sample navigation reached {pathname}</h1><p>This test bundle renders only the three approved surfaces.</p></div>;
-  return <ThemeProvider><WorkspaceFrame key={revision} showOnboardingPrompt={false}>{page}</WorkspaceFrame><Toast /></ThemeProvider>;
+  return <ThemeProvider><WorkspaceFrame key={revision} showOnboardingPrompt={false}><ToolGuidanceProvider>{page}</ToolGuidanceProvider></WorkspaceFrame><Toast /></ThemeProvider>;
 }
 createRoot(document.getElementById('fixture-root')).render(<App />);
