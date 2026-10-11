@@ -6,16 +6,21 @@ import type { ProofResult } from '@/lib/tfidf-proof';
 
 interface ProofCardProps {
   proof: ProofResult;
-  isLight: boolean;
+  // Retained for API compatibility. Colour now flows from the [data-theme]
+  // token cascade, so this is no longer read for styling.
+  isLight?: boolean;
 }
 
+// Verdict bands map onto the shared status tokens — success (positive),
+// warning (caution), danger (weak) — kept distinct from the blue accent so
+// hue still carries evidence meaning. Labels/thresholds are unchanged.
 const VERDICT = (score: number) =>
-  score >= 80 ? { label: 'Excellent', color: '#22c55e' }
-  : score >= 60 ? { label: 'Strong', color: '#06d6a0' }
-  : score >= 40 ? { label: 'Moderate', color: '#f59e0b' }
-  : { label: 'Needs Work', color: '#ef4444' };
+  score >= 80 ? { label: 'Excellent', color: 'var(--success)' }
+  : score >= 60 ? { label: 'Strong', color: 'var(--success)' }
+  : score >= 40 ? { label: 'Moderate', color: 'var(--warning)' }
+  : { label: 'Needs Work', color: 'var(--danger)' };
 
-export default function ProofCard({ proof, isLight }: ProofCardProps) {
+export default function ProofCard({ proof }: ProofCardProps) {
   const baseVerdict = VERDICT(proof.baselineScore);
   const optVerdict = VERDICT(proof.optimizedScore);
 
@@ -24,18 +29,18 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.3 }}
-      className="rounded-2xl overflow-hidden"
+      className="rounded-2xl overflow-hidden elevation-card"
       style={{
-        background: isLight ? '#fff' : 'rgba(255,255,255,0.02)',
-        border: `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)'}`,
+        background: 'var(--card-bg)',
+        border: '1px solid var(--border-subtle)',
       }}
     >
       {/* Header */}
       <div
         className="px-5 py-4 flex items-center justify-between"
         style={{
-          background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
-          borderBottom: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
+          background: 'var(--bg-surface)',
+          borderBottom: '1px solid var(--border-subtle)',
         }}
       >
         <div className="flex items-center gap-2.5">
@@ -44,7 +49,7 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
           </div>
           <div>
             <h3 className="text-sm font-bold text-[var(--text-primary)]">ATS Proof Engine</h3>
-            <p className="text-[10px] text-[var(--text-muted)]">TF-IDF Cosine Similarity Analysis</p>
+            <p className="text-[11px] text-[var(--text-muted)]">TF-IDF Cosine Similarity Analysis</p>
           </div>
         </div>
 
@@ -56,12 +61,12 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
             transition={{ delay: 0.6, type: 'spring' }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
             style={{
-              background: 'rgba(6,214,160,0.1)',
-              border: '1px solid rgba(6,214,160,0.2)',
+              background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--success) 26%, transparent)',
             }}
           >
             <span className="material-symbols-rounded icon-status-success text-[14px]">trending_up</span>
-            <span className="text-xs font-bold text-emerald-400">+{proof.delta} pts</span>
+            <span className="text-xs font-bold text-[var(--success)]">+{proof.delta} pts</span>
           </motion.div>
         )}
       </div>
@@ -71,10 +76,10 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
         <div className="grid grid-cols-2 gap-4">
           {/* Baseline */}
           <div className="text-center p-4 rounded-xl" style={{
-            background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
-            border: `1px solid ${isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}`,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-subtle)',
           }}>
-            <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-2">Original Resume</p>
+            <p className="text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-2">Original Resume</p>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -84,15 +89,15 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
             >
               {proof.baselineScore}
             </motion.div>
-            <p className="text-[10px] font-medium mt-1" style={{ color: baseVerdict.color }}>{baseVerdict.label}</p>
+            <p className="text-[11px] font-medium mt-1" style={{ color: baseVerdict.color }}>{baseVerdict.label}</p>
           </div>
 
           {/* Optimized */}
           <div className="text-center p-4 rounded-xl" style={{
-            background: `${optVerdict.color}08`,
-            border: `1px solid ${optVerdict.color}20`,
+            background: `color-mix(in srgb, ${optVerdict.color} 8%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${optVerdict.color} 22%, transparent)`,
           }}>
-            <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-2">Morphed Resume</p>
+            <p className="text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-2">Morphed Resume</p>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -102,7 +107,7 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
             >
               {proof.optimizedScore}
             </motion.div>
-            <p className="text-[10px] font-medium mt-1" style={{ color: optVerdict.color }}>{optVerdict.label}</p>
+            <p className="text-[11px] font-medium mt-1" style={{ color: optVerdict.color }}>{optVerdict.label}</p>
           </div>
         </div>
 
@@ -110,7 +115,7 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
         <div className="text-center">
           <p className="text-xs text-[var(--text-secondary)]">
             TF-IDF cosine similarity improved by{' '}
-            <span className="font-bold text-emerald-400">{proof.improvement}</span>
+            <span className="font-bold text-[var(--success)]">{proof.improvement}</span>
           </p>
         </div>
 
@@ -118,24 +123,25 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
         <div className="h-36">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={proof.chartData} layout="vertical" barGap={4}>
-              <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="label" width={110} tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+              <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="label" width={110} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
               <Tooltip
                 contentStyle={{
-                  background: isLight ? '#fff' : '#1a1a1e',
-                  border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-subtle)',
                   borderRadius: 12,
                   fontSize: 11,
+                  color: 'var(--text-primary)',
                 }}
               />
               <Bar dataKey="baseline" name="Original" radius={[0, 4, 4, 0]} barSize={12}>
                 {proof.chartData.map((_, i) => (
-                  <Cell key={i} fill={isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)'} />
+                  <Cell key={i} fill="color-mix(in srgb, var(--text-primary) 18%, transparent)" />
                 ))}
               </Bar>
               <Bar dataKey="optimized" name="Morphed" radius={[0, 4, 4, 0]} barSize={12}>
                 {proof.chartData.map((_, i) => (
-                  <Cell key={i} fill="#06d6a0" />
+                  <Cell key={i} fill="var(--success)" />
                 ))}
               </Bar>
             </BarChart>
@@ -143,13 +149,13 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center justify-center gap-4 text-[10px] text-[var(--text-muted)]">
+        <div className="flex items-center justify-center gap-4 text-[11px] text-[var(--text-muted)]">
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm" style={{ background: isLight ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.12)' }} />
+            <span className="w-3 h-2 rounded-sm" style={{ background: 'color-mix(in srgb, var(--text-primary) 18%, transparent)' }} />
             Original
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm bg-emerald-400" />
+            <span className="w-3 h-2 rounded-sm" style={{ background: 'var(--success)' }} />
             Morphed
           </span>
         </div>
@@ -168,11 +174,10 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.7 + i * 0.05 }}
-                  className="text-[10px] px-2 py-1 rounded-full font-medium"
+                  className="text-[11px] px-2 py-1 rounded-full font-medium text-[var(--success)]"
                   style={{
-                    background: 'rgba(6,214,160,0.1)',
-                    border: '1px solid rgba(6,214,160,0.2)',
-                    color: '#06d6a0',
+                    background: 'color-mix(in srgb, var(--success) 12%, transparent)',
+                    border: '1px solid color-mix(in srgb, var(--success) 26%, transparent)',
                   }}
                 >
                   + {gap.term}
@@ -191,17 +196,17 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
             </summary>
             <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
               {proof.topJDTerms.map(term => (
-                <div key={term.term} className="flex items-center justify-between px-2 py-1 rounded-lg text-[10px]" style={{
-                  background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+                <div key={term.term} className="flex items-center justify-between px-2 py-1 rounded-lg text-[11px]" style={{
+                  background: 'var(--bg-surface)',
                 }}>
                   <span className="text-[var(--text-primary)] font-mono">{term.term}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-[var(--text-muted)]">w: {term.weight}</span>
                     <span className={`font-medium ${
-                      term.matchedIn === 'both' ? 'text-emerald-400' :
-                      term.matchedIn === 'morphed_only' ? 'text-cyan-400' :
-                      term.matchedIn === 'original_only' ? 'text-amber-400' :
-                      'text-red-400'
+                      term.matchedIn === 'both' ? 'text-[var(--success)]' :
+                      term.matchedIn === 'morphed_only' ? 'text-[var(--success)]' :
+                      term.matchedIn === 'original_only' ? 'text-[var(--warning)]' :
+                      'text-[var(--danger)]'
                     }`}>
                       {term.matchedIn === 'both' ? '✓ Both' :
                        term.matchedIn === 'morphed_only' ? '+ Added' :
@@ -216,8 +221,8 @@ export default function ProofCard({ proof, isLight }: ProofCardProps) {
         )}
 
         {/* Footer */}
-        <p className="text-[9px] text-[var(--text-muted)] text-center pt-2" style={{
-          borderTop: `1px solid ${isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}`,
+        <p className="text-[11px] text-[var(--text-muted)] text-center pt-2" style={{
+          borderTop: '1px solid var(--border-subtle)',
         }}>
           Deterministic scoring via TF-IDF vectorization · Not AI-generated · Reproducible results
         </p>

@@ -23,7 +23,7 @@ services:
       ENABLE_SWAGGER: "false"
       ENABLE_SCALAR: "false"
       CORS_ORIGINS: https://${STAGING_HOSTNAME}
-      DEFAULT_SITE_NAMES: remoteok,remotive,jobicy,himalayas,weworkremotely
+      DEFAULT_SITE_NAMES: remoteok,jobicy,himalayas,weworkremotely
       DEFAULT_RESULTS_WANTED: 20
       DEFAULT_COUNTRY: USA
       LOG_LEVEL: warn

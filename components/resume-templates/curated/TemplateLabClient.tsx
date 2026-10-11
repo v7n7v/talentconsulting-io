@@ -75,12 +75,11 @@ export default function TemplateLabClient({
       data-template-lab
       data-template-id={template.id}
       data-fixture={fixtureId}
-      className={`min-h-dvh px-4 py-6 sm:px-8 ${dark ? 'bg-[#090a0c] text-white' : 'bg-slate-100 text-slate-950'}`}
+      data-theme={dark ? 'dark' : 'light'}
+      className="min-h-dvh bg-[var(--bg-deep)] px-4 py-6 text-[var(--text-primary)] sm:px-8"
     >
-      <div className={`sticky top-3 z-40 mx-auto mb-6 flex max-w-[1080px] flex-wrap items-center gap-3 rounded-2xl border p-3 shadow-xl backdrop-blur ${
-        dark ? 'border-white/10 bg-[#111318]/90' : 'border-slate-200 bg-white/90'
-      }`}>
-        <label className="text-xs font-semibold">
+      <div className="elevation-card sticky top-3 z-40 mx-auto mb-6 flex max-w-[1080px] flex-wrap items-center gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3 backdrop-blur">
+        <label className="text-xs font-semibold text-[var(--text-secondary)]">
           Template
           <select
             aria-label="Template"
@@ -89,12 +88,12 @@ export default function TemplateLabClient({
               setTemplateId(event.target.value);
               syncUrl(event.target.value, fixtureId, dark);
             }}
-            className={`ml-2 rounded-lg border px-2 py-1.5 text-xs ${dark ? 'border-white/15 bg-black text-white' : 'border-slate-300 bg-white'}`}
+            className="ml-2 min-h-11 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-2 py-1.5 text-base text-[var(--text-primary)]"
           >
             {TEMPLATES.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
           </select>
         </label>
-        <label className="text-xs font-semibold">
+        <label className="text-xs font-semibold text-[var(--text-secondary)]">
           Fixture
           <select
             aria-label="Fixture"
@@ -104,7 +103,7 @@ export default function TemplateLabClient({
               setFixtureId(next);
               syncUrl(template.id, next, dark);
             }}
-            className={`ml-2 rounded-lg border px-2 py-1.5 text-xs ${dark ? 'border-white/15 bg-black text-white' : 'border-slate-300 bg-white'}`}
+            className="ml-2 min-h-11 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-input)] px-2 py-1.5 text-base text-[var(--text-primary)]"
           >
             {FIXTURE_IDS.map(id => <option key={id} value={id}>{id}</option>)}
           </select>
@@ -116,11 +115,11 @@ export default function TemplateLabClient({
             setDark(next);
             syncUrl(template.id, fixtureId, next);
           }}
-          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${dark ? 'border-white/15 bg-white/5' : 'border-slate-300 bg-slate-50'}`}
+          className="min-h-11 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-semibold text-[var(--text-primary)]"
         >
           {dark ? 'Light chrome' : 'Dark chrome'}
         </button>
-        <div className="ml-auto text-right text-[11px] opacity-70">
+        <div className="ml-auto text-right text-[11px] text-[var(--text-muted)]">
           <div>{template.atsClassification} · {template.tier === 'pro' ? PLAN_IDENTITIES.pro.label : 'FREE'}</div>
           <div>{template.structure.family} · {template.structure.columns} column</div>
         </div>
@@ -128,7 +127,7 @@ export default function TemplateLabClient({
 
       <div
         ref={previewFrameRef}
-        className="mx-auto w-full max-w-[794px] overflow-hidden rounded-sm bg-white shadow-2xl"
+        className="elevation-raised mx-auto w-full max-w-[794px] overflow-hidden rounded-sm border border-[var(--border-subtle)] bg-[var(--paper)]"
         style={{ height: previewHeight }}
       >
         <div

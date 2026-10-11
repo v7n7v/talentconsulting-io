@@ -96,7 +96,8 @@ function ModalShell({ children, onClose, titleId, returnFocusSelector }: {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+        className="fixed inset-0 backdrop-blur-sm z-[100]"
+        style={{ background: 'var(--modal-backdrop)' }}
         onClick={onClose}
       />
       <div key="auth-modal-dialog" className="pointer-events-none fixed inset-0 z-[101] flex items-end justify-center p-0 sm:items-center sm:p-4">
@@ -111,7 +112,7 @@ function ModalShell({ children, onClose, titleId, returnFocusSelector }: {
           exit={{ opacity: 0, scale: 0.96, y: 12 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
           onClick={e => e.stopPropagation()}
-          className="pointer-events-auto max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-2xl shadow-xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl"
+          className="pointer-events-auto elevation-card max-h-[100dvh] w-full max-w-md overflow-y-auto rounded-t-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl"
           style={{
             background: 'var(--bg-surface)',
             border: '1px solid var(--border-subtle)',
@@ -400,7 +401,7 @@ export default function AuthModal({
     }
   };
 
-  const inputClass = "w-full rounded-xl px-4 py-3 text-base outline-none transition-all sm:text-sm";
+  const inputClass = "w-full rounded-xl px-4 py-3 text-base outline-none transition-all";
   const inputStyle = {
     background: 'var(--bg-input, var(--bg-hover))',
     border: '1px solid var(--border-subtle)',
@@ -439,7 +440,7 @@ export default function AuthModal({
             />
 
             {error && (
-              <div className="p-3 rounded-xl text-xs" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--danger)' }}>
+              <div className="p-3 rounded-xl text-xs" style={{ background: 'color-mix(in srgb, var(--danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 20%, transparent)', color: 'var(--danger)' }}>
                 {error}
               </div>
             )}
@@ -455,7 +456,7 @@ export default function AuthModal({
             <button
               type="button"
               onClick={() => { setShowMFAChallenge(false); setTotpCode(''); setError(''); setMfaResolver(null); }}
-              className="w-full text-sm font-medium transition-colors hover:underline"
+              className="flex w-full min-h-[44px] items-center justify-center text-sm font-medium transition-colors hover:underline"
               style={{ color: 'var(--text-secondary)' }}
             >
               ← Back to Login
@@ -480,7 +481,7 @@ export default function AuthModal({
           </p>
           <button
             onClick={() => { setResetEmailSent(false); setShowForgotPassword(false); }}
-            className="w-full py-2.5 rounded-xl text-sm font-medium"
+            className="flex w-full min-h-[44px] items-center justify-center py-2.5 rounded-xl text-sm font-medium"
             style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
           >
             Back to Login
@@ -521,7 +522,7 @@ export default function AuthModal({
             </div>
 
             {error && (
-              <div className="p-3 rounded-xl text-xs" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--danger)' }}>
+              <div className="p-3 rounded-xl text-xs" style={{ background: 'color-mix(in srgb, var(--danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 20%, transparent)', color: 'var(--danger)' }}>
                 {error}
               </div>
             )}
@@ -537,7 +538,7 @@ export default function AuthModal({
             <button
               type="button"
               onClick={() => setShowForgotPassword(false)}
-              className="w-full text-sm font-medium transition-colors hover:underline"
+              className="flex w-full min-h-[44px] items-center justify-center text-sm font-medium transition-colors hover:underline"
               style={{ color: 'var(--text-secondary)' }}
             >
               ← Back to Login
@@ -583,7 +584,7 @@ export default function AuthModal({
             <button
               onClick={handleGoogleAuth}
               disabled={oauthLoading}
-              className="mb-4 flex w-full items-center justify-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
+              className="mb-4 flex w-full min-h-[44px] items-center justify-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
               style={{
                 background: 'var(--bg-input, var(--bg-hover))',
                 border: '1px solid var(--border-subtle)',
@@ -681,7 +682,7 @@ export default function AuthModal({
             <button
               type="button"
               onClick={() => setShowForgotPassword(true)}
-              className="text-xs font-medium hover:underline"
+              className="inline-flex min-h-[44px] items-center text-xs font-medium hover:underline"
               style={{ color: 'var(--accent)' }}
             >
               Forgot password?
@@ -689,7 +690,7 @@ export default function AuthModal({
           )}
 
           {error && (
-            <div className="p-3 rounded-xl text-xs" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--danger)' }}>
+            <div className="p-3 rounded-xl text-xs" style={{ background: 'color-mix(in srgb, var(--danger) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--danger) 20%, transparent)', color: 'var(--danger)' }}>
               {error}
             </div>
           )}
@@ -698,7 +699,7 @@ export default function AuthModal({
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2.5 text-sm disabled:opacity-50 transition-all btn-primary"
+              className="flex-1 min-h-[44px] py-2.5 text-sm disabled:opacity-50 transition-all btn-primary"
             >
               {loading ? 'Processing...' : mode === 'login' ? 'Login' : 'Create Account'}
             </button>
@@ -706,7 +707,7 @@ export default function AuthModal({
               type="button"
               onClick={handleDismiss}
               disabled={loading || oauthLoading}
-              className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
+              className="flex min-h-[44px] items-center justify-center px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
               style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
             >
               Cancel
@@ -717,7 +718,7 @@ export default function AuthModal({
 
         <p className="text-center text-xs mt-5" style={{ color: 'var(--text-muted)' }}>
           {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
-          <button disabled={loading || oauthLoading} onClick={onSwitchMode} className="font-medium hover:underline disabled:opacity-50" style={{ color: 'var(--accent)' }}>
+          <button disabled={loading || oauthLoading} onClick={onSwitchMode} className="inline-flex min-h-[44px] items-center align-middle font-medium hover:underline disabled:opacity-50" style={{ color: 'var(--accent)' }}>
             {mode === 'login' ? 'Sign up' : 'Login'}
           </button>
         </p>

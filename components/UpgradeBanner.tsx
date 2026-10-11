@@ -59,7 +59,7 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
   // Paid user — show status + manage link
   if (currentPlan.id !== 'free') {
     return (
-      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3">
+      <div className="elevation-card rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3">
         <PlanStatusStrip
           tier={currentTier}
           title={`${currentPlan.displayName} active`}
@@ -69,7 +69,7 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
         <button
           onClick={handleManage}
           disabled={loading}
-          className="mt-2 text-[11px] font-semibold text-[var(--theme-text-tertiary)] underline underline-offset-2 transition-colors hover:text-[var(--theme-text-secondary)]"
+          className="mt-2 inline-flex min-h-[44px] items-center text-[11px] font-semibold text-[var(--text-muted)] underline underline-offset-2 transition-colors hover:text-[var(--text-secondary)]"
         >
           {loading ? 'Opening...' : 'Manage billing'}
         </button>
@@ -82,8 +82,7 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
     return (
       <button
         onClick={handleUpgrade}
-        className="w-full rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all hover:brightness-105"
-        style={{ background: proPlan.accent, color: proPlan.buttonText }}
+        className="flex w-full min-h-[44px] items-center justify-center rounded-lg bg-[var(--accent)] px-3 text-[11px] font-semibold text-[var(--accent-on)] transition-all hover:brightness-105"
       >
         <span className="material-symbols-rounded align-middle mr-1">bolt</span> {UPGRADE_COPY.primaryCta}
       </button>
@@ -91,7 +90,7 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
   }
 
   return (
-    <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-4">
+    <div className="elevation-card rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="flex items-center gap-2 mb-2">
         <span className="icon-shell-neutral flex h-8 w-8 items-center justify-center rounded-[11px] border">
           <span className="material-symbols-rounded text-[17px]">bolt</span>
@@ -109,8 +108,7 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
 
       <button
         onClick={handleUpgrade}
-        className="flex w-full items-center justify-center gap-1 rounded-lg px-4 py-2 text-xs font-semibold transition-all hover:brightness-105"
-        style={{ background: proPlan.accent, color: proPlan.buttonText }}
+        className="flex w-full min-h-[44px] items-center justify-center gap-1 rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[var(--accent-on)] transition-all hover:brightness-105"
       >
         {UPGRADE_COPY.primaryCta}
       </button>
@@ -121,14 +119,14 @@ export default function UpgradeBanner({ currentTier = 'free', compact = false }:
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="text-[10px] text-red-400 mt-2 text-center"
+            className="mt-2 text-center text-[11px] text-[var(--danger)]"
           >
             {error}
           </motion.p>
         )}
       </AnimatePresence>
 
-      <p className="text-[10px] text-[var(--theme-text-tertiary)] text-center mt-2">
+      <p className="mt-2 text-center text-[11px] text-[var(--text-muted)]">
         Secure billing by Stripe. Cancel anytime.
       </p>
     </div>

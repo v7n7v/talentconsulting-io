@@ -14,21 +14,18 @@ const featureDisplayNames: Record<string, { label: string; icon: string }> = {
 
 type UsageTone = 'healthy' | 'warning' | 'danger';
 
-const usageToneClasses: Record<UsageTone, { text: string; bar: string; shadow: string }> = {
+const usageToneClasses: Record<UsageTone, { text: string; bar: string }> = {
   healthy: {
-    text: 'text-emerald-500',
-    bar: 'bg-gradient-to-r from-emerald-400 to-green-500',
-    shadow: 'shadow-[0_0_8px_rgba(34,197,94,0.28)]',
+    text: 'text-[var(--success)]',
+    bar: 'bg-[var(--success)]',
   },
   warning: {
-    text: 'text-amber-500',
-    bar: 'bg-gradient-to-r from-yellow-400 to-amber-500',
-    shadow: 'shadow-[0_0_8px_rgba(245,158,11,0.30)]',
+    text: 'text-[var(--warning)]',
+    bar: 'bg-[var(--warning)]',
   },
   danger: {
-    text: 'text-red-500',
-    bar: 'bg-gradient-to-r from-rose-500 to-red-500',
-    shadow: 'shadow-[0_0_8px_rgba(239,68,68,0.34)]',
+    text: 'text-[var(--danger)]',
+    bar: 'bg-[var(--danger)]',
   },
 };
 
@@ -67,9 +64,9 @@ export default function UsageCounter({ compact, showUpgradeWhenExhausted = false
     return (
       <div className="w-full px-3 py-2">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Free credits</span>
+          <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Free credits</span>
           <span
-            className={`text-[10px] font-mono font-medium ${totalToneClass.text}`}
+            className={`text-[11px] font-mono font-medium ${totalToneClass.text}`}
             title={`${Math.max(0, totalCap - totalUsed)} free runs remaining`}
           >
             {totalUsed}/{totalCap}
@@ -80,12 +77,12 @@ export default function UsageCounter({ compact, showUpgradeWhenExhausted = false
             initial={{ width: 0 }}
             animate={{ width: `${totalCap > 0 ? Math.min(100, (totalUsed / totalCap) * 100) : 0}%` }}
             transition={{ duration: 1, ease: 'easeOut' }}
-            className={`h-full rounded-full ${totalToneClass.bar} ${totalToneClass.shadow}`}
+            className={`h-full rounded-full ${totalToneClass.bar}`}
           />
         </div>
         {allExhausted && (
           <div className="mt-1.5 space-y-1.5">
-            <p className="flex items-center gap-1 text-[10px] font-medium text-amber-500">
+            <p className="flex items-center gap-1 text-[11px] font-medium text-[var(--warning)]">
               <span className="material-symbols-rounded icon-status-warning text-[12px]">lock_clock</span>
               {UPGRADE_COPY.freeLimitTitle}
             </p>
@@ -93,7 +90,7 @@ export default function UsageCounter({ compact, showUpgradeWhenExhausted = false
               <button
                 type="button"
                 onClick={() => router.push('/suite/upgrade')}
-                className="flex w-full items-center justify-center gap-1 rounded-[10px] bg-emerald-500 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35"
+                className="btn-primary flex min-h-11 w-full items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
                 <span className="material-symbols-rounded text-[14px]">bolt</span>
                 {UPGRADE_COPY.primaryCta}
@@ -113,29 +110,35 @@ export default function UsageCounter({ compact, showUpgradeWhenExhausted = false
 
       <div className="space-y-3">
         {Object.entries(featureDisplayNames).map(([key, { label, icon }]) => {
+          const rawCap = caps[key];
+          // No fabricated cap: a missing/zero limit is a labelled absence, not "/1".
+          const hasCap = typeof rawCap === 'number' && Number.isFinite(rawCap) && rawCap > 0;
           const used = usage[key as keyof typeof usage] || 0;
-          const cap = caps[key] || 1;
-          const percentage = Math.min(100, Math.max(0, (used / cap) * 100));
-          const featureToneClass = usageToneClasses[getFeatureUsageTone(used, cap)];
-          
+
           return (
             <div key={key} className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[var(--text-secondary)] flex items-center gap-1.5">
-                  <span className="material-symbols-rounded text-[14px] opacity-70">{icon}</span> {label}
+                  <span className="material-symbols-rounded text-[14px] text-[var(--text-muted)]">{icon}</span> {label}
                 </span>
-                <span className={`font-mono font-medium ${featureToneClass.text}`}>
-                  {used}/{cap}
-                </span>
+                {hasCap ? (
+                  <span className={`font-mono font-medium ${usageToneClasses[getFeatureUsageTone(used, rawCap)].text}`}>
+                    {used}/{rawCap}
+                  </span>
+                ) : (
+                  <span className="font-mono font-medium text-[var(--text-muted)]">No limit set</span>
+                )}
               </div>
-              <div className="h-1.5 w-full bg-[var(--bg-hover)] rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${percentage}%` }}
-                  transition={{ duration: 1, ease: 'easeOut' }}
-                  className={`h-full rounded-full ${featureToneClass.bar} ${featureToneClass.shadow}`}
-                />
-              </div>
+              {hasCap && (
+                <div className="h-1.5 w-full bg-[var(--bg-hover)] rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(100, Math.max(0, (used / rawCap) * 100))}%` }}
+                    transition={{ duration: 1, ease: 'easeOut' }}
+                    className={`h-full rounded-full ${usageToneClasses[getFeatureUsageTone(used, rawCap)].bar}`}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -145,7 +148,7 @@ export default function UsageCounter({ compact, showUpgradeWhenExhausted = false
         <button
           type="button"
           onClick={() => router.push('/suite/upgrade')}
-          className="mt-1 flex w-full items-center justify-center gap-1 rounded-[10px] border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[11px] font-semibold text-amber-500 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30"
+          className="btn-primary mt-1 flex min-h-11 w-full items-center justify-center gap-1 px-3 py-2 text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
           <span className="material-symbols-rounded text-[13px]">bolt</span>
           {UPGRADE_COPY.primaryCta}

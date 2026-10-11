@@ -55,6 +55,7 @@ interface TemplateColors {
 interface PDFTemplateProps {
   resume: CanonicalResume;
   colors: TemplateColors;
+  pageSize?: 'A4' | 'LETTER';
 }
 
 type PDFHeaderDensity = 'hero' | 'standard' | 'compact';
@@ -435,9 +436,9 @@ function PDFCertifications({ certs, colors }: { certs: string[]; colors: Templat
 // ============================================================
 
 // Executive: Professional serif, border-bottom header
-function ExecutivePDF({ resume, colors }: PDFTemplateProps) {
+function ExecutivePDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="executive" />
       {resume.summary && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Professional Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
@@ -449,9 +450,9 @@ function ExecutivePDF({ resume, colors }: PDFTemplateProps) {
 }
 
 // Minimal: Light, centered header
-function MinimalPDF({ resume, colors }: PDFTemplateProps) {
+function MinimalPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="minimal" />
       {resume.summary && <View style={{ borderTopWidth: 1, borderTopColor: '#e0e0e0', paddingTop: 10 }}><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#555555', textAlign: 'center' }}>{resume.summary}</Text></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color="#999999">Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} /></View>}
@@ -462,9 +463,9 @@ function MinimalPDF({ resume, colors }: PDFTemplateProps) {
 }
 
 // Compact: Dense, small type
-function CompactPDF({ resume, colors }: PDFTemplateProps) {
+function CompactPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 9, color: colors.text, padding: '30 40', lineHeight: 1.4 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 9, color: colors.text, padding: '30 40', lineHeight: 1.4 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="compact" />
       {resume.summary && <View style={{ marginBottom: 8, backgroundColor: `${colors.primary}08`, padding: 8, borderRadius: 4 }}><Text style={{ fontSize: 9, color: '#444444', lineHeight: 1.5 }}>{resume.summary}</Text></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Core Competencies</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} layout="inline" /></View>}
@@ -476,9 +477,9 @@ function CompactPDF({ resume, colors }: PDFTemplateProps) {
 }
 
 // Technical: Monospace style
-function TechnicalPDF({ resume, colors }: PDFTemplateProps) {
+function TechnicalPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="technical" />
       {resume.summary && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View>}
       {resume.skills.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Technical Skills</PDFSectionTitle><PDFSkills skills={resume.skills} colors={colors} /></View>}
@@ -489,9 +490,9 @@ function TechnicalPDF({ resume, colors }: PDFTemplateProps) {
 }
 
 // Harvard: Education-first, centered header
-function HarvardPDF({ resume, colors }: PDFTemplateProps) {
+function HarvardPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId="harvard" />
       {resume.education.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Education</PDFSectionTitle><PDFEducation entries={resume.education} colors={colors} companyFirst /></View>}
       {resume.experience.length > 0 && <View><PDFSectionTitle color={colors.primary} borderColor={`${colors.primary}40`}>Experience</PDFSectionTitle><PDFExperience entries={resume.experience} colors={colors} companyFirst /></View>}
@@ -501,7 +502,7 @@ function HarvardPDF({ resume, colors }: PDFTemplateProps) {
   );
 }
 
-function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
+function EditorialAuthorityPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   const impacts = getEditorialImpacts(resume);
   const contact = [resume.email, resume.phone, resume.location, resume.linkedin, resume.website]
     .filter((item): item is string => Boolean(item));
@@ -537,7 +538,7 @@ function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
 
   return (
     <Page
-      size="A4"
+      size={pageSize}
       wrap
       style={{
         fontFamily: 'Inter',
@@ -762,7 +763,7 @@ function EditorialAuthorityPDF({ resume, colors }: PDFTemplateProps) {
   );
 }
 
-function TechnicalSignalPDF({ resume, colors }: PDFTemplateProps) {
+function TechnicalSignalPDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   const contact = [resume.email, resume.phone, resume.location, resume.linkedin, resume.website]
     .filter((item): item is string => Boolean(item));
   const signalGreen = '#0a9f36';
@@ -777,7 +778,7 @@ function TechnicalSignalPDF({ resume, colors }: PDFTemplateProps) {
 
   return (
     <Page
-      size="A4"
+      size={pageSize}
       wrap
       style={{
         backgroundColor: '#fbfbfa',
@@ -892,7 +893,7 @@ function TechnicalSignalPDF({ resume, colors }: PDFTemplateProps) {
   );
 }
 
-function BrutalistVoltagePDF({ resume, colors }: PDFTemplateProps) {
+function BrutalistVoltagePDF({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
   const impacts = getEditorialImpacts(resume);
   const contact = [resume.website, resume.email, resume.phone, resume.location]
     .filter((item): item is string => Boolean(item));
@@ -905,7 +906,7 @@ function BrutalistVoltagePDF({ resume, colors }: PDFTemplateProps) {
   );
 
   return (
-    <Page size="A4" wrap style={{ backgroundColor: cream, color: colors.text, fontFamily: 'Helvetica', fontSize: 8, lineHeight: 1.35 }}>
+    <Page size={pageSize} wrap style={{ backgroundColor: cream, color: colors.text, fontFamily: 'Helvetica', fontSize: 8, lineHeight: 1.35 }}>
       <View wrap={false} style={{ flexDirection: 'row' }}>
         <View style={{ width: '64%', flexDirection: 'row', paddingTop: 22, paddingBottom: 18 }}>
           <View style={{ width: 56, alignItems: 'center', justifyContent: 'center' }}>
@@ -1038,7 +1039,7 @@ function BrutalistVoltagePDF({ resume, colors }: PDFTemplateProps) {
 }
 
 // Generic single-column PDF for: Elegant, Nordic, Modern, Creative, Cascade, Columnist, Metro, Consultant, Startup, ATS Ultra, FAANG, Federal, Academic
-function GenericSingleColumnPDF({ resume, colors, sectionOrder, templateId = 'executive' }: PDFTemplateProps & { sectionOrder?: string[]; templateId?: string }) {
+function GenericSingleColumnPDF({ resume, colors, pageSize = 'A4', sectionOrder, templateId = 'executive' }: PDFTemplateProps & { sectionOrder?: string[]; templateId?: string }) {
   const order = sectionOrder || ['summary', 'experience', 'skills', 'education', 'certifications'];
   const sections: Record<string, ReactElement | null> = {
     summary: resume.summary ? <View key="summary"><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Professional Summary</PDFSectionTitle><Text style={{ fontSize: 10, lineHeight: 1.6, color: '#333333' }}>{resume.summary}</Text></View> : null,
@@ -1048,7 +1049,7 @@ function GenericSingleColumnPDF({ resume, colors, sectionOrder, templateId = 'ex
     certifications: resume.certifications.length > 0 ? <View key="certifications"><PDFSectionTitle color={colors.primary} borderColor="#e0e0e0">Certifications</PDFSectionTitle><PDFCertifications certs={resume.certifications} colors={colors} /></View> : null,
   };
   return (
-    <Page size="A4" style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
+    <Page size={pageSize} style={{ fontFamily: 'Inter', fontSize: 10, color: colors.text, padding: '40 50', lineHeight: 1.5 }}>
       <PDFResumeHeader resume={resume} colors={colors} templateId={templateId} />
       {order.map(s => sections[s]).filter(Boolean)}
     </Page>
@@ -1063,12 +1064,13 @@ function createCuratedPDFPage(templateId: CuratedSignatureTemplateId): React.FC<
   const metadata = getRegisteredTemplate(templateId);
   if (!metadata) throw new Error(`Missing curated PDF metadata for "${templateId}".`);
 
-  return function CuratedPDFPage({ resume, colors }: PDFTemplateProps) {
+  return function CuratedPDFPage({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
     return (
       <CuratedPage
         resume={resume}
         colors={{ ...metadata.colors, ...colors }}
         metadata={metadata}
+        pageSize={pageSize}
       />
     );
   };
@@ -1118,10 +1120,12 @@ export function ResumePDFDocument({
   resume,
   templateId = 'executive',
   colors = { primary: '#1a365d', accent: '#2b6cb0', text: '#1a202c' },
+  pageSize = 'A4',
 }: {
   resume: CanonicalResume;
   templateId?: string;
   colors?: TemplateColors;
+  pageSize?: 'A4' | 'LETTER';
 }) {
   const TemplateComponent = requireResumeTemplateRegistryEntry(PDF_TEMPLATE_MAP, templateId, 'pdf');
   const templateMetadata = getRegisteredTemplate(templateId);
@@ -1144,7 +1148,7 @@ export function ResumePDFDocument({
       keywords="resume, experience, education, skills"
       language="en-US"
     >
-      <TemplateComponent resume={resume} colors={colors} />
+      <TemplateComponent resume={resume} colors={colors} pageSize={pageSize} />
     </Document>
   );
 }
@@ -1207,13 +1211,35 @@ export async function downloadResumePDF(
   resume: any,
   colors?: TemplateColors,
   filename?: string,
-  templateId?: string
+  templateId?: string,
+  shouldDownload: () => boolean = () => true,
 ) {
-  // Normalize + ATS-clean
-  const normalized = atsNormalizeResume(normalizeResume(resume));
-  const doc = <ResumePDFDocument resume={normalized} templateId={templateId || 'executive'} colors={colors} />;
-  const blob = await pdf(doc).toBlob();
+  const { blob } = await buildResumePDFArtifact(resume, colors, templateId, 'A4');
+  const normalized = normalizeResume(resume);
+  if (!shouldDownload()) return;
   saveAs(blob, `${filename || normalized.name?.replace(/\s+/g, '_') || 'resume'}.pdf`);
+}
+
+export async function buildResumePDFArtifact(
+  resume: CanonicalResume,
+  colors?: TemplateColors,
+  templateId = 'executive',
+  pageSize: 'A4' | 'LETTER' = 'A4',
+): Promise<{ blob: Blob; pageCount: number | null }> {
+  const normalized = normalizeResume(resume);
+  const withAdditional = {
+    ...normalized,
+    additionalSections: (resume as CanonicalResume & { additionalSections?: unknown }).additionalSections,
+  } as CanonicalResume;
+  const blob = await pdf(<ResumePDFDocument resume={withAdditional} templateId={templateId} colors={colors} pageSize={pageSize} />).toBlob();
+  let pageCount: number | null = null;
+  try {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const document = await pdfjs.getDocument({ data: await blob.arrayBuffer() }).promise;
+    pageCount = document.numPages;
+    await document.destroy();
+  } catch { pageCount = null; }
+  return { blob, pageCount };
 }
 
 export async function downloadJDPDF(

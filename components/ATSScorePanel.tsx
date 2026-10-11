@@ -48,10 +48,10 @@ interface ATSScoreResult {
 // ── Helpers ──
 
 function getScoreColor(score: number) {
-  if (score >= 80) return '#10b981';
-  if (score >= 60) return '#f59e0b';
-  if (score >= 40) return '#f97316';
-  return '#ef4444';
+  if (score >= 80) return 'var(--success)';
+  if (score >= 60) return 'var(--warning)';
+  if (score >= 40) return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 function getScoreLabel(score: number) {
@@ -229,7 +229,7 @@ function ScoreRing({ score, size = 160 }: { score: number; size?: number }) {
         <circle
           cx={size / 2} cy={size / 2} r={radius}
           fill="none" stroke="currentColor" strokeWidth="8"
-          className="text-white/5"
+          className="text-[var(--border-subtle)]"
         />
         <motion.circle
           cx={size / 2} cy={size / 2} r={radius}
@@ -249,8 +249,11 @@ function ScoreRing({ score, size = 160 }: { score: number; size?: number }) {
         >
           {score}
         </motion.span>
-        <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-widest mt-0.5">
+        <span className="text-[11px] text-[var(--text-secondary)] uppercase tracking-widest mt-0.5">
           ATS Score
+        </span>
+        <span className="text-[11px] text-[var(--text-muted)] lowercase tracking-normal">
+          estimate
         </span>
       </div>
     </div>
@@ -277,7 +280,7 @@ function BreakdownBar({ label, score, icon, delay = 0 }: { label: string; score:
           <span className="text-xs text-[var(--text-secondary)]">{label}</span>
           <span className="text-xs font-bold" style={{ color }}>{score}%</span>
         </div>
-        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+        <div className="h-1.5 rounded-full bg-[var(--bg-hover)] overflow-hidden">
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: `${score}%` }}
@@ -295,21 +298,21 @@ function BreakdownBar({ label, score, icon, delay = 0 }: { label: string; score:
 
 function KeywordPill({ kw }: { kw: KeywordMatch }) {
   const statusConfig = {
-    matched: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', icon: 'check_circle' },
-    partial: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', icon: 'radio_button_partial' },
-    missing: { bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400', icon: 'cancel' },
+    matched: { className: 'border-[var(--success)] text-[var(--success)]', icon: 'check_circle' },
+    partial: { className: 'border-[var(--warning)] text-[var(--warning)]', icon: 'radio_button_partial' },
+    missing: { className: 'border-[var(--danger)] text-[var(--danger)]', icon: 'cancel' },
   };
 
   const config = statusConfig[kw.status];
 
   return (
     <div
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-all hover:scale-105 cursor-default ${config.bg} ${config.border} ${config.text}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-transform hover:scale-105 cursor-default ${config.className}`}
       title={kw.resumeContext || `${kw.keyword} (${getCategoryLabel(kw.category)})`}
     >
       <span className="material-symbols-rounded text-[12px]">{config.icon}</span>
       <span>{kw.keyword}</span>
-      <span className="opacity-50 text-[9px]">{getCategoryLabel(kw.category)}</span>
+      <span className="text-[11px] text-[var(--text-muted)]">{getCategoryLabel(kw.category)}</span>
     </div>
   );
 }
@@ -446,7 +449,7 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
               {savedResumes.length > 0 && (
                 <select
                   onChange={(e) => handleSelectSavedResume(e.target.value)}
-                  className="px-3 py-1.5 glass-card rounded-lg text-xs text-[var(--text-secondary)] outline-none focus:ring-1 focus:ring-cyan-500/30 max-w-[200px]"
+                  className="min-h-11 px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--card-bg)] text-base text-[var(--text-secondary)] outline-none focus:ring-1 focus:ring-[var(--accent)] max-w-[200px]"
                 >
                   <option value="">-- Load Saved Resume --</option>
                   {savedResumes.map(r => (
@@ -460,9 +463,9 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
               onChange={e => { setResumeText(e.target.value); updateContext({ resumeText: e.target.value }); }}
               placeholder="Paste your resume text here..."
               rows={6}
-              className="w-full px-4 py-3 rounded-xl glass-card text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/30 resize-none font-mono"
+              className="w-full px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-none font-mono"
             />
-            <p className="text-[10px] text-[var(--text-muted)] mt-1">
+            <p className="text-[11px] text-[var(--text-muted)] mt-1">
               {resumeText.split(/\s+/).filter(Boolean).length} words
             </p>
           </div>
@@ -478,7 +481,7 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
               onChange={e => { setJdText(e.target.value); updateContext({ jobDescription: e.target.value }); }}
               placeholder="Paste the target job description here..."
               rows={6}
-              className="w-full px-4 py-3 rounded-xl glass-card text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/30 resize-none font-mono"
+              className="w-full px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-none font-mono"
             />
           </div>
 
@@ -486,11 +489,11 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
           <button
             onClick={runAnalysis}
             disabled={isLoading || !resumeText.trim() || !jdText.trim()}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-sm hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary w-full flex min-h-11 items-center justify-center gap-2 px-6 py-3.5 font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-[var(--accent-on)] border-t-transparent rounded-full animate-spin" />
                 Analyzing...
               </>
             ) : (
@@ -525,15 +528,9 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
             className="space-y-5"
           >
             {/* Score + Breakdown Header */}
-            <div className="rounded-2xl glass-card p-6 relative overflow-hidden">
-              {/* Background glow */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div
-                  className="absolute -top-20 -right-20 w-60 h-60 rounded-full blur-3xl opacity-20"
-                  style={{ backgroundColor: getScoreColor(result.overallScore) }}
-                />
-              </div>
-
+            <div className="rounded-2xl elevation-card border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 relative overflow-hidden">
+              {typeof result.overallScore === 'number' ? (
+              <>
               <div className="relative z-10 flex flex-col md:flex-row items-center gap-6">
                 {/* Score Ring */}
                 <ScoreRing score={result.overallScore} />
@@ -546,42 +543,52 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
                   >
                     {getScoreLabel(result.overallScore)}
                   </h3>
-                  <p className="text-xs text-[var(--text-secondary)] mb-4">
+                  <p className="text-xs text-[var(--text-secondary)] mb-1">
                     {result.stats.totalKeywords} keywords analyzed
+                  </p>
+                  <p className="text-[11px] text-[var(--text-muted)] mb-4">
+                    Estimated match, not a measured outcome.
                   </p>
 
                   {/* Quick Stats */}
                   <div className="flex items-center justify-center md:justify-start gap-4">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                      <span className="text-xs text-emerald-400 font-medium">{result.stats.matched} matched</span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-[var(--success)]" />
+                      <span className="text-xs text-[var(--success)] font-medium">{result.stats.matched} matched</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                      <span className="text-xs text-amber-400 font-medium">{result.stats.partial} partial</span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-[var(--warning)]" />
+                      <span className="text-xs text-[var(--warning)] font-medium">{result.stats.partial} partial</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                      <span className="text-xs text-red-400 font-medium">{result.stats.missing} missing</span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-[var(--danger)]" />
+                      <span className="text-xs text-[var(--danger)] font-medium">{result.stats.missing} missing</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Breakdown Bars */}
-              <div className="relative z-10 mt-6 pt-5 border-t border-white/5 space-y-3">
+              <div className="relative z-10 mt-6 pt-5 border-t border-[var(--border-subtle)] space-y-3">
                 <BreakdownBar label="Hard Skills" score={result.breakdown.hardSkillsScore} icon="code" delay={0.1} />
                 <BreakdownBar label="Soft Skills" score={result.breakdown.softSkillsScore} icon="psychology" delay={0.2} />
                 <BreakdownBar label="Tools & Tech" score={result.breakdown.toolsScore} icon="build" delay={0.3} />
                 <BreakdownBar label="Formatting" score={result.breakdown.formattingScore} icon="format_align_left" delay={0.4} />
                 <BreakdownBar label="Experience Relevance" score={result.breakdown.experienceRelevance} icon="trending_up" delay={0.5} />
               </div>
+              </>
+              ) : (
+                <div className="relative z-10 rounded-xl border border-dashed border-[var(--border-subtle)] p-5 text-center">
+                  <p className="text-sm font-medium text-[var(--text-muted)]">No ATS score available</p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">This scan did not return a match score. Re-run the analysis to compute one.</p>
+                </div>
+              )}
             </div>
 
             {proofReport && <ProofEngineReport report={proofReport} />}
 
             {/* Keyword Gap Analysis */}
-            <div className="rounded-2xl glass-card p-5">
+            <div className="rounded-2xl elevation-card border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
               <div className="flex items-center justify-between mb-4">
                 <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
                   <span className="material-symbols-rounded text-base">key</span>
@@ -590,7 +597,7 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
               </div>
 
               {/* Filter Tabs */}
-              <div className="flex gap-1 p-1 rounded-xl bg-white/[0.03] mb-4">
+              <div className="flex gap-1 p-1 rounded-xl bg-[var(--bg-surface)] mb-4">
                 {([
                   { key: 'all', label: `All (${result.keywords.length})` },
                   { key: 'matched', label: `Matched (${result.stats.matched})` },
@@ -600,10 +607,10 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
                   <button
                     key={tab.key}
                     onClick={() => setActiveFilter(tab.key)}
-                    className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    className={`flex-1 min-h-11 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                       activeFilter === tab.key
-                        ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/20'
-                        : 'text-[var(--text-secondary)] hover:bg-white/5'
+                        ? 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[var(--accent)]'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
                     }`}
                   >
                     {tab.label}
@@ -633,9 +640,9 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
 
             {/* Suggestions */}
             {result.suggestions.length > 0 && (
-              <div className="rounded-2xl glass-card p-5">
+              <div className="rounded-2xl elevation-card border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
                 <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 mb-3">
-                  <span className="material-symbols-rounded text-base text-amber-400">lightbulb</span>
+                  <span className="material-symbols-rounded icon-status-warning text-base">lightbulb</span>
                   Suggestions
                 </h4>
                 <ul className="space-y-2">
@@ -647,7 +654,7 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
                       transition={{ delay: i * 0.1 }}
                       className="flex items-start gap-2 text-xs text-[var(--text-secondary)]"
                     >
-                      <span className="material-symbols-rounded text-xs text-amber-400/60 mt-0.5 shrink-0">
+                      <span className="material-symbols-rounded text-xs text-[var(--text-muted)] mt-0.5 shrink-0">
                         arrow_right
                       </span>
                       {s}
@@ -661,14 +668,14 @@ export default function ATSScorePanel({ resumeText: initialResumeText, onClose }
             <div className="flex gap-3">
               <button
                 onClick={() => { setResult(null); setActiveFilter('all'); }}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl glass-card text-sm font-medium text-[var(--text-secondary)] hover:bg-white/5 transition-all"
+                className="btn-secondary flex-1 flex min-h-11 items-center justify-center gap-2 px-4 py-3 text-sm font-medium"
               >
                 <span className="material-symbols-rounded text-base">refresh</span>
                 Re-analyze
               </button>
               <a
                 href="/suite/resume"
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-sm font-bold hover:shadow-lg hover:shadow-cyan-500/25 transition-all"
+                className="btn-primary flex-1 flex min-h-11 items-center justify-center gap-2 px-4 py-3 text-sm font-bold"
               >
                 <span className="material-symbols-rounded text-base">transform</span>
                 Morph Resume

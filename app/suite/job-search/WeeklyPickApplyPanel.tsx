@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { authFetch } from '@/lib/auth-fetch';
 import { showToast } from '@/components/Toast';
 import { mergeApplicationKitContext } from '@/lib/application-kit';
+import { EvidenceBadge } from '@/components/suite/SuiteToolChrome';
 
 // ═══════════════════════════════════════
 // TYPES
@@ -41,7 +42,7 @@ interface PipelineResult {
 type PanelState = 'idle' | 'preparing' | 'done' | 'error';
 
 // ═══════════════════════════════════════
-// SCORE RING
+// SCORE RING — renders a measured value only
 // ═══════════════════════════════════════
 function ScoreRing({ value, label, color, size = 56, strokeWidth = 4 }: {
   value: number; label: string; color: string; size?: number; strokeWidth?: number;
@@ -54,10 +55,14 @@ function ScoreRing({ value, label, color, size = 56, strokeWidth = 4 }: {
     <div className="flex flex-col items-center gap-1">
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={`${color}20`} strokeWidth={strokeWidth} />
+          <circle
+            cx={size / 2} cy={size / 2} r={radius} fill="none" strokeWidth={strokeWidth}
+            style={{ stroke: `color-mix(in srgb, ${color} 20%, transparent)` }}
+          />
           <motion.circle
-            cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth}
+            cx={size / 2} cy={size / 2} r={radius} fill="none" strokeWidth={strokeWidth}
             strokeLinecap="round" strokeDasharray={circumference}
+            style={{ stroke: color }}
             initial={{ strokeDashoffset: circumference }}
             animate={{ strokeDashoffset: offset }}
             transition={{ duration: 1, ease: 'easeOut' }}
@@ -67,14 +72,37 @@ function ScoreRing({ value, label, color, size = 56, strokeWidth = 4 }: {
           <span className="text-xs font-extrabold" style={{ color }}>{Math.round(value)}%</span>
         </div>
       </div>
-      <span className="text-[9px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">{label}</span>
+      <span className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">{label}</span>
     </div>
   );
 }
 
-// ═══════════════════════════════════════
-// PROGRESS STEPS
-// ═══════════════════════════════════════
+// A score slot that renders the ring only when the value was actually measured.
+// A missing score is a labelled absence — never a zero ring, never "0%".
+function ScoreSlot({ value, label, color }: {
+  value: number | null | undefined; label: string; color: string;
+}) {
+  const measured = typeof value === 'number' && Number.isFinite(value) && value > 0;
+
+  if (!measured) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <div
+          className="flex items-center justify-center rounded-full border border-dashed border-[var(--border-subtle)]"
+          style={{ width: 56, height: 56 }}
+        >
+          <span className="material-symbols-rounded text-lg text-[var(--text-muted)]" aria-hidden="true">remove</span>
+        </div>
+        <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          {label} · not scored
+        </span>
+      </div>
+    );
+  }
+
+  return <ScoreRing value={value} label={label} color={color} />;
+}
+
 const PIPELINE_STEPS = [
   { key: 'resume', label: 'Fetching resume', icon: 'description' },
   { key: 'morph', label: 'Preparing resume draft', icon: 'auto_fix_high' },
@@ -101,20 +129,20 @@ function flattenResumeToText(resume: any): string {
   return parts.join('\n');
 }
 
+// Grade colour resolves to a token, never a hex literal.
 function getGradeColor(grade: string): string {
-  if (grade === 'A+' || grade === 'A') return '#10b981';
-  if (grade === 'B+' || grade === 'B') return '#3b82f6';
-  if (grade === 'C') return '#f59e0b';
-  return '#ef4444';
+  if (grade === 'A+' || grade === 'A') return 'var(--success)';
+  if (grade === 'B+' || grade === 'B') return 'var(--accent)';
+  if (grade === 'C') return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 // ═══════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════
-export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
+export default function WeeklyPickApplyPanel({ job, onClose }: {
   job: SuggestedJob;
   onClose: () => void;
-  isLight: boolean;
 }) {
   const [state, setState] = useState<PanelState>('idle');
   const [activeStep, setActiveStep] = useState(0);
@@ -173,7 +201,8 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
 
       let atsScore = 0;
       let keywordMatch = 0;
-      let overallGrade = 'B';
+      // No fabricated default: an unmeasured grade stays empty and renders as absent.
+      let overallGrade = '';
       let strengths: string[] = [];
       let issues: string[] = [];
 
@@ -194,7 +223,7 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
 
         atsScore = ats?.score ?? check?.atsScore ?? pipelineData.atsResult?.overallScore ?? pipelineData.matchScore ?? 0;
         keywordMatch = check?.keywordMatch ?? ats?.score ?? pipelineData.atsResult?.overallScore ?? 0;
-        overallGrade = check?.overallGrade ?? 'B';
+        overallGrade = check?.overallGrade ?? '';
         strengths = check?.strengths ?? [];
         issues = check?.issues ?? [];
       } else {
@@ -264,28 +293,24 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
       transition={{ duration: 0.25 }}
-      className="mt-3 rounded-2xl border overflow-hidden"
-      style={{
-        background: isLight
-          ? 'linear-gradient(180deg, rgba(6,182,212,0.02), rgba(255,255,255,1))'
-          : 'linear-gradient(180deg, rgba(6,182,212,0.04), rgba(0,0,0,0))',
-        borderColor: isLight ? 'rgba(6,182,212,0.12)' : 'rgba(6,182,212,0.15)',
-      }}
+      className="elevation-card mt-3 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)]"
     >
       {/* ── Panel Header ── */}
       <div className="flex items-start justify-between p-4 pb-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'linear-gradient(135deg, #06b6d4, #10b981)' }}>
-            <span className="material-symbols-rounded text-white text-lg">work</span>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-dim)]">
+            <span className="material-symbols-rounded text-lg text-[var(--accent)]">work</span>
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] leading-tight truncate">{job.title}</h3>
-            <p className="text-[11px] text-cyan-500 font-medium">{job.company} • {job.location}</p>
+            <h3 className="truncate text-sm font-semibold leading-tight text-[var(--text-primary)]">{job.title}</h3>
+            <p className="text-[11px] font-medium text-[var(--text-secondary)]">{job.company} • {job.location}</p>
           </div>
         </div>
-        <button onClick={onClose} className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-          style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
+        <button
+          onClick={onClose}
+          aria-label="Close panel"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--bg-hover)]"
+        >
           <span className="material-symbols-rounded text-sm text-[var(--text-tertiary)]">close</span>
         </button>
       </div>
@@ -293,30 +318,21 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
       {/* ── IDLE: Review packet button ── */}
       {state === 'idle' && (
         <div className="px-4 pb-4">
-          <p className="text-[11px] text-[var(--text-secondary)] mb-3 leading-relaxed">
+          <p className="mb-3 text-[11px] leading-relaxed text-[var(--text-secondary)]">
             Prepare a review packet. TalentConsulting.io saves it as a draft and never submits the application for you.
           </p>
           <button
             onClick={runPipeline}
-            className="w-full px-4 py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2.5 text-white transition-all hover:scale-[1.01] active:scale-[0.98]"
-            style={{
-              background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
-              boxShadow: '0 4px 20px rgba(99,102,241,0.25)',
-            }}
+            className="btn-primary flex w-full items-center justify-center gap-2.5 px-4 py-3.5 text-sm font-bold"
           >
             <span className="material-symbols-rounded text-base">auto_awesome</span>
             Prepare packet
           </button>
           <button
             onClick={() => window.open(job.url, '_blank', 'noopener,noreferrer')}
-            className="w-full mt-2 px-3 py-2 rounded-xl text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all"
-            style={{
-              color: 'var(--text-secondary)',
-              background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)',
-              border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-            }}
+            className="btn-secondary mt-2 flex min-h-[44px] w-full items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold"
           >
-            <span className="material-symbols-rounded text-xs">open_in_new</span>
+            <span className="material-symbols-rounded text-sm">open_in_new</span>
             Open posting without prep
           </button>
         </div>
@@ -325,10 +341,7 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
       {/* ── PREPARING: Live Pipeline Progress ── */}
       {state === 'preparing' && (
         <div className="px-4 pb-4">
-          <div className="p-4 rounded-xl space-y-2.5" style={{
-            background: isLight ? 'rgba(0,0,0,0.015)' : 'rgba(255,255,255,0.015)',
-            border: `1px solid ${isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)'}`,
-          }}>
+          <div className="space-y-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
             {PIPELINE_STEPS.map((s, i) => {
               const isDone = i < activeStep;
               const isActive = i === activeStep;
@@ -337,14 +350,18 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
               return (
                 <div key={s.key} className="flex items-center gap-3">
                   {/* Status icon */}
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{
-                    background: isDone ? 'rgba(16,185,129,0.12)' : isActive ? 'rgba(6,182,212,0.12)' : 'rgba(0,0,0,0.03)',
-                  }}>
+                  <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                    isDone
+                      ? 'bg-[color-mix(in_srgb,var(--success)_12%,transparent)]'
+                      : isActive
+                        ? 'bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]'
+                        : 'bg-[var(--bg-hover)]'
+                  }`}>
                     {isDone && (
-                      <span className="material-symbols-rounded text-xs text-emerald-500">check</span>
+                      <span className="material-symbols-rounded text-xs text-[var(--success)]">check</span>
                     )}
                     {isActive && (
-                      <div className="w-3.5 h-3.5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+                      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[color-mix(in_srgb,var(--accent)_30%,transparent)] border-t-[var(--accent)]" />
                     )}
                     {isPending && (
                       <span className="material-symbols-rounded text-xs text-[var(--text-tertiary)]">{s.icon}</span>
@@ -353,7 +370,7 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
 
                   {/* Label */}
                   <span className={`text-xs font-medium ${
-                    isDone ? 'text-emerald-500' : isActive ? 'text-cyan-500' : 'text-[var(--text-tertiary)]'
+                    isDone ? 'text-[var(--success)]' : isActive ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'
                   }`}>
                     {isDone ? s.label.replace(/ing/, 'ed').replace(/Writing/, 'Wrote').replace(/Fetching/, 'Fetched').replace(/Running/, 'Ran').replace(/Saving/, 'Saved') : s.label}
                     {isActive && '...'}
@@ -363,7 +380,7 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
             })}
           </div>
 
-          <p className="text-center text-[10px] text-[var(--text-tertiary)] mt-2 animate-pulse">
+          <p className="mt-2 animate-pulse text-center text-[11px] text-[var(--text-tertiary)]">
             Taco is preparing a draft packet for your review...
           </p>
         </div>
@@ -372,15 +389,12 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
       {/* ── ERROR STATE ── */}
       {state === 'error' && (
         <div className="px-4 pb-4">
-          <div className="p-4 rounded-xl text-center" style={{
-            background: 'rgba(239,68,68,0.04)',
-            border: '1px solid rgba(239,68,68,0.12)',
-          }}>
-            <span className="material-symbols-rounded text-2xl text-red-500 mb-1 block">error</span>
-            <p className="text-xs text-red-500 font-semibold mb-1">{error}</p>
+          <div className="rounded-xl border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)] p-4 text-center">
+            <span className="material-symbols-rounded mb-1 block text-2xl text-[var(--danger)]">error</span>
+            <p className="mb-1 text-xs font-semibold text-[var(--danger)]">{error}</p>
             <button
               onClick={runPipeline}
-              className="px-4 py-2 rounded-lg text-xs font-semibold text-cyan-500 hover:bg-cyan-500/5 transition-colors"
+              className="min-h-[44px] rounded-lg px-4 py-2 text-xs font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent-dim)]"
             >
               Try Again
             </button>
@@ -397,41 +411,43 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 space-y-3">
+            <div className="space-y-3 px-4 pb-4">
 
               {/* Score dashboard */}
-              <div className="p-4 rounded-xl" style={{
-                background: isLight ? 'rgba(0,0,0,0.015)' : 'rgba(255,255,255,0.015)',
-                border: `1px solid ${isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.04)'}`,
-              }}>
-                {/* Score rings */}
-                <div className="flex items-center justify-around mb-4">
-                  <ScoreRing value={job.acceptanceChance} label="Talent fit" color="#2563eb" />
-                  <ScoreRing value={result.atsScore} label="ATS" color="#10b981" />
-                  <ScoreRing value={result.keywordMatch} label="Keywords" color="#f59e0b" />
+              <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                {/* Score rings — each renders only when its value was measured */}
+                <div className="mb-4 flex items-center justify-around">
+                  <ScoreSlot value={job.acceptanceChance} label="Talent fit" color="var(--accent)" />
+                  <ScoreSlot value={result.atsScore} label="ATS" color="var(--success)" />
+                  <ScoreSlot value={result.keywordMatch} label="Keywords" color="var(--warning)" />
                 </div>
 
-                {/* Grade */}
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Overall Grade</span>
-                  <span className="text-lg font-black px-2.5 py-0.5 rounded-lg" style={{
-                    color: getGradeColor(result.overallGrade),
-                    background: `${getGradeColor(result.overallGrade)}12`,
-                  }}>
-                    {result.overallGrade}
-                  </span>
-                </div>
+                {/* Grade — shown only when the check actually returned one */}
+                {result.overallGrade && (
+                  <div className="mb-3 flex items-center justify-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Overall Grade</span>
+                    <span
+                      className="rounded-lg px-2.5 py-0.5 text-lg font-black"
+                      style={{
+                        color: getGradeColor(result.overallGrade),
+                        background: `color-mix(in srgb, ${getGradeColor(result.overallGrade)} 12%, transparent)`,
+                      }}
+                    >
+                      {result.overallGrade}
+                    </span>
+                  </div>
+                )}
 
                 {/* Strengths */}
                 {result.strengths.length > 0 && (
                   <div className="mb-2">
-                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <span className="material-symbols-rounded text-[11px]">check_circle</span>
+                    <p className="mb-1 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--success)]">
+                      <span className="material-symbols-rounded text-[13px]">check_circle</span>
                       Strengths
                     </p>
                     <div className="space-y-0.5">
                       {result.strengths.slice(0, 3).map((s, i) => (
-                        <p key={i} className="text-[11px] text-[var(--text-secondary)] leading-snug pl-4">• {s}</p>
+                        <p key={i} className="pl-4 text-[11px] leading-snug text-[var(--text-secondary)]">• {s}</p>
                       ))}
                     </div>
                   </div>
@@ -440,13 +456,13 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
                 {/* Gaps */}
                 {result.issues.length > 0 && (
                   <div>
-                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <span className="material-symbols-rounded text-[11px]">lightbulb</span>
+                    <p className="mb-1 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--warning)]">
+                      <span className="material-symbols-rounded text-[13px]">lightbulb</span>
                       Gaps
                     </p>
                     <div className="space-y-0.5">
                       {result.issues.slice(0, 3).map((s, i) => (
-                        <p key={i} className="text-[11px] text-[var(--text-secondary)] leading-snug pl-4">• {s}</p>
+                        <p key={i} className="pl-4 text-[11px] leading-snug text-[var(--text-secondary)]">• {s}</p>
                       ))}
                     </div>
                   </div>
@@ -454,28 +470,16 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
               </div>
 
               {/* What was prepared */}
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex flex-wrap items-center gap-2">
                 {result.hasResume ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-medium bg-emerald-500/8 text-emerald-500 border border-emerald-500/15">
-                    <span className="material-symbols-rounded text-[11px]">check</span>
-                    Resume draft prepared
-                  </span>
+                  <EvidenceBadge state="verified" label="Resume draft prepared" />
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-medium bg-amber-500/8 text-amber-500 border border-amber-500/15">
-                    <span className="material-symbols-rounded text-[11px]">priority_high</span>
-                    Add resume before submitting
-                  </span>
+                  <EvidenceBadge state="missing" label="Add resume before submitting" />
                 )}
                 {result.coverLetter && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-medium bg-emerald-500/8 text-emerald-500 border border-emerald-500/15">
-                    <span className="material-symbols-rounded text-[11px]">check</span>
-                    Cover letter
-                  </span>
+                  <EvidenceBadge state="verified" label="Cover letter" />
                 )}
-                <span className="inline-flex items-center gap-1 text-[10px] px-2.5 py-1 rounded-full font-medium bg-emerald-500/8 text-emerald-500 border border-emerald-500/15">
-                  <span className="material-symbols-rounded text-[11px]">check</span>
-                  Draft saved to tracker
-                </span>
+                <EvidenceBadge state="verified" label="Draft saved to tracker" />
               </div>
 
               {/* Manual submit handoff */}
@@ -484,23 +488,14 @@ export default function WeeklyPickApplyPanel({ job, onClose, isLight }: {
                   href={job.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 px-4 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 text-white transition-all hover:scale-[1.01] active:scale-[0.98]"
-                  style={{
-                    background: 'linear-gradient(135deg, #06b6d4, #10b981)',
-                    boxShadow: '0 3px 16px rgba(6,182,212,0.2)',
-                  }}
+                  className="btn-primary flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm font-bold"
                 >
                   <span className="material-symbols-rounded text-base">open_in_new</span>
                   Open posting
                 </a>
                 <a
                   href="/suite/applications?status=not_applied"
-                  className="px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
-                  style={{
-                    background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)',
-                    border: `1px solid ${isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)'}`,
-                    color: 'var(--text-secondary)',
-                  }}
+                  className="btn-secondary flex min-h-[44px] items-center justify-center gap-1.5 px-4 py-3 text-xs font-bold"
                 >
                   <span className="material-symbols-rounded text-sm">folder_open</span>
                   Review draft

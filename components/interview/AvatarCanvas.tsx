@@ -15,13 +15,12 @@ interface AvatarCanvasProps {
   isSpeaking: boolean;
   isConnected: boolean;
   onLoaded?: () => void;
-  personaColor: string;
 }
 
 // CDN URL for TalkingHead (ESM module)
 const TALKINGHEAD_CDN = 'https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@1.2/modules/talkinghead.mjs';
 
-export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded, personaColor }: AvatarCanvasProps) {
+export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded }: AvatarCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const headRef = useRef<any>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -104,7 +103,7 @@ export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded, person
             animate={{ rotate: 360 }}
             transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
             className="w-12 h-12 rounded-full border-2 border-t-transparent mb-4"
-            style={{ borderColor: `${personaColor}40`, borderTopColor: 'transparent' }}
+            style={{ borderColor: 'color-mix(in srgb, var(--accent) 25%, transparent)', borderTopColor: 'transparent' }}
           />
           <p className="text-sm text-[var(--text-muted)]">Loading avatar...</p>
         </div>
@@ -115,13 +114,13 @@ export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded, person
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <div
             className="w-32 h-32 rounded-full flex items-center justify-center mb-4"
-            style={{ background: `${personaColor}10`, border: `2px solid ${personaColor}30` }}
+            style={{ background: 'color-mix(in srgb, var(--accent) 8%, transparent)', border: '2px solid color-mix(in srgb, var(--accent) 20%, transparent)' }}
           >
             <motion.div
               animate={isSpeaking ? { scale: [1, 1.15, 1] } : {}}
               transition={{ duration: 0.8, repeat: Infinity }}
             >
-              <span className="material-symbols-rounded text-[56px]" style={{ color: personaColor }}>
+              <span className="material-symbols-rounded text-[56px]" style={{ color: 'var(--accent)' }}>
                 {isSpeaking ? 'graphic_eq' : 'person'}
               </span>
             </motion.div>
@@ -134,9 +133,9 @@ export default function AvatarCanvas({ isSpeaking, isConnected, onLoaded, person
       {/* Speaking indicator when avatar is loaded */}
       {status === 'ready' && isSpeaking && (
         <div className="absolute top-4 right-4">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: `${personaColor}20` }}>
-            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: personaColor }} />
-            <span className="text-[11px] font-medium" style={{ color: personaColor }}>Speaking</span>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)' }}>
+            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
+            <span className="text-[11px] font-medium" style={{ color: 'var(--accent)' }}>Speaking</span>
           </div>
         </div>
       )}

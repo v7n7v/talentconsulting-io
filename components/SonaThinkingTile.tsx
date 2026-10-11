@@ -6,13 +6,16 @@ import { SonaMark } from '@/components/sona';
 type SonaThinkingVariant = 'default' | 'resume' | 'writing' | 'jobs' | 'oracle' | 'agent' | 'success';
 
 const variantAccent: Record<SonaThinkingVariant, string> = {
-  default: '#0ea5e9',
-  resume: '#10b981',
-  writing: '#22d3ee',
-  jobs: '#2563eb',
-  oracle: '#0ea5e9',
-  agent: '#8b5cf6',
-  success: '#059669',
+  // Accent is now the blue token everywhere; evidence/status keeps its own token
+  // so hue still carries meaning — the success state stays green (var(--success)),
+  // distinct from the blue accent.
+  default: 'var(--accent)',
+  resume: 'var(--accent)',
+  writing: 'var(--accent)',
+  jobs: 'var(--accent)',
+  oracle: 'var(--accent)',
+  agent: 'var(--accent)',
+  success: 'var(--success)',
 };
 
 interface SonaThinkingTileProps {
@@ -41,21 +44,21 @@ export default function SonaThinkingTile({
 }: SonaThinkingTileProps) {
   const prefersReducedMotion = useReducedMotion();
   const accent = accentColor || variantAccent[variant];
-  const softAccent = `${accent}18`;
-  const borderAccent = `${accent}36`;
+  const softAccent = `color-mix(in srgb, ${accent} 12%, transparent)`;
+  const borderAccent = `color-mix(in srgb, ${accent} 32%, transparent)`;
 
   return (
     <motion.div
       initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
-      className={`relative overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] ${compact ? 'p-3' : 'p-4'} ${className}`}
+      className={`elevation-card relative overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] ${compact ? 'p-3' : 'p-4'} ${className}`}
       role="status"
       aria-live="polite"
     >
       <div
         className="sona-shimmer-sweep"
         style={{
-          background: `linear-gradient(90deg, transparent, ${accent}08, ${accent}16, ${accent}08, transparent)`,
+          background: `linear-gradient(90deg, transparent, color-mix(in srgb, ${accent} 3%, transparent), color-mix(in srgb, ${accent} 9%, transparent), color-mix(in srgb, ${accent} 3%, transparent), transparent)`,
         }}
       />
       <div className="relative z-10 flex min-w-0 items-start gap-3">
@@ -72,7 +75,7 @@ export default function SonaThinkingTile({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
               style={{ borderColor: borderAccent, background: softAccent, color: accent }}
             >
               <motion.span
@@ -98,7 +101,6 @@ export default function SonaThinkingTile({
                   animate={prefersReducedMotion ? undefined : {
                     opacity: [0.55, 1, 0.68],
                     y: [0, -1, 0],
-                    boxShadow: [`0 0 0 ${accent}00`, `0 0 18px ${accent}36`, `0 0 0 ${accent}00`],
                   }}
                   transition={{ duration: 1.8, repeat: Infinity, delay: index * 0.18, ease: 'easeInOut' }}
                 >

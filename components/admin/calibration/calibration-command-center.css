@@ -59,12 +59,12 @@
 }
 
 .admin-command-grid .calibration-segment-group > header strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .calibration-segment-group > header small {
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -102,7 +102,7 @@
   justify-content: space-between;
   gap: 7px;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 720;
 }
 
@@ -113,7 +113,7 @@
 
 .admin-command-grid .calibration-segment-list article > small {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .admin-command-grid .calibration-segment-list progress {
@@ -152,7 +152,7 @@
 
 .admin-command-grid .calibration-segment-list dt {
   color: var(--admin-text-muted);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -161,7 +161,7 @@
 .admin-command-grid .calibration-segment-list dd {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -204,7 +204,7 @@
 
 .admin-command-grid .calibration-gate-status small {
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -221,7 +221,7 @@
   gap: 8px;
   align-items: flex-start;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -238,7 +238,7 @@
   background: var(--admin-healthy-soft);
   color: var(--admin-healthy);
   padding: 11px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -265,7 +265,7 @@
 
 .admin-command-grid .calibration-exclusion-list strong {
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 650;
   text-transform: capitalize;
 }
@@ -278,7 +278,7 @@
 .admin-command-grid .calibration-empty {
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .calibration-safety-grid {
@@ -304,12 +304,12 @@
 }
 
 .admin-command-grid .calibration-safety-grid strong {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .calibration-safety-grid small {
   color: var(--admin-text-secondary);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -334,7 +334,7 @@
 }
 
 .admin-command-grid .calibration-limitations strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .calibration-limitations ul {
@@ -343,7 +343,7 @@
   margin: 0;
   padding-left: 16px;
   color: var(--admin-text-secondary);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.45;
 }
 

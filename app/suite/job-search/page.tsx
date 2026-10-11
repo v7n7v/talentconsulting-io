@@ -4,7 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'rea
 import { useSearchParams } from 'next/navigation';
 import { motion, useReducedMotion } from 'framer-motion';
 import { showToast } from '@/components/Toast';
-import { SuiteToolHeader, SuiteToolShell } from '@/components/suite/SuiteToolChrome';
+import { formatJobSalary } from '@/lib/job-display';
+import type { JobSalary, JobWorkplaceType } from '@/lib/job-ingestion';
+import { sortJobSearchCandidates } from '@/lib/job-search-selection';
+import { SuiteToolHeader, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import { useStore } from '@/lib/store';
 import { getResumeVersions, getUserProfile, updateApplicationStatus, type ResumeVersion } from '@/lib/database-suite';
 import { authFetch } from '@/lib/auth-fetch';
@@ -43,16 +46,17 @@ interface OpportunityFitScore {
   scoreVersion?: string;
   confidence?: 'high' | 'medium' | 'low';
   evidenceCoverage?: number;
+  factorsMeasured?: boolean;
   overall: number;
-  skills: number;
-  titleSeniority: number;
-  domain: number;
-  location: number;
-  salary: number;
-  freshness: number;
-  resumeCoverage: number;
-  risk: number;
-  preference: number;
+  skills: number | null;
+  titleSeniority: number | null;
+  domain: number | null;
+  location: number | null;
+  salary: number | null;
+  freshness: number | null;
+  resumeCoverage: number | null;
+  risk: number | null;
+  preference: number | null;
   source?: number;
 }
 
@@ -71,7 +75,9 @@ interface OpportunityJob {
   title: string;
   company: string;
   location: string;
-  salary: { min: number | null; max: number | null; currency: string; isPredicted?: boolean };
+  salary: JobSalary;
+  remoteMode?: JobWorkplaceType;
+  locations?: string[];
   description: string;
   skills: string[];
   url: string;
@@ -168,15 +174,6 @@ function clampScore(value: number) {
   return Math.min(98, Math.max(0, Math.round(value)));
 }
 
-function formatSalary(min: number | null, max: number | null): string {
-  if (!min && !max) return 'Not listed';
-  const fmt = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`;
-  if (min && max && min !== max) return `${fmt(min)} - ${fmt(max)}`;
-  if (min) return `${fmt(min)}+`;
-  if (max) return `Up to ${fmt(max)}`;
-  return 'Not listed';
-}
-
 function timeAgo(dateString: string): string {
   const time = new Date(dateString).getTime();
   if (Number.isNaN(time)) return 'Unknown';
@@ -190,10 +187,10 @@ function timeAgo(dateString: string): string {
 }
 
 function scoreColor(score: number) {
-  if (score >= 85) return '#059669';
-  if (score >= 70) return '#0284c7';
-  if (score >= 55) return '#d97706';
-  return '#dc2626';
+  if (score >= 85) return 'var(--success)';
+  if (score >= 70) return 'var(--accent)';
+  if (score >= 55) return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 function scoreLabel(score: number | null) {
@@ -218,24 +215,25 @@ function sourceLabel(meta: OpportunitySourceMeta) {
 }
 
 function fitFromRaw(job: any): OpportunityFitScore | null {
-  if (job.fitScore) return { ...job.fitScore, preference: job.fitScore.preference ?? 70 };
-  if (job.fitBreakdown) return { ...job.fitBreakdown, preference: job.fitBreakdown.preference ?? 70 };
+  if (job.fitScore) return { ...job.fitScore, preference: job.fitScore.preference ?? null };
+  if (job.fitBreakdown) return { ...job.fitBreakdown, preference: job.fitBreakdown.preference ?? null };
   const match = job.matchScore;
   if (match === null || match === undefined) return null;
-  const ghostRisk = job.ghostRisk?.risk || job.freshness?.ghostRisk || 'low';
-  const riskPenalty = ghostRisk === 'high' ? 25 : ghostRisk === 'medium' ? 10 : 0;
-  const salaryScore = job.salary?.min || job.salary?.max ? 82 : 55;
+  // Only an overall match score is available. Do NOT synthesize a per-factor
+  // breakdown from it (project rule #1). Carry the real score and mark every
+  // factor as not measured so the UI renders a labelled absence, not fake bars.
   return {
     overall: clampScore(match),
-    skills: clampScore(match),
-    titleSeniority: clampScore(match + 2),
-    domain: clampScore(match - 4),
-    location: job.location?.toLowerCase().includes('remote') ? 88 : 72,
-    salary: salaryScore,
-    freshness: clampScore(84 - riskPenalty),
-    resumeCoverage: clampScore(match),
-    risk: clampScore(100 - riskPenalty),
-    preference: 70,
+    factorsMeasured: false,
+    skills: null,
+    titleSeniority: null,
+    domain: null,
+    location: null,
+    salary: null,
+    freshness: null,
+    resumeCoverage: null,
+    risk: null,
+    preference: null,
   };
 }
 
@@ -262,12 +260,14 @@ function normalizeJob(job: any): OpportunityJob {
     title: job.title || 'Untitled role',
     company: job.company || 'Unknown company',
     location: job.location || 'Not listed',
-    salary: job.salary || { min: null, max: null, currency: 'USD' },
+    salary: job.salary || { min: null, max: null, currency: 'UNKNOWN', interval: 'unknown' },
+    remoteMode: job.remoteMode,
+    locations: job.locations,
     description: job.description || '',
     skills: Array.isArray(job.skills) ? Array.from(new Set(job.skills.map(String))) : [],
     url: job.url || '',
-    postedDate: job.postedDate || new Date().toISOString(),
-    employmentType: job.employmentType || 'Full-time',
+    postedDate: job.postedDate || '',
+    employmentType: job.employmentType || 'Not listed',
     category: job.category,
     source: sourceName,
     matchScore: job.matchScore ?? fitScore?.overall ?? null,
@@ -353,15 +353,15 @@ function PacketStatusPill({ packet }: { packet?: ApplicationPacket }) {
   const status = packet?.status || 'idle';
   const config: Record<PacketStatus, { label: string; icon: string; className: string }> = {
     idle: { label: 'Not prepared', icon: 'radio_button_unchecked', className: 'border-[var(--border-subtle)] text-[var(--text-muted)] bg-[var(--card-bg)]' },
-    preparing: { label: 'Preparing', icon: 'progress_activity', className: 'border-cyan-400/35 text-cyan-700 bg-cyan-500/10 dark:text-cyan-300' },
-    ready: { label: 'Ready', icon: 'verified', className: 'border-emerald-400/35 text-emerald-700 bg-emerald-500/10 dark:text-emerald-300' },
-    needs_attention: { label: 'Needs attention', icon: 'error', className: 'border-amber-400/35 text-amber-700 bg-amber-500/10 dark:text-amber-300' },
-    failed: { label: 'Retry needed', icon: 'error', className: 'border-rose-400/35 text-rose-700 bg-rose-500/10 dark:text-rose-300' },
-    applied: { label: 'Applied', icon: 'done_all', className: 'border-emerald-400/35 text-emerald-700 bg-emerald-500/10 dark:text-emerald-300' },
+    preparing: { label: 'Preparing', icon: 'progress_activity', className: 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-dim)]' },
+    ready: { label: 'Ready', icon: 'verified', className: 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] text-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)]' },
+    needs_attention: { label: 'Needs attention', icon: 'error', className: 'border-[color-mix(in_srgb,var(--warning)_35%,transparent)] text-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)]' },
+    failed: { label: 'Retry needed', icon: 'error', className: 'border-[color-mix(in_srgb,var(--danger)_35%,transparent)] text-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)]' },
+    applied: { label: 'Applied', icon: 'done_all', className: 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] text-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)]' },
   };
   const item = config[status];
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${item.className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${item.className}`}>
       <span className={`material-symbols-rounded text-[12px] ${status === 'preparing' ? 'animate-spin' : ''}`}>{item.icon}</span>
       {item.label}
     </span>
@@ -371,7 +371,7 @@ function PacketStatusPill({ packet }: { packet?: ApplicationPacket }) {
 function RecommendationStatusPill({ status }: { status?: string | null }) {
   if (status !== 'saved' && status !== 'dismissed') return null;
   return (
-    <span className="inline-flex items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-1 text-[10px] font-semibold text-[var(--text-secondary)]">
+    <span className="inline-flex items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--text-secondary)]">
       {status === 'saved' ? 'Saved role' : 'Skipped role'}
     </span>
   );
@@ -442,24 +442,24 @@ function ResumeSourcePicker({
 
   return (
     <div className="relative">
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Resume source</span>
+      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Resume source</span>
       <button
         type="button"
         onClick={() => setOpen(prev => !prev)}
         className={`flex h-11 w-full items-center justify-between gap-3 rounded-[12px] border px-3 text-left transition ${
           open || selectedResume
-            ? 'border-cyan-400/40 bg-cyan-500/10'
+            ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
             : 'border-[var(--border-subtle)] bg-[var(--bg-input)] hover:border-[var(--border)]'
         }`}
         aria-expanded={open}
       >
         <span className="flex min-w-0 items-center gap-2">
-          <span className={`material-symbols-rounded text-[18px] ${selectedResume ? 'text-cyan-700 dark:text-cyan-300' : 'text-[var(--text-muted)]'}`}>description</span>
+          <span className={`material-symbols-rounded text-[18px] ${selectedResume ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>description</span>
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
               {selectedResumeName || selectedResume?.version_name || (resumes.length > 0 ? 'Choose resume' : 'No saved resumes')}
             </span>
-            <span className="block truncate text-[10px] text-[var(--text-muted)]">
+            <span className="block truncate text-[11px] text-[var(--text-muted)]">
               {selectedResume ? `${timeAgo(selectedResume.created_at)} · ${extractResumeSkills(selectedResume.content).length} skills` : `${resumes.length} available`}
             </span>
           </span>
@@ -471,7 +471,7 @@ function ResumeSourcePicker({
         <motion.div
           initial={{ opacity: 0, y: 8, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          className="absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-[0_18px_60px_rgba(15,23,42,0.18)]"
+          className="absolute left-0 right-0 z-40 mt-2 overflow-hidden rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-raised"
         >
           <div className="border-b border-[var(--border-subtle)] p-3">
             <div className="relative">
@@ -480,7 +480,7 @@ function ResumeSourcePicker({
                 value={query}
                 onChange={event => setQuery(event.target.value)}
                 placeholder="Search resume versions..."
-                className="h-10 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/20"
+                className="h-11 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] pl-9 pr-3 text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
               />
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -491,7 +491,7 @@ function ResumeSourcePicker({
                   onClick={() => setDateFilter(filter.value)}
                   className={`rounded-[9px] border px-2.5 py-1.5 text-[11px] font-semibold transition ${
                     dateFilter === filter.value
-                      ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -507,7 +507,7 @@ function ResumeSourcePicker({
                   onClick={() => setSortBy(sort.value)}
                   className={`inline-flex items-center gap-1 rounded-[9px] border px-2.5 py-1.5 text-[11px] font-semibold transition ${
                     sortBy === sort.value
-                      ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                      ? 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -534,11 +534,11 @@ function ResumeSourcePicker({
 	                  aria-label={`${active ? 'Selected resume' : 'Select resume'}: ${resume.version_name}`}
 	                  className={`mb-1 flex w-full items-start gap-3 rounded-[12px] border p-3 text-left transition ${
 	                    active
-	                      ? 'border-cyan-400/40 bg-cyan-500/10'
+	                      ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
 	                      : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--card-bg)]'
 	                  }`}
 	                >
-	                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] ${active ? 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300' : 'bg-[var(--card-bg)] text-[var(--text-muted)]'}`} aria-hidden="true">
+	                  <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] ${active ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-[var(--card-bg)] text-[var(--text-muted)]'}`} aria-hidden="true">
 	                    <span className="material-symbols-rounded text-[18px]">{active ? 'check_circle' : 'description'}</span>
 	                  </span>
 	                  <span className="min-w-0 flex-1">
@@ -549,12 +549,12 @@ function ResumeSourcePicker({
 	                    {skills.length > 0 && (
 	                      <span className="mt-2 flex flex-wrap gap-1">
 	                        {Array.from(new Set(skills)).slice(0, 4).map((skill, index) => (
-	                          <span key={`${skill}:${index}`} className="rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">{skill}</span>
+	                          <span key={`${skill}:${index}`} className="rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">{skill}</span>
 	                        ))}
 	                      </span>
 	                    )}
 	                  </span>
-	                  <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${active ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'}`}>
+	                  <span className={`mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${active ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'}`}>
 	                    <span className="material-symbols-rounded text-[13px]" aria-hidden="true">{active ? 'check' : 'touch_app'}</span>
 	                    {active ? 'Selected' : 'Use'}
 	                  </span>
@@ -604,7 +604,7 @@ function JobSearchCommandStrip({
   onResumeSelect: (id: string) => void;
 }) {
   return (
-    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm">
+    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 elevation-card">
       <form
         onSubmit={event => {
           event.preventDefault();
@@ -619,23 +619,23 @@ function JobSearchCommandStrip({
           onResumeSelect={onResumeSelect}
         />
         <label>
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Target role</span>
+          <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Target role</span>
           <input
             id="job-search-target-role"
             aria-label="Target role"
             value={query}
             onChange={event => onQueryChange(event.target.value)}
             placeholder="Software engineer, data analyst, product manager..."
-            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-sm font-medium text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-base font-medium text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
           />
         </label>
         <label>
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Location</span>
+          <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Location</span>
           <input
             value={location}
             onChange={event => onLocationChange(event.target.value)}
             placeholder="Remote, New York, Austin..."
-            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+            className="h-11 w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
           />
         </label>
         <button
@@ -683,8 +683,8 @@ function JobSearchHeader({
 
 function HeaderStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-2 sm:min-w-[92px] sm:px-3">
-      <p className="truncate text-[8px] font-semibold uppercase tracking-[0.06em] text-[var(--text-muted)] sm:text-[9px] sm:tracking-[0.12em]">{label}</p>
+    <div className="min-w-0 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-1.5 py-2 sm:min-w-[92px] sm:px-3">
+      <p className="truncate text-[11px] font-semibold uppercase tracking-normal text-[var(--text-muted)] sm:tracking-[0.12em]">{label}</p>
       <p className="mt-0.5 text-sm font-semibold text-[var(--text-primary)]">{value}</p>
     </div>
   );
@@ -692,15 +692,15 @@ function HeaderStat({ label, value }: { label: string; value: string }) {
 
 function CommandMetric({ icon, label, value, tone }: { icon: string; label: string; value: string; tone: 'cyan' | 'emerald' | 'muted' }) {
   const toneClass = tone === 'emerald'
-    ? 'text-emerald-700 bg-emerald-500/10 border-emerald-400/25 dark:text-emerald-300'
+    ? 'text-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] border-[color-mix(in_srgb,var(--success)_35%,transparent)]'
     : tone === 'cyan'
-      ? 'text-cyan-700 bg-cyan-500/10 border-cyan-400/25 dark:text-cyan-300'
+      ? 'text-[var(--accent)] bg-[var(--accent-dim)] border-[var(--accent)]'
       : 'text-[var(--text-secondary)] bg-[var(--card-bg)] border-[var(--border-subtle)]';
   return (
     <div className={`flex min-h-[58px] items-center gap-3 rounded-[14px] border px-3 py-2 ${toneClass}`}>
       <span className="material-symbols-rounded text-[20px]">{icon}</span>
       <div className="min-w-0">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] opacity-70">{label}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-70">{label}</p>
         <p className="mt-0.5 truncate text-xs font-semibold">{value}</p>
       </div>
     </div>
@@ -711,21 +711,30 @@ function SourceHealthPanel({ jobs }: { jobs: OpportunityJob[] }) {
   const direct = jobs.filter(job => job.sourceMeta.sourceType === 'direct_ats').length;
   const aggregator = jobs.filter(job => job.sourceMeta.sourceType === 'aggregator').length;
   const remote = jobs.filter(job => job.sourceMeta.sourceType === 'remote_board').length;
-  const total = Math.max(1, jobs.length);
+  const total = jobs.length;
   return (
     <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Source health</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Source health</p>
           <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Hybrid supply</p>
         </div>
-        <span className="material-symbols-rounded text-cyan-600 dark:text-cyan-300">hub</span>
+        <span className="material-symbols-rounded text-[var(--accent)]">hub</span>
       </div>
-      <div className="mt-4 space-y-3">
-        <SourceBar label="Direct ATS" value={direct} total={total} />
-        <SourceBar label="Aggregator" value={aggregator} total={total} />
-        <SourceBar label="Remote boards" value={remote} total={total} />
-      </div>
+      {total > 0 ? (
+        <div className="mt-4 space-y-3">
+          <SourceBar label="Direct ATS" value={direct} total={total} />
+          <SourceBar label="Aggregator" value={aggregator} total={total} />
+          <SourceBar label="Remote boards" value={remote} total={total} />
+        </div>
+      ) : (
+        <SuiteUnmeasured
+          className="mt-4"
+          density="compact"
+          label="No source mix yet"
+          reason="Run a search to see how supply splits across direct ATS, aggregators, and remote boards."
+        />
+      )}
     </div>
   );
 }
@@ -739,7 +748,7 @@ function SourceBar({ label, value, total }: { label: string; value: number; tota
         <span className="text-[var(--text-muted)]">{value}</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--card-bg)]">
-        <div className="h-full rounded-full bg-cyan-500/70" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -785,7 +794,7 @@ function OpportunityIntelligenceBar({
   const profileScore = [hasPrefs, userSkills.length > 0, matchThreshold >= 60, !hideGhosts].filter(Boolean).length;
   const directCount = jobs.filter(job => job.sourceMeta.sourceType === 'direct_ats').length;
   return (
-    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 shadow-sm">
+    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 elevation-card">
       <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:w-[560px]">
           <SignalTile icon="fact_check" label="Profile" value={`${profileScore}/4 ready`} done={profileScore >= 3} />
@@ -801,7 +810,7 @@ function OpportunityIntelligenceBar({
               onClick={() => onFilterChange(filter.value)}
               className={`inline-flex items-center justify-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
                 activeFilter === filter.value
-                  ? 'border-cyan-400/45 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                   : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
@@ -815,7 +824,7 @@ function OpportunityIntelligenceBar({
           <select
             value={sortBy}
             onChange={event => onSortChange(event.target.value as SortOption)}
-            className="h-10 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-xs font-semibold text-[var(--text-secondary)] outline-none"
+            className="h-11 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 text-sm font-semibold text-[var(--text-secondary)] outline-none"
             aria-label="Sort opportunities"
           >
             <option value="relevance">Relevance</option>
@@ -824,9 +833,9 @@ function OpportunityIntelligenceBar({
           </select>
           <button
             onClick={onPrefsToggle}
-            className={`inline-flex h-10 items-center gap-1.5 rounded-[11px] border px-3 text-xs font-semibold transition ${
+            className={`inline-flex h-11 items-center gap-1.5 rounded-[11px] border px-3 text-xs font-semibold transition ${
               showPrefs
-                ? 'border-cyan-400/45 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                 : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
@@ -853,10 +862,10 @@ function OpportunityIntelligenceBar({
               <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Search profile</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Search profile</p>
                     <h2 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{profileScore}/4 ready</h2>
                   </div>
-                  <span className="material-symbols-rounded text-cyan-600 dark:text-cyan-300">checklist</span>
+                  <span className="material-symbols-rounded text-[var(--accent)]">checklist</span>
                 </div>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   <ChecklistRow label="Preferences saved" done={hasPrefs} />
@@ -867,13 +876,13 @@ function OpportunityIntelligenceBar({
               </section>
 
               <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Saved searches</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Saved searches</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {SAVED_SEARCHES.map(search => (
                     <button
                       key={search}
                       onClick={() => onSavedSearch(search)}
-                      className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:border-cyan-400/35 hover:text-cyan-700 dark:hover:text-cyan-300"
+                      className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
                     >
                       {search}
                     </button>
@@ -881,7 +890,7 @@ function OpportunityIntelligenceBar({
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1.4fr]">
                   <label>
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Min fit</span>
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Min fit</span>
                     <div className="flex items-center gap-3">
                       <input
                         type="range"
@@ -890,18 +899,18 @@ function OpportunityIntelligenceBar({
                         step={5}
                         value={matchThreshold}
                         onChange={event => onThresholdChange(Number(event.target.value))}
-                        className="w-full accent-cyan-500"
+                        className="w-full accent-[var(--accent)]"
                       />
-                      <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">{matchThreshold}%</span>
+                      <span className="rounded-full bg-[var(--accent-dim)] px-2 py-0.5 text-[11px] font-semibold text-[var(--accent)]">{matchThreshold}%</span>
                     </div>
                   </label>
-                  <label className="flex items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
+                  <label className="flex min-h-[44px] cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
                     <span className="text-xs font-medium text-[var(--text-secondary)]">Hide high ghost risk</span>
                     <input
                       type="checkbox"
                       checked={hideGhosts}
                       onChange={event => onHideGhostsChange(event.target.checked)}
-                      className="accent-cyan-500"
+                      className="h-5 w-5 accent-[var(--accent)]"
                     />
                   </label>
                 </div>
@@ -920,12 +929,12 @@ function SignalTile({ icon, label, value, done }: { icon: string; label: string;
   return (
     <div className={`flex items-center gap-2 rounded-[12px] border px-3 py-2 ${
       done
-        ? 'border-cyan-400/20 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+        ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
         : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
     }`}>
       <span className="material-symbols-rounded text-[18px]">{icon}</span>
       <div className="min-w-0">
-        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] opacity-70">{label}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-70">{label}</p>
         <p className="truncate text-xs font-semibold">{value}</p>
       </div>
     </div>
@@ -935,7 +944,7 @@ function SignalTile({ icon, label, value, done }: { icon: string; label: string;
 function ChecklistRow({ label, done }: { label: string; done: boolean }) {
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className={`material-symbols-rounded text-[16px] ${done ? 'text-emerald-600 dark:text-emerald-300' : 'text-[var(--text-muted)]'}`}>
+      <span className={`material-symbols-rounded text-[16px] ${done ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
         {done ? 'check_circle' : 'radio_button_unchecked'}
       </span>
       <span className={done ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}>{label}</span>
@@ -1013,8 +1022,8 @@ function OpportunityFeed({
     return (
       <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
         <div className="mx-auto max-w-2xl py-12 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[16px] border border-cyan-400/20 bg-cyan-500/10">
-            <span className="material-symbols-rounded text-2xl text-cyan-600 dark:text-cyan-300">radar</span>
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[16px] border border-[var(--accent)] bg-[var(--accent-dim)]">
+            <span className="material-symbols-rounded text-2xl text-[var(--accent)]">radar</span>
           </div>
           <h2 className="mt-5 text-xl font-semibold tracking-tight text-[var(--text-primary)]">Start with a role, then let Taco rank the market.</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
@@ -1025,7 +1034,7 @@ function OpportunityFeed({
               <button
                 key={search}
                 onClick={() => onEmptySearch(search)}
-                className="rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-cyan-400/35 hover:text-cyan-700 dark:hover:text-cyan-300"
+                className="rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
                 {search}
               </button>
@@ -1055,7 +1064,7 @@ function OpportunityFeed({
         <button
           type="button"
           onClick={onEditSearch}
-          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35"
+          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
           <span className="material-symbols-rounded text-[16px]" aria-hidden="true">edit</span>
           Edit search
@@ -1086,7 +1095,7 @@ function OpportunityFeed({
       )}
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Opportunity feed</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Opportunity feed</p>
           <h2 className="text-base font-semibold text-[var(--text-primary)]">{jobs.length} ranked roles</h2>
           {jobs.length > 3 && (
             <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)] lg:hidden">Reviewing the strongest three first.</p>
@@ -1108,7 +1117,7 @@ function OpportunityFeed({
               setMobileReviewExpanded(nextExpanded);
               if (!nextExpanded && !topThreeJobs.some(job => getJobResultIdentity(job) === selectedId)) onSelect(topThreeJobs[0]);
             }}
-            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 lg:hidden"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] lg:hidden"
           >
             <span className="material-symbols-rounded text-[17px]" aria-hidden="true">{mobileReviewExpanded ? 'collapse_all' : 'expand_all'}</span>
             {mobileReviewExpanded ? 'Show top 3 only' : `Show all ${jobs.length} roles`}
@@ -1143,7 +1152,7 @@ function OpportunityCard({
   onPrepare: () => void;
 }) {
   const score = job.fitScore?.overall ?? job.matchScore;
-  const color = score === null ? '#64748b' : scoreColor(score);
+  const color = score === null ? 'var(--text-muted)' : scoreColor(score);
   const canPrepare = job.preparationEligible;
   const packetNeedsRecovery = packet?.status === 'needs_attention' || packet?.status === 'failed';
   const canRetryPacket = packetNeedsRecovery && packet?.recovery?.action === 'retry_packet';
@@ -1159,7 +1168,7 @@ function OpportunityCard({
   return (
     <article
       className={`rounded-[16px] border bg-[var(--bg-surface)] p-4 transition ${
-        selected ? 'border-cyan-400/45 shadow-[0_0_0_3px_rgba(34,211,238,0.08)]' : 'border-[var(--border-subtle)] hover:border-cyan-400/30'
+        selected ? 'border-[var(--accent)] elevation-raised' : 'border-[var(--border-subtle)] elevation-card hover:border-[var(--accent)]'
       }`}
     >
       <button
@@ -1172,7 +1181,7 @@ function OpportunityCard({
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-1.5">
               {rank && (
-                <span className="inline-flex min-h-6 items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 text-[10px] font-semibold tabular-nums text-[var(--text-secondary)] lg:hidden">
+                <span className="inline-flex min-h-6 items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 text-[11px] font-semibold tabular-nums text-[var(--text-secondary)] lg:hidden">
                   Pick {rank}
                 </span>
               )}
@@ -1185,28 +1194,28 @@ function OpportunityCard({
             <p className="mt-1 text-sm font-medium text-[var(--text-secondary)]">{job.company}</p>
           </div>
           <div className="shrink-0 text-right">
-            <div className="rounded-[12px] border px-3 py-2" style={{ borderColor: `${color}33`, background: `${color}10` }}>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em]" style={{ color }}>{scoreLabel(score)}</p>
+            <div className="rounded-[12px] border px-3 py-2" style={{ borderColor: `color-mix(in srgb, ${color} 25%, transparent)`, background: `color-mix(in srgb, ${color} 10%, transparent)` }}>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em]" style={{ color }}>{scoreLabel(score)}</p>
               <p className="mt-0.5 text-xl font-semibold" style={{ color }}>{score === null ? '--' : `${score}%`}</p>
             </div>
           </div>
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
           <MetaChip icon="location_on" text={job.location} />
-          <MetaChip icon="payments" text={formatSalary(job.salary.min, job.salary.max)} />
+          <MetaChip icon="payments" text={formatJobSalary(job.salary)} />
           <MetaChip icon="schedule" text={timeAgo(job.postedDate)} />
         </div>
         <p className="mt-3 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">{job.recommendationReason}</p>
         {(job.fitReasons || []).length > 0 && (
           <div className="mt-3 flex min-w-0 items-start gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-            <span className="material-symbols-rounded mt-0.5 text-[14px] text-blue-600 dark:text-blue-300" aria-hidden="true">fact_check</span>
+            <span className="material-symbols-rounded mt-0.5 text-[14px] text-[var(--accent)]" aria-hidden="true">fact_check</span>
             <p className="line-clamp-2 min-w-0 text-[11px] leading-5 text-[var(--text-secondary)]">{job.fitReasons?.[0]}</p>
           </div>
         )}
         {job.skills.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {job.skills.slice(0, 6).map((skill, index) => (
-              <span key={`${skill}:${index}`} className="rounded-[8px] bg-[var(--card-bg)] px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)]">{skill}</span>
+              <span key={`${skill}:${index}`} className="rounded-[8px] bg-[var(--card-bg)] px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)]">{skill}</span>
             ))}
           </div>
         )}
@@ -1252,7 +1261,7 @@ function MetaChip({ icon, text }: { icon: string; text: string }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)]">
       <span className="material-symbols-rounded text-[13px] text-[var(--text-muted)]">{icon}</span>
-      <span className="truncate">{text}</span>
+      <span className="truncate" title={text}>{text}</span>
     </span>
   );
 }
@@ -1260,9 +1269,9 @@ function MetaChip({ icon, text }: { icon: string; text: string }) {
 function SourceBadge({ meta }: { meta: OpportunitySourceMeta }) {
   const direct = meta.sourceType === 'direct_ats';
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${
       direct
-        ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+        ? 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]'
         : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
     }`}>
       <span className="material-symbols-rounded text-[12px]">{direct ? 'verified' : 'travel_explore'}</span>
@@ -1274,12 +1283,12 @@ function SourceBadge({ meta }: { meta: OpportunitySourceMeta }) {
 function FreshnessBadge({ job }: { job: OpportunityJob }) {
   const risk = job.freshness.ghostRisk;
   const className = risk === 'high'
-    ? 'border-rose-400/30 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+    ? 'border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]'
     : risk === 'medium'
-      ? 'border-amber-400/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-      : 'border-cyan-400/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300';
+      ? 'border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)]'
+      : 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]';
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${className}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${className}`}>
       <span className="material-symbols-rounded text-[12px]">{job.freshness.isFresh ? 'bolt' : risk === 'high' ? 'warning' : 'schedule'}</span>
       {job.freshness.isFresh ? 'Fresh' : risk === 'high' ? 'Ghost risk' : timeAgo(job.postedDate)}
     </span>
@@ -1344,7 +1353,7 @@ function OpportunityIntelligencePanel({
   ).slice(0, 10);
 
   return (
-    <aside id="opportunity-intelligence-panel" ref={panelRef} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
+    <aside id="opportunity-intelligence-panel" ref={panelRef} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
       <div className="border-b border-[var(--border-subtle)] p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1353,15 +1362,15 @@ function OpportunityIntelligencePanel({
               <FreshnessBadge job={job} />
             </div>
             <h2 className="text-lg font-semibold leading-tight text-[var(--text-primary)]">{job.title}</h2>
-            <p className="mt-1 text-sm font-medium text-cyan-700 dark:text-cyan-300">{job.company}</p>
+            <p className="mt-1 text-sm font-medium text-[var(--accent)]">{job.company}</p>
           </div>
-          <button aria-label="Close role details" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] lg:h-8 lg:w-8">
+          <button aria-label="Close role details" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]">
             <span className="material-symbols-rounded text-base" aria-hidden="true">close</span>
           </button>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2">
           <PanelMetric label="Fit" value={job.fitScore ? `${job.fitScore.overall}%` : '--'} />
-          <PanelMetric label="Salary" value={formatSalary(job.salary.min, job.salary.max)} />
+          <PanelMetric label="Salary" value={formatJobSalary(job.salary)} />
           <PanelMetric label="Posted" value={timeAgo(job.postedDate)} />
         </div>
         <div className="mt-4 grid grid-cols-4 gap-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-1">
@@ -1370,7 +1379,7 @@ function OpportunityIntelligencePanel({
               key={item}
               onClick={() => setTab(item)}
               className={`min-h-11 rounded-[9px] px-2 py-2 text-xs font-semibold capitalize transition ${
-                tab === item ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                tab === item ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] elevation-card' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
               {item === 'jd' ? 'JD' : item}
@@ -1407,7 +1416,7 @@ function OpportunityIntelligencePanel({
                     }}
                     className={`min-h-11 rounded-[11px] border px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
                       feedbackTag === tag
-                        ? 'border-blue-500/45 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                        ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                         : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
@@ -1449,30 +1458,37 @@ function OpportunityIntelligencePanel({
                 });
                 window.location.href = '/suite/market-oracle';
               }}
-              className="flex w-full items-center justify-center gap-2 rounded-[13px] border border-cyan-500/20 bg-cyan-500/10 px-4 py-2.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-500/15 dark:text-cyan-300"
+              className="flex w-full items-center justify-center gap-2 rounded-[13px] border border-[var(--accent)] bg-[var(--accent-dim)] px-4 py-2.5 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-hover)]"
             >
               <span className="material-symbols-rounded text-base">troubleshoot</span>
               Deep Analyze in Market Oracle
             </button>
             {job.fitScore ? (
-              <div className="space-y-3">
-                <FitRow label="Skills" value={job.fitScore.skills} />
-                <FitRow label="Seniority" value={job.fitScore.titleSeniority} />
-                <FitRow label="Domain" value={job.fitScore.domain} />
-                <FitRow label="Location" value={job.fitScore.location} />
-                <FitRow label="Freshness" value={job.fitScore.freshness} />
-                <FitRow label="Your signals" value={job.fitScore.preference} />
-                <FitRow label="Risk control" value={job.fitScore.risk} />
-              </div>
+              job.fitScore.factorsMeasured === false ? (
+                <SuiteUnmeasured
+                  label="Fit breakdown not measured"
+                  reason="Only an overall match score is available for this role. Add or refresh your resume so Taco can break fit down by factor."
+                />
+              ) : (
+                <div className="space-y-3">
+                  <FitRow label="Skills" value={job.fitScore.skills} />
+                  <FitRow label="Seniority" value={job.fitScore.titleSeniority} />
+                  <FitRow label="Domain" value={job.fitScore.domain} />
+                  <FitRow label="Location" value={job.fitScore.location} />
+                  <FitRow label="Freshness" value={job.fitScore.freshness} />
+                  <FitRow label="Your signals" value={job.fitScore.preference} />
+                  <FitRow label="Risk control" value={job.fitScore.risk} />
+                </div>
+              )
             ) : (
               <SetupNudge icon="description" title="Add resume to unlock fit scoring" body="Upload or save a resume version so Taco can rank roles by actual evidence instead of broad search terms." />
             )}
             {missingSkills.length > 0 && (
-              <div className="rounded-[14px] border border-amber-400/20 bg-amber-500/5 p-4">
-                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">Keyword gaps</p>
+              <div className="rounded-[14px] border border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_6%,transparent)] p-4">
+                <p className="text-xs font-semibold text-[var(--warning)]">Keyword gaps</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {missingSkills.map((skill, index) => (
-                    <span key={`${skill}:${index}`} className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{skill}</span>
+                    <span key={`${skill}:${index}`} className="rounded-full bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--warning)]">{skill}</span>
                   ))}
                 </div>
               </div>
@@ -1487,7 +1503,7 @@ function OpportunityIntelligencePanel({
               <MetaChip icon="work" text={job.employmentType} />
             </div>
             <div>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Role description</p>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Role description</p>
               <p className="whitespace-pre-wrap text-sm leading-7 text-[var(--text-secondary)]">{job.description || 'No description was provided by the source.'}</p>
             </div>
           </div>
@@ -1525,8 +1541,8 @@ function OpportunityIntelligencePanel({
 function PanelMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
-      <p className="mt-1 truncate text-xs font-semibold text-[var(--text-primary)]">{value}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
+      <p className="mt-1 truncate text-xs font-semibold text-[var(--text-primary)]" title={value}>{value}</p>
     </div>
   );
 }
@@ -1545,9 +1561,9 @@ function EvidenceNoteList({
   tone: 'blue' | 'warning' | 'neutral';
 }) {
   const toneClass = tone === 'blue'
-    ? 'text-blue-600 dark:text-blue-300'
+    ? 'text-[var(--accent)]'
     : tone === 'warning'
-      ? 'text-amber-700 dark:text-amber-300'
+      ? 'text-[var(--warning)]'
       : 'text-[var(--text-muted)]';
   const uniqueItems = Array.from(new Set(items.map(item => item.trim()).filter(Boolean)));
   const visible = uniqueItems.length ? uniqueItems.slice(0, 3) : [empty];
@@ -1569,7 +1585,15 @@ function EvidenceNoteList({
   );
 }
 
-function FitRow({ label, value }: { label: string; value: number }) {
+function FitRow({ label, value }: { label: string; value: number | null }) {
+  if (value === null || !Number.isFinite(value)) {
+    return (
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium text-[var(--text-secondary)]">{label}</span>
+        <span className="font-medium text-[var(--text-tertiary)]">Not measured</span>
+      </div>
+    );
+  }
   const color = scoreColor(value);
   return (
     <div>
@@ -1588,7 +1612,7 @@ function SetupNudge({ icon, title, body }: { icon: string; title: string; body: 
   return (
     <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="flex gap-3">
-        <span className="material-symbols-rounded mt-0.5 text-lg text-cyan-600 dark:text-cyan-300">{icon}</span>
+        <span className="material-symbols-rounded mt-0.5 text-lg text-[var(--accent)]">{icon}</span>
         <div>
           <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
           <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{body}</p>
@@ -1621,13 +1645,13 @@ function ApplicationPacketBuilder({
       <div className="relative overflow-hidden rounded-[16px] p-[1px]" role="status" aria-live="polite">
         <motion.div
           className="absolute left-1/2 top-1/2 h-[220%] w-[220%] -translate-x-1/2 -translate-y-1/2"
-          style={{ background: 'conic-gradient(from 0deg, transparent 0deg, transparent 250deg, rgba(34,211,238,0.08) 286deg, rgba(34,211,238,0.78) 322deg, transparent 360deg)' }}
+          style={{ background: 'conic-gradient(from 0deg, transparent 0deg, transparent 250deg, color-mix(in srgb, var(--accent) 8%, transparent) 286deg, color-mix(in srgb, var(--accent) 78%, transparent) 322deg, transparent 360deg)' }}
           animate={prefersReducedMotion ? undefined : { rotate: 360 }}
           transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
         />
-        <div className="relative rounded-[15px] border border-cyan-400/25 bg-[var(--bg-surface)] p-4">
+        <div className="relative rounded-[15px] border border-[var(--accent)] bg-[var(--bg-surface)] p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-cyan-500/10 text-cyan-700 dark:text-cyan-300">
+            <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-[var(--accent-dim)] text-[var(--accent)]">
               <span className="material-symbols-rounded">auto_fix_high</span>
             </div>
             <div>
@@ -1641,7 +1665,7 @@ function ApplicationPacketBuilder({
               const active = index === current.stageIndex;
               return (
                 <div key={stage} className="flex items-center gap-3 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-                  <span className={`material-symbols-rounded text-[16px] ${done ? 'text-emerald-600 dark:text-emerald-300' : active ? 'text-cyan-600 dark:text-cyan-300' : 'text-[var(--text-muted)]'}`}>
+                  <span className={`material-symbols-rounded text-[16px] ${done ? 'text-[var(--success)]' : active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
                     {done ? 'check_circle' : active ? 'progress_activity' : 'radio_button_unchecked'}
                   </span>
                   <span className={`text-xs font-medium ${active ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>{stage}</span>
@@ -1658,9 +1682,9 @@ function ApplicationPacketBuilder({
     const markedApplied = current.status === 'applied';
     return (
       <div className="space-y-4">
-        <div className="rounded-[14px] border border-emerald-400/25 bg-emerald-500/5 p-4">
+        <div className="rounded-[14px] border border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_6%,transparent)] p-4">
           <div className="flex items-center gap-3">
-            <span className="material-symbols-rounded text-emerald-600 dark:text-emerald-300">verified</span>
+            <span className="material-symbols-rounded text-[var(--success)]">verified</span>
             <div>
               <p className="text-sm font-semibold text-[var(--text-primary)]">{markedApplied ? 'Application marked applied' : 'Packet ready for manual submit'}</p>
               <p className="text-xs text-[var(--text-secondary)]">
@@ -1673,7 +1697,7 @@ function ApplicationPacketBuilder({
         </div>
         <div className="grid grid-cols-2 gap-2">
           <PanelMetric label="ATS" value={Number.isFinite(current.atsScore) ? `${current.atsScore}%` : 'Needs check'} />
-          <PanelMetric label="Gaps" value={`${current.keywordGaps?.length || 0}`} />
+          <PanelMetric label="Gaps" value={Array.isArray(current.keywordGaps) ? `${current.keywordGaps.length}` : 'Not checked'} />
         </div>
         {current.coverLetter && (
           <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
@@ -1695,7 +1719,7 @@ function ApplicationPacketBuilder({
         {current.keywordGaps && current.keywordGaps.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {Array.from(new Set(current.keywordGaps)).slice(0, 8).map((gap, index) => (
-              <span key={`${gap}:${index}`} className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{gap}</span>
+              <span key={`${gap}:${index}`} className="rounded-full bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--warning)]">{gap}</span>
             ))}
           </div>
         )}
@@ -1712,7 +1736,7 @@ function ApplicationPacketBuilder({
             </a>
           )}
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={onMarkApplied} disabled={markedApplied} className="min-h-11 min-w-0 rounded-[11px] border border-emerald-400/25 bg-emerald-500/10 px-2 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50 dark:text-emerald-300">{markedApplied ? 'Applied' : 'I submitted it'}</button>
+            <button onClick={onMarkApplied} disabled={markedApplied} className="min-h-11 min-w-0 rounded-[11px] border border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] px-2 py-2 text-xs font-semibold text-[var(--success)] disabled:opacity-50">{markedApplied ? 'Applied' : 'I submitted it'}</button>
             <button onClick={onSaveLater} className="min-h-11 min-w-0 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-2 text-xs font-semibold text-[var(--text-secondary)]">Save</button>
             <button onClick={onSkip} className="min-h-11 min-w-0 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-2 text-xs font-semibold text-[var(--text-secondary)]">Skip</button>
           </div>
@@ -1732,13 +1756,13 @@ function ApplicationPacketBuilder({
           ? '/suite/applications'
           : null;
     return (
-      <div className={`rounded-[14px] border p-4 ${needsAttention ? 'border-amber-400/25 bg-amber-500/5' : 'border-rose-400/25 bg-rose-500/5'}`} role="status" aria-live="polite">
+      <div className={`rounded-[14px] border p-4 ${needsAttention ? 'border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_6%,transparent)]' : 'border-[color-mix(in_srgb,var(--danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)]'}`} role="status" aria-live="polite">
         <div className="flex items-start gap-3">
-          <span className={`material-symbols-rounded mt-0.5 text-[20px] ${needsAttention ? 'text-amber-700 dark:text-amber-300' : 'text-rose-700 dark:text-rose-300'}`} aria-hidden="true">
+          <span className={`material-symbols-rounded mt-0.5 text-[20px] ${needsAttention ? 'text-[var(--warning)]' : 'text-[var(--danger)]'}`} aria-hidden="true">
             {needsAttention ? 'pending_actions' : 'sync_problem'}
           </span>
           <div className="min-w-0">
-            <p className={`text-sm font-semibold ${needsAttention ? 'text-amber-800 dark:text-amber-200' : 'text-rose-700 dark:text-rose-300'}`}>{recovery.title}</p>
+            <p className={`text-sm font-semibold ${needsAttention ? 'text-[var(--warning)]' : 'text-[var(--danger)]'}`}>{recovery.title}</p>
             <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{recovery.message}</p>
           </div>
         </div>
@@ -2004,15 +2028,15 @@ export default function JobSearchPage() {
       if (activeFilter === 'strong' && (!job.fitScore || job.fitScore.overall < 75)) return false;
       if (activeFilter === 'fresh' && !job.freshness.isFresh) return false;
       if (activeFilter === 'direct' && job.sourceMeta.sourceType !== 'direct_ats') return false;
-      if (activeFilter === 'remote' && !job.location.toLowerCase().includes('remote')) return false;
+      if (activeFilter === 'remote' && (job.remoteMode ? job.remoteMode !== 'remote' : !job.location.toLowerCase().includes('remote'))) return false;
       const packet = packets[getJobResultIdentity(job)];
       if (activeFilter === 'ready' && packet?.status !== 'ready' && packet?.status !== 'applied') return false;
       return true;
     });
     if (sortBy === 'salary') {
-      next = [...next].sort((a, b) => (b.salary.max || b.salary.min || 0) - (a.salary.max || a.salary.min || 0));
+      next = sortJobSearchCandidates(next, 'salary');
     } else if (sortBy === 'date') {
-      next = [...next].sort((a, b) => new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime());
+      next = sortJobSearchCandidates(next, 'date');
     } else {
       next = [...next].sort((a, b) => (b.fitScore?.overall || b.matchScore || 0) - (a.fitScore?.overall || a.matchScore || 0));
     }

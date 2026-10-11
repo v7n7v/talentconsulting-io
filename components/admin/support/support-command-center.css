@@ -31,7 +31,7 @@
 .admin-command-grid .support-kicker,
 .admin-command-grid .support-section-kicker {
   color: var(--admin-violet);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -86,7 +86,7 @@
 
 .admin-command-grid .support-safety-banner div span {
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -164,7 +164,7 @@
   background: transparent;
   color: var(--admin-text-muted);
   padding: 0 10px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 720;
   text-transform: capitalize;
   cursor: pointer;
@@ -256,7 +256,7 @@
 .admin-command-grid .support-date-cell small {
   overflow: hidden;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -270,7 +270,7 @@
   background: var(--admin-degraded-soft);
   color: var(--admin-degraded);
   padding: 10px 13px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .support-case-drawer {
@@ -295,7 +295,7 @@
 .admin-command-grid .support-customer-heading span,
 .admin-command-grid .support-customer-heading small {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .support-customer-heading strong {
@@ -325,7 +325,7 @@
 
 .admin-command-grid .support-case-identity dt {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 730;
   text-transform: uppercase;
 }
@@ -333,7 +333,7 @@
 .admin-command-grid .support-case-identity dd {
   overflow-wrap: anywhere;
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .support-customer-message {
@@ -343,7 +343,7 @@
 
 .admin-command-grid .support-section-kicker {
   margin: 0;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .support-customer-message blockquote {
@@ -395,7 +395,7 @@
 
 .admin-command-grid .support-evidence-metrics span {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   text-transform: uppercase;
 }
 
@@ -412,7 +412,7 @@
   background: var(--admin-degraded-soft);
   color: var(--admin-text-secondary);
   padding: 11px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -462,7 +462,7 @@
 .admin-command-grid .support-action-card p {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -486,13 +486,13 @@
 .admin-command-grid .support-receipt-boundary p {
   margin: 3px 0 0;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.55;
 }
 
 .admin-command-grid .support-receipt-boundary code {
   color: var(--admin-text-primary);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .support-history ol {
@@ -545,7 +545,7 @@
 
 .admin-command-grid .support-history li strong {
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: capitalize;
 }
 
@@ -553,7 +553,7 @@
 .admin-command-grid .support-history li small {
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -584,7 +584,7 @@
 
 .admin-command-grid .support-confirmation-field small {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -618,12 +618,12 @@
 
 .admin-command-grid .support-attestations strong {
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .support-attestations small {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .support-confirmation-warning,
@@ -631,7 +631,7 @@
   margin: 10px 0 0;
   border-radius: 7px;
   padding: 9px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -731,7 +731,7 @@
   .admin-command-grid .support-case-cards header small,
   .admin-command-grid .support-case-cards footer small {
     color: var(--admin-text-muted);
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .admin-command-grid .support-case-cards p {
@@ -739,7 +739,7 @@
     margin: 0;
     overflow: hidden;
     color: var(--admin-text-secondary);
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.5;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;

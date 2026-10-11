@@ -59,7 +59,7 @@ function ScoreRing({ score, size = 116 }: { score: number; size?: number }) {
   const r = (size - 16) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const color = score >= 70 ? '#34d399' : score >= 45 ? '#f59e0b' : '#ef4444';
+  const color = score >= 70 ? 'var(--success)' : score >= 45 ? 'var(--warning)' : 'var(--danger)';
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -108,7 +108,7 @@ export default function AIDetectorDemo() {
 
   const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
   const trustScore = result ? 100 - result.score : 100;
-  const scoreColor = trustScore >= 70 ? '#34d399' : trustScore >= 45 ? '#f59e0b' : '#ef4444';
+  const scoreColor = trustScore >= 70 ? 'var(--success)' : trustScore >= 45 ? 'var(--warning)' : 'var(--danger)';
   const saveDraftForSuite = () => {
     if (!text.trim()) return;
     sessionStorage.setItem(WRITING_TRUST_DRAFT_KEY, JSON.stringify({
@@ -133,8 +133,8 @@ export default function AIDetectorDemo() {
             <Link
               href="/suite/writing-tools"
               onClick={saveDraftForSuite}
-              className="rounded-[10px] px-4 py-2 text-xs font-semibold transition hover:opacity-90"
-              style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}
+              className="inline-flex min-h-[44px] items-center rounded-[10px] px-4 py-2 text-xs font-semibold transition hover:opacity-90"
+              style={{ background: 'var(--accent)', color: 'var(--accent-on)' }}
             >
               Open Suite →
             </Link>
@@ -145,8 +145,8 @@ export default function AIDetectorDemo() {
       {/* ── Hero ── */}
       <header className="px-4 py-8 sm:px-6 sm:py-10">
         <div className="premium-brand-hero glass-card relative mx-auto max-w-5xl overflow-hidden rounded-2xl p-6 md:p-8">
-          <div className="premium-brand-kicker mb-5 inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+          <div className="premium-brand-kicker mb-5 inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--accent)' }} />
             Free Writing Trust Check
           </div>
           <h1 className="mb-4 text-4xl font-semibold tracking-tight md:text-5xl" style={{ color: 'var(--text-primary)' }}>
@@ -161,7 +161,7 @@ export default function AIDetectorDemo() {
             <span className="mr-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>Try:</span>
             {Object.keys(SAMPLES).map(key => (
               <button key={key} onClick={() => loadSample(key)}
-                className="rounded-[10px] px-3.5 py-2 text-[11px] font-medium transition duration-200"
+                className="inline-flex min-h-[44px] items-center rounded-[10px] px-3.5 py-2 text-[11px] font-medium transition duration-200"
                 style={{
                   background: activeSample === key ? 'var(--accent-hover)' : 'transparent',
                   border: `1px solid ${activeSample === key ? 'var(--accent)' : 'var(--border-subtle)'}`,
@@ -180,7 +180,7 @@ export default function AIDetectorDemo() {
 
           {/* Textarea card */}
           <div className={`${result ? 'lg:w-[58%]' : 'max-w-4xl mx-auto w-full'} transition-all duration-700`}>
-            <div className="overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm">
+            <div className="overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card">
               <textarea
                 value={text}
                 onChange={(e) => {
@@ -188,24 +188,24 @@ export default function AIDetectorDemo() {
                   if (w.length <= 500) { setText(e.target.value); setResult(null); setActiveSample(null); }
                 }}
                 placeholder="Paste your resume, cover letter, essay, or any text here..."
-                className="ai-detector-textarea w-full resize-none bg-transparent p-6 text-sm leading-7 focus:outline-none"
-                style={{ color: 'var(--text-primary)', height: result ? 380 : 400, caretColor: '#2563eb' }}
+                className="ai-detector-textarea w-full resize-none bg-transparent p-6 text-base leading-7 focus:outline-none"
+                style={{ color: 'var(--text-primary)', height: result ? 380 : 400, caretColor: 'var(--accent)' }}
               />
               {/* Toolbar */}
               <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--card-bg)' }}>
                 <div className="flex items-center gap-4">
-                  <span className="text-[11px] font-mono tabular-nums" style={{ color: wordCount > 450 ? '#f59e0b' : 'var(--text-muted)' }}>
+                  <span className="text-[11px] font-mono tabular-nums" style={{ color: wordCount > 450 ? 'var(--warning)' : 'var(--text-muted)' }}>
                     {wordCount}<span style={{ color: 'var(--border)' }}>/500</span>
                   </span>
                   {text.length > 0 && (
                     <button onClick={() => { setText(''); setResult(null); setActiveSample(null); }}
-                      className="text-[11px] font-medium transition-colors hover:underline"
+                      className="inline-flex min-h-[44px] items-center px-2 text-[11px] font-medium transition-colors hover:underline"
                       style={{ color: 'var(--text-muted)' }}>Clear</button>
                   )}
                 </div>
                 <button onClick={handleAnalyze} disabled={text.trim().length < 50 || isAnalyzing}
-                  className="relative rounded-[12px] px-7 py-2.5 text-[13px] font-semibold transition disabled:opacity-35"
-                  style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}>
+                  className="relative inline-flex min-h-[44px] items-center justify-center rounded-[12px] px-7 py-2.5 text-[13px] font-semibold transition disabled:opacity-35"
+                  style={{ background: 'var(--accent)', color: 'var(--accent-on)' }}>
                   {isAnalyzing ? (
                     <span className="flex items-center gap-2">
                       <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.3" /><path d="M12 2a10 10 0 019.95 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>
@@ -215,7 +215,7 @@ export default function AIDetectorDemo() {
                 </button>
               </div>
             </div>
-            <p className="text-center text-[10px] mt-3" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+            <p className="text-center text-[11px] mt-3" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
               By scanning, you agree to our <Link href="/privacy" className="underline">Privacy Policy</Link> and <Link href="/terms" className="underline">Terms</Link>
             </p>
           </div>
@@ -229,7 +229,7 @@ export default function AIDetectorDemo() {
                 className="space-y-4 lg:w-[42%]">
 
                 {/* Score card */}
-                <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center shadow-sm">
+                <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center elevation-card">
                   <div className="flex justify-center mb-4">
                     <ScoreRing score={trustScore} />
                   </div>
@@ -242,7 +242,7 @@ export default function AIDetectorDemo() {
                     ].map(s => (
                       <div key={s.label} className="text-center">
                         <div className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>{s.val}</div>
-                        <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{s.label}</div>
+                        <div className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{s.label}</div>
                       </div>
                     ))}
                   </div>
@@ -251,7 +251,7 @@ export default function AIDetectorDemo() {
                 {/* Flags */}
                 {result.flags.length > 0 && (
                   <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
-                    <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: 'var(--text-muted)' }}>
+                    <h3 className="mb-3 text-[12px] font-medium uppercase tracking-[0.12em]" style={{ color: 'var(--text-muted)' }}>
                       Writing Signals
                     </h3>
                     <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
@@ -261,8 +261,7 @@ export default function AIDetectorDemo() {
                           className="flex items-start gap-2.5 rounded-[12px] px-3 py-2.5 text-[12px]"
                           style={{ background: 'var(--card-bg)' }}>
                           <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full" style={{
-                            background: flag.severity === 'high' ? '#ef4444' : '#f59e0b',
-                            boxShadow: flag.severity === 'high' ? '0 0 6px rgba(239,68,68,0.5)' : '0 0 6px rgba(245,158,11,0.5)',
+                            background: flag.severity === 'high' ? 'var(--danger)' : 'var(--warning)',
                           }} />
                           <span style={{ color: 'var(--text-secondary)' }}>{flag.pattern}</span>
                         </motion.div>
@@ -276,8 +275,8 @@ export default function AIDetectorDemo() {
                   <p className="text-sm font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Mixed signals? Open the studio.</p>
                   <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Rewrite risky sections with controlled presets while preserving meaning and voice.</p>
                   <Link href="/suite/writing-tools" onClick={saveDraftForSuite}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] px-5 py-2 text-xs font-semibold transition hover:opacity-90"
-                    style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}>
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[10px] px-5 py-2 text-xs font-semibold transition hover:opacity-90"
+                    style={{ background: 'var(--accent)', color: 'var(--accent-on)' }}>
                     Continue in Studio <span className="text-sm">→</span>
                   </Link>
                 </div>
@@ -337,7 +336,7 @@ export default function AIDetectorDemo() {
             ))}
           </div>
         </section>
-        <div className="mt-10 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+        <div className="mt-10 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card">
           <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Use the trust check with these tools</h2>
           <div className="mobile-card-rail mt-4 grid gap-3 md:grid-cols-3">
             {[
@@ -353,7 +352,7 @@ export default function AIDetectorDemo() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+        <div className="mt-6 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card">
           <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Source context</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
             Use detector-style feedback as a signal, not proof. For responsible AI context, see the{' '}

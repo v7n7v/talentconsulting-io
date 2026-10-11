@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "baseUrl": "../../..",
+    "paths": { "@/*": ["./*"] }
+  },
+  "include": ["index.tsx", "logic.ts"],
+  "exclude": ["../../../node_modules"]
+}

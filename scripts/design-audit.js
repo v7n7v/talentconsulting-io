@@ -157,12 +157,28 @@ const PROHIBITED = [
   // spelling, and "make it look premium" reliably reaches for the CSS one instead.
   { key: 'css-gradient',  re: /(?:linear|radial|conic)-gradient\s*\(/g,
                           why: 'decorative gradient in CSS; surfaces are flat',
-                          allowIn: ['components/landing'] },
-  { key: 'css-shadow',    re: /box-shadow\s*:\s*(?!none)[^;}]+/g,
-                          why: 'elevation is expressed with borders, not shadows' },
+                          // components/landing: the brand marketing register.
+                          // AnimatedShimmerBackground: an ambient orb effect whose
+                          // gradients are functional (soft radial glow) and whose
+                          // colours are tokens (color-mix of var(--accent) at low alpha),
+                          // so it flips per theme — a documented decorative-effect exception.
+                          allowIn: ['components/landing', 'components/AnimatedShimmerBackground'] },
+  // Elevation is now a first-class part of the language (owner decision,
+  // Aug 2026 — the Proof Engine card), but ONLY through tokens: a shadow must
+  // read var(--elevation-*). A raw literal still fails, so "make it pop" can't
+  // reintroduce arbitrary shadows and the elevation scale stays one source.
+  { key: 'css-shadow',    re: /box-shadow\s*:\s*(?!none)(?![^;}]*var\(--elevation)[^;}]+/g,
+                          why: 'raw shadow literal; use box-shadow: var(--elevation-*)' },
   { key: 'css-backdrop',  re: /backdrop-filter\s*:\s*(?!none)[^;}]+/g,
                           allowIn: ['components/landing'],
                           why: 'glass is banned by the design system' },
+
+  // Readability floor (owner decision, Aug 2026): no text below 11px. Catches
+  // both the Tailwind arbitrary spelling and the CSS one (0-10px).
+  { key: 'font-too-small-tw',  re: /\btext-\[(?:10|[0-9])px\]/g,
+                          why: 'text below 11px is unreadable; 11px floor' },
+  { key: 'font-too-small-css', re: /font-size\s*:\s*(?:10|[0-9])px\b/g,
+                          why: 'text below 11px is unreadable; 11px floor' },
 ];
 
 const METRICS = [

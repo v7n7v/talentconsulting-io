@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchCompanyJobs, scanCompanyPortals } from '@/lib/portal-scanner';
+import { searchCompanyJobs } from '@/lib/portal-scanner';
 import { guardApiRoute } from '@/lib/api-auth';
 import { monitor } from '@/lib/monitor';
 
@@ -30,6 +30,9 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (company.length > 120 || !/[a-z0-9]/i.test(company) || (query && query.length > 200)) {
+      return NextResponse.json({ error: 'Invalid company or query parameter' }, { status: 400 });
+    }
 
     const result = await searchCompanyJobs(company, query);
 
@@ -43,7 +46,7 @@ export async function GET(request: NextRequest) {
           ? `No jobs found for "${company}". Try the company's career page slug (e.g., "stripe" not "Stripe Inc").`
           : undefined,
       },
-    });
+    }, { status: result.status === 'success' || result.status === 'empty' ? 200 : 503 });
   } catch (e: any) {
     console.error('Portal scan API error:', e);
     monitor.critical('Tool: jobs/portal', String(e));

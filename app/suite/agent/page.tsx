@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { useUserTier } from '@/hooks/use-user-tier';
 import { authFetch } from '@/lib/auth-fetch';
@@ -137,32 +136,32 @@ type Message = {
   recovery?: SonaRecovery & { retryText?: string; retryOptions?: SonaRetryOptions };
 };
 
-const PERSONALITY_CONFIG: Record<Personality, { label: string; icon: string; desc: string; color: string }> = {
-  professional: { label: 'Professional', icon: 'business_center', desc: 'Formal & data-driven', color: '#3b82f6' },
-  coach: { label: 'Coach', icon: 'fitness_center', desc: 'Warm & encouraging', color: '#10b981' },
-  direct: { label: 'Direct', icon: 'bolt', desc: 'No-fluff, results only', color: '#f59e0b' },
+const PERSONALITY_CONFIG: Record<Personality, { label: string; icon: string; desc: string }> = {
+  professional: { label: 'Professional', icon: 'business_center', desc: 'Formal & data-driven' },
+  coach: { label: 'Coach', icon: 'fitness_center', desc: 'Warm & encouraging' },
+  direct: { label: 'Direct', icon: 'bolt', desc: 'No-fluff, results only' },
 };
 
 const ALL_PROMPTS = [
   // Resume & Build
-  { icon: 'description', text: 'Show me my saved resume versions', color: '#f59e0b' },
-  { icon: 'swap_horiz', text: 'Use my Google resume and analyze it against this JD', color: '#f59e0b' },
-  { icon: 'edit_note', text: 'Morph my resume for a Data Engineer role at Stripe', color: '#f59e0b' },
+  { icon: 'description', text: 'Show me my saved resume versions' },
+  { icon: 'swap_horiz', text: 'Use my Google resume and analyze it against this JD' },
+  { icon: 'edit_note', text: 'Morph my resume for a Data Engineer role at Stripe' },
   // Search & Apply
-  { icon: 'radar', text: 'Find remote React jobs and score them against my resume', color: '#06b6d4' },
-  { icon: 'domain', text: 'Scan Airbnb\'s career page for open engineering roles', color: '#06b6d4' },
-  { icon: 'work', text: 'Review my pipeline — any follow-ups needed?', color: '#22c55e' },
+  { icon: 'radar', text: 'Find remote React jobs and score them against my resume' },
+  { icon: 'domain', text: 'Scan Airbnb\'s career page for open engineering roles' },
+  { icon: 'work', text: 'Review my pipeline — any follow-ups needed?' },
   // Prepare
-  { icon: 'chat', text: 'Prep me for my Amazon interview next week', color: '#3b82f6' },
-  { icon: 'auto_stories', text: 'Save a STAR story about cutting deploy time 80%', color: '#10b981' },
-  { icon: 'quiz', text: 'Help me answer: "Tell me about a time you led a team"', color: '#3b82f6' },
+  { icon: 'chat', text: 'Prep me for my Amazon interview next week' },
+  { icon: 'auto_stories', text: 'Save a STAR story about cutting deploy time 80%' },
+  { icon: 'quiz', text: 'Help me answer: "Tell me about a time you led a team"' },
   // Grow
-  { icon: 'payments', text: 'I got a $130K offer from Meta. Help me review it in Applications', color: '#10b981' },
-  { icon: 'neurology', text: 'How is my job search going? What should I focus on?', color: '#8b5cf6' },
+  { icon: 'payments', text: 'I got a $130K offer from Meta. Help me review it in Applications' },
+  { icon: 'neurology', text: 'How is my job search going? What should I focus on?' },
   // Cover Letter & LinkedIn
-  { icon: 'edit_document', text: 'Write a cover letter using my Stripe-tailored resume', color: '#f43f5e' },
-  { icon: 'badge', text: 'Optimize my LinkedIn headline for ML Engineer roles', color: '#3b82f6' },
-  { icon: 'auto_awesome', text: 'Analyze my skill gaps and suggest what to learn', color: '#a855f7' },
+  { icon: 'edit_document', text: 'Write a cover letter using my Stripe-tailored resume' },
+  { icon: 'badge', text: 'Optimize my LinkedIn headline for ML Engineer roles' },
+  { icon: 'auto_awesome', text: 'Analyze my skill gaps and suggest what to learn' },
 ];
 
 const AGENT_WORKFLOWS = [
@@ -170,7 +169,6 @@ const AGENT_WORKFLOWS = [
     label: 'Upload and scout',
     detail: 'Resume-led job picks',
     icon: 'upload_file',
-    color: '#06b6d4',
     action: 'resumeUpload',
     prompt: 'Use my active resume to find strong-fit jobs. Ask for target role, salary, location, and remote preference if you need them, then run the career goal harness for review-first job picks.',
   },
@@ -178,21 +176,18 @@ const AGENT_WORKFLOWS = [
     label: 'Sharpen my story',
     detail: 'STAR proof, interview use',
     icon: 'auto_stories',
-    color: '#10b981',
     prompt: 'Help me turn a recent work win into a strong STAR story for interviews.',
   },
   {
     label: 'Fix my pipeline',
     detail: 'Follow-ups, blockers, focus',
     icon: 'work_history',
-    color: '#f59e0b',
     prompt: 'Review my job search pipeline and tell me which follow-ups or priorities matter most.',
   },
   {
     label: 'Prepare for a loop',
     detail: 'Questions, drills, strategy',
     icon: 'psychology',
-    color: '#8b5cf6',
     prompt: 'Build a focused interview prep plan for my next role.',
   },
 ];
@@ -245,12 +240,8 @@ function buildHarnessRequest(params: {
 
 function SonaHarnessResultCard({
   result,
-  accentColor,
-  isLight,
 }: {
   result: SonaHarnessClientResult;
-  accentColor: string;
-  isLight: boolean;
 }) {
   const goal = result.goal || ({} as Partial<SonaHarnessClientResult['goal']>);
   const queued = Array.isArray(result.queued) ? result.queued : [];
@@ -275,7 +266,7 @@ function SonaHarnessResultCard({
   const badgeLabel = queuedCount > 0
     ? `${queuedCount} queued`
     : needsTargetBrief
-      ? `${missingTargetFields.length || 1} field${missingTargetFields.length === 1 ? '' : 's'} needed`
+      ? (missingTargetFields.length > 0 ? `${missingTargetFields.length} field${missingTargetFields.length === 1 ? '' : 's'} needed` : 'Target brief needed')
       : partialScore !== null ? `${partialScore} fit` : '0 queued';
   const fallbackActionLabel = partialScore !== null || result.recommendedAction ? 'Continue search' : 'Broaden search';
   const entitlement = result.entitlement;
@@ -292,15 +283,13 @@ function SonaHarnessResultCard({
 
   return (
     <div
-      className="mt-3 rounded-[18px] border p-3 sm:p-4"
-      style={{
-        background: isLight ? 'rgba(248,250,252,0.92)' : 'rgba(255,255,255,0.04)',
-        borderColor: queuedCount > 0 ? `${accentColor}38` : isLight ? 'rgba(15,23,42,0.1)' : 'rgba(255,255,255,0.1)',
-      }}
+      className={`elevation-card mt-3 rounded-[18px] border p-3 sm:p-4 bg-[var(--bg-surface)] ${
+        queuedCount > 0 ? 'border-[color-mix(in_srgb,var(--accent)_35%,transparent)]' : 'border-[var(--border-subtle)]'
+      }`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">
                 {entitlement?.planLabel || 'Taco scout run'}
               </p>
               <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{statusLabel}</p>
@@ -308,10 +297,7 @@ function SonaHarnessResultCard({
                 <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)]">{entitlement.limitLabel}</p>
               )}
         </div>
-        <span
-          className="inline-flex w-fit items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-          style={{ borderColor: `${accentColor}30`, background: `${accentColor}10`, color: accentColor }}
-        >
+        <span className="inline-flex w-fit items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--accent-dim)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent)]">
           <span className="material-symbols-rounded text-[14px]">radar</span>
           {badgeLabel}
         </span>
@@ -320,7 +306,7 @@ function SonaHarnessResultCard({
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
         {detailRows.map(([label, value]) => (
           <div key={label} className="min-w-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-            <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
+            <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
             <span className="mt-0.5 block truncate font-semibold text-[var(--text-primary)]">{value}</span>
           </div>
         ))}
@@ -330,7 +316,7 @@ function SonaHarnessResultCard({
         <div className="mt-4 border-t border-[var(--border-subtle)] pt-4" aria-label="Top job picks">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Top picks</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Top picks</p>
               <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Choose a role to review its fit, checks, and next action.</p>
             </div>
             <span className="shrink-0 text-[11px] font-semibold tabular-nums text-[var(--text-muted)]">
@@ -349,7 +335,7 @@ function SonaHarnessResultCard({
                   onClick={() => setActiveQueueId(job.queueId)}
                   className={`flex min-h-14 min-w-0 items-center gap-3 rounded-[13px] border px-3 py-2.5 text-left transition ${
                     selected
-                      ? 'border-blue-500/45 bg-blue-500/10'
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] hover:border-[var(--border)]'
                   }`}
                 >
@@ -360,7 +346,7 @@ function SonaHarnessResultCard({
                     <span className="block line-clamp-2 text-xs font-semibold leading-4 text-[var(--text-primary)]">{job.title}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-[var(--text-muted)]">{job.company}</span>
                   </span>
-                  <span className="shrink-0 text-xs font-semibold tabular-nums text-blue-600 dark:text-blue-300">{job.matchScore}%</span>
+                  <span className="shrink-0 text-xs font-semibold tabular-nums text-[var(--accent)]">{job.matchScore}%</span>
                 </button>
               );
             })}
@@ -373,25 +359,25 @@ function SonaHarnessResultCard({
                   <p className="text-sm font-semibold leading-5 text-[var(--text-primary)]">{activePick.title}</p>
                   <p className="mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">{activePick.company} · {activePick.location}</p>
                 </div>
-                <span className="w-fit shrink-0 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:text-blue-300">
+                <span className="w-fit shrink-0 rounded-full border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-2.5 py-1 text-[11px] font-semibold text-[var(--accent)]">
                   {activePick.matchScore}% Talent fit
                 </span>
               </div>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Why it ranks</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Why it ranks</p>
                   <ul className="mt-1.5 space-y-1.5 text-xs leading-5 text-[var(--text-secondary)]">
                     {(activePick.fitSignals?.length ? activePick.fitSignals : ['Review the role against your verified resume evidence.']).slice(0, 2).map(signal => (
                       <li key={signal} className="flex min-w-0 gap-2">
-                        <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-blue-500" aria-hidden="true" />
+                        <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--accent)]" aria-hidden="true" />
                         <span className="min-w-0 [overflow-wrap:anywhere]">{signal}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Check first</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Check first</p>
                   <ul className="mt-1.5 space-y-1.5 text-xs leading-5 text-[var(--text-secondary)]">
                     {(activePick.riskSignals?.length ? activePick.riskSignals : activePick.sourceNotes?.length ? activePick.sourceNotes : ['Verify the original posting before applying.']).slice(0, 2).map(signal => (
                       <li key={signal} className="flex min-w-0 gap-2">
@@ -446,7 +432,7 @@ function SonaHarnessResultCard({
       )}
 
       {result.warnings?.length > 0 && (
-        <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs leading-5 text-amber-800 dark:text-amber-200">
+        <div className="mt-3 rounded-xl border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] px-3 py-2.5 text-xs leading-5 text-[var(--warning)]">
           <span className="font-semibold">Review needed</span>
           <ul className="mt-1 space-y-1">
             {result.warnings.slice(0, 3).map(warning => <li key={warning}>{warning}</li>)}
@@ -477,11 +463,11 @@ function SonaHarnessResultCard({
       {queuedCount > 0 && (
         <div className="mt-3 flex min-w-0 flex-col gap-2 border-t border-[var(--border-subtle)] pt-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex-1">
-            <span className={`inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+            <span className={`inline-flex min-h-7 w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
               notificationState.status === 'accepted'
-                ? 'border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+                ? 'border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                 : notificationState.status === 'unavailable'
-                  ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                  ? 'border-[color-mix(in_srgb,var(--warning)_25%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] text-[var(--warning)]'
                   : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
             }`}>
               <span className="material-symbols-rounded text-[14px]" aria-hidden="true">{notificationState.icon}</span>
@@ -557,8 +543,6 @@ function buildSkillGraphFromResume(resume: CanonicalResume) {
 
 export default function SonaAgentPage() {
   const searchParams = useSearchParams();
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const { user } = useStore();
   const { tier, isPro } = useUserTier();
 
@@ -1352,8 +1336,7 @@ export default function SonaAgentPage() {
 
   const renderComposer = (inline = false) => (
     <div
-      className={inline ? 'mt-5' : 'shrink-0 px-4 sm:px-6 py-4 border-t'}
-      style={inline ? undefined : { borderColor: isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)' }}
+      className={inline ? 'mt-5' : 'shrink-0 px-4 sm:px-6 py-4 border-t border-[var(--border-subtle)]'}
     >
       <div className="max-w-5xl mx-auto">
         <input
@@ -1364,11 +1347,7 @@ export default function SonaAgentPage() {
           onChange={(event) => handleResumeUpload(event.target.files?.[0] || null)}
         />
         <div
-          className={`flex items-end gap-2 rounded-2xl p-2 ${inline ? 'shadow-lg shadow-black/10' : ''}`}
-          style={{
-            background: isLight ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.045)',
-            border: `1px solid ${isLight ? 'rgba(15,23,42,0.09)' : 'rgba(255,255,255,0.09)'}`,
-          }}
+          className={`flex items-end gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-2 ${inline ? 'elevation-raised' : ''}`}
         >
           <button
             type="button"
@@ -1378,7 +1357,7 @@ export default function SonaAgentPage() {
             title={isResumeUploadBusy ? 'Resume upload in progress' : 'Upload resume for Taco'}
             aria-label={isResumeUploadBusy ? 'Resume upload in progress' : 'Upload resume for Taco'}
           >
-            <span className={`material-symbols-rounded text-[20px] ${isResumeUploadBusy ? 'animate-spin text-blue-500' : 'text-[var(--text-muted)]'}`}>
+            <span className={`material-symbols-rounded text-[20px] ${isResumeUploadBusy ? 'animate-spin text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
               {isResumeUploadBusy ? 'progress_activity' : 'add'}
             </span>
           </button>
@@ -1390,17 +1369,19 @@ export default function SonaAgentPage() {
             placeholder={isRecording ? 'Recording...' : isTranscribing ? 'Transcribing...' : gated ? 'Upgrade to continue...' : placeholderText || 'Ask Taco anything...'}
             disabled={loading || !!gated}
             rows={1}
-            className="flex-1 bg-transparent border-none outline-none resize-none px-2 py-2 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] max-h-32 sm:text-sm"
+            className="flex-1 bg-transparent border-none outline-none resize-none px-2 py-2 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] max-h-32"
             style={{ minHeight: '44px' }}
           />
           <button
             onClick={handleVoiceInput}
             disabled={loading || !!gated || isTranscribing}
-            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl transition-all disabled:opacity-30 ${isRecording ? 'animate-pulse' : ''}`}
-            style={{
-              background: isRecording ? '#f43f5e' : isTranscribing ? '#f59e0b' : 'transparent',
-              color: isRecording || isTranscribing ? '#fff' : 'var(--text-muted)',
-            }}
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl transition-all disabled:opacity-30 ${isRecording ? 'animate-pulse' : ''} ${
+              isRecording
+                ? 'bg-[var(--danger)] text-[var(--accent-on)]'
+                : isTranscribing
+                  ? 'bg-[var(--warning)] text-[var(--accent-on)]'
+                  : 'bg-transparent text-[var(--text-muted)]'
+            }`}
             title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
             aria-label={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing voice input' : 'Start voice input'}
           >
@@ -1412,11 +1393,9 @@ export default function SonaAgentPage() {
             onClick={() => sendMessage()}
             disabled={!input.trim() || loading || !!gated}
             aria-label="Send message to Taco"
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl transition-all disabled:opacity-30"
-            style={{
-              background: input.trim() ? pConfig.color : 'transparent',
-              color: input.trim() ? '#fff' : 'var(--text-muted)',
-            }}
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl transition-all disabled:opacity-30 ${
+              input.trim() ? 'bg-[var(--accent)] text-[var(--accent-on)]' : 'bg-transparent text-[var(--text-muted)]'
+            }`}
           >
             <span className="material-symbols-rounded text-[18px]">arrow_upward</span>
           </button>
@@ -1427,9 +1406,9 @@ export default function SonaAgentPage() {
             aria-live="polite"
             className={`mt-2 flex flex-wrap items-start gap-2 rounded-xl border px-3 py-2 text-xs leading-5 ${
               resumeUploadStage === 'error'
-                ? 'border-rose-500/25 bg-rose-500/10 text-rose-500'
+                ? 'border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]'
                 : resumeUploadStage === 'ready'
-                  ? 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300'
+                  ? 'border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                   : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]'
             }`}
           >
@@ -1452,13 +1431,13 @@ export default function SonaAgentPage() {
           </div>
         )}
         {(isRecording || isTranscribing || audioRepliesEnabled) && (
-          <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[10px] text-[var(--text-muted)]">
-            {isRecording && <span className="font-semibold text-rose-500">Recording {recordingTime}s</span>}
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px] text-[var(--text-muted)]">
+            {isRecording && <span className="font-semibold text-[var(--danger)]">Recording {recordingTime}s</span>}
             {isTranscribing && <span>Turning voice into text...</span>}
             {audioRepliesEnabled && <span>Taco replies with {SONA_VOICES.find((voice) => voice.id === selectedVoiceId)?.label || 'Nova'} voice</span>}
           </div>
         )}
-        <p className="text-[10px] text-[var(--text-muted)] mt-2 text-center">
+        <p className="text-[11px] text-[var(--text-muted)] mt-2 text-center">
           Taco can make mistakes. Always verify important career decisions.
         </p>
       </div>
@@ -1466,7 +1445,7 @@ export default function SonaAgentPage() {
   );
 
   return (
-    <div className="mobile-app-content flex h-[calc(100dvh-var(--mobile-appbar-height,0px)-0.75rem)] lg:h-dvh" style={{ background: isLight ? '#F8FAFC' : '#060608' }}>
+    <div className="mobile-app-content flex h-[calc(100dvh-var(--mobile-appbar-height,0px)-0.75rem)] bg-[var(--bg-deep)] lg:h-dvh">
 
       {/* ═══ CONVERSATION SIDEBAR (mobile overlay + desktop panel) ═══ */}
       <AnimatePresence>
@@ -1477,7 +1456,7 @@ export default function SonaAgentPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+              className="fixed inset-0 bg-[var(--bg-deep)]/70 z-40 lg:hidden"
               onClick={() => setShowSidebar(false)}
             />
             <motion.div
@@ -1485,29 +1464,22 @@ export default function SonaAgentPage() {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed lg:relative z-50 w-[280px] h-full flex flex-col border-r shrink-0"
-              style={{
-                background: isLight ? '#fff' : '#0c0c10',
-                borderColor: isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)',
-              }}
+              className="fixed lg:relative z-50 w-[280px] h-full flex flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0"
             >
               {/* Sidebar header */}
-              <div
-                className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-                style={{ borderColor: isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)' }}
-              >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] shrink-0">
                 <span className="text-sm font-semibold text-[var(--text-primary)]">History</span>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={startNewConversation}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
+                    className="h-11 w-11 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
                     title="New conversation"
                   >
                     <span className="material-symbols-rounded text-[18px] text-[var(--text-secondary)]">add</span>
                   </button>
                   <button
                     onClick={() => setShowSidebar(false)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors lg:hidden"
+                    className="h-11 w-11 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors lg:hidden"
                   >
                     <span className="material-symbols-rounded text-[18px] text-[var(--text-secondary)]">close</span>
                   </button>
@@ -1523,16 +1495,14 @@ export default function SonaAgentPage() {
                   <button
                     key={conv.id}
                     onClick={() => loadConversation(conv.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors ${
-                      conv.id === conversationId ? '' : 'hover:bg-[var(--bg-hover)]'
+                    className={`w-full min-h-[44px] text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                      conv.id === conversationId
+                        ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
+                        : 'border-transparent hover:bg-[var(--bg-hover)]'
                     }`}
-                    style={conv.id === conversationId ? {
-                      background: `${pConfig.color}10`,
-                      border: `1px solid ${pConfig.color}20`,
-                    } : {}}
                   >
                     <p className="text-sm text-[var(--text-primary)] truncate">{conv.title}</p>
-                    <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{formatTimeAgo(conv.lastMessageAt)}</p>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{formatTimeAgo(conv.lastMessageAt)}</p>
                   </button>
                 ))}
               </div>
@@ -1553,14 +1523,11 @@ export default function SonaAgentPage() {
           actionsClassName="lg:flex-none lg:max-w-full"
           meta={
             <>
-              <span
-                className="rounded-full px-2 py-1 text-[10px] font-medium"
-                style={{ background: `${pConfig.color}15`, color: pConfig.color }}
-              >
+              <span className="rounded-full bg-[var(--accent-dim)] px-2 py-1 text-[11px] font-medium text-[var(--accent)]">
                 {pConfig.label}
               </span>
               {tier !== 'studio' && tier !== 'god' && (
-                <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-1 text-[10px] font-medium text-rose-400">
+                <span className="rounded-full border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--danger)]">
                   {tier === 'pro' ? 'Manual scout' : '1 free scout'}
                 </span>
               )}
@@ -1570,7 +1537,7 @@ export default function SonaAgentPage() {
             <>
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
+              className="h-11 w-11 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
               aria-label="Toggle conversation history"
             >
               <span className="material-symbols-rounded text-[20px] text-[var(--text-secondary)]">menu</span>
@@ -1579,7 +1546,7 @@ export default function SonaAgentPage() {
             {conversationId && (
               <button
                 onClick={startNewConversation}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                className="flex min-h-[44px] items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
               >
                 <span className="material-symbols-rounded text-[14px]">add</span>
                 New
@@ -1587,32 +1554,32 @@ export default function SonaAgentPage() {
             )}
             <a
               href="/suite/agent/quality"
-              className="hidden items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors sm:flex"
+              className="hidden min-h-[44px] items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors sm:flex"
             >
               <span className="material-symbols-rounded icon-current text-[14px]">monitoring</span>
               Quality
             </a>
             <a
               href="/suite/agent/stories"
-              className="hidden items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors sm:flex"
+              className="hidden min-h-[44px] items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors sm:flex"
             >
               <span className="material-symbols-rounded icon-current text-[14px]">auto_stories</span>
               Stories
             </a>
             <button
               onClick={() => setShowVoiceSettings(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors sm:px-3"
+              className="flex min-h-[44px] items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors sm:px-3"
               aria-label="Open Taco voice settings"
             >
               <span className="material-symbols-rounded icon-current text-[16px]">{audioRepliesEnabled ? 'volume_up' : 'graphic_eq'}</span>
               Voice
-              <span className="hidden rounded-full border border-[var(--border-subtle)] px-1.5 py-0.5 text-[9px] text-[var(--text-muted)] sm:inline">
+              <span className="hidden rounded-full border border-[var(--border-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--text-muted)] sm:inline">
                 {SONA_VOICES.find((voice) => voice.id === selectedVoiceId)?.label || 'Nova'}
               </span>
             </button>
             <button
               onClick={() => setShowPersonalityPicker(true)}
-              className="hidden items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors md:flex"
+              className="hidden min-h-[44px] items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors md:flex"
             >
               <span className="material-symbols-rounded icon-current text-[16px]">{pConfig.icon}</span>
               {pConfig.label}
@@ -1637,15 +1604,9 @@ export default function SonaAgentPage() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
           <div className="max-w-5xl mx-auto space-y-4">
             {showResumeUploadIntent && !isOpeningState && (
-              <div
-                className="flex flex-col gap-3 rounded-[22px] border p-4 sm:flex-row sm:items-center sm:justify-between"
-                style={{
-                  background: isLight ? 'rgba(239,246,255,0.9)' : 'rgba(59,130,246,0.08)',
-                  borderColor: isLight ? 'rgba(37,99,235,0.18)' : 'rgba(96,165,250,0.22)',
-                }}
-              >
+              <div className="flex flex-col gap-3 rounded-[22px] border border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-[var(--accent-dim)] p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 items-start gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]">
                     <span className="material-symbols-rounded text-[20px]">upload_file</span>
                   </span>
                   <div className="min-w-0">
@@ -1675,14 +1636,7 @@ export default function SonaAgentPage() {
                 className="py-4 sm:py-6 lg:py-12"
               >
                 <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-                  <section
-                    className="rounded-[24px] border p-4 sm:rounded-[28px] sm:p-8"
-                    style={{
-                      background: isLight ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.035)',
-                      borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
-                      boxShadow: isLight ? '0 24px 80px rgba(15,23,42,0.08)' : '0 24px 80px rgba(0,0,0,0.28)',
-                    }}
-                  >
+                  <section className="elevation-card rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 sm:rounded-[28px] sm:p-8">
                     <div className="flex items-start gap-4">
                         <AssistantMark size="sm" state="idle" className="sm:hidden" />
                         <AssistantMark size="md" state="idle" className="hidden sm:inline-flex" />
@@ -1709,15 +1663,11 @@ export default function SonaAgentPage() {
                       <>
                       {shouldShowResumeSourcePrompt && (
                         <div
-                          className={`${resumeSourcePromptMode === 'mobile' ? 'lg:hidden' : ''} mt-4 rounded-[20px] border p-3 sm:p-4`}
-                          style={{
-                            background: isLight ? 'rgba(239,246,255,0.72)' : 'rgba(59,130,246,0.08)',
-                            borderColor: isLight ? 'rgba(37,99,235,0.2)' : 'rgba(96,165,250,0.24)',
-                          }}
+                          className={`${resumeSourcePromptMode === 'mobile' ? 'lg:hidden' : ''} mt-4 rounded-[20px] border border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-[var(--accent-dim)] p-3 sm:p-4`}
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex min-w-0 items-center gap-3">
-                              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300">
+                              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]">
                                 <span className="material-symbols-rounded text-[20px]">upload_file</span>
                               </span>
                               <div className="min-w-0">
@@ -1747,13 +1697,9 @@ export default function SonaAgentPage() {
                             ].map((item) => (
                               <div
                                 key={item}
-                                className="flex min-h-10 flex-col items-center justify-center gap-1 rounded-xl border px-2 text-center text-[var(--text-secondary)] sm:min-h-9 sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left"
-                                style={{
-                                  background: isLight ? 'rgba(255,255,255,0.62)' : 'rgba(255,255,255,0.035)',
-                                  borderColor: isLight ? 'rgba(37,99,235,0.14)' : 'rgba(96,165,250,0.16)',
-                                }}
+                                className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border border-[color-mix(in_srgb,var(--accent)_16%,transparent)] bg-[var(--bg-surface)] px-2 text-center text-[var(--text-secondary)] sm:min-h-11 sm:flex-row sm:justify-start sm:gap-2 sm:px-3 sm:text-left"
                               >
-                                <span className="material-symbols-rounded text-[14px] text-blue-600 dark:text-blue-300">verified</span>
+                                <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">verified</span>
                                 <span className="min-w-0 leading-3.5 sm:leading-4">{item}</span>
                               </div>
                             ))}
@@ -1763,11 +1709,7 @@ export default function SonaAgentPage() {
 
                       <form
                         id="sona-target-brief"
-                        className={`${showResumeUploadIntent ? 'mt-3 sm:mt-4' : resumeSourcePromptMode === 'mobile' ? 'mt-3 sm:mt-4 lg:mt-6' : 'mt-4 sm:mt-6'} scroll-mt-24 rounded-[20px] border p-3 sm:p-4`}
-                        style={{
-                          background: isLight ? 'rgba(248,250,252,0.88)' : 'rgba(255,255,255,0.035)',
-                          borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
-                        }}
+                        className={`${showResumeUploadIntent ? 'mt-3 sm:mt-4' : resumeSourcePromptMode === 'mobile' ? 'mt-3 sm:mt-4 lg:mt-6' : 'mt-4 sm:mt-6'} scroll-mt-24 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 sm:p-4`}
                         onSubmit={(event) => {
                           event.preventDefault();
                           submitTargetBrief();
@@ -1781,7 +1723,7 @@ export default function SonaAgentPage() {
                           <button
                             type="button"
                             onClick={useExampleTarget}
-                            className="inline-flex min-h-9 items-center justify-center rounded-full border border-[var(--border-subtle)] px-3 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+                            className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-[var(--border-subtle)] px-3 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
                           >
                             Use $120k hybrid example
                           </button>
@@ -1798,7 +1740,7 @@ export default function SonaAgentPage() {
                                 setTargetRole(event.target.value);
                                 if (targetBriefError) setTargetBriefError('');
                               }}
-                              className="min-h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-blue-500 sm:text-sm"
+                              className="min-h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
                               placeholder="Target role"
                             />
                           </label>
@@ -1810,7 +1752,7 @@ export default function SonaAgentPage() {
                                 invalidateActivationProof();
                                 setTargetSalary(event.target.value);
                               }}
-                              className="min-h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-blue-500 sm:text-sm"
+                              className="min-h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
                               placeholder="$120k"
                               inputMode="text"
                             />
@@ -1824,14 +1766,14 @@ export default function SonaAgentPage() {
                                 setTargetLocation(event.target.value);
                                 if (targetBriefError) setTargetBriefError('');
                               }}
-                              className="min-h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-blue-500 sm:text-sm"
+                              className="min-h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
                               placeholder="City, state, or remote"
                             />
                           </label>
                         </div>
 
                         {targetBriefError && (
-                          <p role="alert" className="mt-2 text-xs leading-5 text-rose-500">
+                          <p role="alert" className="mt-2 text-xs leading-5 text-[var(--danger)]">
                             {targetBriefError}
                           </p>
                         )}
@@ -1854,7 +1796,7 @@ export default function SonaAgentPage() {
                                 aria-pressed={targetWorkMode === value}
                                 className={`min-h-11 shrink-0 rounded-full border px-3 text-xs font-semibold transition ${
                                   targetWorkMode === value
-                                    ? 'border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-300'
+                                    ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                                     : 'border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:text-[var(--text-primary)]'
                                 }`}
                               >
@@ -1894,11 +1836,7 @@ export default function SonaAgentPage() {
                               sendMessage(p.prompt);
                             }}
                             disabled={p.action === 'resumeUpload' && (loading || isResumeUploadBusy)}
-                            className={`group min-h-[112px] flex-col justify-between rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none ${p.action === 'resumeUpload' && resumeSourcePromptMode === 'mobile' ? 'hidden lg:flex' : 'flex'}`}
-                            style={{
-                              background: isLight ? 'rgba(248,250,252,0.82)' : 'rgba(255,255,255,0.035)',
-                              borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
-                            }}
+                            className={`group elevation-interactive min-h-[112px] flex-col justify-between rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 ${p.action === 'resumeUpload' && resumeSourcePromptMode === 'mobile' ? 'hidden lg:flex' : 'flex'}`}
                           >
                             <div className="flex items-center justify-between gap-3">
                               <span
@@ -1925,15 +1863,11 @@ export default function SonaAgentPage() {
 
                   <aside className="space-y-4">
                     <div
-                      className="rounded-2xl border p-4"
-                      style={{
-                        background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.035)',
-                        borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
-                      }}
+                      className="elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">Active Context</p>
+                          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">Active Context</p>
                           <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{activeResumeName || 'No resume selected'}</p>
                         </div>
                         <span className="material-symbols-rounded icon-neutral text-[20px]">description</span>
@@ -1943,7 +1877,7 @@ export default function SonaAgentPage() {
                           type="button"
                           onClick={openResumeUploadPicker}
                           disabled={loading || isResumeUploadBusy}
-                          className={`mt-3 min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-60 ${resumeSourcePromptMode === 'mobile' ? 'hidden lg:inline-flex' : 'inline-flex'}`}
+                          className={`mt-3 min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-60 ${resumeSourcePromptMode === 'mobile' ? 'hidden lg:inline-flex' : 'inline-flex'}`}
                         >
                           <span className={`material-symbols-rounded text-[16px] ${isResumeUploadBusy ? 'animate-spin' : ''}`}>{isResumeUploadBusy ? 'progress_activity' : 'upload_file'}</span>
                           {isResumeUploadBusy ? 'Uploading resume...' : activeResumeName ? 'Upload another resume' : 'Upload resume for Taco'}
@@ -1952,19 +1886,14 @@ export default function SonaAgentPage() {
                     </div>
 
                     <div
-                      className="rounded-2xl border p-4"
-                      style={{
-                        background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.035)',
-                        borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
-                      }}
+                      className="elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4"
                     >
-                      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">Operating Mode</p>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">Operating Mode</p>
                       <button
                         onClick={() => setShowPersonalityPicker(true)}
-                        className="mt-3 w-full flex items-center gap-3 rounded-xl border p-3 text-left transition-colors hover:bg-[var(--bg-hover)]"
-                        style={{ borderColor: `${pConfig.color}22`, background: `${pConfig.color}08` }}
+                        className="mt-3 w-full flex items-center gap-3 rounded-xl border border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-[var(--accent-dim)] p-3 text-left transition-colors hover:bg-[var(--accent-hover)]"
                       >
-                        <span className="material-symbols-rounded text-[19px]" style={{ color: pConfig.color }}>{pConfig.icon}</span>
+                        <span className="material-symbols-rounded text-[19px] text-[var(--accent)]">{pConfig.icon}</span>
                         <span className="min-w-0">
                           <span className="block text-sm font-semibold text-[var(--text-primary)]">{pConfig.label}</span>
                           <span className="block text-xs text-[var(--text-muted)]">{pConfig.desc}</span>
@@ -1974,13 +1903,9 @@ export default function SonaAgentPage() {
                     </div>
 
                     <div
-                      className="rounded-2xl border p-4"
-                      style={{
-                        background: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.035)',
-                        borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
-                      }}
+                      className="elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4"
                     >
-                      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">Career Stack</p>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">Career Stack</p>
                       <div className="mt-3 grid grid-cols-2 gap-2">
                         {[
                           { label: 'Quality', icon: 'monitoring', href: '/suite/agent/quality' },
@@ -1991,8 +1916,7 @@ export default function SonaAgentPage() {
                           <a
                             key={item.label}
                             href={item.href}
-                            className="rounded-xl border px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                            style={{ borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)' }}
+                            className="rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                           >
                             <span className="material-symbols-rounded icon-current mr-1 align-middle text-[15px]">{item.icon}</span>
                             {item.label}
@@ -2023,32 +1947,24 @@ export default function SonaAgentPage() {
                     />
                   )}
                   <div
-                    className={`group max-w-[91%] px-4 py-3 text-sm leading-relaxed shadow-sm sm:max-w-[76%] ${
+                    className={`group elevation-card max-w-[91%] px-4 py-3 text-sm leading-relaxed sm:max-w-[76%] ${
                       msg.role === 'user'
-                        ? 'rounded-[22px] rounded-br-md text-white'
-                        : 'rounded-[22px] rounded-bl-md border text-[var(--text-primary)]'
+                        ? 'rounded-[22px] rounded-br-md border border-transparent bg-[var(--accent)] text-[var(--accent-on)]'
+                        : 'rounded-[22px] rounded-bl-md border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-primary)]'
                     }`}
-                    style={
-                      msg.role === 'user'
-                        ? { background: pConfig.color, borderColor: 'transparent' }
-                        : {
-                            background: isLight ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.055)',
-                            borderColor: isLight ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
-                          }
-                    }
                   >
                     {msg.role === 'assistant' && (
                       <div className="mb-2 flex items-center gap-1.5">
                         <AssistantMark size="xs" state={speakingIdx === i ? 'responding' : 'idle'} className="sm:hidden" />
-                        <span className="text-[11px] font-semibold" style={{ color: pConfig.color }}>Taco</span>
+                        <span className="text-[11px] font-semibold text-[var(--accent)]">Taco</span>
                         <button
                           onClick={(e) => { e.stopPropagation(); speakMessage(msg.content, i); }}
-                          className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                          className="ml-auto flex h-11 w-11 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                           title={speakingIdx === i ? 'Stop speaking' : 'Read aloud'}
                           aria-label={speakingIdx === i ? 'Stop speaking Taco message' : 'Read Taco message aloud'}
                         >
                           <span
-                            className={`material-symbols-rounded text-[14px] ${speakingIdx === i ? 'text-rose-400' : 'text-[var(--text-muted)]'}`}
+                            className={`material-symbols-rounded text-[14px] ${speakingIdx === i ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}
                           >
                             {speakingIdx === i ? 'stop_circle' : 'volume_up'}
                           </span>
@@ -2056,11 +1972,8 @@ export default function SonaAgentPage() {
                       </div>
                     )}
                     {msg.role === 'assistant' && msg.actionPlan && (
-                      <div
-                        className="mb-3 rounded-[16px] border px-3 py-2 text-xs"
-                        style={{ borderColor: `${pConfig.color}22`, background: `${pConfig.color}08` }}
-                      >
-                        <div className="font-semibold" style={{ color: pConfig.color }}>{formatSonaPlanTitle(msg.actionPlan)}</div>
+                      <div className="mb-3 rounded-[16px] border border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs">
+                        <div className="font-semibold text-[var(--accent)]">{formatSonaPlanTitle(msg.actionPlan)}</div>
                         <div className="mt-1 text-[var(--text-secondary)]">{formatSonaPlanSteps(msg.actionPlan)}</div>
                         {msg.actionPlan.approvalRequired && (
                           <div className="mt-1 text-[var(--text-muted)]">Review required before any external action.</div>
@@ -2089,11 +2002,7 @@ export default function SonaAgentPage() {
                       </div>
                     )}
                     {msg.role === 'assistant' && msg.harnessResult && (
-                      <SonaHarnessResultCard
-                        result={msg.harnessResult}
-                        accentColor={pConfig.color}
-                        isLight={isLight}
-                      />
+                      <SonaHarnessResultCard result={msg.harnessResult} />
                     )}
                   </div>
                 </motion.div>
@@ -2109,7 +2018,6 @@ export default function SonaAgentPage() {
               >
                 <AssistantThinkingTile
                   variant="agent"
-                  accentColor={pConfig.color}
                   icon={pConfig.icon}
                   title="Taco is thinking"
                   description="Checking your context, tools, and next best move."
@@ -2126,19 +2034,14 @@ export default function SonaAgentPage() {
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-5 rounded-2xl text-center"
-                style={{
-                  background: isLight ? 'rgba(244,63,94,0.05)' : 'rgba(244,63,94,0.08)',
-                  border: '1px solid rgba(244,63,94,0.2)',
-                }}
+                className="p-5 rounded-2xl border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] text-center"
               >
                 <AssistantMark size="md" state="locked" className="mx-auto mb-3" />
                 <p className="text-sm text-[var(--text-primary)] font-medium mb-1">Taco is Resting</p>
                 <p className="text-xs text-[var(--text-secondary)] mb-4">{gated.message}</p>
                 <a
                   href="/suite/upgrade"
-                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)' }}
+                  className="inline-flex min-h-11 items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-semibold bg-[var(--accent)] text-[var(--accent-on)] transition-opacity hover:opacity-90"
                 >
                   <span className="material-symbols-rounded text-[16px]">bolt</span>
                   Unlock Taco
@@ -2159,17 +2062,13 @@ export default function SonaAgentPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 p-4 pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] sm:items-center sm:pt-4"
+            className="fixed inset-0 z-[70] flex items-start justify-center bg-[var(--bg-deep)]/70 p-4 pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] sm:items-center sm:pt-4"
           >
             <motion.div
               initial={{ scale: 0.95, y: 12 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 12 }}
-              className="w-full max-w-sm rounded-[20px] p-5 sm:max-w-md sm:p-6"
-              style={{
-                background: isLight ? '#fff' : '#111114',
-                border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
-              }}
+              className="elevation-raised w-full max-w-sm rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 sm:max-w-md sm:p-6"
             >
               <h2 className="mb-1 text-lg font-semibold text-[var(--text-primary)]">Choose Taco&apos;s personality</h2>
               <p className="mb-4 text-xs leading-5 text-[var(--text-secondary)]">Pick the tone for this workspace. You can change it from the header later.</p>
@@ -2179,16 +2078,13 @@ export default function SonaAgentPage() {
                   <button
                     key={key}
                     onClick={() => selectPersonality(key)}
-                    className="flex min-h-[72px] w-full items-center gap-3 rounded-[14px] p-3 text-left transition-transform hover:scale-[1.01]"
-                    style={{
-                      background: personality === key ? `${config.color}10` : isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-                      border: `2px solid ${personality === key ? config.color : isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-                    }}
+                    className={`flex min-h-[72px] w-full items-center gap-3 rounded-[14px] border-2 p-3 text-left transition-transform hover:scale-[1.01] ${
+                      personality === key
+                        ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
+                        : 'border-[var(--border-subtle)] bg-[var(--bg-surface)]'
+                    }`}
                   >
-                    <div
-                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl"
-                      style={{ background: `${config.color}15`, color: config.color }}
-                    >
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--accent-dim)] text-[var(--accent)]">
                       <span className="material-symbols-rounded text-[22px]">{config.icon}</span>
                     </div>
                     <div className="min-w-0 flex-1">
@@ -2196,7 +2092,7 @@ export default function SonaAgentPage() {
                       <p className="text-xs text-[var(--text-secondary)]">{config.desc}</p>
                     </div>
                     {personality === key && (
-                      <span className="material-symbols-rounded ml-auto text-[20px]" style={{ color: config.color }}>check_circle</span>
+                      <span className="material-symbols-rounded ml-auto text-[20px] text-[var(--accent)]">check_circle</span>
                     )}
                   </button>
                 ))}
@@ -2205,7 +2101,7 @@ export default function SonaAgentPage() {
               {messages.length > 0 && (
                 <button
                   onClick={() => setShowPersonalityPicker(false)}
-                  className="w-full mt-4 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  className="w-full min-h-[44px] mt-4 text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   Cancel
                 </button>
@@ -2222,7 +2118,7 @@ export default function SonaAgentPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-start justify-center bg-black/45 p-4 pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] sm:items-center sm:pt-4"
+            className="fixed inset-0 z-[70] flex items-start justify-center bg-[var(--bg-deep)]/70 p-4 pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] sm:items-center sm:pt-4"
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) setShowVoiceSettings(false);
             }}
@@ -2231,11 +2127,7 @@ export default function SonaAgentPage() {
               initial={{ scale: 0.96, y: 12 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.96, y: 12 }}
-              className="max-h-[calc(100dvh-6rem)] w-full max-w-lg overflow-y-auto rounded-[22px] p-5 sm:p-6"
-              style={{
-                background: isLight ? '#fff' : '#111114',
-                border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
-              }}
+              className="elevation-raised max-h-[calc(100dvh-6rem)] w-full max-w-lg overflow-y-auto rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 sm:p-6"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -2248,7 +2140,7 @@ export default function SonaAgentPage() {
                 <button
                   type="button"
                   onClick={() => setShowVoiceSettings(false)}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
                   aria-label="Close voice settings"
                 >
                   <span className="material-symbols-rounded text-[19px]">close</span>
@@ -2265,10 +2157,10 @@ export default function SonaAgentPage() {
                   <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">Taco reads new answers aloud after she responds.</span>
                 </span>
                 <span
-                  className={`flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition ${audioRepliesEnabled ? 'bg-blue-500' : 'bg-[var(--bg-hover)]'}`}
+                  className={`flex h-7 w-12 shrink-0 items-center rounded-full p-1 transition ${audioRepliesEnabled ? 'bg-[var(--accent)]' : 'bg-[var(--bg-hover)]'}`}
                   aria-hidden="true"
                 >
-                  <span className={`h-5 w-5 rounded-full bg-white transition ${audioRepliesEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  <span className={`h-5 w-5 rounded-full bg-[var(--paper)] transition ${audioRepliesEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
                 </span>
               </button>
 
@@ -2284,14 +2176,14 @@ export default function SonaAgentPage() {
                         onClick={() => updateSelectedVoice(voice.id)}
                         className={`min-h-[72px] rounded-[16px] border p-3 text-left transition ${
                           selected
-                            ? 'border-blue-500/45 bg-blue-500/10'
+                            ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                             : 'border-[var(--border-subtle)] bg-[var(--card-bg)] hover:border-[var(--border)]'
                         }`}
                         aria-pressed={selected}
                       >
                         <span className="flex items-center justify-between gap-3">
                           <span className="text-sm font-semibold text-[var(--text-primary)]">{voice.label}</span>
-                          {selected && <span className="material-symbols-rounded text-[17px] text-blue-500">radio_button_checked</span>}
+                          {selected && <span className="material-symbols-rounded text-[17px] text-[var(--accent)]">radio_button_checked</span>}
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">{voice.tone}</span>
                       </button>

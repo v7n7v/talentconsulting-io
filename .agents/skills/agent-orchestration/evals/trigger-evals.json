@@ -1,0 +1,20 @@
+[
+ {"query":"spin up a few agents to review the upload foundation from different angles before we migrate","should_trigger":true},
+ {"query":"write me a workflow that builds the remaining phases and then attacks its own work","should_trigger":true},
+ {"query":"the audit came back clean. do you actually believe it","should_trigger":true},
+ {"query":"have a skeptic go at this plan, and use a stronger model for that one","should_trigger":true},
+ {"query":"five reviewers gave me 31 findings and some of them contradict. turn that into one plan","should_trigger":true},
+ {"query":"be comprehensive - i want this audited from every angle before the five call sites move","should_trigger":true},
+ {"query":"can two agents work on lib/upload and components/upload at the same time or will they clash","should_trigger":true},
+ {"query":"tests are 90/90 green. prove they would actually go red if the fix regressed","should_trigger":true},
+ {"query":"one agent per section, a watchdog over them and a critic tearing it apart","should_trigger":true},
+ {"query":"run node scripts/verify.js and fix whatever it reports","should_trigger":false},
+ {"query":"keep going through phase 3 until the gates are green, i'm going to bed","should_trigger":false},
+ {"query":"use the Explore agent to find everywhere FileUploadDropzone is imported","should_trigger":false},
+ {"query":"which agent file in .agent/agents covers the security review","should_trigger":false},
+ {"query":"write the docs/DECISIONS.md entry for the upload foundation work","should_trigger":false},
+ {"query":"the upload card overflows at 320px, the byte pair is too wide","should_trigger":false},
+ {"query":"explain how guardApiRoute ended up returning identity on the error branch","should_trigger":false},
+ {"query":"how many tokens did yesterday's workflow burn","should_trigger":false},
+ {"query":"add a unit test for safeStorageFileName covering names that are entirely dots","should_trigger":false}
+]

@@ -54,7 +54,7 @@
   background: color-mix(in srgb, var(--admin-info-soft) 62%, var(--admin-surface-elevated));
   color: var(--admin-text-secondary);
   padding: 5px 10px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 680;
 }
 
@@ -242,7 +242,7 @@
 
 .admin-command-grid .observability-view-switcher small {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-tab-panel {
@@ -290,7 +290,7 @@
 .admin-command-grid .observability-disabled-state p {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -337,7 +337,7 @@
   background: var(--admin-degraded-soft);
   color: var(--admin-text-secondary);
   padding: 8px 10px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-sparse-note .material-symbols-rounded {
@@ -370,13 +370,13 @@
 .admin-command-grid .observability-bar-rank {
   color: var(--admin-text-muted);
   font-family: var(--font-mono), "JetBrains Mono", monospace;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-bar-label {
   overflow: hidden;
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 680;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -403,7 +403,7 @@
 .admin-command-grid .observability-bar-row > strong {
   color: var(--admin-text-secondary);
   font-family: var(--font-mono), "JetBrains Mono", monospace;
-  font-size: 10px;
+  font-size: 11px;
   text-align: right;
 }
 
@@ -444,7 +444,7 @@
 
 .admin-command-grid .observability-donut small {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -473,7 +473,7 @@
   align-items: center;
   gap: 7px;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-outcome-list i {
@@ -502,7 +502,7 @@
 .admin-command-grid .observability-outcome-list strong {
   color: var(--admin-text-primary);
   font-family: var(--font-mono), "JetBrains Mono", monospace;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .observability-context-grid {
@@ -541,7 +541,7 @@
 
 .admin-command-grid .observability-fact-list dt {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -550,7 +550,7 @@
 .admin-command-grid .observability-fact-list dd {
   margin: 0;
   color: var(--admin-text-primary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 670;
 }
 
@@ -573,7 +573,7 @@
   background: var(--admin-surface-elevated);
   color: var(--admin-text-secondary);
   padding: 7px 9px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -966,7 +966,7 @@
 
 .admin-command-grid .observability-timeline dt {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 740;
   letter-spacing: 0.07em;
   text-transform: uppercase;

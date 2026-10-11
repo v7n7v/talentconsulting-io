@@ -13,9 +13,13 @@ export interface JobStar {
   id: string;
   title: string;
   company: string;
-  salary: number;
+  // null when the source did not list a salary — the tooltip shows "Salary not
+  // listed" rather than a synthetic figure.
+  salary: number | null;
   skills: string[];
-  fitScore: number;
+  // null when no fit was measured for this job — the tooltip shows "Fit not
+  // computed" rather than a synthetic percentage.
+  fitScore: number | null;
   position: [number, number, number];
   color: string;
   isConstellation: boolean;
@@ -38,7 +42,7 @@ export interface BridgeSkill {
 
 export interface MarketAnalysis {
   currentPosition: [number, number, number];
-  talentDensityPercentile: number;
+  talentDensityPercentile: number | null;
   topSkills: string[];
   missingSkills: string[];
   bridgeSkills: BridgeSkill[];
@@ -61,10 +65,13 @@ function JobStarMesh({
   const glowRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  // Tiered visuals
-  const tier = job.fitScore > 0.8 ? 'elite'
-    : job.fitScore > 0.6 ? 'strong'
-    : job.fitScore > 0.4 ? 'decent' : 'low';
+  // Tiered visuals. A null fit (not measured) falls to the muted 'low' tier for
+  // layout; the tooltip states "Fit not computed" rather than implying a score.
+  const fit = job.fitScore;
+  const tier = fit == null ? 'low'
+    : fit > 0.8 ? 'elite'
+    : fit > 0.6 ? 'strong'
+    : fit > 0.4 ? 'decent' : 'low';
 
   const config = {
     elite:  { size: 0.3, emissive: 2.5, glowScale: 1.8, color: '#06d6a0' },
@@ -163,16 +170,22 @@ function JobStarMesh({
               <p style={{ color: '#94a3b8', fontSize: 10, margin: '0 0 4px 0' }}>📍 {job.location}</p>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#4ade80', fontSize: 14, fontWeight: 700 }}>
-                ${job.salary.toLocaleString()}
-              </span>
+              {job.salary != null ? (
+                <span style={{ color: '#4ade80', fontSize: 14, fontWeight: 700 }}>
+                  ${job.salary.toLocaleString()}
+                </span>
+              ) : (
+                <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 600 }}>
+                  Salary not listed
+                </span>
+              )}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '2px 8px', borderRadius: 20,
                 background: `${config.color}20`, border: `1px solid ${config.color}30`,
               }}>
                 <span style={{ color: config.color, fontSize: 11, fontWeight: 600 }}>
-                  {Math.round(job.fitScore * 100)}% fit
+                  {job.fitScore != null ? `${Math.round(job.fitScore * 100)}% fit` : 'Fit not computed'}
                 </span>
               </div>
             </div>
@@ -363,9 +376,11 @@ export default function OracleScene({
 }) {
   const filteredJobs = useMemo(() => {
     return analysis.jobs.filter(job => {
-      const tier = job.fitScore >= 0.8 ? 'elite'
-        : job.fitScore >= 0.6 ? 'strong'
-        : job.fitScore >= 0.4 ? 'decent'
+      const fit = job.fitScore;
+      const tier = fit == null ? 'low'
+        : fit >= 0.8 ? 'elite'
+        : fit >= 0.6 ? 'strong'
+        : fit >= 0.4 ? 'decent'
         : 'low';
       return visibleTiers.has(tier);
     });

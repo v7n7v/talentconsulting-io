@@ -57,8 +57,14 @@ function actionCopy(mode: ActionMode | null) {
 function policyMessages(status: PasswordValidationStatus): string[] {
   const messages: string[] = [];
   const policy = status.passwordPolicy;
-  if (status.meetsMinPasswordLength === false) messages.push(`Use at least ${policy.customStrengthOptions.minPasswordLength || 6} characters.`);
-  if (status.meetsMaxPasswordLength === false) messages.push(`Use no more than ${policy.customStrengthOptions.maxPasswordLength || 4096} characters.`);
+  if (status.meetsMinPasswordLength === false) {
+    const min = policy.customStrengthOptions?.minPasswordLength;
+    messages.push(min != null ? `Use at least ${min} characters.` : 'Use a longer password.');
+  }
+  if (status.meetsMaxPasswordLength === false) {
+    const max = policy.customStrengthOptions?.maxPasswordLength;
+    messages.push(max != null ? `Use no more than ${max} characters.` : 'Use a shorter password.');
+  }
   if (status.containsLowercaseLetter === false) messages.push('Add a lowercase letter.');
   if (status.containsUppercaseLetter === false) messages.push('Add an uppercase letter.');
   if (status.containsNumericCharacter === false) messages.push('Add a number.');
@@ -170,30 +176,30 @@ function ActionCodeForm() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-slate-950 px-4 py-12 text-white">
-      <section className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-slate-900/90 shadow-2xl shadow-indigo-950/40" aria-labelledby="auth-action-title">
-        <div className="border-b border-white/10 px-6 py-6 sm:px-8">
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--bg-deep)] px-4 py-12 text-[var(--text-primary)]">
+      <section className="elevation-raised w-full max-w-lg overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-[var(--card-bg)]" aria-labelledby="auth-action-title">
+        <div className="border-b border-[var(--border-subtle)] px-6 py-6 sm:px-8">
           <Link href="/" className="inline-flex items-center gap-3" aria-label="TalentConsulting.io home">
             <img src="/brand/talentconsulting-logo-email.png" alt="TalentConsulting.io" className="h-auto w-56 max-w-full" />
           </Link>
         </div>
         <div className="px-6 py-8 sm:px-8 sm:py-10">
-          <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-indigo-300">{copy.category}</p>
-          <h1 id="auth-action-title" className="text-2xl font-bold tracking-tight sm:text-3xl">{viewState === 'success' ? copy.successTitle : copy.title}</h1>
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--accent)]">{copy.category}</p>
+          <h1 id="auth-action-title" className="text-2xl font-bold tracking-tight text-[var(--text-primary)] sm:text-3xl">{viewState === 'success' ? copy.successTitle : copy.title}</h1>
 
           {viewState === 'checking' ? (
             <div className="mt-8" role="status" aria-live="polite">
-              <div className="mb-4 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                <div className="h-full w-1/2 animate-pulse rounded-full bg-indigo-500" />
+              <div className="mb-4 h-2 w-full overflow-hidden rounded-full bg-[var(--bg-hover)]">
+                <div className="h-full w-1/2 animate-pulse rounded-full bg-[var(--accent)]" />
               </div>
-              <p className="text-sm text-slate-300">Checking your secure link…</p>
+              <p className="text-sm text-[var(--text-secondary)]">Checking your secure link…</p>
             </div>
           ) : null}
 
           {viewState === 'success' ? (
             <div className="mt-6" role="status" aria-live="polite">
-              <div className="mb-5 rounded-2xl border border-emerald-400/25 bg-emerald-400/10 p-4 text-sm leading-6 text-emerald-100">{copy.successBody}</div>
-              <Link href="/" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-indigo-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+              <div className="mb-5 rounded-2xl border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] p-4 text-sm leading-6 text-[var(--text-primary)]">{copy.successBody}</div>
+              <Link href="/" className="btn-primary inline-flex min-h-12 items-center justify-center px-5 py-3 text-sm">
                 Continue to sign in
               </Link>
             </div>
@@ -201,24 +207,24 @@ function ActionCodeForm() {
 
           {viewState === 'error' ? (
             <div className="mt-6">
-              <div className="rounded-2xl border border-red-400/25 bg-red-400/10 p-4 text-sm leading-6 text-red-100" role="alert">{error}</div>
-              <Link href="/" className="mt-5 inline-flex text-sm font-semibold text-indigo-300 underline underline-offset-4">Return to sign in</Link>
+              <div className="rounded-2xl border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-4 text-sm leading-6 text-[var(--text-primary)]" role="alert">{error}</div>
+              <Link href="/" className="mt-5 inline-flex text-sm font-semibold text-[var(--accent)] underline underline-offset-4">Return to sign in</Link>
             </div>
           ) : null}
 
           {(viewState === 'ready' || viewState === 'submitting') && mode === 'resetPassword' ? (
             <form className="mt-6 space-y-5" onSubmit={handlePasswordReset}>
-              <p className="text-sm leading-6 text-slate-300">{copy.description}{accountHint ? ` Account: ${accountHint}` : ''}</p>
+              <p className="text-sm leading-6 text-[var(--text-secondary)]">{copy.description}{accountHint ? ` Account: ${accountHint}` : ''}</p>
               <div>
-                <label htmlFor="new-password" className="mb-2 block text-sm font-semibold text-slate-200">New password</label>
-                <input id="new-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={viewState === 'submitting'} required className="min-h-12 w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-base text-white outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 disabled:opacity-60" />
+                <label htmlFor="new-password" className="mb-2 block text-sm font-semibold text-[var(--text-secondary)]">New password</label>
+                <input id="new-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={viewState === 'submitting'} required className="min-h-12 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-base text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)] disabled:opacity-60" />
               </div>
               <div>
-                <label htmlFor="confirm-password" className="mb-2 block text-sm font-semibold text-slate-200">Confirm new password</label>
-                <input id="confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} disabled={viewState === 'submitting'} required className="min-h-12 w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-base text-white outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/30 disabled:opacity-60" />
+                <label htmlFor="confirm-password" className="mb-2 block text-sm font-semibold text-[var(--text-secondary)]">Confirm new password</label>
+                <input id="confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} disabled={viewState === 'submitting'} required className="min-h-12 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-base text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)] disabled:opacity-60" />
               </div>
-              {error ? <p className="rounded-xl border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100" role="alert">{error}</p> : null}
-              <button type="submit" disabled={viewState === 'submitting'} className="min-h-12 w-full rounded-xl bg-indigo-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-wait disabled:opacity-60">
+              {error ? <p className="rounded-xl border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-[var(--text-primary)]" role="alert">{error}</p> : null}
+              <button type="submit" disabled={viewState === 'submitting'} className="btn-primary min-h-12 w-full px-5 py-3 text-sm disabled:cursor-wait">
                 {viewState === 'submitting' ? 'Resetting password…' : copy.button}
               </button>
             </form>
@@ -226,9 +232,9 @@ function ActionCodeForm() {
 
           {(viewState === 'ready' || viewState === 'submitting') && mode && mode !== 'resetPassword' ? (
             <div className="mt-6">
-              <p className="text-sm leading-6 text-slate-300">{copy.description}{accountHint ? ` Account: ${accountHint}` : ''}</p>
-              {error ? <p className="mt-4 rounded-xl border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100" role="alert">{error}</p> : null}
-              <button type="button" onClick={handleEmailAction} disabled={viewState === 'submitting'} className="mt-6 min-h-12 w-full rounded-xl bg-indigo-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-wait disabled:opacity-60">
+              <p className="text-sm leading-6 text-[var(--text-secondary)]">{copy.description}{accountHint ? ` Account: ${accountHint}` : ''}</p>
+              {error ? <p className="mt-4 rounded-xl border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-3 text-sm text-[var(--text-primary)]" role="alert">{error}</p> : null}
+              <button type="button" onClick={handleEmailAction} disabled={viewState === 'submitting'} className="btn-primary mt-6 min-h-12 w-full px-5 py-3 text-sm disabled:cursor-wait">
                 {viewState === 'submitting' ? 'Applying secure action…' : copy.button}
               </button>
             </div>
@@ -247,7 +253,7 @@ function maskEmail(value: string): string {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<main className="flex min-h-dvh items-center justify-center bg-slate-950 text-sm text-slate-300">Checking your secure link…</main>}>
+    <Suspense fallback={<main className="flex min-h-dvh items-center justify-center bg-[var(--bg-deep)] text-sm text-[var(--text-secondary)]">Checking your secure link…</main>}>
       <ActionCodeForm />
     </Suspense>
   );

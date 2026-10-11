@@ -59,7 +59,7 @@ function renderMarkdown(text: string) {
     .replace(/\*(.*?)\*/gim, '<em class="text-[var(--text-secondary)] italic">$1</em>')
     .replace(/^\s*-\s+(.*$)/gim, '<li class="ml-5 list-disc text-[var(--text-secondary)] mb-1.5 marker:text-[var(--accent)] pl-1">$1</li>')
     .replace(/\[ \]/gim, '<span class="inline-block h-3.5 w-3.5 rounded border border-[var(--border)] mr-1.5 align-middle"></span>')
-    .replace(/\[x\]/gim, '<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-emerald-500/30 border border-emerald-500/50 mr-1.5 align-middle text-emerald-500 text-[9px]">✓</span>')
+    .replace(/\[x\]/gim, '<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-[var(--accent-dim)] border border-[var(--border-subtle)] mr-1.5 align-middle text-[var(--success)] text-[11px]">✓</span>')
     .replace(/\n\n/gim, '</p><p class="text-[var(--text-secondary)] leading-relaxed mb-4 mt-2">')
     .replace(/\n(?!\s*<)/gim, '<br/>');
 

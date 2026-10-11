@@ -7,7 +7,7 @@ import { getAgentQueue, type AgentQueueItem } from '@/lib/database-suite';
 import Link from 'next/link';
 
 function scoreColor(s: number) {
-  return s >= 80 ? '#10b981' : s >= 60 ? '#3b82f6' : '#f59e0b';
+  return s >= 80 ? 'var(--success)' : s >= 60 ? 'var(--accent)' : 'var(--warning)';
 }
 
 export default function AgentQueueWidget() {
@@ -42,19 +42,19 @@ export default function AgentQueueWidget() {
       {/* Header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center">
-            <span className="material-symbols-rounded text-white text-[13px]">smart_toy</span>
+          <div className="w-6 h-6 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-subtle)] flex items-center justify-center">
+            <span className="material-symbols-rounded text-[var(--accent)] text-[13px]">smart_toy</span>
           </div>
           <h2 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
             Agent Queue
           </h2>
-          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/10 text-cyan-500">
+          <span className="px-1.5 py-0.5 text-[11px] font-bold rounded-full bg-[var(--accent-dim)] text-[var(--accent)]">
             {items.length} pending
           </span>
         </div>
         <Link
           href="/suite/agent/queue"
-          className="text-[11px] font-medium text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+          className="inline-flex min-h-[44px] items-center text-[11px] font-medium text-[var(--accent)] hover:text-[var(--accent-active)] transition-colors gap-1"
         >
           Review all
           <span className="material-symbols-rounded text-[13px]">arrow_forward</span>
@@ -69,22 +69,28 @@ export default function AgentQueueWidget() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * i }}
-              className="flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer group"
+              className="elevation-interactive flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer group"
               style={{
                 background: 'var(--bg-surface)',
                 borderColor: 'var(--border-subtle)',
               }}
             >
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 border"
-                style={{
-                  background: `${scoreColor(item.match_score)}10`,
-                  borderColor: `${scoreColor(item.match_score)}25`,
-                  color: scoreColor(item.match_score),
-                }}
-              >
-                {item.match_score}%
-              </div>
+              {Number.isFinite(item.match_score) ? (
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 border"
+                  style={{
+                    background: `color-mix(in srgb, ${scoreColor(item.match_score)} 10%, transparent)`,
+                    borderColor: `color-mix(in srgb, ${scoreColor(item.match_score)} 25%, transparent)`,
+                    color: scoreColor(item.match_score),
+                  }}
+                >
+                  {item.match_score}%
+                </div>
+              ) : (
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-medium shrink-0 border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)]">
+                  —
+                </div>
+              )}
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] font-semibold text-[var(--text-primary)] truncate">
                   {item.company}

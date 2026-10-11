@@ -29,7 +29,7 @@
   border: 1px solid var(--admin-border);
   border-radius: 11px;
   background: var(--admin-surface-panel);
-  box-shadow: var(--admin-shadow-panel);
+  box-shadow: var(--elevation-card);
 }
 
 .admin-command-grid .operations-metric-grid .admin-metric-card {
@@ -134,7 +134,7 @@
 .admin-command-grid .operations-empty-note {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -154,7 +154,7 @@
 
 .admin-command-grid .operations-signal-facts small {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -163,7 +163,7 @@
 .admin-command-grid .operations-signal-facts strong {
   overflow: hidden;
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -195,7 +195,7 @@
 .admin-command-grid .operations-verification-command p {
   margin: 0;
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -213,7 +213,7 @@
   background: var(--admin-critical-soft);
   color: var(--admin-critical);
   padding: 9px 10px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -237,13 +237,13 @@
 
 .admin-command-grid .operations-evidence-list dt {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .operations-evidence-list dd {
   margin: 0;
   color: var(--admin-text-primary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 720;
   text-align: right;
 }
@@ -295,7 +295,7 @@
 .admin-command-grid .operations-control-grid small {
   overflow: hidden;
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

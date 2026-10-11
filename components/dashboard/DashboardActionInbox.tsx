@@ -94,7 +94,7 @@ export default function DashboardActionInbox() {
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="premium-heading-wrap text-base font-semibold text-[var(--text-primary)]">Today</h2>
               {!loading && inbox.total > 0 && (
-                <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[var(--text-secondary)]">
+                <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-[var(--text-secondary)]">
                   {inbox.total} action{inbox.total === 1 ? '' : 's'}
                 </span>
               )}
@@ -129,7 +129,7 @@ export default function DashboardActionInbox() {
             >
               <SuiteToolIcon icon={item.icon} size="sm" />
               <span className="min-w-0">
-                <span className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                   {item.eyebrow}
                 </span>
                 <span className="premium-heading-wrap mt-1 block text-sm font-semibold leading-5 text-[var(--text-primary)]">

@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
-import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import {
+  SuiteToolShell,
+  SuiteToolHeader,
+  SuitePanel,
+  SuiteMetricCard,
+  SuiteUnmeasured,
+  SuiteEmptyState,
+} from '@/components/suite/SuiteToolChrome';
 import SuiteSignedOut from '@/components/suite/SuiteSignedOut';
 
 interface QualityMetrics {
@@ -21,18 +27,20 @@ interface QualityMetrics {
   recentActivity: Array<{ company: string; role: string; status: string; date: string }>;
 }
 
-const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  Applied: { bg: 'rgba(59,130,246,0.1)', text: '#3b82f6' },
-  Interviewing: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' },
-  Offer: { bg: 'rgba(16,185,129,0.1)', text: '#10b981' },
-  Rejected: { bg: 'rgba(244,63,94,0.1)', text: '#f43f5e' },
+// Status hue is a supporting channel only — the text label carries the meaning.
+// Kept distinct from the blue --accent so hue still reads as pipeline state.
+const STATUS_TOKEN: Record<string, string> = {
+  Applied: 'var(--text-muted)',
+  Interviewing: 'var(--warning)',
+  Offer: 'var(--success)',
+  Rejected: 'var(--danger)',
 };
 
 function ScoreRing({ score, size = 100, label }: { score: number; size?: number; label: string }) {
   const radius = (size - 12) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
-  const color = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#f43f5e';
+  const color = score >= 80 ? 'var(--success)' : score >= 60 ? 'var(--warning)' : 'var(--danger)';
 
   return (
     <div className="flex flex-col items-center">
@@ -78,8 +86,6 @@ function FunnelBar({ label, count, total, color, delay }: { label: string; count
 }
 
 export default function QualityDashboard() {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const { user } = useStore();
   const [metrics, setMetrics] = useState<QualityMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -112,13 +118,14 @@ export default function QualityDashboard() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // Moved loading/empty into main render return
-
+  // Never rendered: every metrics block below is gated on `metrics` being
+  // present AND `totalApplications > 0`, so this zero-object only backstops the
+  // destructure and cannot reach the screen as measured data.
   const metricsData = metrics || { avgFitScore: 0, totalApplications: 0, tailoredCount: 0, genericCount: 0, tailoredRatio: 0, pipeline: { applied: 0, interviewing: 0, offer: 0, rejected: 0 }, interviewYield: 0, weeklyVelocity: 0, queueSize: 0, recentActivity: [] } as QualityMetrics;
   const { avgFitScore, totalApplications, tailoredCount, tailoredRatio, pipeline, interviewYield, weeklyVelocity, queueSize, recentActivity } = metricsData;
 
   return (
-    <div className="mobile-app-content min-h-dvh max-w-5xl mx-auto space-y-5 px-4 py-3 md:space-y-6 md:p-6">
+    <SuiteToolShell variant="standard">
       <SuiteToolHeader
         tool="quality"
         title="Application Quality"
@@ -128,9 +135,9 @@ export default function QualityDashboard() {
         actions={
           <button
             onClick={loadMetrics}
-            className="flex items-center gap-1.5 rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
           >
-            <span className="material-symbols-rounded text-[14px]">refresh</span>
+            <span className="material-symbols-rounded text-[18px]">refresh</span>
             Refresh
           </button>
         }
@@ -138,14 +145,14 @@ export default function QualityDashboard() {
 
       {loading && (
         <div className="space-y-4">
-          <div className="grid grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-24 rounded-xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-24 animate-pulse rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]" />
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-48 rounded-xl animate-pulse" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }} />
+              <div key={i} className="h-48 animate-pulse rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]" />
             ))}
           </div>
         </div>
@@ -162,151 +169,107 @@ export default function QualityDashboard() {
         />
       )}
 
-      {!loading && metrics && (<>
+      {/* Real data present. Zeros never render alongside the empty state: the
+          whole cockpit is gated on totalApplications > 0, and avgFitScore has
+          its own absence path since it can be unscored while applications
+          exist. */}
+      {!loading && metrics && totalApplications > 0 && (<>
 
-      {/* ═══ TOP METRICS ROW ═══ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Avg Fit Score', value: `${avgFitScore}%`, icon: 'target', color: avgFitScore >= 80 ? '#10b981' : avgFitScore >= 60 ? '#f59e0b' : '#f43f5e' },
-          { label: 'Interview Yield', value: `${interviewYield}%`, icon: 'trending_up', color: interviewYield >= 20 ? '#10b981' : interviewYield >= 10 ? '#f59e0b' : '#f43f5e' },
-          { label: 'This Week', value: String(weeklyVelocity), icon: 'speed', color: '#3b82f6' },
-          { label: 'Queue Ready', value: String(queueSize), icon: 'send', color: '#a855f7' },
-        ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="rounded-xl p-4"
-            style={{
-              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-              border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-            }}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <span className="material-symbols-rounded text-[16px]" style={{ color: stat.color }}>{stat.icon}</span>
-              <span className="text-[11px] text-[var(--text-muted)]">{stat.label}</span>
-            </div>
-            <p className="text-2xl font-bold text-[var(--text-primary)]">{stat.value}</p>
-          </motion.div>
-        ))}
+      {/* ═══ TOP METRICS ROW — plain measured counts ═══ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <SuiteMetricCard label="Interview yield" value={`${interviewYield}%`} icon="trending_up" description="Reached interviewing or beyond" />
+        <SuiteMetricCard label="This week" value={String(weeklyVelocity)} icon="speed" description="Applications tracked in the last 7 days" />
+        <SuiteMetricCard label="Queue ready" value={String(queueSize)} icon="send" description="Pending or approved in the agent queue" />
       </div>
 
-      {/* ═══ MIDDLE ROW: Score Ring + Pipeline + Tailored Ratio ═══ */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* ═══ MIDDLE ROW: Fit Score + Pipeline + Tailored Ratio ═══ */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
-        {/* Quality Score Ring */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="rounded-xl p-5 flex flex-col items-center justify-center"
-          style={{
-            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-          }}
-        >
-          <ScoreRing score={avgFitScore} label="Application Quality Score" />
-          <p className="text-[10px] text-[var(--text-muted)] mt-3 text-center">
-            {avgFitScore >= 80 ? 'Excellent — your applications are well-targeted' :
-             avgFitScore >= 60 ? 'Good — some room to improve targeting' :
-             avgFitScore > 0 ? 'Needs work — try using the Fit Gate before applying' :
-             'No scored applications yet'}
-          </p>
-        </motion.div>
+        {/* Application quality score — a ring of a real measured value, with a
+            labelled absence when nothing has been scored yet. */}
+        <SuitePanel className="flex flex-col items-center justify-center">
+          {avgFitScore > 0 ? (
+            <>
+              <ScoreRing score={avgFitScore} label="Application quality score" />
+              <p className="text-[11px] text-[var(--text-muted)] mt-3 text-center">
+                {avgFitScore >= 80 ? 'Excellent — your applications are well-targeted' :
+                 avgFitScore >= 60 ? 'Good — some room to improve targeting' :
+                 'Needs work — try the Fit Gate before applying'}
+              </p>
+            </>
+          ) : (
+            <SuiteUnmeasured
+              label="Application quality score"
+              reason="No applications carry a Taco fit score yet. Run the Fit Gate before applying to score each match."
+            />
+          )}
+        </SuitePanel>
 
         {/* Pipeline Funnel */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="rounded-xl p-5"
-          style={{
-            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-          }}
-        >
+        <SuitePanel>
           <p className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-1.5">
-            <span className="material-symbols-rounded text-[16px] text-blue-400">filter_alt</span>
-            Pipeline Funnel
+            <span className="material-symbols-rounded text-[16px] text-[var(--text-muted)]">filter_alt</span>
+            Pipeline funnel
           </p>
           <div className="space-y-3">
-            <FunnelBar label="Applied" count={pipeline.applied} total={totalApplications} color="#3b82f6" delay={0.4} />
-            <FunnelBar label="Interviewing" count={pipeline.interviewing} total={totalApplications} color="#f59e0b" delay={0.5} />
-            <FunnelBar label="Offer" count={pipeline.offer} total={totalApplications} color="#10b981" delay={0.6} />
-            <FunnelBar label="Rejected" count={pipeline.rejected} total={totalApplications} color="#f43f5e" delay={0.7} />
+            <FunnelBar label="Applied" count={pipeline.applied} total={totalApplications} color="var(--text-muted)" delay={0.4} />
+            <FunnelBar label="Interviewing" count={pipeline.interviewing} total={totalApplications} color="var(--warning)" delay={0.5} />
+            <FunnelBar label="Offer" count={pipeline.offer} total={totalApplications} color="var(--success)" delay={0.6} />
+            <FunnelBar label="Rejected" count={pipeline.rejected} total={totalApplications} color="var(--danger)" delay={0.7} />
           </div>
-          <p className="text-[10px] text-[var(--text-muted)] mt-3">{totalApplications} total applications tracked</p>
-        </motion.div>
+          <p className="text-[11px] text-[var(--text-muted)] mt-3">{totalApplications} total applications tracked</p>
+        </SuitePanel>
 
         {/* Tailored vs Generic */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="rounded-xl p-5"
-          style={{
-            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-          }}
-        >
+        <SuitePanel>
           <p className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-1.5">
-            <span className="material-symbols-rounded text-[16px] text-green-400">tune</span>
-            Tailored vs. Generic
+            <span className="material-symbols-rounded text-[16px] text-[var(--text-muted)]">tune</span>
+            Tailored vs. generic
           </p>
           <div className="flex items-center gap-4 mb-4">
             <div className="flex-1 text-center">
               <p className="text-3xl font-bold text-[var(--text-primary)]">{tailoredRatio}%</p>
-              <p className="text-[10px] text-[var(--text-muted)]">tailored</p>
+              <p className="text-[11px] text-[var(--text-muted)]">tailored</p>
             </div>
             <div className="w-px h-12 bg-[var(--border-subtle)]" />
             <div className="flex-1 text-center">
               <p className="text-3xl font-bold text-[var(--text-primary)]">{100 - tailoredRatio}%</p>
-              <p className="text-[10px] text-[var(--text-muted)]">generic</p>
+              <p className="text-[11px] text-[var(--text-muted)]">generic</p>
             </div>
           </div>
           {/* Ratio bar */}
           <div className="h-3 rounded-full bg-[var(--bg-hover)] overflow-hidden flex">
             <motion.div
               className="h-full rounded-l-full"
-              style={{ background: '#10b981' }}
+              style={{ background: 'var(--success)' }}
               initial={{ width: 0 }}
               animate={{ width: `${tailoredRatio}%` }}
               transition={{ duration: 0.8, ease: 'easeOut', delay: 0.5 }}
             />
             <motion.div
               className="h-full rounded-r-full"
-              style={{ background: 'rgba(244,63,94,0.3)' }}
+              style={{ background: 'var(--border-subtle)' }}
               initial={{ width: 0 }}
               animate={{ width: `${100 - tailoredRatio}%` }}
               transition={{ duration: 0.8, ease: 'easeOut', delay: 0.5 }}
             />
           </div>
-          <p className="text-[10px] text-[var(--text-muted)] mt-3">
+          <p className="text-[11px] text-[var(--text-muted)] mt-3">
             {tailoredCount} tailored via Taco · {metrics.genericCount} generic
           </p>
-        </motion.div>
+        </SuitePanel>
       </div>
 
       {/* ═══ RECENT ACTIVITY ═══ */}
       {recentActivity.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="rounded-xl p-5"
-          style={{
-            background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-          }}
-        >
+        <SuitePanel>
           <p className="text-sm font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-1.5">
-            <span className="material-symbols-rounded text-[16px] text-amber-400">history</span>
-            Recent Activity
+            <span className="material-symbols-rounded text-[16px] text-[var(--text-muted)]">history</span>
+            Recent activity
           </p>
           <div className="space-y-2">
             {recentActivity.map((a, i) => {
-              const sc = STATUS_COLORS[a.status] || STATUS_COLORS.Applied;
+              const token = STATUS_TOKEN[a.status] || STATUS_TOKEN.Applied;
               return (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-[var(--border-subtle)] last:border-0">
                   <div className="min-w-0">
@@ -315,42 +278,39 @@ export default function QualityDashboard() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span
-                      className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                      style={{ background: sc.bg, color: sc.text }}
+                      className="text-[11px] font-medium px-2 py-0.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-hover)]"
+                      style={{ color: token }}
                     >
                       {a.status}
                     </span>
-                    <span className="text-[10px] text-[var(--text-muted)]">{formatDate(a.date)}</span>
+                    <span className="text-[11px] text-[var(--text-muted)]">{formatDate(a.date)}</span>
                   </div>
                 </div>
               );
             })}
           </div>
-        </motion.div>
-      )}
-
-      {/* Empty state */}
-      {totalApplications === 0 && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-12">
-          <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-            <div className="absolute inset-0 bg-gradient-to-br from-rose-500/5 to-pink-500/5" />
-            <div className="relative">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-                <span className="material-symbols-rounded text-3xl text-rose-500">monitoring</span>
-              </div>
-              <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">No Application Data Yet</h3>
-              <p className="text-sm text-[var(--text-tertiary)] mb-5">Start tracking applications and using Taco&apos;s Fit Gate to see quality metrics.</p>
-              <a href="/suite/applications"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #f43f5e, #db2777)', boxShadow: '0 4px 16px rgba(244,63,94,0.3)' }}>
-                <span className="material-symbols-rounded text-sm">send</span>
-                Go to Applications
-              </a>
-            </div>
-          </div>
-        </motion.div>
+        </SuitePanel>
       )}
       </>)}
-    </div>
+
+      {/* Empty state — the only thing a signed-in user with no applications
+          sees. No zeros, no fabricated dashboard. */}
+      {!loading && metrics && totalApplications === 0 && (
+        <SuiteEmptyState
+          icon="monitoring"
+          title="No application data yet"
+          description="Start tracking applications and using Taco's Fit Gate to see quality metrics."
+          action={
+            <a
+              href="/suite/applications"
+              className="btn-primary inline-flex items-center gap-2 px-5 text-sm font-semibold"
+            >
+              <span className="material-symbols-rounded text-[18px]">send</span>
+              Go to Applications
+            </a>
+          }
+        />
+      )}
+    </SuiteToolShell>
   );
 }

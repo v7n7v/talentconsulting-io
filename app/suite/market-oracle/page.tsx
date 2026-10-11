@@ -59,18 +59,20 @@ const ANALYSIS_STAGES = [
   { label: 'Building Packet Plan', detail: 'Preparing next moves for resume, cover letter, LinkedIn, and tracker.', icon: 'fact_check' },
 ];
 
-const verdictCopy: Record<OracleVerdict, { label: string; icon: string; color: string; bg: string }> = {
-  apply: { label: 'Apply', icon: 'verified', color: '#059669', bg: 'rgba(16,185,129,0.1)' },
-  prepare_first: { label: 'Prepare First', icon: 'auto_fix_high', color: '#0284c7', bg: 'rgba(14,165,233,0.1)' },
-  watch: { label: 'Watch', icon: 'visibility', color: '#d97706', bg: 'rgba(245,158,11,0.1)' },
-  skip: { label: 'Skip', icon: 'block', color: '#dc2626', bg: 'rgba(239,68,68,0.1)' },
+const verdictCopy: Record<OracleVerdict, { label: string; icon: string; token: string }> = {
+  apply: { label: 'Apply', icon: 'verified', token: '--success' },
+  prepare_first: { label: 'Prepare First', icon: 'auto_fix_high', token: '--accent' },
+  watch: { label: 'Watch', icon: 'visibility', token: '--warning' },
+  skip: { label: 'Skip', icon: 'block', token: '--danger' },
 };
 
+// Fit/readiness/risk scores map to the status token ramp — never the blue accent,
+// so hue keeps distinguishing evidence state from interaction. Mirrors the
+// converted ProofCard scale (>=60 reads as success).
 function scoreTone(score: number) {
-  if (score >= 78) return '#059669';
-  if (score >= 62) return '#0284c7';
-  if (score >= 45) return '#d97706';
-  return '#dc2626';
+  if (score >= 62) return 'var(--success)';
+  if (score >= 45) return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 function displaySalary(min?: number, max?: number) {
@@ -84,8 +86,13 @@ function formatResumeToText(content: any) {
 }
 
 function buildMapAnalysis(report: OracleV2Report | null, legacy: LegacyAnalysis | null, jobs: JobStar[]): MarketAnalysis & { jobDataSource: string } {
-  const fit = report?.decision.fitScore || legacy?.fitScore || 50;
-  const currentPosition: [number, number, number] = [0, 0, (fit / 100) * 6 - 3];
+  // Fit here drives only the 3D layout (the user avatar's z) and
+  // talentDensityPercentile, which is not rendered as a number. When nothing
+  // measured a fit, carry null rather than inventing a 50 and position by a neutral
+  // constant that is never shown to the user as data. (Was `|| 50`.)
+  const fit = report?.decision.fitScore ?? legacy?.fitScore ?? null;
+  const NEUTRAL_FIT_Z = 0; // layout-only origin; never rendered as a number
+  const currentPosition: [number, number, number] = [0, 0, fit != null ? (fit / 100) * 6 - 3 : NEUTRAL_FIT_Z];
   // The fallback here used to synthesise `impact: 4 + index` and
   // `salaryIncrease: 5000 + index * 2500` from the array index, and newFitScore was
   // computed from that invented impact. Those rendered to the user as a skill's
@@ -101,7 +108,7 @@ function buildMapAnalysis(report: OracleV2Report | null, legacy: LegacyAnalysis 
 
   return {
     currentPosition,
-    talentDensityPercentile: fit,
+    talentDensityPercentile: fit, // number | null — null when no fit was measured; not rendered as a figure
     topSkills: report?.breakdown.keywordMap.found || legacy?.matchedSkills || [],
     missingSkills: report?.breakdown.keywordMap.missing || legacy?.gapSkills || [],
     bridgeSkills,
@@ -115,8 +122,8 @@ function CommandMetric({ icon, label, value, tone = 'text-[var(--text-primary)]'
   return (
     <div className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3">
       <div className="flex items-center gap-2">
-        <span className="material-symbols-rounded text-[18px] text-cyan-600 dark:text-cyan-300">{icon}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">{label}</span>
+        <span className="material-symbols-rounded text-[18px] text-[var(--text-muted)]">{icon}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">{label}</span>
       </div>
       <p className={`mt-1 truncate text-sm font-semibold ${tone}`}>{value}</p>
     </div>
@@ -124,18 +131,40 @@ function CommandMetric({ icon, label, value, tone = 'text-[var(--text-primary)]'
 }
 
 function ScoreRing({ score, label, icon }: { score: number; label: string; icon: string }) {
+  // Guard the measured-zero / absent path before drawing a 0-fill ring. Upstream
+  // clampOracleScore coerces a non-finite value to 0, so a 0 here can be a coerced
+  // absence rather than a real measurement — render a labelled absence instead of a
+  // ring reading "0". A real positive score draws normally.
+  if (!Number.isFinite(score) || score <= 0) {
+    return (
+      <div className="min-w-[150px] rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_56px] items-center gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">{label}</p>
+            <p className="mt-2 text-xs font-semibold leading-snug text-[var(--text-muted)]">Not computed</p>
+          </div>
+          <div className="relative grid h-14 w-14 shrink-0 place-items-center">
+            <svg className="absolute inset-0 h-14 w-14" viewBox="0 0 64 64" aria-hidden="true">
+              <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" strokeWidth="6" className="text-[var(--border-subtle)]" />
+            </svg>
+            <span className="material-symbols-rounded text-[20px] text-[var(--text-muted)]">{icon}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const color = scoreTone(score);
   return (
     <div className="min-w-[150px] rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
       <div className="grid grid-cols-[minmax(0,1fr)_56px] items-center gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">{label}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">{label}</p>
           <p className="mt-2 whitespace-nowrap text-[2.15rem] font-semibold leading-none tracking-normal text-[var(--text-primary)] tabular-nums">{score}</p>
         </div>
         <div className="relative grid h-14 w-14 shrink-0 place-items-center">
           <svg className="absolute inset-0 h-14 w-14 -rotate-90" viewBox="0 0 64 64" aria-hidden="true">
             <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" strokeWidth="6" className="text-[var(--border-subtle)]" />
-            <circle cx="32" cy="32" r="26" fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeDasharray={`${Math.max(0, Math.min(100, score)) * 1.63} 163`} />
+            <circle cx="32" cy="32" r="26" fill="none" style={{ stroke: color }} strokeWidth="6" strokeLinecap="round" strokeDasharray={`${Math.max(0, Math.min(100, score)) * 1.63} 163`} />
           </svg>
           <span className="material-symbols-rounded text-[20px]" style={{ color }}>{icon}</span>
         </div>
@@ -145,6 +174,20 @@ function ScoreRing({ score, label, icon }: { score: number; label: string; icon:
 }
 
 function FactorRow({ label, value }: { label: string; value: number }) {
+  // Guard the measured-zero / absent path: clampOracleScore coerces a non-finite
+  // value to 0, so a 0 here reads as a labelled absence rather than a 0% bar. A real
+  // positive score keeps its number and fill.
+  if (!Number.isFinite(value) || value <= 0) {
+    return (
+      <div>
+        <div className="mb-1 flex items-center justify-between text-xs">
+          <span className="font-medium text-[var(--text-secondary)]">{label}</span>
+          <span className="font-semibold text-[var(--text-muted)]">Not scored</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-[var(--card-bg)]" />
+      </div>
+    );
+  }
   const color = scoreTone(value);
   return (
     <div>
@@ -159,15 +202,28 @@ function FactorRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Pill({ children, tone = 'cyan' }: { children: React.ReactNode; tone?: 'cyan' | 'emerald' | 'amber' | 'red' | 'muted' }) {
-  const styles = {
-    cyan: 'border-cyan-500/20 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
-    emerald: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-    amber: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-    red: 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300',
-    muted: 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]',
-  }[tone];
-  return <span className={`inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[11px] font-medium leading-5 ${styles}`}><span className="min-w-0 wrap-anywhere">{children}</span></span>;
+function Pill({ children, tone = 'accent' }: { children: React.ReactNode; tone?: 'accent' | 'success' | 'warning' | 'danger' | 'muted' }) {
+  const base = 'inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-[11px] font-medium leading-5';
+  if (tone === 'muted') {
+    return (
+      <span className={`${base} border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)]`}>
+        <span className="min-w-0 wrap-anywhere">{children}</span>
+      </span>
+    );
+  }
+  const token = { accent: '--accent', success: '--success', warning: '--warning', danger: '--danger' }[tone];
+  return (
+    <span
+      className={base}
+      style={{
+        borderColor: `color-mix(in srgb, var(${token}) 38%, transparent)`,
+        background: `color-mix(in srgb, var(${token}) 12%, transparent)`,
+        color: `var(${token})`,
+      }}
+    >
+      <span className="min-w-0 wrap-anywhere">{children}</span>
+    </span>
+  );
 }
 
 function EmptyCard({ icon, title, body }: { icon: string; title: string; body: string }) {
@@ -275,26 +331,42 @@ export default function MarketOraclePage() {
       const res = await authFetch(`/api/jobs/search?${params}`);
       const data = await res.json();
       if (!res.ok || !data.success || !Array.isArray(data.jobs)) return [];
-      const salaries = data.jobs.map((job: any) => job.salary?.max || job.salary?.min || 120000);
-      const minSal = Math.min(...salaries);
-      const maxSal = Math.max(...salaries);
+      // Salary and fit are carried as null when the source did not provide them —
+      // no `|| 120000` synthetic salary, no `|| 55` synthetic fit. The 3D map still
+      // needs finite coordinates, so layout uses neutral constants that are never
+      // shown to the user as data; the Scene tooltip renders "Salary not listed" /
+      // "Fit not computed" for the null values.
+      const listedSalaries = data.jobs
+        .map((job: any) => job.salary?.max || job.salary?.min || null)
+        .filter((value: number | null): value is number => value != null);
+      const minSal = listedSalaries.length > 0 ? Math.min(...listedSalaries) : 0;
+      const maxSal = listedSalaries.length > 0 ? Math.max(...listedSalaries) : 0;
       const range = Math.max(1, maxSal - minSal);
+      const NEUTRAL_SALARY_Y = 0; // layout-only midline for jobs with no listed salary
+      const NEUTRAL_FIT = 0.5;    // layout-only centre for jobs with no measured fit
       return data.jobs.slice(0, 18).map((job: any, index: number) => {
-        const fit = (job.fitScore?.overall || job.matchScore || report.decision.fitScore || 55) / 100;
-        const salary = job.salary?.max || job.salary?.min || 120000;
-        const x = fit * 12 - 6 + (index % 3) * 0.35;
-        const y = ((salary - minSal) / range) * 10 - 5;
-        const z = -((1 - fit) * 5) + (index % 4) * 0.25;
+        const rawFit = job.fitScore?.overall || job.matchScore || report.decision.fitScore || null;
+        const fit = typeof rawFit === 'number' && rawFit > 0 ? rawFit / 100 : null;
+        const salary = job.salary?.max || job.salary?.min || null;
+        const fitForLayout = fit ?? NEUTRAL_FIT;
+        const x = fitForLayout * 12 - 6 + (index % 3) * 0.35;
+        const y = salary != null ? ((salary - minSal) / range) * 10 - 5 : NEUTRAL_SALARY_Y;
+        const z = -((1 - fitForLayout) * 5) + (index % 4) * 0.25;
         return {
           id: job.id || `market-${index}`,
           title: job.title,
           company: job.company,
-          salary: Math.round(salary),
+          salary: salary != null ? Math.round(salary) : null,
           skills: job.skills || [],
           fitScore: fit,
           position: [x, y, z] as [number, number, number],
-          color: fit > 0.78 ? '#06d6a0' : fit > 0.62 ? '#0ea5e9' : fit > 0.45 ? '#f59e0b' : '#6b7280',
-          isConstellation: fit > 0.62,
+          // Fit encoded by a status token, never raw hue; null fit reads as muted.
+          color: fit == null ? 'var(--text-muted)'
+            : fit > 0.78 ? 'var(--success)'
+            : fit > 0.62 ? 'var(--accent)'
+            : fit > 0.45 ? 'var(--warning)'
+            : 'var(--text-muted)',
+          isConstellation: fit != null && fit > 0.62,
           url: job.url,
           location: job.location,
           description: job.description,
@@ -456,10 +528,10 @@ export default function MarketOraclePage() {
           subtitle="Decide whether a role is worth your time, how to position yourself, and what Taco should prepare before you apply."
         />
 
-        <section className="min-w-0 max-w-full rounded-[24px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm md:p-5">
+        <section className="elevation-card min-w-0 max-w-full rounded-[24px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
           <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Evidence Dock</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Evidence Dock</p>
               <h2 className="mt-1 text-lg font-semibold tracking-tight text-[var(--text-primary)]">Choose the evidence Oracle should trust</h2>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
                 Resume context, role details, salary target, and job evidence in one calm decision surface.
@@ -480,7 +552,7 @@ export default function MarketOraclePage() {
                   key={mode}
                   type="button"
                   onClick={() => setResumeInputMode(mode)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${resumeInputMode === mode ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                  className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition ${resumeInputMode === mode ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                 >
                   <span className="material-symbols-rounded text-[16px]">{mode === 'upload' ? 'upload_file' : mode === 'paste' ? 'content_paste' : 'auto_fix_high'}</span>
                   {mode === 'upload' ? 'Upload' : mode === 'paste' ? 'Paste' : 'Build Context'}
@@ -498,28 +570,28 @@ export default function MarketOraclePage() {
           </div>
 
           <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <input value={targetRole} onChange={e => setTargetRole(e.target.value)} placeholder="Target role" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
-            <input value={company} onChange={e => setCompany(e.target.value)} placeholder="Company" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Location or remote" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
-            <input value={jobUrl} onChange={e => setJobUrl(e.target.value)} placeholder="Job URL optional" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-sm outline-none transition focus:border-cyan-500/40" />
+            <input value={targetRole} onChange={e => setTargetRole(e.target.value)} placeholder="Target role" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-base outline-none transition focus:border-[var(--accent)]" />
+            <input value={company} onChange={e => setCompany(e.target.value)} placeholder="Company" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-base outline-none transition focus:border-[var(--accent)]" />
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Location or remote" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-base outline-none transition focus:border-[var(--accent)]" />
+            <input value={jobUrl} onChange={e => setJobUrl(e.target.value)} placeholder="Job URL optional" className="min-w-0 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-3 text-base outline-none transition focus:border-[var(--accent)]" />
           </div>
 
           <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.35fr)]">
             <div className="min-w-0 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Resume source</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Resume source</p>
                   <h3 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{resumeText ? 'Resume context ready' : 'Add resume evidence'}</h3>
                 </div>
-                <Pill tone={resumeText ? 'emerald' : 'muted'}>{resumeText ? `${resumeSkills.length} skills` : 'Needed'}</Pill>
+                <Pill tone={resumeText ? 'success' : 'muted'}>{resumeText ? `${resumeSkills.length} skills` : 'Needed'}</Pill>
               </div>
 
               {resumeText ? (
-                <div className="mt-4 rounded-[16px] border border-emerald-500/20 bg-emerald-500/10 p-4">
+                <div className="mt-4 rounded-[16px] border border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] p-4">
                   <div className="flex min-w-0 items-start gap-3">
-                    <span className="material-symbols-rounded shrink-0 text-emerald-700 dark:text-emerald-300">verified</span>
+                    <span className="material-symbols-rounded shrink-0 text-[var(--success)]">verified</span>
                     <div className="min-w-0 flex-1">
-                      <p className="break-words text-sm font-semibold text-emerald-800 dark:text-emerald-200">{selectedResumeName || 'Pasted resume context'}</p>
+                      <p className="break-words text-sm font-semibold text-[var(--success)]">{selectedResumeName || 'Pasted resume context'}</p>
                       <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{resumeText.length.toLocaleString()} characters ready for Oracle analysis.</p>
                     </div>
                     <button
@@ -531,7 +603,7 @@ export default function MarketOraclePage() {
                         setSelectedResumeSnapshot(null);
                         setResumeInputMode('upload');
                       }}
-                      className="shrink-0 text-xs font-semibold text-red-600 dark:text-red-300"
+                      className="shrink-0 min-h-[44px] px-3 py-2 text-xs font-semibold text-[var(--danger)]"
                     >
                       Clear
                     </button>
@@ -548,7 +620,7 @@ export default function MarketOraclePage() {
                   }}
                   rows={8}
                   placeholder={resumeInputMode === 'build' ? 'Build a quick context: title, strongest skills, target experience, and proof points.' : 'Paste resume text here when a PDF is not cooperating.'}
-                  className="mt-4 w-full resize-none rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-3 text-sm leading-6 outline-none transition focus:border-cyan-500/40"
+                  className="mt-4 w-full resize-none rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-3 text-base leading-6 outline-none transition focus:border-[var(--accent)]"
                 />
               ) : (
                 <div className="mt-4">
@@ -577,7 +649,7 @@ export default function MarketOraclePage() {
                       key={value}
                       type="button"
                       onClick={() => setSalaryTarget(value)}
-                      className={`rounded-[12px] border px-2 py-2.5 text-xs font-semibold transition ${salaryTarget === value ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+                      className={`min-h-[44px] rounded-[12px] border px-2 py-2.5 text-xs font-semibold transition ${salaryTarget === value ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
                     >
                       {value ? `$${value / 1000}K` : 'Open'}
                     </button>
@@ -589,10 +661,10 @@ export default function MarketOraclePage() {
             <div className="min-w-0 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
               <div className="flex min-w-0 items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Job Description</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Job Description</p>
                   <h3 className="mt-1 text-sm font-semibold text-[var(--text-primary)]">Paste the role brief</h3>
                 </div>
-                <Pill tone={jdText.length > 1200 ? 'emerald' : jdText.length > 120 ? 'cyan' : 'muted'}>{jdText.length ? `${jdText.length.toLocaleString()} chars` : 'Needed'}</Pill>
+                <Pill tone={jdText.length > 1200 ? 'success' : jdText.length > 120 ? 'accent' : 'muted'}>{jdText.length ? `${jdText.length.toLocaleString()} chars` : 'Needed'}</Pill>
               </div>
               <textarea
                 value={jdText}
@@ -603,12 +675,12 @@ export default function MarketOraclePage() {
                 }}
                 rows={9}
                 placeholder="Paste the full job description. Oracle will separate real requirements, likely screen signals, compensation clarity, and proof gaps."
-                className="mt-4 w-full resize-none rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-3 text-sm leading-6 outline-none transition focus:border-cyan-500/40"
+                className="mt-4 w-full resize-none rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-3 text-base leading-6 outline-none transition focus:border-[var(--accent)]"
               />
               <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap gap-2">
                   {readinessItems.map(item => (
-                    <span key={item.label} className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${item.ready ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'}`} title={item.detail}>
+                    <span key={item.label} className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${item.ready ? 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'}`} title={item.detail}>
                       <span className="material-symbols-rounded text-[14px]">{item.ready ? 'check_circle' : 'radio_button_unchecked'}</span>
                       {item.label}
                     </span>
@@ -618,13 +690,13 @@ export default function MarketOraclePage() {
                   type="button"
                   onClick={analyzeOracle}
                   disabled={!canAnalyze || step === 'analyzing'}
-                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-[14px] bg-[var(--text-primary)] px-5 py-3 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="btn-primary inline-flex shrink-0 items-center justify-center gap-2 px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed"
                 >
                   <span className="material-symbols-rounded text-base">query_stats</span>
                   Run Oracle Analysis
                 </button>
               </div>
-              {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+              {error && <p className="mt-2 text-xs text-[var(--danger)]">{error}</p>}
             </div>
           </div>
         </section>
@@ -653,8 +725,8 @@ export default function MarketOraclePage() {
                   {ANALYSIS_STAGES.map((stage, index) => {
                     const active = index <= stageIndex;
                     return (
-                      <div key={stage.label} className={`rounded-[16px] border p-4 transition ${active ? 'border-cyan-500/25 bg-cyan-500/10' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] opacity-60'}`}>
-                        <span className="material-symbols-rounded text-xl text-cyan-600 dark:text-cyan-300">{active && index < stageIndex ? 'check_circle' : stage.icon}</span>
+                      <div key={stage.label} className={`rounded-[16px] border p-4 transition ${active ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] opacity-60'}`}>
+                        <span className="material-symbols-rounded text-xl text-[var(--accent)]">{active && index < stageIndex ? 'check_circle' : stage.icon}</span>
                         <p className="mt-3 text-xs font-semibold text-[var(--text-primary)]">{stage.label}</p>
                       </div>
                     );
@@ -668,13 +740,13 @@ export default function MarketOraclePage() {
         <div className="grid min-w-0 max-w-full gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,430px)]">
           <main className="min-w-0 space-y-5">
             {!oracleReport ? (
-              <section className="rounded-[24px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm sm:p-5 lg:p-6">
+              <section className="elevation-card rounded-[24px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 sm:p-5 lg:p-6">
                 <div className="grid min-w-0 gap-5 2xl:grid-cols-[minmax(460px,1fr)_minmax(300px,380px)]">
                   <div className="min-w-0">
-                    <span className="inline-grid h-12 w-12 place-items-center rounded-[16px] border border-cyan-500/20 bg-cyan-500/10 text-cyan-600 dark:text-cyan-300">
+                    <span className="inline-grid h-12 w-12 place-items-center rounded-[16px] border border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]">
                       <span className="material-symbols-rounded">radar</span>
                     </span>
-                    <p className="mt-5 text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Decision brief awaits</p>
+                    <p className="mt-5 text-[11px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Decision brief awaits</p>
                     <h2 className="premium-heading-wrap mt-2 text-[clamp(1.35rem,2.1vw,1.85rem)] font-semibold leading-[1.16] text-[var(--text-primary)]">
                       Oracle will answer the job-search question that matters.
                     </h2>
@@ -682,10 +754,10 @@ export default function MarketOraclePage() {
                       Load resume evidence and a JD to get an apply verdict, proof gaps, salary confidence, risks, and the exact packet Taco should prepare.
                     </p>
                     <div className="mt-5 flex flex-wrap gap-2">
-                      <Pill tone={resumeText ? 'emerald' : 'muted'}>{resumeText ? 'resume ready' : 'resume needed'}</Pill>
-                      <Pill tone={jdText.length > 120 ? 'emerald' : 'muted'}>{jdText.length > 120 ? 'JD ready' : 'JD needed'}</Pill>
+                      <Pill tone={resumeText ? 'success' : 'muted'}>{resumeText ? 'resume ready' : 'resume needed'}</Pill>
+                      <Pill tone={jdText.length > 120 ? 'success' : 'muted'}>{jdText.length > 120 ? 'JD ready' : 'JD needed'}</Pill>
                       <span className="min-w-0 max-w-full">
-                        <Pill tone={inferredRole ? 'cyan' : 'muted'}>{inferredRole || 'role pending'}</Pill>
+                        <Pill tone={inferredRole ? 'accent' : 'muted'}>{inferredRole || 'role pending'}</Pill>
                       </span>
                     </div>
                   </div>
@@ -694,7 +766,7 @@ export default function MarketOraclePage() {
                     <div className="mt-3 space-y-2">
                       {readinessItems.map(item => (
                         <div key={item.label} className="flex min-w-0 items-start gap-3 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
-                          <span className={`material-symbols-rounded shrink-0 text-[18px] ${item.ready ? 'text-emerald-600 dark:text-emerald-300' : 'text-[var(--text-muted)]'}`}>{item.ready ? 'check_circle' : 'radio_button_unchecked'}</span>
+                          <span className={`material-symbols-rounded shrink-0 text-[18px] ${item.ready ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>{item.ready ? 'check_circle' : 'radio_button_unchecked'}</span>
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-[var(--text-primary)]">{item.label}</p>
                             <p className="mt-0.5 wrap-anywhere text-[11px] leading-5 text-[var(--text-secondary)]">{item.detail}</p>
@@ -707,21 +779,21 @@ export default function MarketOraclePage() {
               </section>
             ) : (
               <>
-                <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+                <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: `${verdictCopy[oracleReport.decision.verdict].color}33`, background: verdictCopy[oracleReport.decision.verdict].bg, color: verdictCopy[oracleReport.decision.verdict].color }}>
+                        <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold" style={{ borderColor: `color-mix(in srgb, var(${verdictCopy[oracleReport.decision.verdict].token}) 32%, transparent)`, background: `color-mix(in srgb, var(${verdictCopy[oracleReport.decision.verdict].token}) 12%, transparent)`, color: `var(${verdictCopy[oracleReport.decision.verdict].token})` }}>
                           <span className="material-symbols-rounded text-[15px]">{verdictCopy[oracleReport.decision.verdict].icon}</span>
                           {verdictCopy[oracleReport.decision.verdict].label}
                         </span>
                         <Pill tone="muted">{oracleReport.decision.confidence} confidence</Pill>
-                        <Pill tone={oracleReport.sourceQuality.salary === 'listed' ? 'emerald' : oracleReport.sourceQuality.salary === 'unknown' ? 'amber' : 'cyan'}>
+                        <Pill tone={oracleReport.sourceQuality.salary === 'listed' ? 'success' : oracleReport.sourceQuality.salary === 'unknown' ? 'warning' : 'accent'}>
                           salary {oracleReport.sourceQuality.salary.replaceAll('_', ' ')}
                         </Pill>
                       </div>
                       <h2 className="premium-heading-wrap mt-4 text-[clamp(1.25rem,2vw,1.75rem)] font-semibold leading-[1.16] text-[var(--text-primary)]">{oracleReport.session.role || inferredRole}</h2>
-                      <p className="mt-1 wrap-natural text-sm font-medium leading-6 text-cyan-700 dark:text-cyan-300">{oracleReport.session.company || inferredCompany || 'Target company'}</p>
+                      <p className="mt-1 wrap-natural text-sm font-medium leading-6 text-[var(--text-secondary)]">{oracleReport.session.company || inferredCompany || 'Target company'}</p>
                       <p className="premium-copy-wrap mt-4 text-sm leading-6 text-[var(--text-secondary)]">{oracleReport.decision.summary}</p>
                     </div>
                     <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-3 xl:w-[560px] xl:shrink-0">
@@ -731,13 +803,13 @@ export default function MarketOraclePage() {
                     </div>
                   </div>
                   <div className="mt-5 rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Recommended next action</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Recommended next action</p>
                     <div className="mt-2 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(170px,220px)] xl:items-start">
                       <p className="min-w-0 wrap-natural text-sm font-medium leading-6 text-[var(--text-primary)]">{oracleReport.decision.recommendedNextAction}</p>
                       <div className="flex min-w-0 flex-wrap gap-2 xl:flex-col">
-                        <button onClick={prepareApplication} className="rounded-[12px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)]">Prepare Application</button>
-                        <button onClick={() => routeWithContext('/suite/resume')} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)]">Resume Studio</button>
-                        <button onClick={trackApplication} className="rounded-[12px] border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Track</button>
+                        <button onClick={prepareApplication} className="btn-primary px-4 py-2 text-xs font-semibold">Prepare Application</button>
+                        <button onClick={() => routeWithContext('/suite/resume')} className="btn-secondary min-h-[44px] px-4 py-2 text-xs font-semibold">Resume Studio</button>
+                        <button onClick={trackApplication} className="btn-secondary min-h-[44px] px-4 py-2 text-xs font-semibold">Track</button>
                       </div>
                     </div>
                   </div>
@@ -745,18 +817,18 @@ export default function MarketOraclePage() {
 
                 <section className="grid gap-4 md:grid-cols-3">
                   <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Interview Yield Lens</p>
-                    <p className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">{oracleReport.decision.interviewYield.score}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-normal text-[var(--text-muted)]">Interview Yield Lens</p>
+                    <p className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">{oracleReport.decision.interviewYield.score > 0 ? oracleReport.decision.interviewYield.score : 'Not scored'}</p>
                     <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{oracleReport.decision.interviewYield.rationale}</p>
                   </div>
                   <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Proof Gap Detector</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Proof Gap Detector</p>
                     <div className="mt-3 space-y-2">
-                      {oracleReport.breakdown.proofGaps.slice(0, 3).map(gap => <p key={gap} className="rounded-[12px] border border-amber-500/15 bg-amber-500/5 px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">{gap}</p>)}
+                      {oracleReport.breakdown.proofGaps.slice(0, 3).map(gap => <p key={gap} className="rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">{gap}</p>)}
                     </div>
                   </div>
                   <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Apply Strategy</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Apply Strategy</p>
                     <p className="mt-2 text-xl font-semibold capitalize text-[var(--text-primary)]">{oracleReport.decision.applyStrategy.replaceAll('_', ' ')}</p>
                     <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Strategy is based on fit, proof strength, posting risk, and packet readiness.</p>
                   </div>
@@ -765,10 +837,10 @@ export default function MarketOraclePage() {
                 <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                   <div className="mb-4 flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Why this score?</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Why this score?</p>
                       <h3 className="mt-1 text-base font-semibold text-[var(--text-primary)]">Factor-weighted fit</h3>
                     </div>
-                    <Pill tone="cyan">Taco analyzed this role</Pill>
+                    <Pill tone="accent">Taco analyzed this role</Pill>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     {Object.entries(oracleReport.breakdown.factorScores).map(([key, value]) => (
@@ -780,7 +852,7 @@ export default function MarketOraclePage() {
             )}
           </main>
 
-          <aside className="min-w-0 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
+          <aside className="elevation-card min-w-0 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
             <div className="border-b border-[var(--border-subtle)] p-4">
               <div className="grid grid-cols-3 gap-1 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-1">
                 {([
@@ -794,7 +866,7 @@ export default function MarketOraclePage() {
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`rounded-[10px] px-2 py-2 text-xs font-semibold transition ${activeTab === tab ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+                    className={`min-h-[44px] rounded-[10px] px-2 py-2 text-xs font-semibold transition ${activeTab === tab ? 'bg-[var(--bg-surface)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
                   >
                     {label}
                   </button>
@@ -811,18 +883,18 @@ export default function MarketOraclePage() {
                       <div>
                         <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">Covered requirements</p>
                         <div className="space-y-2">
-                          {oracleReport.breakdown.coveredRequirements.slice(0, 6).map(item => <p key={item} className="rounded-[12px] border border-emerald-500/15 bg-emerald-500/5 px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">{item}</p>)}
+                          {oracleReport.breakdown.coveredRequirements.slice(0, 6).map(item => <p key={item} className="rounded-[12px] border border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] px-3 py-2 text-xs leading-5 text-[var(--text-secondary)]">{item}</p>)}
                         </div>
                       </div>
                       <div>
                         <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">Missing requirements</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {oracleReport.breakdown.keywordMap.missing.map(item => <Pill key={item} tone="amber">{item}</Pill>)}
+                          {oracleReport.breakdown.keywordMap.missing.map(item => <Pill key={item} tone="warning">{item}</Pill>)}
                         </div>
                       </div>
                       {oracleReport.breakdown.hiddenScreenSignals.length > 0 && (
-                        <div className="rounded-[15px] border border-cyan-500/15 bg-cyan-500/5 p-4">
-                          <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">Likely screen signals</p>
+                        <div className="rounded-[15px] border border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-dim)] p-4">
+                          <p className="text-xs font-semibold text-[var(--accent)]">Likely screen signals</p>
                           <div className="mt-3 space-y-3">
                             {oracleReport.breakdown.hiddenScreenSignals.map(signal => (
                               <div key={signal.signal}>
@@ -839,7 +911,7 @@ export default function MarketOraclePage() {
                   {activeTab === 'salary' && (
                     <div className="space-y-4">
                       <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Compensation read</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--text-muted)]">Compensation read</p>
                         <p className="mt-2 text-3xl font-semibold text-[var(--text-primary)]">{displaySalary(legacyAnalysis?.salaryIntel?.min, legacyAnalysis?.salaryIntel?.max)}</p>
                         <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Confidence: {oracleReport.sourceQuality.salary.replaceAll('_', ' ')}.</p>
                       </div>
@@ -871,10 +943,10 @@ export default function MarketOraclePage() {
                       {oracleReport.breakdown.risks.length === 0 ? (
                         <EmptyCard icon="shield" title="No major risks found" body="Oracle did not detect obvious role, posting, company, or candidate risk signals." />
                       ) : oracleReport.breakdown.risks.map(risk => (
-                        <div key={`${risk.category}-${risk.title}`} className={`rounded-[15px] border p-4 ${risk.severity === 'high' ? 'border-red-500/20 bg-red-500/5' : risk.severity === 'medium' ? 'border-amber-500/20 bg-amber-500/5' : 'border-[var(--border-subtle)] bg-[var(--card-bg)]'}`}>
+                        <div key={`${risk.category}-${risk.title}`} className={`rounded-[15px] border p-4 ${risk.severity === 'high' ? 'border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]' : risk.severity === 'medium' ? 'border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)]' : 'border-[var(--border-subtle)] bg-[var(--card-bg)]'}`}>
                           <div className="flex items-center justify-between gap-3">
                             <p className="text-sm font-semibold text-[var(--text-primary)]">{risk.title}</p>
-                            <Pill tone={risk.severity === 'high' ? 'red' : risk.severity === 'medium' ? 'amber' : 'muted'}>{risk.severity}</Pill>
+                            <Pill tone={risk.severity === 'high' ? 'danger' : risk.severity === 'medium' ? 'warning' : 'muted'}>{risk.severity}</Pill>
                           </div>
                           <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{risk.explanation}</p>
                         </div>
@@ -906,14 +978,14 @@ export default function MarketOraclePage() {
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <button onClick={prepareApplication} className="rounded-[13px] bg-[var(--text-primary)] px-3 py-2.5 text-xs font-semibold text-[var(--bg-deep)]">Prepare</button>
-                        <button onClick={() => routeWithContext('/suite/cover-letter')} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)]">Cover Letter</button>
-                        <button onClick={() => routeWithContext('/suite/linkedin')} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)]">LinkedIn</button>
-                        <button onClick={() => routeWithContext('/suite/interview-sim')} className="rounded-[13px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2.5 text-xs font-semibold text-[var(--text-primary)]">Interview</button>
+                        <button onClick={prepareApplication} className="btn-primary px-3 py-2.5 text-xs font-semibold">Prepare</button>
+                        <button onClick={() => routeWithContext('/suite/cover-letter')} className="btn-secondary min-h-[44px] px-3 py-2.5 text-xs font-semibold">Cover Letter</button>
+                        <button onClick={() => routeWithContext('/suite/linkedin')} className="btn-secondary min-h-[44px] px-3 py-2.5 text-xs font-semibold">LinkedIn</button>
+                        <button onClick={() => routeWithContext('/suite/interview-sim')} className="btn-secondary min-h-[44px] px-3 py-2.5 text-xs font-semibold">Interview</button>
                       </div>
                       {packetStatus !== 'idle' && (
-                        <div className="rounded-[16px] border border-cyan-500/20 bg-cyan-500/5 p-4">
-                          <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                        <div className="rounded-[16px] border border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-dim)] p-4">
+                          <p className="text-xs font-semibold text-[var(--accent)]">
                             {packetStatus === 'preparing' ? `Preparing packet - stage ${packetStage + 1}/7` : packetStatus === 'ready' ? 'Packet ready for review' : packetStatus === 'tracked' ? 'Tracker draft saved' : 'Packet failed'}
                           </p>
                           {packetResult?.atsResult && <p className="mt-2 text-xs text-[var(--text-secondary)]">ATS score: {packetResult.atsResult.overallScore || packetResult.matchScore || '--'}</p>}
@@ -928,7 +1000,7 @@ export default function MarketOraclePage() {
                       {prefersReducedMotion ? (
                         <EmptyCard icon="motion_photos_off" title="Map paused for reduced motion" body="The decision console remains fully available without 3D motion." />
                       ) : (
-                        <div className="h-[420px] overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-slate-950">
+                        <div className="h-[420px] overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-deep)]">
                           <DynamicCanvas className="h-full w-full" camera={{ position: [0, 5, 45], fov: 55 }}>
                             <Suspense fallback={null}>
                               <OracleScene

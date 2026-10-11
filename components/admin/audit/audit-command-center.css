@@ -23,7 +23,7 @@
   border: 1px solid var(--admin-border);
   border-radius: 11px;
   background: var(--admin-surface-panel);
-  box-shadow: var(--admin-shadow-panel);
+  box-shadow: var(--elevation-card);
 }
 
 .admin-command-grid .audit-metric-grid .admin-metric-card {
@@ -54,7 +54,7 @@
   background: var(--admin-surface-elevated);
   color: var(--admin-text-primary);
   padding: 0 30px 0 10px;
-  font-size: 10px;
+  font-size: 11px;
   text-transform: capitalize;
 }
 
@@ -69,13 +69,13 @@
 
 .admin-command-grid .audit-time-cell strong,
 .admin-command-grid .audit-action-cell strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .audit-time-cell small,
 .admin-command-grid .audit-action-cell small {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .admin-command-grid .audit-action-cell {
@@ -112,7 +112,7 @@
 
 .admin-command-grid .audit-metadata-count {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .audit-pagination {
@@ -128,7 +128,7 @@
 
 .admin-command-grid .audit-pagination > span {
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .audit-privacy-panel .admin-panel-content {
@@ -161,12 +161,12 @@
 }
 
 .admin-command-grid .audit-privacy-grid strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .audit-privacy-grid small {
   color: var(--admin-text-secondary);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -207,7 +207,7 @@
 
 .admin-command-grid .audit-detail-heading small {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .audit-detail > dl,
@@ -227,7 +227,7 @@
 
 .admin-command-grid .audit-detail dt {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   text-transform: capitalize;
 }
 
@@ -235,7 +235,7 @@
   max-width: 62%;
   margin: 0;
   color: var(--admin-text-primary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   overflow-wrap: anywhere;
   text-align: right;
@@ -257,7 +257,7 @@
 
 .admin-command-grid .audit-detail p {
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
 }
 

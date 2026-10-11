@@ -1,3 +1,5 @@
+import { isJobSourceEnabled } from './job-source-policy';
+
 export type JobSupplyHealthStatus = 'healthy' | 'disabled' | 'misconfigured' | 'unhealthy' | 'unreachable';
 
 export interface JobSupplyConfiguration {
@@ -33,20 +35,6 @@ interface PrimaryJobSearchStatus {
   fallbackUsed: boolean;
 }
 
-const APPROVED_SAFE_SOURCES = [
-  'greenhouse',
-  'lever',
-  'ashby',
-  'workday',
-  'remoteok',
-  'remotive',
-  'jobicy',
-  'himalayas',
-  'weworkremotely',
-  'usajobs',
-  'adzuna',
-];
-const APPROVED_SAFE_SOURCE_SET = new Set(APPROVED_SAFE_SOURCES);
 const HEALTH_CACHE_MS = 30_000;
 let healthCache: { expiresAt: number; value: JobSupplyHealthResult } | null = null;
 
@@ -86,7 +74,7 @@ export function getJobSupplyConfiguration(): JobSupplyConfiguration {
   const url = serviceUrl();
   const hasApiKey = Boolean(String(process.env.EVER_JOBS_API_KEY || '').trim());
   const safeSources = configuredSources();
-  const unsafeSources = safeSources.filter(source => !APPROVED_SAFE_SOURCE_SET.has(source));
+  const unsafeSources = safeSources.filter(source => !isJobSourceEnabled(source));
   const missing: string[] = [];
   if (enabled && !url) missing.push('EVER_JOBS_API_URL');
   if (enabled && !hasApiKey) missing.push('EVER_JOBS_API_KEY');

@@ -218,11 +218,11 @@ export default function DashboardPage() {
     // denominator. Declaring it `number` did not make it one — the profile
     // arrives from `r.json()`, so TypeScript never saw the null and the tile
     // printed a measured "0%" to users who had sent nothing.
-    score: number; velocity: number; responseRate: number | null;
+    score: number; velocity: number | null; responseRate: number | null;
     bands: HealthScoreBand[];
     /** Applications actually sent. Not `totalApps`, which counts morph records. */
     appliedApps: number;
-    debriefs: number; topRec: { title: string; actionPath: string; color: string; icon: string } | null;
+    debriefs: number | null; topRec: { title: string; actionPath: string; color: string; icon: string } | null;
     sonaBrief: { title: string; actionUrl: string; priority: 'high' | 'medium' | 'low' } | null;
   } | null>(null);
   const [twinData, setTwinData] = useState<DashboardTwinData | null>(null);
@@ -275,13 +275,15 @@ export default function DashboardPage() {
         const topRec = data.recommendations?.[0] || null;
         setHealthData({
           score: p.healthScore || 0,
-          velocity: p.pipeline?.velocity || 0,
+          // `typeof … : null`, not `|| 0`. A missing velocity is unmeasured,
+          // not zero apps/week — the tile renders a dash, never a fake count.
+          velocity: typeof p.pipeline?.velocity === 'number' ? p.pipeline.velocity : null,
           // `?? null`, not `|| 0`. A null response rate means there is no
           // denominator; zero means every employer stayed silent.
           responseRate: typeof p.pipeline?.responseRate === 'number' ? p.pipeline.responseRate : null,
           bands: Array.isArray(p.healthBands) ? p.healthBands : [],
           appliedApps: p.pipeline?.appliedApps || 0,
-          debriefs: p.interviews?.totalDebriefs || 0,
+          debriefs: typeof p.interviews?.totalDebriefs === 'number' ? p.interviews.totalDebriefs : null,
           topRec: topRec ? { title: topRec.title, actionPath: topRec.actionPath, color: topRec.color, icon: topRec.icon } : null,
           sonaBrief: data.sonaBrief ? { title: data.sonaBrief.title, actionUrl: data.sonaBrief.actionUrl, priority: data.sonaBrief.priority } : null,
         });
@@ -345,6 +347,9 @@ export default function DashboardPage() {
   // "Strong" badge. The badge and the greeting below now refuse on the same
   // two conditions, so they cannot say different things about one account.
   const searchHasStarted = (healthData?.appliedApps ?? 0) > 0;
+  // Only show the numeric score + ring when the rating is actually supportable;
+  // otherwise render a labelled absence, never a fabricated 0 or an empty ring.
+  const showHealthScore = searchHasStarted && healthBasis.ratingIsSupported;
   const healthStatus = !searchHasStarted
     ? { label: 'Nothing sent yet', icon: 'outbox', className: 'icon-neutral', color: 'var(--text-muted)' }
     : !healthBasis.ratingIsSupported
@@ -447,29 +452,45 @@ export default function DashboardPage() {
                 </div>
 
                 {healthData && (
-                  <div className="flex shrink-0 items-center gap-3 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2">
-                    <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90" aria-hidden="true">
-                      <circle cx="18" cy="18" r="14.5" fill="none" strokeWidth="2.5" stroke="var(--border-subtle)" />
-                      <circle
-                        cx="18"
-                        cy="18"
-                        r="14.5"
-                        fill="none"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        stroke={healthStatus.color}
-                        strokeDasharray={`${score * 0.91} ${91 - score * 0.91}`}
-                      />
-                    </svg>
-                    <div>
-                      <p className="whitespace-nowrap text-lg font-bold tabular-nums text-[var(--text-primary)]">{score}</p>
-                      <p className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-secondary)]">
-                        <span className={`material-symbols-rounded text-[13px] ${healthStatus.className}`} aria-hidden="true">
-                          {healthStatus.icon}
+                  <div className="elevation-card flex shrink-0 items-center gap-3 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2">
+                    {showHealthScore ? (
+                      <>
+                        <svg viewBox="0 0 36 36" className="h-11 w-11 -rotate-90" aria-hidden="true">
+                          <circle cx="18" cy="18" r="14.5" fill="none" strokeWidth="2.5" stroke="var(--border-subtle)" />
+                          <circle
+                            cx="18"
+                            cy="18"
+                            r="14.5"
+                            fill="none"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            stroke={healthStatus.color}
+                            strokeDasharray={`${score * 0.91} ${91 - score * 0.91}`}
+                          />
+                        </svg>
+                        <div>
+                          <p className="whitespace-nowrap text-lg font-bold tabular-nums text-[var(--text-primary)]">{score}</p>
+                          <p className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-secondary)]">
+                            <span className={`material-symbols-rounded text-[13px] ${healthStatus.className}`} aria-hidden="true">
+                              {healthStatus.icon}
+                            </span>
+                            {healthStatus.label}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[var(--border-subtle)]" aria-hidden="true">
+                          <span className={`material-symbols-rounded text-[20px] ${healthStatus.className}`}>
+                            {healthStatus.icon}
+                          </span>
                         </span>
-                        {healthStatus.label}
-                      </p>
-                    </div>
+                        <div className="min-w-0">
+                          <p className="whitespace-nowrap text-sm font-semibold text-[var(--text-primary)]">{healthStatus.label}</p>
+                          <p className="text-[11px] font-medium text-[var(--text-muted)]">Health score not yet rated</p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -480,7 +501,7 @@ export default function DashboardPage() {
                     key={action.path}
                     type="button"
                     onClick={() => router.push(action.path)}
-                    className="group min-h-[106px] min-w-0 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    className="group min-h-[106px] min-w-0 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-interactive p-3 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   >
                     <div className="flex min-w-0 items-start gap-3">
                       <SuiteToolIcon icon={action.iconName} size="sm" />
@@ -543,7 +564,7 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => void handleExportTwin()}
                       disabled={twinExporting}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-[var(--border-subtle)] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-60"
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] border border-[var(--border-subtle)] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-60"
                       aria-label="Export Career Twin"
                       title="Export Career Twin"
                     >
@@ -571,7 +592,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => router.push('/suite/upgrade')}
-                    className="min-h-9 flex-1 rounded-[12px] px-3 py-2 text-xs font-semibold transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    className="min-h-11 flex-1 rounded-[12px] px-3 py-2 text-xs font-semibold transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     style={{ background: plan.accent, color: plan.buttonText }}
                   >
                     View Standard / Max
@@ -583,14 +604,14 @@ export default function DashboardPage() {
                       type="button"
                       onClick={handleManageBilling}
                       disabled={billingLoading}
-                      className="min-h-9 flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-hover)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] disabled:opacity-60"
+                      className="min-h-11 flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-hover)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] disabled:opacity-60"
                     >
                       {billingLoading ? 'Opening...' : 'Manage billing'}
                     </button>
                     <button
                       type="button"
                       onClick={() => router.push('/suite/upgrade?plan=studio')}
-                      className="min-h-9 flex-1 rounded-[12px] px-3 py-2 text-xs font-semibold transition hover:brightness-105"
+                      className="min-h-11 flex-1 rounded-[12px] px-3 py-2 text-xs font-semibold transition hover:brightness-105"
                       style={{ background: getPlanIdentity('studio').accent, color: getPlanIdentity('studio').buttonText }}
                     >
                       Explore Max
@@ -602,7 +623,7 @@ export default function DashboardPage() {
                     type="button"
                     onClick={handleManageBilling}
                     disabled={billingLoading}
-                    className="min-h-9 flex-1 rounded-[12px] px-3 py-2 text-xs font-semibold transition hover:brightness-105 disabled:opacity-60"
+                    className="min-h-11 flex-1 rounded-[12px] px-3 py-2 text-xs font-semibold transition hover:brightness-105 disabled:opacity-60"
                     style={{ background: plan.accent, color: plan.buttonText }}
                   >
                     {billingLoading ? 'Opening...' : 'Manage billing'}
@@ -613,11 +634,12 @@ export default function DashboardPage() {
               {healthData && (
                 <div className="mt-5 grid grid-cols-3 gap-2 border-t border-[var(--border-subtle)] pt-4">
                   {[
-                    { label: 'Apps/week', value: healthData.velocity, icon: 'speed' },
+                    // `?? '—'`: a real measured 0 shows "0"; an unmeasured (null) value shows a dash, never a fabricated count.
+                    { label: 'Apps/week', value: healthData.velocity ?? '—', icon: 'speed' },
                     // percentOrDash, not `${x}%`. An em dash reads as "we do
                     // not know"; "0%" reads as "every employer ignored you".
                     { label: 'Response', value: percentOrDash(healthData.responseRate), icon: 'mark_email_read' },
-                    { label: 'Debriefs', value: healthData.debriefs, icon: 'rate_review' },
+                    { label: 'Debriefs', value: healthData.debriefs ?? '—', icon: 'rate_review' },
                   ].map((metric) => (
                     <div key={metric.label} className="min-w-0">
                       <span className="material-symbols-rounded icon-neutral text-[15px]" aria-hidden="true">
@@ -626,7 +648,7 @@ export default function DashboardPage() {
                       <p className="mt-1 whitespace-nowrap text-sm font-bold tabular-nums text-[var(--text-primary)]">
                         {metric.value}
                       </p>
-                      <p className="truncate text-[10px] text-[var(--text-muted)]">{metric.label}</p>
+                      <p className="truncate text-[11px] text-[var(--text-muted)]">{metric.label}</p>
                     </div>
                   ))}
                 </div>
@@ -636,7 +658,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => router.push(healthData.sonaBrief?.actionUrl || '/suite/intelligence')}
-                  className="mt-4 flex w-full min-w-0 items-start gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
+                  className="mt-4 flex w-full min-w-0 items-start gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-interactive p-3 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
                 >
                   <span className="material-symbols-rounded icon-neutral mt-0.5 text-[17px]" aria-hidden="true">
                     auto_awesome
@@ -681,7 +703,7 @@ export default function DashboardPage() {
                   localStorage.setItem('tc_alerts_dismissed', String(Date.now()));
                   setAlertsDismissed(true);
                 }}
-                className="min-h-9 rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                className="min-h-11 rounded-[12px] border border-[var(--border-subtle)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
               >
                 Maybe later
               </button>
@@ -709,7 +731,7 @@ export default function DashboardPage() {
                   setAlertsSubscribing(false);
                 }}
                 disabled={alertsSubscribing}
-                className="min-h-9 rounded-[12px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition-colors hover:opacity-90 disabled:opacity-50"
+                className="min-h-11 rounded-[12px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition-colors hover:opacity-90 disabled:opacity-50"
               >
                 {alertsSubscribing ? 'Enabling...' : 'Enable Career Picks by Taco'}
               </button>
@@ -741,7 +763,7 @@ export default function DashboardPage() {
                 key={tool.id}
                 type="button"
                 onClick={() => router.push(tool.path)}
-                className="group flex min-h-[124px] min-w-0 flex-col rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                className="group flex min-h-[124px] min-w-0 flex-col rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-interactive p-4 text-left transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
                 <div className="flex min-w-0 items-start gap-3">
                   <SuiteToolIcon icon={tool.iconName} size="sm" />
@@ -751,7 +773,7 @@ export default function DashboardPage() {
                         {tool.name}
                       </h3>
                       {tool.badge && (
-                        <span className="shrink-0 rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-secondary)]">
+                        <span className="shrink-0 rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]">
                           {tool.badge}
                         </span>
                       )}
@@ -773,7 +795,7 @@ export default function DashboardPage() {
       {/* ── Recent Activity ── */}
       {recentActivity.length > 0 && (
         <div className="mb-2 mt-4">
-          <div className="rounded-xl border border-[var(--border-subtle)] p-4">
+          <div className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
             <h2 className="text-xs font-medium text-[var(--text-secondary)] mb-3 flex items-center gap-2">
               <span className="material-symbols-rounded icon-neutral text-[14px]">history</span>
               Recent Activity
@@ -783,11 +805,11 @@ export default function DashboardPage() {
                 <button
                   key={i}
                   onClick={() => router.push(activity.path)}
-                  className="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg text-left hover:bg-[var(--bg-hover)] transition-colors duration-100 group"
+                  className="w-full flex min-h-11 items-center gap-3 px-2 py-1.5 rounded-lg text-left hover:bg-[var(--bg-hover)] transition-colors duration-100 group"
                 >
                   <span className="material-symbols-rounded icon-neutral text-[14px]">{activity.icon}</span>
                   <span className="flex-1 text-[12px] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate transition-colors">{activity.text}</span>
-                  {activity.time && <span className="text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">{activity.time}</span>}
+                  {activity.time && <span className="text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">{activity.time}</span>}
                 </button>
               ))}
             </div>
@@ -802,7 +824,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => router.push('/suite/resume')}
-            className="flex min-h-10 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            className="flex min-h-11 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           >
             <span className="material-symbols-rounded icon-neutral text-[15px]" aria-hidden="true">description</span>
             Upload a resume
@@ -810,7 +832,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => router.push('/suite/interview-sim')}
-            className="flex min-h-10 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            className="flex min-h-11 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           >
             <span className="material-symbols-rounded icon-neutral text-[15px]" aria-hidden="true">interpreter_mode</span>
             Practice interviews
@@ -818,7 +840,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => router.push('/suite/agent')}
-            className="flex min-h-10 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            className="flex min-h-11 items-center gap-2 rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
           >
             <span className="material-symbols-rounded icon-neutral text-[15px]" aria-hidden="true">auto_awesome</span>
             Ask Taco anything
@@ -832,7 +854,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => router.push('/suite/skill-bridge?view=memory')}
-            className="group flex w-full min-w-0 items-center gap-3 rounded-xl border border-[var(--border-subtle)] px-4 py-3 text-left transition-colors duration-100 hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
+            className="group flex min-h-11 w-full min-w-0 items-center gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-interactive px-4 py-3 text-left transition-colors duration-100 hover:border-[var(--border)] hover:bg-[var(--bg-hover)]"
           >
             <span className="material-symbols-rounded icon-neutral text-[18px]" aria-hidden="true">inventory_2</span>
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">

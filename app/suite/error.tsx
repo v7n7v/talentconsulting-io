@@ -38,7 +38,7 @@ export default function SuiteError({
             border: '1px solid rgba(242, 139, 130, 0.2)',
           }}
         >
-          <span className="material-symbols-rounded text-4xl" style={{ color: '#f28b82' }}>
+          <span className="material-symbols-rounded text-4xl" style={{ color: 'var(--danger)' }}>
             error_outline
           </span>
         </motion.div>

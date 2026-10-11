@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, usePathname } from 'next/navigation';
-import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { useUserTier } from '@/hooks/use-user-tier';
 import { authFetch } from '@/lib/auth-fetch';
@@ -75,15 +74,14 @@ const PAGE_HINTS: Record<string, string> = {
   '/suite/analytics': 'How is my job search going?',
 };
 
+// Priority uses the status tokens, kept distinct from the blue accent.
 const PRIORITY_COLOR: Record<string, string> = {
-  high: '#f43f5e', medium: '#f59e0b', low: '#3b82f6',
+  high: 'var(--danger)', medium: 'var(--warning)', low: 'var(--accent)',
 };
 
 export default function SonaFloatingOrb() {
   const router = useRouter();
   const pathname = usePathname();
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const { user } = useStore();
   const { tier } = useUserTier();
   const { context: kitContext } = useApplicationKitContext();
@@ -356,7 +354,6 @@ export default function SonaFloatingOrb() {
 
   const contextHint = PAGE_HINTS[pathname] || undefined;
   const tierLabel = isMaxTier ? 'Proactive' : tier === 'pro' ? 'Manual scout' : '1 free scout';
-  const accentColor = '#f43f5e';
   const sonaState: SonaMarkState = loading ? 'thinking' : chatOpen ? (input.trim() ? 'listening' : 'responding') : 'idle';
 
   const formatTimeAgo = (dateStr: string) => {
@@ -383,41 +380,28 @@ export default function SonaFloatingOrb() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.92 }}
             transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="fixed inset-x-2 bottom-[calc(var(--mobile-appbar-height,0px)+5.5rem)] sm:absolute sm:inset-x-auto sm:bottom-16 sm:right-0 w-auto overflow-hidden rounded-2xl sm:w-[340px] md:w-[380px] flex flex-col"
-            style={{
-              height: 'min(480px, 70vh)',
-              background: isLight ? '#fff' : '#111114',
-              border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
-              boxShadow: isLight
-                ? '0 16px 48px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)'
-                : '0 16px 48px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)',
-            }}
+            className="elevation-raised fixed inset-x-2 bottom-[calc(var(--mobile-appbar-height,0px)+5.5rem)] sm:absolute sm:inset-x-auto sm:bottom-16 sm:right-0 w-auto overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] sm:w-[340px] md:w-[380px] flex flex-col"
+            style={{ height: 'min(480px, 70vh)' }}
           >
             {/* Header */}
-            <div
-              className="shrink-0"
-              style={{
-                background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)',
-                borderBottom: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-              }}
-            >
+            <div className="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
               <div className="flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-2.5">
                   <SonaMark size="xs" state={loading ? 'thinking' : 'idle'} />
                   <div>
                     <p className="text-sm font-semibold text-[var(--text-primary)] leading-none">Taco</p>
-                    <p className="text-[10px] text-[var(--text-muted)]">{activeContextLabel ? `Working in ${activeContextLabel}` : tierLabel}</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">{activeContextLabel ? `Working in ${activeContextLabel}` : tierLabel}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => { setChatOpen(false); router.push('/suite/agent'); }}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
+                    className="h-11 w-11 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
                     title="Open full view"
                   >
                     <span className="material-symbols-rounded text-[16px] text-[var(--text-muted)]">open_in_full</span>
                   </button>
-                  <button onClick={() => setChatOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors">
+                  <button onClick={() => setChatOpen(false)} className="h-11 w-11 rounded-lg flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors" aria-label="Close Taco">
                     <span className="material-symbols-rounded text-[16px] text-[var(--text-muted)]">close</span>
                   </button>
                 </div>
@@ -427,10 +411,10 @@ export default function SonaFloatingOrb() {
               <div className="flex px-4 gap-1 pb-2">
                 <button
                   onClick={() => setActiveTab('chat')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  className="flex-1 flex min-h-11 items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
                   style={{
-                    background: activeTab === 'chat' ? `${accentColor}10` : 'transparent',
-                    color: activeTab === 'chat' ? accentColor : 'var(--text-muted)',
+                    background: activeTab === 'chat' ? 'var(--accent-dim)' : 'transparent',
+                    color: activeTab === 'chat' ? 'var(--accent)' : 'var(--text-muted)',
                   }}
                 >
                   <span className="material-symbols-rounded text-[14px]">chat</span>
@@ -438,10 +422,10 @@ export default function SonaFloatingOrb() {
                 </button>
                 <button
                   onClick={() => { setActiveTab('history'); if (!historyLoaded) fetchConversations(); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                  className="flex-1 flex min-h-11 items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
                   style={{
-                    background: activeTab === 'history' ? `${accentColor}10` : 'transparent',
-                    color: activeTab === 'history' ? accentColor : 'var(--text-muted)',
+                    background: activeTab === 'history' ? 'var(--accent-dim)' : 'transparent',
+                    color: activeTab === 'history' ? 'var(--accent)' : 'var(--text-muted)',
                   }}
                 >
                   <span className="material-symbols-rounded text-[14px]">history</span>
@@ -450,16 +434,16 @@ export default function SonaFloatingOrb() {
                 {isMaxTier && (
                   <button
                     onClick={() => { setActiveTab('insights'); if (!insightsLoaded) fetchInsights(); }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors relative"
+                    className="flex-1 flex min-h-11 items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors relative"
                     style={{
-                      background: activeTab === 'insights' ? `${accentColor}10` : 'transparent',
-                      color: activeTab === 'insights' ? accentColor : 'var(--text-muted)',
+                      background: activeTab === 'insights' ? 'var(--accent-dim)' : 'transparent',
+                      color: activeTab === 'insights' ? 'var(--accent)' : 'var(--text-muted)',
                     }}
                   >
                     <span className="material-symbols-rounded text-[14px]">lightbulb</span>
                     Insights
                     {unreadCount > 0 && (
-                      <span className="absolute -top-0.5 right-2 w-4 h-4 rounded-full bg-blue-500 text-white text-[9px] font-bold flex items-center justify-center">
+                      <span className="absolute -top-0.5 right-2 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[var(--accent)] text-[var(--accent-on)] text-[11px] font-bold px-1">
                         {unreadCount}
                       </span>
                     )}
@@ -480,10 +464,9 @@ export default function SonaFloatingOrb() {
                       {contextHint && (
                         <button
                           onClick={() => sendMessage(contextHint)}
-                          className="w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors mb-2"
-                          style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}15`, color: 'var(--text-secondary)' }}
+                          className="w-full min-h-11 text-left px-3 py-2.5 rounded-xl text-xs transition-colors mb-2 border border-[var(--border-subtle)] bg-[var(--accent-dim)] text-[var(--text-secondary)]"
                         >
-                          <span className="material-symbols-rounded text-[14px] mr-1.5 align-middle" style={{ color: accentColor }}>lightbulb</span>
+                          <span className="material-symbols-rounded text-[14px] mr-1.5 align-middle text-[var(--accent)]">lightbulb</span>
                           {contextHint}
                         </button>
                       )}
@@ -495,10 +478,10 @@ export default function SonaFloatingOrb() {
                         compact
                       />
 
-                      <button onClick={() => sendMessage('What jobs match my resume?')} className="w-full text-left px-3 py-2 rounded-xl text-xs text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
+                      <button onClick={() => sendMessage('What jobs match my resume?')} className="w-full min-h-11 text-left px-3 py-2 rounded-xl text-xs text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
                         <span className="material-symbols-rounded text-[14px] mr-1.5 align-middle opacity-50">radar</span>What jobs match my resume?
                       </button>
-                      <button onClick={() => sendMessage('Any follow-ups I should send?')} className="w-full text-left px-3 py-2 rounded-xl text-xs text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
+                      <button onClick={() => sendMessage('Any follow-ups I should send?')} className="w-full min-h-11 text-left px-3 py-2 rounded-xl text-xs text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors">
                         <span className="material-symbols-rounded text-[14px] mr-1.5 align-middle opacity-50">mail</span>Any follow-ups I should send?
                       </button>
                     </div>
@@ -507,15 +490,15 @@ export default function SonaFloatingOrb() {
                   {messages.slice(-8).map((msg, i) => (
                     <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <div
-                        className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${msg.role === 'user' ? 'text-white' : 'text-[var(--text-primary)]'}`}
-                        style={msg.role === 'user' ? { background: accentColor } : { background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)' }}
+                        className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs leading-relaxed ${msg.role === 'user' ? 'text-[var(--accent-on)]' : 'text-[var(--text-primary)]'}`}
+                        style={msg.role === 'user' ? { background: 'var(--accent)' } : { background: 'var(--bg-elevated)' }}
                       >
                         {msg.role === 'assistant' && msg.actionPlan && (
                           <div
-                            className="mb-2 rounded-xl border px-2.5 py-2 text-[10px] leading-snug"
-                            style={{ borderColor: `${accentColor}22`, background: `${accentColor}08`, color: 'var(--text-secondary)' }}
+                            className="mb-2 rounded-xl border px-2.5 py-2 text-[11px] leading-snug"
+                            style={{ borderColor: 'var(--border-subtle)', background: 'var(--accent-dim)', color: 'var(--text-secondary)' }}
                           >
-                            <div className="font-semibold" style={{ color: accentColor }}>Plan: {msg.actionPlan.capabilityId}</div>
+                            <div className="font-semibold text-[var(--accent)]">Plan: {msg.actionPlan.capabilityId}</div>
                             <div className="mt-1">{msg.actionPlan.plannedSteps.join(' -> ')}</div>
                             {msg.actionPlan.approvalRequired && <div className="mt-1">Review required before external action.</div>}
                           </div>
@@ -529,7 +512,7 @@ export default function SonaFloatingOrb() {
                     <div className="flex justify-start">
                       <SonaThinkingTile
                         variant="agent"
-                        accentColor={accentColor}
+                        accentColor="var(--accent)"
                         title="Thinking"
                         description="Taco is checking your context."
                         activeStage="thinking"
@@ -542,11 +525,8 @@ export default function SonaFloatingOrb() {
                 </div>
 
                 {/* Input */}
-                <div className="shrink-0 px-3 py-2.5" style={{ borderTop: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}` }}>
-                  <div
-                    className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-1.5"
-                    style={{ background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}` }}
-                  >
+                <div className="shrink-0 px-3 py-2.5 border-t border-[var(--border-subtle)]">
+                  <div className="flex min-h-11 items-center gap-2 rounded-xl px-3 py-1.5 border border-[var(--border-subtle)] bg-[var(--bg-input)]">
                     <input
                       ref={inputRef}
                       value={input}
@@ -554,14 +534,14 @@ export default function SonaFloatingOrb() {
                       onKeyDown={handleKeyDown}
                       placeholder="Ask Taco..."
                       disabled={loading}
-                      className="min-h-11 flex-1 border-none bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] sm:text-sm"
+                      className="min-h-11 flex-1 border-none bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
                     />
                     <button
                       onClick={() => sendMessage()}
                       disabled={!input.trim() || loading}
                       className="flex h-11 w-11 items-center justify-center rounded-lg transition-all disabled:opacity-20"
                       aria-label="Send message to Taco"
-                      style={{ background: input.trim() ? accentColor : 'transparent', color: input.trim() ? '#fff' : 'var(--text-muted)' }}
+                      style={{ background: input.trim() ? 'var(--accent)' : 'transparent', color: input.trim() ? 'var(--accent-on)' : 'var(--text-muted)' }}
                     >
                       <span className="material-symbols-rounded text-[18px]">arrow_upward</span>
                     </button>
@@ -575,8 +555,7 @@ export default function SonaFloatingOrb() {
               <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
                 <button
                   onClick={startNewConversation}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors mb-2"
-                  style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}15`, color: accentColor }}
+                  className="w-full min-h-11 flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors mb-2 border border-[var(--border-subtle)] bg-[var(--accent-dim)] text-[var(--accent)]"
                 >
                   <span className="material-symbols-rounded text-[14px]">add</span>
                   New conversation
@@ -584,15 +563,15 @@ export default function SonaFloatingOrb() {
 
                 {conversations.length === 0 && historyLoaded && (
                   <div className="text-center py-6">
-                    <span className="material-symbols-rounded text-[28px] mb-2 block" style={{ color: 'var(--text-muted)' }}>forum</span>
+                    <span className="material-symbols-rounded text-[28px] mb-2 block text-[var(--text-muted)]">forum</span>
                     <p className="text-xs text-[var(--text-muted)]">No past conversations yet</p>
                   </div>
                 )}
 
                 {!historyLoaded && (
                   <div className="text-center py-6">
-                    <span className="material-symbols-rounded text-[20px] animate-spin block mb-2" style={{ color: 'var(--text-muted)' }}>progress_activity</span>
-                    <p className="text-[10px] text-[var(--text-muted)]">Loading history...</p>
+                    <span className="material-symbols-rounded text-[20px] animate-spin block mb-2 text-[var(--text-muted)]">progress_activity</span>
+                    <p className="text-[11px] text-[var(--text-muted)]">Loading history...</p>
                   </div>
                 )}
 
@@ -600,25 +579,21 @@ export default function SonaFloatingOrb() {
                   <button
                     key={conv.id || `conversation-${index}`}
                     onClick={() => loadConversation(conv.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl transition-colors ${
+                    className={`w-full min-h-11 text-left px-3 py-2.5 rounded-xl transition-colors border ${
                       conv.id === conversationId
-                        ? ''
-                        : 'hover:bg-[var(--bg-hover)]'
+                        ? 'border-[var(--border-subtle)] bg-[var(--accent-dim)]'
+                        : 'border-transparent hover:bg-[var(--bg-hover)]'
                     }`}
-                    style={conv.id === conversationId ? {
-                      background: `${accentColor}10`,
-                      border: `1px solid ${accentColor}20`,
-                    } : {}}
                   >
                     <p className="text-xs text-[var(--text-primary)] truncate font-medium">{conv.title}</p>
-                    <p className="text-[10px] text-[var(--text-muted)] mt-0.5">{formatTimeAgo(conv.lastMessageAt)}</p>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{formatTimeAgo(conv.lastMessageAt)}</p>
                   </button>
                 ))}
 
                 {historyLoaded && conversations.length > 0 && (
                   <button
                     onClick={fetchConversations}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors mt-2"
+                    className="w-full min-h-11 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors mt-2"
                   >
                     <span className="material-symbols-rounded text-[14px]">refresh</span>
                     Refresh
@@ -632,12 +607,12 @@ export default function SonaFloatingOrb() {
               <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
                 {insights.length === 0 && (
                   <div className="text-center py-8">
-                    <span className="material-symbols-rounded text-[28px] mb-2 block" style={{ color: '#3b82f6' }}>lightbulb</span>
+                    <span className="material-symbols-rounded text-[28px] mb-2 block text-[var(--accent)]">lightbulb</span>
                     <p className="text-xs text-[var(--text-secondary)] mb-4">No insights yet</p>
                     <button
                       onClick={generateInsights}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white transition-opacity hover:opacity-90"
-                      style={{ background: accentColor }}
+                      className="inline-flex min-h-11 items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-[var(--accent-on)] transition-opacity hover:opacity-90"
+                      style={{ background: 'var(--accent)' }}
                     >
                       <span className="material-symbols-rounded text-[14px]">auto_awesome</span>
                       Generate Insights
@@ -650,11 +625,8 @@ export default function SonaFloatingOrb() {
                     key={insight.id || `insight-${index}`}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className={`rounded-xl p-3 transition-colors cursor-pointer ${insight.read ? 'opacity-60' : ''}`}
-                    style={{
-                      background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-                      borderLeft: `3px solid ${PRIORITY_COLOR[insight.priority]}`,
-                    }}
+                    className={`rounded-xl p-3 transition-colors cursor-pointer bg-[var(--bg-elevated)] ${insight.read ? 'opacity-60' : ''}`}
+                    style={{ borderLeft: `3px solid ${PRIORITY_COLOR[insight.priority]}` }}
                     onClick={() => {
                       if (!insight.read) markRead(insight.id);
                       if (insight.actionUrl) { setChatOpen(false); router.push(insight.actionUrl); }
@@ -666,16 +638,16 @@ export default function SonaFloatingOrb() {
                       </span>
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-[var(--text-primary)] leading-tight">{insight.title}</p>
-                        <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-relaxed line-clamp-3">{insight.body}</p>
+                        <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed line-clamp-3">{insight.body}</p>
                         <div className="flex items-center justify-between mt-2">
                           {insight.actionLabel && (
-                            <span className="text-[10px] font-medium" style={{ color: accentColor }}>{insight.actionLabel} →</span>
+                            <span className="text-[11px] font-medium text-[var(--accent)]">{insight.actionLabel} →</span>
                           )}
-                          <span className="text-[9px] text-[var(--text-muted)]">{formatTimeAgo(insight.createdAt)}</span>
+                          <span className="text-[11px] text-[var(--text-muted)]">{formatTimeAgo(insight.createdAt)}</span>
                         </div>
                       </div>
                       {!insight.read && (
-                        <div className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ background: '#3b82f6' }} />
+                        <div className="w-2 h-2 rounded-full shrink-0 mt-1 bg-[var(--accent)]" />
                       )}
                     </div>
                   </motion.div>
@@ -684,7 +656,7 @@ export default function SonaFloatingOrb() {
                 {insights.length > 0 && (
                   <button
                     onClick={generateInsights}
-                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors mt-2"
+                    className="w-full min-h-11 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[11px] text-[var(--text-muted)] hover:bg-[var(--bg-hover)] transition-colors mt-2"
                   >
                     <span className="material-symbols-rounded text-[14px]">refresh</span>
                     Check for new insights
@@ -704,26 +676,20 @@ export default function SonaFloatingOrb() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.9 }}
             transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-            className="absolute bottom-16 right-0 hidden w-[280px] rounded-2xl overflow-hidden lg:block 2xl:hidden"
-            style={{
-              background: isLight ? '#fff' : '#111114',
-              border: `1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
-              boxShadow: isLight
-                ? '0 12px 40px rgba(0,0,0,0.12)'
-                : '0 12px 40px rgba(0,0,0,0.5)',
-            }}
+            className="elevation-raised absolute bottom-16 right-0 hidden w-[280px] rounded-2xl overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)] lg:block 2xl:hidden"
           >
             {/* Header */}
             <div className="px-4 pt-3 pb-2 flex items-start justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `${accentColor}15` }}>
-                  <span className="material-symbols-rounded text-[14px]" style={{ color: accentColor }}>local_offer</span>
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-[var(--accent-dim)]">
+                  <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">local_offer</span>
                 </div>
-                <span className="text-[11px] font-semibold" style={{ color: accentColor }}>Taco · Special Offer</span>
+                <span className="text-[11px] font-semibold text-[var(--accent)]">Taco · Special Offer</span>
               </div>
               <button
                 onClick={() => setPromoVisible(false)}
-                className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
+                className="h-11 w-11 rounded-md flex items-center justify-center hover:bg-[var(--bg-hover)] transition-colors"
+                aria-label="Dismiss offer"
               >
                 <span className="material-symbols-rounded text-[14px] text-[var(--text-muted)]">close</span>
               </button>
@@ -734,17 +700,11 @@ export default function SonaFloatingOrb() {
               <p className="text-xs font-semibold text-[var(--text-primary)] mb-2 leading-snug">{promo.headline}</p>
 
               {/* Code pill */}
-              <div
-                className="w-full flex items-center justify-between px-3 py-2 rounded-xl mb-2.5 transition-colors group"
-                style={{
-                  background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-                  border: `1px dashed ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
-                }}
-              >
-                <span className="text-sm font-bold tracking-widest" style={{ color: 'var(--success)' }}>
+              <div className="w-full flex items-center justify-between px-3 py-2 rounded-xl mb-2.5 transition-colors group border border-dashed border-[var(--border-subtle)] bg-[var(--bg-input)]">
+                <span className="text-sm font-bold tracking-widest text-[var(--success)]">
                   {promo.automatic ? 'AUTO-APPLIED' : promo.code}
                 </span>
-                <span className="text-[9px] text-[var(--text-muted)]">
+                <span className="text-[11px] text-[var(--text-muted)]">
                   {promo.automatic ? 'at checkout' : 'checkout code'}
                 </span>
               </div>
@@ -753,8 +713,7 @@ export default function SonaFloatingOrb() {
               <a
                 href="/suite/upgrade"
                 onClick={() => setPromoVisible(false)}
-                className="block w-full text-center py-2 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-90"
-                style={{ background: `linear-gradient(135deg, ${accentColor}, #e11d48)` }}
+                className="block w-full text-center py-2 rounded-xl text-xs font-semibold text-[var(--accent-on)] transition-all hover:opacity-90 bg-[var(--accent)]"
               >
                 {promo.ctaText} →
               </a>
@@ -765,7 +724,7 @@ export default function SonaFloatingOrb() {
                   safeSessionStorageSet(ASSISTANT_STORAGE_KEYS.promoDismissed, 'true');
                   safeSessionStorageSet(ASSISTANT_STORAGE_KEYS.legacyPromoDismissed, 'true');
                 }}
-                className="w-full text-center text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors mt-2 py-1"
+                className="w-full min-h-11 text-center text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors mt-2 py-1"
               >
                 Don't show again
               </button>
@@ -781,12 +740,11 @@ export default function SonaFloatingOrb() {
             initial={{ opacity: 0, y: 4, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.95 }}
-            className="absolute bottom-full right-0 mb-2 px-3 py-2 rounded-xl text-xs whitespace-nowrap"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', boxShadow: '0 4px 16px rgba(0,0,0,0.15)', color: 'var(--text-primary)' }}
+            className="elevation-raised absolute bottom-full right-0 mb-2 px-3 py-2 rounded-xl text-xs whitespace-nowrap bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)]"
           >
             <span className="font-medium">Taco AI</span>
             <span className="text-[var(--text-muted)] ml-1.5">· {tierLabel}</span>
-            {unreadCount > 0 && <span className="ml-1.5 text-blue-400">· {unreadCount} new</span>}
+            {unreadCount > 0 && <span className="ml-1.5 text-[var(--accent)]">· {unreadCount} new</span>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -801,11 +759,7 @@ export default function SonaFloatingOrb() {
         transition={{ duration: 4.2, repeat: chatOpen ? 0 : Infinity, ease: 'easeInOut' }}
         whileHover={{ scale: 1.1, y: -5 }}
         whileTap={{ scale: 0.95 }}
-        className="relative hidden h-14 w-14 items-center justify-center rounded-[20px] transition-shadow hover:shadow-xl lg:flex 2xl:hidden"
-        style={{
-          background: 'transparent',
-          boxShadow: chatOpen ? '0 14px 34px rgba(15,23,42,0.2)' : '0 18px 42px rgba(56,189,248,0.28), 0 10px 28px rgba(124,58,237,0.16)',
-        }}
+        className="relative hidden h-14 w-14 items-center justify-center rounded-[20px] bg-transparent transition-transform lg:flex 2xl:hidden"
       >
         {!chatOpen && (
           <motion.div
@@ -813,8 +767,7 @@ export default function SonaFloatingOrb() {
             initial={{ scale: 1, opacity: 0.6 }}
             animate={{ scale: 1.8, opacity: 0 }}
             transition={{ duration: 1.2, ease: 'easeOut' }}
-            className="absolute inset-1 rounded-[18px]"
-            style={{ border: '2px solid rgba(56,189,248,0.52)' }}
+            className="absolute inset-1 rounded-[18px] border-2 border-[var(--accent)]"
           />
         )}
 
@@ -832,10 +785,7 @@ export default function SonaFloatingOrb() {
 
         {/* Badge */}
         {totalBadge > 0 && !chatOpen && (
-          <div
-            className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
-            style={{ background: '#3b82f6' }}
-          >
+          <div className="absolute -top-0.5 -right-0.5 grid h-[18px] w-[18px] place-items-center rounded-full text-[11px] font-bold bg-[var(--accent)] text-[var(--accent-on)]">
             {Math.min(totalBadge, 9)}
           </div>
         )}

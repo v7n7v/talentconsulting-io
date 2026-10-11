@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { showToast } from '@/components/Toast';
-import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import { SuiteToolHeader, SuiteEmptyState } from '@/components/suite/SuiteToolChrome';
 import { type ResumeVersion } from '@/lib/database-suite';
 import ResumeLibraryPicker from '@/components/ResumeLibraryPicker';
 import { useApplicationKitContext } from '@/hooks/useApplicationKitContext';
@@ -44,9 +43,9 @@ interface ATSIssue {
 }
 
 const ATS_SYSTEMS = [
-  { id: 'greenhouse', name: 'Greenhouse', icon: 'eco', description: 'Used by Stripe, Airbnb, Coinbase', share: '28%' },
-  { id: 'lever', name: 'Lever', icon: 'bolt', description: 'Used by Netflix, Twitch, Shopify', share: '22%' },
-  { id: 'workday', name: 'Workday', icon: 'domain', description: 'Used by Amazon, JPMorgan, Walmart', share: '35%' },
+  { id: 'greenhouse', name: 'Greenhouse', icon: 'eco', description: 'Used by Stripe, Airbnb, Coinbase' },
+  { id: 'lever', name: 'Lever', icon: 'bolt', description: 'Used by Netflix, Twitch, Shopify' },
+  { id: 'workday', name: 'Workday', icon: 'domain', description: 'Used by Amazon, JPMorgan, Walmart' },
 ];
 
 // ── ATS Simulation Engine ──
@@ -207,15 +206,17 @@ function simulateATSParse(resume: ResumeData, atsId: string): { fields: ATSField
 }
 
 // ── Confidence badge ──
+// Colour is the fourth channel: each state carries a text label; hue comes from
+// tag tokens that hold their own 3:1 contrast in both themes.
 function ConfidenceBadge({ level }: { level: ATSField['confidence'] }) {
   const config = {
-    high: { color: '#22c55e', bg: '#22c55e12', label: 'Parsed ✓' },
-    medium: { color: '#f59e0b', bg: '#f59e0b12', label: 'Partial' },
-    low: { color: '#ef4444', bg: '#ef444412', label: 'Risky' },
-    missing: { color: '#6b7280', bg: '#6b728012', label: 'Missing' },
+    high: { className: 'bg-[var(--tag-green-bg)] text-[var(--tag-green-text)]', label: 'Parsed ✓' },
+    medium: { className: 'bg-[var(--tag-amber-bg)] text-[var(--tag-amber-text)]', label: 'Partial' },
+    low: { className: 'bg-[var(--tag-rose-bg)] text-[var(--tag-rose-text)]', label: 'Risky' },
+    missing: { className: 'bg-[var(--bg-hover)] text-[var(--text-muted)]', label: 'Missing' },
   }[level];
   return (
-    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style={{ color: config.color, background: config.bg }}>
+    <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${config.className}`}>
       {config.label}
     </span>
   );
@@ -223,8 +224,6 @@ function ConfidenceBadge({ level }: { level: ATSField['confidence'] }) {
 
 // ── Main Page ──
 export function ATSPreviewContent() {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const { user } = useStore();
   const { context: kitContext, updateContext } = useApplicationKitContext();
 
@@ -382,14 +381,12 @@ export function ATSPreviewContent() {
     }
   };
 
-  const cardBg = isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)';
-  const cardBorder = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
-
+  // Score band colour — every branch resolves to a token, never a hex literal.
   const getScoreColor = (score: number) => {
-    if (score >= 90) return '#22c55e';
-    if (score >= 75) return '#3b82f6';
-    if (score >= 60) return '#f59e0b';
-    return '#ef4444';
+    if (score >= 90) return 'var(--success)';
+    if (score >= 75) return 'var(--accent)';
+    if (score >= 60) return 'var(--warning)';
+    return 'var(--danger)';
   };
 
   return (
@@ -397,7 +394,7 @@ export function ATSPreviewContent() {
       <SuiteToolHeader
         tool="ats-preview"
         title="ATS Preview Simulator"
-        subtitle="See exactly what recruiters see after ATS parsing."
+        subtitle="A simulation of how an ATS may parse your resume — an estimate, not a guarantee."
         icon="scanner"
         pageHelpId="ats-preview"
         actions={
@@ -421,17 +418,13 @@ export function ATSPreviewContent() {
               onClick={() => { setSelectedATS(ats); setResult(null); }}
               className="p-4 rounded-xl text-left transition-all"
               style={{
-                background: isActive ? `${isLight ? 'rgba(6,182,212,0.06)' : 'rgba(6,182,212,0.08)'}` : cardBg,
-                border: `1px solid ${isActive ? 'rgba(6,182,212,0.3)' : cardBorder}`,
+                background: isActive ? 'var(--accent-dim)' : 'var(--card-bg)',
+                border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border-subtle)'}`,
               }}
             >
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="material-symbols-rounded text-[18px]" style={{ color: isActive ? '#06b6d4' : 'var(--text-muted)' }}>{ats.icon}</span>
+                <span className="material-symbols-rounded text-[18px]" style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }}>{ats.icon}</span>
                 <span className="text-sm font-semibold text-[var(--text-primary)]">{ats.name}</span>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{
-                  background: isActive ? 'rgba(6,182,212,0.15)' : 'rgba(255,255,255,0.05)',
-                  color: isActive ? '#06b6d4' : 'var(--text-muted)',
-                }}>{ats.share}</span>
               </div>
               <p className="text-[11px] text-[var(--text-muted)]">{ats.description}</p>
             </motion.button>
@@ -446,8 +439,7 @@ export function ATSPreviewContent() {
           whileTap={{ scale: 0.98 }}
           onClick={runSimulation}
           disabled={scanning}
-          className="w-full py-3.5 rounded-xl font-semibold text-sm text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-60"
-          style={{ background: 'linear-gradient(135deg, #06b6d4, #0891b2)' }}
+          className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60"
         >
           {scanning ? (
             <>
@@ -473,25 +465,18 @@ export function ATSPreviewContent() {
       )}
 
       {!loading && !resume && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-12">
-          <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-500/5" />
-            <div className="relative">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-                <span className="material-symbols-rounded text-3xl text-cyan-500">description</span>
-              </div>
-              <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">No Resume Found</h3>
-              <p className="text-sm text-[var(--text-tertiary)] mb-5">
-                Upload a resume first to simulate ATS parsing.
-              </p>
-              <a href="/suite/resume"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #06b6d4, #3b82f6)', boxShadow: '0 4px 16px rgba(6,182,212,0.3)' }}>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <SuiteEmptyState
+            icon="description"
+            title="No Resume Found"
+            description="Upload a resume first to simulate ATS parsing."
+            action={
+              <a href="/suite/resume" className="btn-primary inline-flex items-center gap-2 px-5">
                 <span className="material-symbols-rounded text-sm">upload</span>
                 Go to Resume Builder
               </a>
-            </div>
-          </div>
+            }
+          />
         </motion.div>
       )}
 
@@ -502,17 +487,16 @@ export function ATSPreviewContent() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="rounded-xl p-8 flex flex-col items-center gap-4"
-            style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
+            className="rounded-xl p-8 flex flex-col items-center gap-4 bg-[var(--card-bg)] border border-[var(--border-subtle)]"
           >
             <div className="relative w-20 h-20">
               <motion.div
-                className="absolute inset-0 rounded-full border-2 border-cyan-500/20"
+                className="absolute inset-0 rounded-full border-2 border-[var(--accent)]"
                 animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
-              <div className="absolute inset-0 rounded-full border-2 border-cyan-500/30 flex items-center justify-center">
-                <span className="material-symbols-rounded text-3xl text-cyan-500">scanner</span>
+              <div className="absolute inset-0 rounded-full border-2 border-[var(--accent)] flex items-center justify-center">
+                <span className="material-symbols-rounded text-3xl text-[var(--accent)]">scanner</span>
               </div>
             </div>
             <div className="text-center">
@@ -532,40 +516,51 @@ export function ATSPreviewContent() {
             className="space-y-6"
           >
             {/* Score Header */}
-            <div className="flex items-center justify-between p-5 rounded-xl" style={{ background: cardBg, border: `1px solid ${cardBorder}` }}>
+            <div className="flex items-center justify-between p-5 rounded-xl bg-[var(--card-bg)] border border-[var(--border-subtle)]">
               <div className="flex items-center gap-4">
-                <div className="relative w-16 h-16">
-                  <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90">
-                    <circle cx="18" cy="18" r="15.5" fill="none" strokeWidth="3" stroke={isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'} />
-                    <motion.circle
-                      cx="18" cy="18" r="15.5" fill="none" strokeWidth="3"
-                      strokeLinecap="round"
-                      stroke={getScoreColor(result.score)}
-                      initial={{ strokeDasharray: '0 100' }}
-                      animate={{ strokeDasharray: `${result.score} ${100 - result.score}` }}
-                      transition={{ duration: 1.2, ease: 'easeOut' }}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-lg font-bold" style={{ color: getScoreColor(result.score) }}>{result.score}</span>
+                {result.score > 0 ? (
+                  <div className="relative w-16 h-16">
+                    <svg viewBox="0 0 36 36" className="w-16 h-16 -rotate-90">
+                      <circle cx="18" cy="18" r="15.5" fill="none" strokeWidth="3" stroke="var(--border-subtle)" />
+                      <motion.circle
+                        cx="18" cy="18" r="15.5" fill="none" strokeWidth="3"
+                        strokeLinecap="round"
+                        stroke={getScoreColor(result.score)}
+                        initial={{ strokeDasharray: '0 100' }}
+                        animate={{ strokeDasharray: `${result.score} ${100 - result.score}` }}
+                        transition={{ duration: 1.2, ease: 'easeOut' }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-lg font-bold tabular-nums" style={{ color: getScoreColor(result.score) }}>{result.score}</span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* Zero-guard: a floored-to-zero estimate must not render as an
+                     empty ring reading as "no data". Draw the absence explicitly. */
+                  <div className="relative w-16 h-16 rounded-full border border-dashed border-[var(--border-subtle)] flex items-center justify-center" title="No estimate">
+                    <span className="material-symbols-rounded text-2xl text-[var(--text-muted)]">error</span>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-bold text-[var(--text-primary)]">
-                    {result.score >= 90 ? 'Excellent — ATS Ready' : result.score >= 75 ? 'Good — Minor Issues' : result.score >= 60 ? 'Needs Work' : 'Critical Issues'}
+                    {result.score === 0 ? 'Critical Issues' : result.score >= 90 ? 'Excellent — ATS Ready' : result.score >= 75 ? 'Good — Minor Issues' : result.score >= 60 ? 'Needs Work' : 'Critical Issues'}
                   </p>
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                    {selectedATS.name} compatibility score • {result.issues.filter(i => i.severity === 'critical').length} critical, {result.issues.filter(i => i.severity === 'warning').length} warnings
+                    {result.score === 0
+                      ? `No compatible fields parsed for ${selectedATS.name} — see issues below`
+                      : `${selectedATS.name} estimated compatibility • ${result.issues.filter(i => i.severity === 'critical').length} critical, ${result.issues.filter(i => i.severity === 'warning').length} warnings`}
                   </p>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Simulated estimate — not a guarantee of how a real ATS will parse.</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowRawView(!showRawView)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-lg text-xs font-medium transition-colors"
                 style={{
-                  background: showRawView ? 'rgba(6,182,212,0.1)' : cardBg,
-                  color: showRawView ? '#06b6d4' : 'var(--text-secondary)',
-                  border: `1px solid ${showRawView ? 'rgba(6,182,212,0.3)' : cardBorder}`,
+                  background: showRawView ? 'var(--accent-dim)' : 'var(--card-bg)',
+                  color: showRawView ? 'var(--accent)' : 'var(--text-secondary)',
+                  border: `1px solid ${showRawView ? 'var(--accent)' : 'var(--border-subtle)'}`,
                 }}
               >
                 <span className="material-symbols-rounded text-sm">{showRawView ? 'visibility_off' : 'visibility'}</span>
@@ -576,15 +571,12 @@ export function ATSPreviewContent() {
             {/* Split View */}
             <div className={`grid ${showRawView ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
               {/* Parsed Fields */}
-              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${cardBorder}` }}>
-                <div className="px-4 py-3 flex items-center gap-2" style={{
-                  background: isLight ? 'rgba(6,182,212,0.04)' : 'rgba(6,182,212,0.06)',
-                  borderBottom: `1px solid ${cardBorder}`,
-                }}>
-                  <span className="material-symbols-rounded text-sm text-cyan-500">table_rows</span>
+              <div className="rounded-xl overflow-hidden border border-[var(--border-subtle)]">
+                <div className="px-4 py-3 flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--accent-dim)]">
+                  <span className="material-symbols-rounded text-sm text-[var(--accent)]">table_rows</span>
                   <span className="text-xs font-bold text-[var(--text-primary)]">What {selectedATS.name} Extracted</span>
                 </div>
-                <div className="divide-y" style={{ borderColor: cardBorder }}>
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {result.fields.map((field, i) => (
                     <motion.div
                       key={`${field.label}-${i}`}
@@ -595,15 +587,15 @@ export function ATSPreviewContent() {
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{field.label}</span>
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">{field.label}</span>
                           <ConfidenceBadge level={field.confidence} />
                         </div>
                         <p className={`text-sm ${field.confidence === 'missing' ? 'text-[var(--text-muted)] italic' : 'text-[var(--text-primary)]'} truncate`}>
                           {field.value || '— Not detected —'}
                         </p>
                         {field.warning && (
-                          <p className="text-[10px] text-amber-500 mt-0.5 flex items-center gap-1">
-                            <span className="material-symbols-rounded text-[10px]">warning</span>
+                          <p className="text-[11px] text-[var(--warning)] mt-0.5 flex items-center gap-1">
+                            <span className="material-symbols-rounded text-[11px]">warning</span>
                             {field.warning}
                           </p>
                         )}
@@ -618,17 +610,13 @@ export function ATSPreviewContent() {
                 <motion.div
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="rounded-xl overflow-hidden"
-                  style={{ border: `1px solid ${cardBorder}` }}
+                  className="rounded-xl overflow-hidden border border-[var(--border-subtle)]"
                 >
-                  <div className="px-4 py-3 flex items-center gap-2" style={{
-                    background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-                    borderBottom: `1px solid ${cardBorder}`,
-                  }}>
+                  <div className="px-4 py-3 flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
                     <span className="material-symbols-rounded text-sm text-[var(--text-muted)]">raw_on</span>
                     <span className="text-xs font-bold text-[var(--text-primary)]">Raw ATS Data (what recruiter sees)</span>
                   </div>
-                  <div className="p-4 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)] max-h-[600px] overflow-y-auto" style={{ background: isLight ? 'rgba(0,0,0,0.01)' : 'rgba(0,0,0,0.2)' }}>
+                  <div className="p-4 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)] max-h-[600px] overflow-y-auto bg-[var(--bg-input)]">
                     {resume && (
                       <pre className="whitespace-pre-wrap">
 {`CANDIDATE_NAME: ${resume.name || '[EMPTY]'}
@@ -667,34 +655,31 @@ ${(resume.certifications || []).join('\n') || '[NONE]'}`}
 
             {/* Issues Panel */}
             {result.issues.length > 0 && (
-              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${cardBorder}` }}>
-                <div className="px-4 py-3 flex items-center justify-between" style={{
-                  background: isLight ? 'rgba(239,68,68,0.03)' : 'rgba(239,68,68,0.06)',
-                  borderBottom: `1px solid ${cardBorder}`,
-                }}>
+              <div className="rounded-xl overflow-hidden border border-[var(--border-subtle)]">
+                <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--tag-rose-bg)]">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-rounded text-sm text-red-500">bug_report</span>
+                    <span className="material-symbols-rounded text-sm text-[var(--danger)]">bug_report</span>
                     <span className="text-xs font-bold text-[var(--text-primary)]">Parsing Issues ({result.issues.length})</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {result.issues.filter(i => i.severity === 'critical').length > 0 && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-500 font-bold">
+                      <span className="text-[11px] px-1.5 py-0.5 rounded font-bold bg-[var(--tag-rose-bg)] text-[var(--tag-rose-text)]">
                         {result.issues.filter(i => i.severity === 'critical').length} Critical
                       </span>
                     )}
                     {result.issues.filter(i => i.severity === 'warning').length > 0 && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold">
+                      <span className="text-[11px] px-1.5 py-0.5 rounded font-bold bg-[var(--tag-amber-bg)] text-[var(--tag-amber-text)]">
                         {result.issues.filter(i => i.severity === 'warning').length} Warnings
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="divide-y" style={{ borderColor: cardBorder }}>
+                <div className="divide-y divide-[var(--border-subtle)]">
                   {result.issues.map((issue, i) => {
                     const severityConfig = {
-                      critical: { color: '#ef4444', icon: 'error', bg: '#ef444408' },
-                      warning: { color: '#f59e0b', icon: 'warning', bg: '#f59e0b08' },
-                      info: { color: '#3b82f6', icon: 'info', bg: '#3b82f608' },
+                      critical: { color: 'var(--danger)', icon: 'error', bg: 'var(--tag-rose-bg)' },
+                      warning: { color: 'var(--warning)', icon: 'warning', bg: 'var(--tag-amber-bg)' },
+                      info: { color: 'var(--accent)', icon: 'info', bg: 'var(--tag-blue-bg)' },
                     }[issue.severity];
                     return (
                       <motion.div
@@ -710,13 +695,13 @@ ${(resume.certifications || []).join('\n') || '[NONE]'}`}
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-0.5">
                               <span className="text-xs font-semibold text-[var(--text-primary)]">{issue.field}</span>
-                              <span className="text-[9px] px-1 py-0.5 rounded font-bold uppercase" style={{
-                                color: severityConfig.color, background: `${severityConfig.color}15`,
+                              <span className="text-[11px] px-1 py-0.5 rounded font-bold uppercase" style={{
+                                color: severityConfig.color, background: severityConfig.bg,
                               }}>{issue.severity}</span>
                             </div>
                             <p className="text-[11px] text-[var(--text-secondary)]">{issue.message}</p>
                             {!issue.autoFixId && (
-                              <p className="text-[11px] text-cyan-500 mt-1 flex items-center gap-1">
+                              <p className="text-[11px] text-[var(--accent)] mt-1 flex items-center gap-1">
                                 <span className="material-symbols-rounded text-[11px]">lightbulb</span>
                                 {issue.fix}
                               </p>
@@ -728,12 +713,7 @@ ${(resume.certifications || []).join('\n') || '[NONE]'}`}
                           {issue.autoFixId && (
                             <button
                               onClick={() => handleAutoFix(issue.autoFixId!)}
-                              className="ml-auto flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all hover:scale-[1.03] active:scale-[0.97]"
-                              style={{
-                                color: '#10b981',
-                                background: '#10b98112',
-                                border: '1px solid #10b98125',
-                              }}
+                              className="ml-auto flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 min-h-[44px] rounded-lg text-[11px] font-semibold transition-all hover:scale-[1.03] active:scale-[0.97] bg-[var(--tag-green-bg)] text-[var(--tag-green-text)] border border-[var(--tag-green-text)]"
                             >
                               <span className="material-symbols-rounded text-[13px]">auto_fix_high</span>
                               Fix Now
@@ -749,9 +729,9 @@ ${(resume.certifications || []).join('\n') || '[NONE]'}`}
 
             {/* No Issues */}
             {result.issues.length === 0 && (
-              <div className="text-center py-8 rounded-xl" style={{ background: '#22c55e08', border: '1px solid #22c55e20' }}>
-                <span className="material-symbols-rounded text-4xl text-green-500 block mb-2">verified</span>
-                <p className="text-sm font-semibold text-green-500">Perfect ATS Compatibility</p>
+              <div className="text-center py-8 rounded-xl bg-[var(--tag-green-bg)] border border-[var(--tag-green-text)]">
+                <span className="material-symbols-rounded text-4xl text-[var(--success)] block mb-2">verified</span>
+                <p className="text-sm font-semibold text-[var(--success)]">Perfect ATS Compatibility</p>
                 <p className="text-xs text-[var(--text-muted)] mt-1">No parsing issues detected for {selectedATS.name}.</p>
               </div>
             )}

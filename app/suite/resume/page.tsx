@@ -33,7 +33,6 @@ import {
   type StudioPaletteOption,
 } from '@/lib/resume-templates';
 import { useUserTier } from '@/hooks/use-user-tier';
-import { useTheme } from '@/components/ThemeProvider';
 import { PLAN_IDENTITIES } from '@/lib/plan-identity';
 // docx is imported dynamically in downloadWord() to avoid naming conflicts with @react-pdf/renderer
 import { saveAs } from 'file-saver';
@@ -234,19 +233,19 @@ function PaletteDots({
   return (
     <span className={`relative inline-flex items-center gap-1 rounded-full border px-1.5 py-1 transition-all ${
       selected
-        ? 'border-amber-400/80 bg-amber-400/10 shadow-[0_0_0_3px_rgba(251,191,36,0.18)]'
+        ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
         : 'border-[var(--border-subtle)] bg-[var(--bg-card)]'
     }`}>
       {[colors.primary, colors.accent, colors.text].map((color, index) => (
         <span
           key={`${color}-${index}`}
-          className={`${dotClass} rounded-full border border-[var(--border-subtle)] shadow-sm`}
+          className={`${dotClass} rounded-full border border-[var(--border-subtle)]`}
           style={{ backgroundColor: color }}
         />
       ))}
       {locked && !selected && (
         <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-card)]">
-          <span className="material-symbols-rounded text-[9px] text-[var(--text-muted)]">lock</span>
+          <span className="material-symbols-rounded text-[11px] text-[var(--text-muted)]">lock</span>
         </span>
       )}
     </span>
@@ -398,7 +397,9 @@ function buildResumeMorphProofReport(input: {
   const blockedChanges = guardrailReport?.blockedChanges || [];
   const blockedChangeCount = guardrailReport?.blockedChangeCount ?? blockedChanges.length;
   const effectiveStrength = guardrailReport?.effectiveMorphPercentage ?? morphPercentage;
-  const score = proof?.optimizedScore ?? matchScore ?? 0;
+  // MUST6: never coerce an unmeasured score to 0. Absent stays null so the
+  // Proof Engine card renders "Not scored" instead of drawing a real 0 ring.
+  const score = proof?.optimizedScore ?? matchScore ?? null;
   const sourceTerms = proof?.topJDTerms || [];
   const sortedTerms = [...sourceTerms].sort((a, b) => {
     const order = { neither: 0, original_only: 1, morphed_only: 2, both: 3 };
@@ -482,7 +483,7 @@ function buildResumeMorphProofReport(input: {
     : [
       {
         before: proof ? `Source resume match was ${proof.baselineScore}/100.` : 'Source resume was used as the locked baseline.',
-        after: `Optimized resume match is ${score}/100 at ${effectiveStrength}% morph strength.`,
+        after: `Optimized resume match is ${score != null ? `${score}/100` : 'not scored yet'} at ${effectiveStrength}% morph strength.`,
         rationale: 'The rewrite can improve match language, but protected resume facts still control what can be claimed.',
       },
     ];
@@ -533,8 +534,6 @@ export default function LiquidResumePage() {
   const { user } = useStore();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const prefersReducedMotion = useReducedMotion();
   const isReviewDemo = process.env.NODE_ENV !== 'production' && searchParams.get('reviewDemo') === '1';
   const isSourceConfirmDemo = process.env.NODE_ENV !== 'production' && searchParams.get('sourceConfirmDemo') === '1';
@@ -2757,14 +2756,14 @@ export default function LiquidResumePage() {
           <AnimatePresence>
             {deleteConfirmId && (
               <>
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDeleteConfirmId(null)} className="fixed inset-0 bg-[var(--bg-elevated)]/50 backdrop-blur-sm z-50 transition-all" />
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDeleteConfirmId(null)} className="fixed inset-0 bg-[var(--bg-deep)]/70 z-50 transition-all" />
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                  <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="w-full max-w-sm rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-2xl">
-                    <h3 className="text-[14px] font-medium text-[var(--text-primary)] mb-2">Delete Resume?</h3>
+                  <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="elevation-raised w-full max-w-sm rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
+                    <h3 className="text-[14px] font-semibold text-[var(--text-primary)] mb-2">Delete Resume?</h3>
                     <p className="text-[12px] text-[var(--text-secondary)] mb-6">This action cannot be undone.</p>
                     <div className="flex justify-end gap-3">
-                      <button onClick={() => setDeleteConfirmId(null)} className="px-4 py-2 rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all">Cancel</button>
-                      <button onClick={confirmDelete} className="px-4 py-2 rounded-[6px] text-[12px] font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all">Delete</button>
+                      <button onClick={() => setDeleteConfirmId(null)} className="min-h-[44px] px-4 py-2 rounded-[10px] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all">Cancel</button>
+                      <button onClick={confirmDelete} className="min-h-[44px] px-4 py-2 rounded-[10px] text-[12px] font-semibold text-[var(--danger)] transition-all bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--danger)_18%,transparent)]">Delete</button>
                     </div>
                   </motion.div>
                 </div>
@@ -2883,15 +2882,15 @@ export default function LiquidResumePage() {
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 rounded-[18px] border border-rose-500/25 bg-rose-500/[0.06] p-4 md:p-5"
+              className="elevation-card mb-6 rounded-[18px] border p-4 md:p-5 border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_6%,transparent)]"
             >
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[13px] border border-rose-500/20 bg-rose-500/10">
-                    <span className="material-symbols-rounded text-[22px] text-rose-600">school</span>
+                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[13px] border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]">
+                    <span className="material-symbols-rounded icon-status-danger text-[22px]">school</span>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] uppercase tracking-[0.12em] text-rose-600 font-semibold">Taco needs school info</p>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--danger)] font-semibold">Taco needs school info</p>
                     <h3 className="mt-1 text-[15px] font-semibold text-[var(--text-primary)]">Add the institution before this resume leaves the studio.</h3>
                     <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-secondary)]">
                       A degree without a school name can look fabricated or incomplete. Talent Studio will not export, save, or track this version until the missing school is added.
@@ -2909,7 +2908,7 @@ export default function LiquidResumePage() {
                         value={displayResume?.education?.[edu.index]?.institution || ''}
                         onChange={(event) => updateEducationInstitution(edu.index, event.target.value)}
                         placeholder="School or university name"
-                        className="min-h-[44px] rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition focus:border-rose-500/50 focus:ring-2 focus:ring-rose-500/10 md:text-[14px]"
+                        className="min-h-[44px] rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-3 py-2 text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)]"
                       />
                     </label>
                   ))}
@@ -2925,11 +2924,11 @@ export default function LiquidResumePage() {
               <motion.div className="resume-studio-stage resume-studio-source-stage" key="upload" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                   <AnimatePresence mode="wait">
                     {showSourceConfirmation && originalResume ? (
-                      <motion.div key="source-ready" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="max-w-4xl mx-auto rounded-[18px] border border-emerald-500/20 bg-[var(--bg-surface)] p-5 md:p-6">
+                      <motion.div key="source-ready" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="elevation-card max-w-4xl mx-auto rounded-[18px] border bg-[var(--bg-surface)] p-5 md:p-6 border-[color-mix(in_srgb,var(--success)_25%,transparent)]">
                         <div className="flex flex-col md:flex-row md:items-start justify-between gap-5">
                           <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-[14px] bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                              <span className="material-symbols-rounded text-[24px] text-emerald-500">task_alt</span>
+                            <div className="w-12 h-12 rounded-[14px] flex items-center justify-center flex-shrink-0 bg-[color-mix(in_srgb,var(--success)_10%,transparent)] border border-[color-mix(in_srgb,var(--success)_20%,transparent)]">
+                              <span className="material-symbols-rounded icon-status-success text-[24px]">task_alt</span>
                             </div>
                             <div>
                               <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Resume source</p>
@@ -2947,7 +2946,7 @@ export default function LiquidResumePage() {
                                 setOriginalResume(null);
                                 setSourceResumeMeta({});
                               }}
-                              className="px-4 py-2.5 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                              className="min-h-[44px] px-4 py-2.5 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                             >
                               Replace
                             </button>
@@ -2957,7 +2956,7 @@ export default function LiquidResumePage() {
                                 setShowSourceConfirmation(false);
                                 setStep('jd');
                               }}
-                              className="px-4 py-2.5 rounded-[11px] bg-[var(--text-primary)] text-[var(--bg-deep)] text-[12px] font-semibold hover:opacity-90"
+                              className="min-h-[44px] px-4 py-2.5 rounded-[11px] bg-[var(--text-primary)] text-[var(--bg-deep)] text-[12px] font-semibold hover:opacity-90"
                             >
                               Continue to Role Target
                             </button>
@@ -2972,7 +2971,7 @@ export default function LiquidResumePage() {
                             { label: 'Detected', value: sourceResumeMeta.detectedType?.toUpperCase() || 'Resume' },
                           ].map(item => (
                             <div key={item.label} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 min-w-0">
-                              <p className="text-[10px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                              <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
                               <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1 truncate">{item.value}</p>
                             </div>
                           ))}
@@ -2983,25 +2982,25 @@ export default function LiquidResumePage() {
                           <p className="text-[12px] text-[var(--text-secondary)] mt-1">{originalResume.title || 'Target role pending'}</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {skillLabels(originalResume).slice(0, 8).map(skill => (
-                              <span key={skill} className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15 text-[10px] font-medium">{skill}</span>
+                              <span key={skill} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)] border border-[color-mix(in_srgb,var(--success)_18%,transparent)]">{skill}</span>
                             ))}
                           </div>
                         </div>
                       </motion.div>
                     ) : invalidDocumentError ? (
-                      <motion.div key="error" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-2xl mx-auto p-8 rounded-2xl bg-red-500/[0.05] border border-red-500/20 text-center space-y-5 backdrop-blur-md">
-                        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center text-3xl mx-auto border border-red-500/20"><span className="material-symbols-rounded align-middle mr-1">description</span><span className="material-symbols-rounded align-middle mr-1">cancel</span></div>
+                      <motion.div key="error" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="elevation-card w-full max-w-2xl mx-auto p-8 rounded-[20px] text-center space-y-5 border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_5%,transparent)]">
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center text-3xl mx-auto border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] icon-status-danger"><span className="material-symbols-rounded align-middle mr-1">description</span><span className="material-symbols-rounded align-middle mr-1">cancel</span></div>
                         <div>
-                          <h3 className="text-xl font-bold text-white mb-2">This doesn't look like a resume</h3>
-                          <p className="text-slate-400 text-sm max-w-md mx-auto leading-relaxed">
+                          <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2">This doesn't look like a resume</h3>
+                          <p className="text-[var(--text-secondary)] text-sm max-w-md mx-auto leading-relaxed">
                             Our AI parser couldn't detect standard structural elements like Work Experience, Education, or Skills in the uploaded file.
                           </p>
                         </div>
                         <div className="flex flex-col sm:flex-row justify-center items-center gap-3 pt-4">
-                          <button onClick={() => setInvalidDocumentError(false)} className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 active:bg-white/5 transition-all font-medium text-slate-300 border border-white/10">
+                          <button onClick={() => setInvalidDocumentError(false)} className="min-h-[44px] w-full sm:w-auto px-6 py-3 rounded-[12px] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] transition-all font-medium text-[var(--text-secondary)] border border-[var(--border-subtle)]">
                             Try Another File
                           </button>
-                          <button onClick={() => { setInvalidDocumentError(false); setMode('create'); }} className="w-full sm:w-auto px-6 py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 transition-all font-bold text-white shadow-[0_4px_15px_rgba(6,182,212,0.3)]">
+                          <button onClick={() => { setInvalidDocumentError(false); setMode('create'); }} className="btn-primary min-h-[44px] w-full sm:w-auto px-6 py-3 rounded-[12px] font-bold">
                             Build from the ground up <span className="material-symbols-rounded align-middle mr-1">auto_awesome</span>
                           </button>
                         </div>
@@ -3034,14 +3033,14 @@ export default function LiquidResumePage() {
             {step === 'jd' && (
               <motion.div className="resume-studio-stage resume-studio-target-stage" key="jd" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                 <div className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-5 md:gap-6">
-                  <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-hidden">
+                  <section className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-hidden">
                     <div className="p-5 md:p-6 border-b border-[var(--border-subtle)] flex items-start justify-between gap-4">
                       <div>
                         <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Role target</p>
                         <h2 className="text-[20px] md:text-[22px] font-semibold text-[var(--text-primary)] mt-1">Paste the job. We will shape the resume around it.</h2>
                         <p className="text-[13px] text-[var(--text-secondary)] mt-2 max-w-2xl">The optimizer uses the job description to tune summary, bullets, skills, title language, ATS terms, and final page length.</p>
                       </div>
-                      <div className="hidden sm:flex h-10 w-10 rounded-[10px] bg-amber-500/10 border border-amber-500/15 text-amber-600 items-center justify-center flex-shrink-0">
+                      <div className="hidden sm:flex h-10 w-10 rounded-[10px] bg-[var(--accent-dim)] border border-[var(--border-subtle)] text-[var(--accent)] items-center justify-center flex-shrink-0">
                         <span className="material-symbols-rounded text-[20px]">my_location</span>
                       </div>
                     </div>
@@ -3054,7 +3053,7 @@ export default function LiquidResumePage() {
                           mergeApplicationKitContext({ jobDescription: e.target.value });
                         }}
                         placeholder="Paste the full job description here. Include responsibilities, requirements, company context, and preferred qualifications when available."
-                        className="w-full min-h-[260px] px-4 py-3 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/10 resize-y leading-relaxed text-[14px]"
+                        className="w-full min-h-[260px] px-4 py-3 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)] resize-y leading-relaxed text-[16px]"
                       />
 
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -3065,7 +3064,7 @@ export default function LiquidResumePage() {
                           { label: 'Detail', value: `${jdSignals.wordCount} words` },
                         ].map(signal => (
                           <div key={signal.label} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-3 min-w-0">
-                            <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">{signal.label}</p>
+                            <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">{signal.label}</p>
                             <p className="text-[12px] text-[var(--text-primary)] font-medium mt-1 truncate">{signal.value}</p>
                           </div>
                         ))}
@@ -3074,7 +3073,7 @@ export default function LiquidResumePage() {
                       {jdSignals.keywords.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                           {jdSignals.keywords.map(keyword => (
-                            <span key={keyword} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-500/10 border border-amber-500/15 text-amber-600">
+                            <span key={keyword} className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--accent-dim)] border border-[var(--border-subtle)] text-[var(--accent)]">
                               {keyword}
                             </span>
                           ))}
@@ -3084,9 +3083,9 @@ export default function LiquidResumePage() {
                   </section>
 
                   <aside className="space-y-4">
-                    <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                    <section className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                       <div className="flex items-start gap-3 mb-4">
-                        <div className="w-9 h-9 rounded-[10px] bg-[var(--tag-blue-bg)] text-[var(--tag-blue-text)] flex items-center justify-center flex-shrink-0">
+                        <div className="w-9 h-9 rounded-[10px] bg-[var(--accent-dim)] text-[var(--accent)] flex items-center justify-center flex-shrink-0">
                           <span className="material-symbols-rounded text-[18px]">description</span>
                         </div>
                         <div className="min-w-0">
@@ -3102,13 +3101,13 @@ export default function LiquidResumePage() {
                         ].map(item => (
                           <div key={item.label} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3 text-center">
                             <p className="text-[12px] font-semibold text-[var(--text-primary)]">{item.value}</p>
-                            <p className="text-[10px] text-[var(--text-muted)] mt-1">{item.label}</p>
+                            <p className="text-[11px] text-[var(--text-muted)] mt-1">{item.label}</p>
                           </div>
                         ))}
                       </div>
                     </section>
 
-                    <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                    <section className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Optimization</p>
@@ -3127,13 +3126,13 @@ export default function LiquidResumePage() {
                               }}
                               className={`w-full text-left p-3 rounded-[12px] border transition-all ${
                                 isSelected
-                                  ? 'bg-amber-500/[0.08] border-amber-500/25'
+                                  ? 'bg-[var(--accent-dim)] border-[var(--accent)]'
                                   : 'bg-[var(--bg-card)] border-[var(--border-subtle)] hover:border-[var(--border)]'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <p className="text-[13px] font-semibold text-[var(--text-primary)]">{modeOption.label}</p>
-                                {isSelected && <span className="material-symbols-rounded text-[16px] text-amber-600">check_circle</span>}
+                                {isSelected && <span className="material-symbols-rounded text-[16px] text-[var(--accent)]">check_circle</span>}
                               </div>
                               <p className="text-[11px] text-[var(--text-secondary)] mt-1">{modeOption.detail}</p>
                             </button>
@@ -3156,9 +3155,9 @@ export default function LiquidResumePage() {
                               const val = Number(e.target.value);
                               setMorphPercentage(Math.min(val, maxMorphPercentage));
                             }}
-                            className="w-full accent-amber-500"
+                            className="w-full accent-[var(--accent)]"
                           />
-                          <div className="flex justify-between text-[10px] text-[var(--text-muted)] mt-1">
+                          <div className="flex justify-between text-[11px] text-[var(--text-muted)] mt-1">
                             <span>Light</span>
                             <span>Balanced</span>
                             <span>Maximum</span>
@@ -3167,9 +3166,9 @@ export default function LiquidResumePage() {
                       </details>
 
                       {!morphConsent.unlocked100 && (
-                        <div className="mt-3 rounded-[12px] border border-amber-500/20 bg-amber-500/[0.08] p-3">
+                        <div className="mt-3 rounded-[12px] border p-3 border-[color-mix(in_srgb,var(--warning)_20%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)]">
                           <div className="flex items-start gap-2.5">
-                            <span className="material-symbols-rounded text-[17px] text-amber-600 mt-0.5">lock</span>
+                            <span className="material-symbols-rounded icon-status-warning text-[17px] mt-0.5">lock</span>
                             <div className="min-w-0 flex-1">
                               <p className="text-[12px] font-semibold text-[var(--text-primary)]">100% Morph is locked</p>
                               <p className="text-[11px] mt-1 leading-relaxed text-[var(--text-secondary)]">
@@ -3178,7 +3177,7 @@ export default function LiquidResumePage() {
                               <button
                                 type="button"
                                 onClick={() => router.push('/suite/settings?tab=ai-safety')}
-                                className="mt-3 inline-flex items-center gap-1.5 rounded-[10px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] font-semibold text-amber-600 hover:bg-amber-500/15"
+                                className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2 text-[11px] font-semibold text-[var(--text-primary)] hover:border-[var(--border)]"
                               >
                                 <span className="material-symbols-rounded text-[15px]">settings</span>
                                 Open AI Safety settings
@@ -3189,9 +3188,9 @@ export default function LiquidResumePage() {
                       )}
 
                       {morphConsent.unlocked100 && morphPercentage === RESUME_MORPH_FULL_UNLOCK && (
-                        <div className="mt-3 rounded-[12px] border border-emerald-500/20 bg-emerald-500/[0.08] p-3">
+                        <div className="mt-3 rounded-[12px] border p-3 border-[color-mix(in_srgb,var(--success)_20%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)]">
                           <div className="flex items-start gap-2.5">
-                            <span className="material-symbols-rounded text-[17px] text-emerald-600 mt-0.5">verified_user</span>
+                            <span className="material-symbols-rounded icon-status-success text-[17px] mt-0.5">verified_user</span>
                             <div>
                               <p className="text-[12px] font-semibold text-[var(--text-primary)]">Maximum rewrite, truth locks still on</p>
                               <p className="text-[11px] mt-1 leading-relaxed text-[var(--text-secondary)]">
@@ -3226,7 +3225,7 @@ export default function LiquidResumePage() {
                         className={`w-full mt-5 py-3.5 rounded-[12px] font-semibold text-sm transition-all text-center ${
                           !jobDescription.trim() || morphConsentLoading
                             ? 'bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-muted)] cursor-not-allowed'
-                            : 'bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 shadow-sm'
+                            : 'bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90'
                         }`}
                       >
                         {isLoading ? <><span className="material-symbols-rounded align-middle mr-1">psychology</span> Optimizing...</> : !jobDescription.trim() ? 'Paste a job description first' : morphConsentLoading ? 'Checking safety settings...' : 'Optimize Resume'}
@@ -3249,15 +3248,15 @@ export default function LiquidResumePage() {
                     <button
                       onClick={handleBlueprint}
                       disabled={isBlueprintLoading || !jobDescription.trim() || isLoading}
-                      className="w-full rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-amber-500/25 transition-all p-4 text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="elevation-card w-full rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--accent)] transition-all p-4 text-left disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-[10px] bg-amber-500/10 text-amber-600 flex items-center justify-center flex-shrink-0">
+                        <div className="w-9 h-9 rounded-[10px] bg-[var(--accent-dim)] text-[var(--accent)] flex items-center justify-center flex-shrink-0">
                           <span className="material-symbols-rounded text-[18px]">{isBlueprintLoading ? 'hourglass_top' : 'content_paste'}</span>
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-[13px] font-semibold text-[var(--text-primary)]">
-                            {isBlueprintLoading ? 'Generating blueprint...' : 'Day-Zero Blueprint'} {!isPro && <span className="ml-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 font-bold">{PAID_TEMPLATE_PLAN_LABEL}</span>}
+                            {isBlueprintLoading ? 'Generating blueprint...' : 'Day-Zero Blueprint'} {!isPro && <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--accent-dim)] border border-[var(--border-subtle)] text-[var(--accent)] font-bold">{PAID_TEMPLATE_PLAN_LABEL}</span>}
                           </p>
                           <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">Create a first-90-days talking plan from this role target.</p>
                         </div>
@@ -3275,7 +3274,7 @@ export default function LiquidResumePage() {
               <motion.div className="resume-studio-stage resume-studio-design-stage" key="template" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                 {displayResume ? (
                   <div className="space-y-5">
-                    <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                    <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
                         <div>
                         <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Visual system</p>
@@ -3285,7 +3284,7 @@ export default function LiquidResumePage() {
                           <button
                             type="button"
                             onClick={() => setStep('enhance')}
-                            className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70"
+                            className="mt-3 inline-flex min-h-[44px] items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                           >
                             <span className="material-symbols-rounded text-[17px]" aria-hidden="true">arrow_back</span>
                             Review changes
@@ -3295,22 +3294,22 @@ export default function LiquidResumePage() {
                         <div className="hidden grid grid-cols-3 gap-2 lg:min-w-[320px]">
                           <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-3">
                             <p className="text-[13px] font-semibold text-[var(--text-primary)]">{TEMPLATES.length}</p>
-                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Signature</p>
+                            <p className="text-[11px] text-[var(--text-muted)] mt-1">Signature</p>
                           </div>
                           <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-3">
                             <p className="text-[13px] font-semibold text-[var(--text-primary)]">{TEMPLATE_FILTERS.length - 1}</p>
-                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Collections</p>
+                            <p className="text-[11px] text-[var(--text-muted)] mt-1">Collections</p>
                           </div>
                           <div className="rounded-[10px] bg-[var(--bg-card)] border border-[var(--border-subtle)] p-3">
                             <p className="text-[13px] font-semibold text-[var(--text-primary)]">{matchScore ? `${matchScore}%` : 'Ready'}</p>
-                            <p className="text-[10px] text-[var(--text-muted)] mt-1">Match</p>
+                            <p className="text-[11px] text-[var(--text-muted)] mt-1">Match</p>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-[0.82fr_1.18fr] gap-6 items-stretch">
-                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 xl:h-[986px] flex flex-col">
+                      <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 xl:h-[986px] flex flex-col">
                         <div className="flex items-center justify-between gap-3 mb-4">
                           <div>
                             <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Template Menu</p>
@@ -3324,9 +3323,9 @@ export default function LiquidResumePage() {
                               key={filter.id}
                               type="button"
                               onClick={() => setTemplateFilter(filter.id)}
-                              className={`px-2.5 py-1.5 rounded-full border text-[10px] font-medium transition-all ${
+                              className={`px-2.5 py-1.5 rounded-full border text-[11px] font-medium transition-all ${
                                 templateFilter === filter.id
-                                  ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
+                                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                                   : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                               }`}
                             >
@@ -3362,19 +3361,19 @@ export default function LiquidResumePage() {
                                 }}
                                 className={`w-full p-3 rounded-[12px] border transition-all text-left relative overflow-hidden group ${
                                   isLocked
-                                    ? 'border-[var(--border-subtle)] bg-[var(--bg-card)] opacity-70 cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-500/40'
+                                    ? 'border-[var(--border-subtle)] bg-[var(--bg-card)] opacity-70 cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--accent)]'
                                     : isSelected
-                                      ? 'border-amber-500/35 bg-amber-500/[0.06]'
+                                      ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                                       : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)] cursor-pointer'
                                 }`}
                               >
                                 <div className="flex items-start gap-3">
                                   {cardThumbnail ? (
-                                    <div className="h-28 w-[74px] shrink-0 overflow-hidden rounded-[9px] border border-black/10 bg-white shadow-sm">
+                                    <div className="h-28 w-[74px] shrink-0 overflow-hidden rounded-[9px] border border-[var(--border-subtle)] bg-[var(--paper)]">
                                       <img src={cardThumbnail} alt="" className="h-full w-full object-cover object-top" />
                                     </div>
                                   ) : isCurated ? (
-                                    <div className="h-28 w-[74px] shrink-0 overflow-hidden rounded-[9px] border border-black/10 bg-white shadow-sm">
+                                    <div className="h-28 w-[74px] shrink-0 overflow-hidden rounded-[9px] border border-[var(--border-subtle)] bg-[var(--paper)]">
                                       <CuratedTemplateMiniature template={{ ...template, colors: { ...template.colors, ...cardPalette.colors } }} />
                                     </div>
                                   ) : (
@@ -3392,14 +3391,14 @@ export default function LiquidResumePage() {
                                         <p className="text-[11px] text-[var(--text-muted)] leading-snug mt-1 text-pretty">{template.description}</p>
                                       </div>
                                       <div className="flex flex-wrap items-center gap-1.5">
-                                        {template.tier === 'pro' && <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 font-bold whitespace-nowrap">{PAID_TEMPLATE_PLAN_LABEL}</span>}
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-500/10 text-[var(--text-secondary)] border border-[var(--border-subtle)] font-bold whitespace-nowrap">{template.atsClassification}</span>
-                                        {recommended && <span className="text-[8px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-500 border border-cyan-500/20 font-bold whitespace-nowrap">RECOMMENDED</span>}
+                                        {template.tier === 'pro' && <span className="text-[11px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap bg-[var(--accent-dim)] text-[var(--accent)] border border-[var(--border-subtle)]">{PAID_TEMPLATE_PLAN_LABEL}</span>}
+                                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] border border-[var(--border-subtle)] font-bold whitespace-nowrap">{template.atsClassification}</span>
+                                        {recommended && <span className="text-[11px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap bg-[var(--accent-dim)] text-[var(--accent)] border border-[var(--border-subtle)]">RECOMMENDED</span>}
                                       </div>
                                     </div>
                                     <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
                                       <PaletteDots colors={cardPalette.colors} selected={isSelected} />
-                                      <span className="ml-1 min-w-0 text-[10px] text-[var(--text-muted)]">
+                                      <span className="ml-1 min-w-0 text-[11px] text-[var(--text-muted)]">
                                         <span className="font-medium text-[var(--text-secondary)]">{cardPalette.label}</span>
                                         {!canUseTemplatePalettes && <span> · {cardPalette.isDefault ? 'Included' : 'Max palette'}</span>}
                                       </span>
@@ -3412,28 +3411,24 @@ export default function LiquidResumePage() {
                         </div>
                       </div>
 
-                    <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 xl:sticky xl:top-6 xl:min-h-[986px]">
+                    <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 xl:sticky xl:top-6 xl:min-h-[986px]">
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
                         <div>
                           <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Selected</p>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
                             <h3 className="text-[17px] font-semibold text-[var(--text-primary)]">{selectedTemplate.name}</h3>
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold ${
-                              selectedTemplate.tier === 'pro'
-                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                                : 'bg-cyan-500/10 text-cyan-500 border-cyan-500/20'
-                            }`}>
+                            <span className="text-[11px] px-1.5 py-0.5 rounded border font-bold bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--border-subtle)]">
                               {selectedTemplate.tier === 'pro' ? PAID_TEMPLATE_PLAN_LABEL : selectedTemplate.tier.toUpperCase()}
                             </span>
                             {recommendedTemplateIds.has(selectedTemplate.id) && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded border font-bold bg-cyan-500/10 text-cyan-500 border-cyan-500/20">
+                              <span className="text-[11px] px-1.5 py-0.5 rounded border font-bold bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--border-subtle)]">
                                 RECOMMENDED
                               </span>
                             )}
                           </div>
                           <p className="text-[12px] text-[var(--text-secondary)] mt-1">{selectedTemplate.description}</p>
                         </div>
-                        <button onClick={() => setStep('preview')} className="hidden px-4 py-2.5 rounded-[12px] font-medium text-sm bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 transition-all whitespace-nowrap self-start sm:self-auto">
+                        <button onClick={() => setStep('preview')} className="hidden min-h-[44px] px-4 py-2.5 rounded-[12px] font-medium text-sm bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 transition-all whitespace-nowrap self-start sm:self-auto">
                           Export →
                         </button>
                       </div>
@@ -3446,7 +3441,7 @@ export default function LiquidResumePage() {
                             { label: 'ATS', value: selectedExportProfile.ats },
                           ].map(item => (
                             <div key={item.label} className="rounded-[9px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2">
-                              <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                              <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
                               <p className="text-[11px] font-semibold text-[var(--text-primary)] mt-0.5 truncate">{item.value}</p>
                             </div>
                           ))}
@@ -3457,9 +3452,9 @@ export default function LiquidResumePage() {
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Palette</p>
-                                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${
+                                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
                                   canUseTemplatePalettes
-                                    ? 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300'
+                                    ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                                     : 'border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)]'
                                 }`}>
                                   {canUseTemplatePalettes ? 'MAX ACTIVE' : 'MAX PALETTES'}
@@ -3472,7 +3467,7 @@ export default function LiquidResumePage() {
                               <button
                                 type="button"
                                 onClick={openMaxPaletteUpgrade}
-                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[10px] border border-amber-500/25 bg-amber-500/10 px-3 text-[11px] font-semibold text-amber-700 transition-all hover:bg-amber-500/15 dark:text-amber-300"
+                                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-dim)] px-3 text-[11px] font-semibold text-[var(--accent)] transition-all hover:opacity-90"
                               >
                                 <span className="material-symbols-rounded text-[15px]">workspace_premium</span>
                                 Unlock Max
@@ -3486,13 +3481,13 @@ export default function LiquidResumePage() {
                               aria-haspopup="listbox"
                               aria-expanded={showPaletteMenu}
                               onClick={() => setShowPaletteMenu(open => !open)}
-                              className="flex w-full min-w-0 items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2.5 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+                              className="flex w-full min-w-0 min-h-[44px] items-center justify-between gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3 py-2.5 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             >
                               <span className="flex min-w-0 items-center gap-2.5">
                                 <PaletteDots colors={selectedPalette.colors} selected size="md" />
                                 <span className="min-w-0">
                                   <span className="block truncate text-[12px] font-semibold text-[var(--text-primary)]">{selectedPalette.label}</span>
-                                  <span className="block truncate text-[10px] text-[var(--text-muted)]">{selectedPalette.isDefault ? 'Included palette' : 'Max palette'} · Choose palette</span>
+                                  <span className="block truncate text-[11px] text-[var(--text-muted)]">{selectedPalette.isDefault ? 'Included palette' : 'Max palette'} · Choose palette</span>
                                 </span>
                               </span>
                               <span className="material-symbols-rounded shrink-0 text-[18px] text-[var(--text-muted)]">
@@ -3507,7 +3502,7 @@ export default function LiquidResumePage() {
                                   animate={{ opacity: 1, y: 0 }}
                                   exit={{ opacity: 0, y: -6 }}
                                   transition={{ duration: 0.16 }}
-                                  className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[320px] overflow-y-auto rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 shadow-xl"
+                                  className="elevation-raised absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[320px] overflow-y-auto rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2"
                                   role="listbox"
                                   aria-label={`${selectedTemplate.name} palette choices`}
                                 >
@@ -3522,16 +3517,16 @@ export default function LiquidResumePage() {
                                         aria-selected={paletteSelected}
                                         aria-label={`${selectedTemplate.name} ${palette.label} palette${paletteLocked ? ', Talent Max' : ''}`}
                                         onClick={() => selectTemplatePalette(selectedTemplate, palette)}
-                                        className={`flex w-full min-w-0 items-center gap-2.5 rounded-[11px] border px-2.5 py-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/25 ${
+                                        className={`flex w-full min-w-0 min-h-[44px] items-center gap-2.5 rounded-[11px] border px-2.5 py-2 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                                           paletteSelected
-                                            ? 'border-amber-400/70 bg-amber-400/[0.08]'
+                                            ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                                             : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-card)]'
                                         }`}
                                       >
                                         <PaletteDots colors={palette.colors} selected={paletteSelected} locked={paletteLocked} size="md" />
                                         <span className="min-w-0 flex-1">
                                           <span className="block truncate text-[11px] font-semibold text-[var(--text-primary)]">{palette.label}</span>
-                                          <span className="block truncate text-[9px] text-[var(--text-muted)]">{palette.isDefault ? 'Included' : canUseTemplatePalettes ? 'Max palette' : 'Max locked'}</span>
+                                          <span className="block truncate text-[11px] text-[var(--text-muted)]">{palette.isDefault ? 'Included' : canUseTemplatePalettes ? 'Max palette' : 'Max locked'}</span>
                                         </span>
                                       </button>
                                     );
@@ -3542,18 +3537,17 @@ export default function LiquidResumePage() {
                           </div>
                         </div>
 
-                        <div className="relative max-h-[720px] overflow-auto rounded-[12px] border border-slate-200 bg-slate-100 p-2 sm:p-4 shadow-inner">
+                        <div className="relative max-h-[720px] overflow-auto rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-deep)] p-2 sm:p-4">
                           <ResponsiveResumePreview
                             key={selectedTemplate.id}
                             resume={displayResume}
                             template={selectedTemplateWithPalette}
                           />
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-slate-100 to-transparent" />
                         </div>
 
                         <button
                           onClick={() => setStep('preview')}
-                          className="mt-3 w-full py-2.5 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] transition-all"
+                          className="mt-3 w-full min-h-[44px] py-2.5 rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] transition-all"
                         >
                           Open full-size preview
                         </button>
@@ -3563,7 +3557,7 @@ export default function LiquidResumePage() {
 
                     {morphProofReport && <ProofEngineReport report={morphProofReport} />}
 
-                    <details className="group rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-hidden">
+                    <details className="group elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] overflow-hidden">
                       <summary className="list-none cursor-pointer p-5 flex items-center justify-between gap-4">
                         <div className="flex items-start gap-3">
                           <div className="icon-shell-neutral w-10 h-10 rounded-[11px] border flex items-center justify-center flex-shrink-0">
@@ -3586,7 +3580,7 @@ export default function LiquidResumePage() {
                                   Deterministic keyword similarity improved from source to optimized resume.
                                 </p>
                               </div>
-                              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600">
+                              <span className="rounded-full border px-2.5 py-1 text-[11px] font-semibold border-[color-mix(in_srgb,var(--success)_20%,transparent)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]">
                                 +{proofData.delta} pts
                               </span>
                             </div>
@@ -3597,7 +3591,7 @@ export default function LiquidResumePage() {
                                 { label: 'Gaps closed', value: proofData.gapsClosed.length },
                               ].map(item => (
                                 <div key={item.label} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
-                                  <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                                  <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
                                   <p className="mt-1 text-[13px] font-semibold text-[var(--text-primary)] tabular-nums">{item.value}</p>
                                 </div>
                               ))}
@@ -3606,12 +3600,12 @@ export default function LiquidResumePage() {
                               {proofData.topJDTerms.slice(0, 8).map(term => (
                                 <span
                                   key={`${term.term}-${term.matchedIn}`}
-                                  className={`rounded-full border px-2 py-1 text-[10px] font-medium ${
+                                  className={`rounded-full border px-2 py-1 text-[11px] font-medium ${
                                     term.matchedIn === 'both'
-                                      ? 'border-emerald-500/15 bg-emerald-500/10 text-emerald-600'
+                                      ? 'border-[color-mix(in_srgb,var(--success)_18%,transparent)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]'
                                       : term.matchedIn === 'morphed_only'
-                                        ? 'border-cyan-500/15 bg-cyan-500/10 text-cyan-600'
-                                        : 'border-amber-500/15 bg-amber-500/10 text-amber-600'
+                                        ? 'border-[var(--border-subtle)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                                        : 'border-[color-mix(in_srgb,var(--warning)_18%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] text-[var(--warning)]'
                                   }`}
                                 >
                                   {term.term}
@@ -3634,7 +3628,7 @@ export default function LiquidResumePage() {
                               { label: 'Export', value: 'PDF + Word' },
                             ].map(item => (
                               <div key={item.label} className="rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
-                                <p className="text-[9px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
+                                <p className="text-[11px] uppercase tracking-[0.1em] text-[var(--text-muted)]">{item.label}</p>
                                 <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-1 truncate">{item.value}</p>
                               </div>
                             ))}
@@ -3642,7 +3636,7 @@ export default function LiquidResumePage() {
                           <div className="mt-4 space-y-2">
                             {selectedExportProfile.notes.map(item => (
                               <div key={item} className="flex items-start gap-2 text-[11px] text-[var(--text-secondary)]">
-                                <span className="material-symbols-rounded text-[14px] text-emerald-500 mt-0.5">check_circle</span>
+                                <span className="material-symbols-rounded icon-status-success text-[14px] mt-0.5">check_circle</span>
                                 <span>{item}</span>
                               </div>
                             ))}
@@ -3653,13 +3647,13 @@ export default function LiquidResumePage() {
                   </div>
                 ) : (
                   <div className="max-w-lg mx-auto text-center py-12">
-                    <div className="rounded-2xl bg-red-500/10 border border-red-500/30 p-8">
-                      <span className="text-5xl block mb-4"><span className="material-symbols-rounded text-inherit align-middle">warning</span></span>
-                      <h3 className="text-xl font-bold text-white mb-2">Resume Data Missing</h3>
-                      <p className="text-silver mb-6">Something went wrong loading your resume.</p>
+                    <div className="elevation-card rounded-[20px] border p-8 border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]">
+                      <span className="text-5xl block mb-4 icon-status-danger"><span className="material-symbols-rounded text-inherit align-middle">warning</span></span>
+                      <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2">Resume Data Missing</h3>
+                      <p className="text-[var(--text-secondary)] mb-6">Something went wrong loading your resume.</p>
                       <div className="flex gap-3 justify-center">
-                        <button onClick={() => setStep('jd')} className="px-6 py-3 rounded-xl bg-[var(--theme-bg-elevated)] text-white font-medium hover:bg-white/10"><span className="material-symbols-rounded text-[14px] align-middle mr-1">arrow_back</span> Back to role target</button>
-                        <button onClick={() => { if (originalResume) setMorphedResume(originalResume); }} className="px-6 py-3 rounded-xl bg-cyan-500 text-white font-bold">Use Original Resume</button>
+                        <button onClick={() => setStep('jd')} className="min-h-[44px] px-6 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-hover)]"><span className="material-symbols-rounded text-[14px] align-middle mr-1">arrow_back</span> Back to role target</button>
+                        <button onClick={() => { if (originalResume) setMorphedResume(originalResume); }} className="btn-primary min-h-[44px] px-6 py-3 rounded-[12px] font-bold">Use Original Resume</button>
                       </div>
                     </div>
                   </div>
@@ -3673,16 +3667,16 @@ export default function LiquidResumePage() {
                 {displayResume ? (
                   <div className="grid lg:grid-cols-3 gap-6">
                     <div className="space-y-4">
-                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                      <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                         <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Export station</p>
                         <h3 className="text-[19px] font-semibold text-[var(--text-primary)] mt-1">Your resume is ready.</h3>
                         <p className="text-[12px] text-[var(--text-secondary)] mt-2 mb-4">Download, save a reusable version, or attach it to an application pipeline.</p>
 
                         {/* Free-tier usage counter */}
-                        {!isPro && user && (
-                          <div className="mb-3 px-3 py-2 rounded-[10px] flex items-center gap-2 bg-amber-500/[0.08] border border-amber-500/[0.15]">
+                        {!isPro && user && caps?.morphs != null && (
+                          <div className="mb-3 px-3 py-2 rounded-[10px] flex items-center gap-2 border border-[color-mix(in_srgb,var(--warning)_15%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)]">
                             <span className="material-symbols-rounded icon-status-warning text-[16px]">token</span>
-                            <span className="text-xs text-[var(--text-secondary)]">{remaining('morphs')} of {caps?.morphs || 3} free uses left</span>
+                            <span className="text-xs text-[var(--text-secondary)]">{remaining('morphs')} of {caps.morphs} free uses left</span>
                           </div>
                         )}
                         {!user && (
@@ -3694,27 +3688,27 @@ export default function LiquidResumePage() {
 
                         <div className="space-y-3">
                           <div className="grid grid-cols-1 gap-2">
-                            <button onClick={downloadPDF} disabled={isLoading} className="w-full py-3 rounded-[12px] font-semibold bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 transition-all disabled:opacity-50 text-sm">
+                            <button onClick={downloadPDF} disabled={isLoading} className="w-full min-h-[44px] py-3 rounded-[12px] font-semibold bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90 transition-all disabled:opacity-50 text-sm">
                               {isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span> Preparing...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">description</span> Download PDF</>}
                             </button>
-                            <button onClick={downloadWord} disabled={isLoading} className="w-full py-3 rounded-[12px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--border)] transition-all disabled:opacity-50 text-sm">
+                            <button onClick={downloadWord} disabled={isLoading} className="w-full min-h-[44px] py-3 rounded-[12px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--border)] transition-all disabled:opacity-50 text-sm">
                               {isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span> Preparing...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">edit_document</span> Download Word</>}
                             </button>
                           </div>
-                          <button onClick={() => setShowApplicationModal(true)} className="w-full py-3 rounded-[12px] font-medium text-sm bg-emerald-500/[0.08] border border-emerald-500/[0.15] text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.12] transition-all">
+                          <button onClick={() => setShowApplicationModal(true)} className="w-full min-h-[44px] py-3 rounded-[12px] font-medium text-sm transition-all border border-[color-mix(in_srgb,var(--success)_15%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)] text-[var(--success)] hover:bg-[color-mix(in_srgb,var(--success)_12%,transparent)]">
                             <span className="material-symbols-rounded align-middle mr-1">my_location</span> Track Application
                           </button>
                           <div className="grid grid-cols-2 gap-2">
-                            <button onClick={saveVersionOnly} disabled={isSaving} className="py-2.5 rounded-[10px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-sm disabled:opacity-50">
+                            <button onClick={saveVersionOnly} disabled={isSaving} className="min-h-[44px] py-2.5 rounded-[10px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-sm disabled:opacity-50">
                               {isSaving ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1 animate-spin">hourglass_top</span> Saving...</> : saveInlineStatus?.type === 'success' ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">check_circle</span> Saved</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">save</span> Save</>}
                             </button>
-                            <button onClick={() => setStep('template')} className="py-2.5 rounded-[10px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-sm"><span className="material-symbols-rounded text-[14px] align-middle mr-1">palette</span> Template</button>
+                            <button onClick={() => setStep('template')} className="min-h-[44px] py-2.5 rounded-[10px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-sm"><span className="material-symbols-rounded text-[14px] align-middle mr-1">palette</span> Template</button>
                           </div>
                           {saveInlineStatus && (
                             <div className={`rounded-[10px] border px-3 py-2 text-[11px] leading-relaxed ${
                               saveInlineStatus.type === 'success'
-                                ? 'bg-emerald-500/[0.08] border-emerald-500/[0.18] text-emerald-600 dark:text-emerald-400'
-                                : 'bg-red-500/[0.07] border-red-500/[0.18] text-red-600 dark:text-red-400'
+                                ? 'border-[color-mix(in_srgb,var(--success)_18%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)] text-[var(--success)]'
+                                : 'border-[color-mix(in_srgb,var(--danger)_18%,transparent)] bg-[color-mix(in_srgb,var(--danger)_7%,transparent)] text-[var(--danger)]'
                             }`}>
                               {saveInlineStatus.message}
                             </div>
@@ -3723,7 +3717,7 @@ export default function LiquidResumePage() {
                       </div>
 
 
-                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                      <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                         <div className="flex items-center justify-between gap-3 mb-4">
                           <div>
                             <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Export readiness</p>
@@ -3741,30 +3735,30 @@ export default function LiquidResumePage() {
                         </div>
                       </div>
 
-                      {matchScore && (
-                        <div className="rounded-[16px] bg-[var(--bg-surface)] border border-emerald-500/[0.15] p-5">
+                      {matchScore != null && matchScore > 0 && (
+                        <div className="elevation-card rounded-[16px] bg-[var(--bg-surface)] border p-5 border-[color-mix(in_srgb,var(--success)_15%,transparent)]">
                           <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-[12px] bg-emerald-500/[0.08] border border-emerald-500/[0.15] flex items-center justify-center">
-                              <span className="text-lg font-semibold text-emerald-500">{matchScore}%</span>
+                            <div className="w-12 h-12 rounded-[12px] flex items-center justify-center border border-[color-mix(in_srgb,var(--success)_15%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)]">
+                              <span className="text-lg font-semibold text-[var(--success)]">{matchScore}%</span>
                             </div>
                             <div>
                               <h4 className="font-semibold text-[var(--text-primary)]">Role match</h4>
                               <div className="h-2 w-32 bg-[var(--bg-card)] rounded-full overflow-hidden mt-1">
-                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${matchScore}%` }} />
+                                <div className="h-full bg-[var(--success)] rounded-full" style={{ width: `${matchScore}%` }} />
                               </div>
                             </div>
                           </div>
                         </div>
                       )}
 
-                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                      <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                         <h4 className="font-semibold text-[var(--text-primary)] mb-2">{selectedTemplate.name}</h4>
                         <p className="text-xs text-[var(--text-secondary)]">{selectedTemplate.description}</p>
                       </div>
                     </div>
 
                     <div className="min-w-0 lg:col-span-2">
-                      <div className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+                      <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
                         <div ref={resumeRef}>
                           <ResponsiveResumePreview resume={displayResume} template={selectedTemplateWithPalette} />
                         </div>
@@ -3773,10 +3767,10 @@ export default function LiquidResumePage() {
                   </div>
                 ) : (
                   <div className="max-w-lg mx-auto text-center py-12">
-                    <div className="rounded-2xl bg-red-500/10 border border-red-500/30 p-8">
-                      <span className="text-5xl block mb-4"><span className="material-symbols-rounded text-inherit align-middle">warning</span></span>
-                      <h3 className="text-xl font-bold text-white mb-2">No Resume Data</h3>
-                      <button onClick={() => setStep('upload')} className="px-6 py-3 rounded-xl bg-cyan-500 text-white font-bold">Start Over</button>
+                    <div className="elevation-card rounded-[20px] border p-8 border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]">
+                      <span className="text-5xl block mb-4 icon-status-danger"><span className="material-symbols-rounded text-inherit align-middle">warning</span></span>
+                      <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2">No Resume Data</h3>
+                      <button onClick={() => setStep('upload')} className="btn-primary min-h-[44px] px-6 py-3 rounded-[12px] font-bold">Start Over</button>
                     </div>
                   </div>
                 )}
@@ -3816,18 +3810,15 @@ export default function LiquidResumePage() {
         <AnimatePresence>
           {showBlueprintModal && blueprintContent && (
             <>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowBlueprintModal(false)} className={`fixed inset-0 backdrop-blur-sm z-50 ${isLight ? 'bg-black/40' : 'bg-black/80'}`} />
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowBlueprintModal(false)} className="fixed inset-0 z-50 bg-[var(--bg-deep)]/70" />
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className={`relative w-full max-w-2xl max-h-[85vh] rounded-3xl overflow-hidden border ${
-                  isLight ? 'bg-white border-amber-200 shadow-2xl' : 'border-amber-500/15'
-                }`} style={isLight ? {} : { background: 'var(--theme-bg-card, #111827)' }}>
+                <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="elevation-raised relative w-full max-w-2xl max-h-[85vh] rounded-[20px] overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)]">
                   {/* Header */}
-                  <div className={`relative p-6 border-b ${isLight ? 'border-slate-200' : 'border-white/10'}`}>
-                    <div className={`absolute inset-0 ${isLight ? 'bg-gradient-to-br from-amber-50 to-orange-50' : 'bg-gradient-to-br from-amber-500/10 to-orange-500/10'}`} />
+                  <div className="relative p-6 border-b border-[var(--border-subtle)]">
                     <div className="relative flex items-center justify-between">
                       <div>
-                        <h2 className={`text-xl font-bold flex items-center gap-2 ${isLight ? 'text-slate-800' : 'text-white'}`}><span className="material-symbols-rounded text-inherit align-middle">content_paste</span> Day-Zero Blueprint</h2>
-                        <p className={`text-sm mt-1 ${isLight ? 'text-amber-700' : 'text-amber-400/80'}`}>Your strategic &quot;First 90 Days&quot; proposal</p>
+                        <h2 className="text-xl font-bold flex items-center gap-2 text-[var(--text-primary)]"><span className="material-symbols-rounded text-inherit align-middle">content_paste</span> Day-Zero Blueprint</h2>
+                        <p className="text-sm mt-1 text-[var(--text-secondary)]">Your strategic &quot;First 90 Days&quot; proposal</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
@@ -3835,40 +3826,32 @@ export default function LiquidResumePage() {
                             navigator.clipboard.writeText(blueprintContent);
                             showToast('Blueprint copied to clipboard!', 'content_paste');
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                            isLight ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200' : 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
-                          }`}
+                          className="min-h-[44px] px-3 py-1.5 rounded-[10px] text-xs font-medium border transition-all border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)] hover:opacity-90"
                         >
                           Copy
                         </button>
-                        <button onClick={() => setShowBlueprintModal(false)} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                          isLight ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700' : 'bg-white/10 text-silver hover:text-white hover:bg-white/20'
-                        }`}><span className="material-symbols-rounded">close</span></button>
+                        <button onClick={() => setShowBlueprintModal(false)} className="w-11 h-11 rounded-full flex items-center justify-center transition-all bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"><span className="material-symbols-rounded">close</span></button>
                       </div>
                     </div>
                   </div>
                   {/* Content */}
                   <div className="p-6 overflow-y-auto max-h-[65vh]">
-                    <div className={`prose prose-sm max-w-none ${isLight ? 'prose-slate' : 'prose-invert'}`}>
+                    <div className="prose prose-sm max-w-none">
                       {blueprintContent.split('\n').map((line, i) => {
-                        if (line.startsWith('# ')) return <h1 key={i} className={`text-xl font-bold mt-2 mb-3 ${isLight ? 'text-slate-800' : 'text-white'}`}>{line.slice(2)}</h1>;
-                        if (line.startsWith('## ')) return <h2 key={i} className={`text-lg font-semibold mt-4 mb-2 ${isLight ? 'text-amber-700' : 'text-amber-400'}`}>{line.slice(3)}</h2>;
-                        if (line.startsWith('### ')) return <h3 key={i} className={`text-base font-semibold mt-4 mb-2 ${isLight ? 'text-cyan-700' : 'text-cyan-400'}`}>{line.slice(4)}</h3>;
-                        if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className={`font-semibold mt-2 ${isLight ? 'text-slate-700' : 'text-white/90'}`}>{line.slice(2, -2)}</p>;
-                        if (line.startsWith('- ')) return <li key={i} className={`ml-4 mb-1 list-disc ${isLight ? 'text-slate-600' : 'text-silver'}`}>{line.slice(2)}</li>;
+                        if (line.startsWith('# ')) return <h1 key={i} className="text-xl font-bold mt-2 mb-3 text-[var(--text-primary)]">{line.slice(2)}</h1>;
+                        if (line.startsWith('## ')) return <h2 key={i} className="text-lg font-semibold mt-4 mb-2 text-[var(--accent)]">{line.slice(3)}</h2>;
+                        if (line.startsWith('### ')) return <h3 key={i} className="text-base font-semibold mt-4 mb-2 text-[var(--accent)]">{line.slice(4)}</h3>;
+                        if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-semibold mt-2 text-[var(--text-primary)]">{line.slice(2, -2)}</p>;
+                        if (line.startsWith('- ')) return <li key={i} className="ml-4 mb-1 list-disc text-[var(--text-secondary)]">{line.slice(2)}</li>;
                         if (line.trim() === '') return <div key={i} className="h-2" />;
-                        return <p key={i} className={`mb-1 ${isLight ? 'text-slate-600' : 'text-silver'}`}>{line}</p>;
+                        return <p key={i} className="mb-1 text-[var(--text-secondary)]">{line}</p>;
                       })}
                     </div>
                   </div>
                   {/* Footer */}
-                  <div className={`p-4 border-t flex justify-between items-center ${
-                    isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-black/20'
-                  }`}>
-                    <span className={`text-[10px] ${isLight ? 'text-slate-400' : 'text-silver/50'}`}>Generated by TalentConsulting.io</span>
-                    <button onClick={() => setShowBlueprintModal(false)} className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
-                      isLight ? 'bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200' : 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
-                    }`}>
+                  <div className="p-4 border-t flex justify-between items-center border-[var(--border-subtle)] bg-[var(--bg-card)]">
+                    <span className="text-[11px] text-[var(--text-muted)]">Generated by TalentConsulting.io</span>
+                    <button onClick={() => setShowBlueprintModal(false)} className="min-h-[44px] px-4 py-2 rounded-[12px] text-sm font-medium border transition-all border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)] hover:opacity-90">
                       Done
                     </button>
                   </div>
@@ -3881,32 +3864,31 @@ export default function LiquidResumePage() {
         <AnimatePresence>
           {showApplicationModal && displayResume && (
             <>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowApplicationModal(false)} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" />
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowApplicationModal(false)} className="fixed inset-0 bg-[var(--bg-deep)]/70 z-50" />
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="relative w-full max-w-lg rounded-3xl glass-card overflow-hidden">
-                  <div className="relative p-8 text-center border-b border-white/10">
-                    <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-cyan-500/10" />
+                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="elevation-raised relative w-full max-w-lg rounded-[20px] overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)]">
+                  <div className="relative p-8 text-center border-b border-[var(--border-subtle)]">
                     <div className="relative">
-                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-20 h-20 mx-auto rounded-full bg-green-500/20 flex items-center justify-center mb-4">
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-4 bg-[color-mix(in_srgb,var(--success)_18%,transparent)] icon-status-success">
                         <span className="text-4xl"><span className="material-symbols-rounded text-inherit align-middle">my_location</span></span>
                       </motion.div>
-                      <h2 className="text-2xl font-bold text-white">Track this Application?</h2>
-                      <p className="text-silver mt-2">We'll save this morphed resume with your application</p>
+                      <h2 className="text-2xl font-bold text-[var(--text-primary)]">Track this Application?</h2>
+                      <p className="text-[var(--text-secondary)] mt-2">We'll save this morphed resume with your application</p>
                     </div>
                   </div>
                   <div className="p-6 space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-silver mb-2">Company Name *</label>
-                      <input type="text" value={applicationData.companyName} onChange={(e) => setApplicationData(prev => ({ ...prev, companyName: e.target.value }))} placeholder="e.g., Google" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-green-500/50 focus:outline-none" />
+                      <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Company Name *</label>
+                      <input type="text" value={applicationData.companyName} onChange={(e) => setApplicationData(prev => ({ ...prev, companyName: e.target.value }))} placeholder="e.g., Google" className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-silver mb-2">Job Title</label>
-                      <input type="text" value={applicationData.jobTitle} onChange={(e) => setApplicationData(prev => ({ ...prev, jobTitle: e.target.value }))} placeholder={displayResume.title || 'Position'} className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-green-500/50 focus:outline-none" />
+                      <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Job Title</label>
+                      <input type="text" value={applicationData.jobTitle} onChange={(e) => setApplicationData(prev => ({ ...prev, jobTitle: e.target.value }))} placeholder={displayResume.title || 'Position'} className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
                     </div>
                   </div>
                   <div className="p-6 pt-0 flex gap-3">
-                    <button onClick={() => { setShowApplicationModal(false); setStep('preview'); }} className="flex-1 px-4 py-3 rounded-xl bg-[var(--theme-bg-elevated)] text-silver hover:bg-white/10 transition-colors font-medium">Skip & Preview Resume</button>
-                    <button onClick={handleCreateApplication} disabled={isLoading || !applicationData.companyName.trim()} className="flex-1 px-4 py-3 rounded-xl bg-[var(--theme-bg-elevated)] border border-[var(--theme-border)] text-[var(--theme-fg)] font-bold disabled:opacity-50 hover:bg-white/[0.05] transition-all">
+                    <button onClick={() => { setShowApplicationModal(false); setStep('preview'); }} className="flex-1 min-h-[44px] px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors font-medium">Skip & Preview Resume</button>
+                    <button onClick={handleCreateApplication} disabled={isLoading || !applicationData.companyName.trim()} className="btn-primary flex-1 min-h-[44px] px-4 py-3 rounded-[12px] font-bold disabled:opacity-50">
                       {isLoading ? 'Creating...' : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">my_location</span> Track Application</>}
                     </button>
                   </div>
@@ -3920,43 +3902,42 @@ export default function LiquidResumePage() {
         <AnimatePresence>
           {showSaveModal && (
             <>
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { if (!isSaving) { setShowSaveModal(false); setSaveVersionName(''); setSaveCompanyName(''); }}} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" />
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { if (!isSaving) { setShowSaveModal(false); setSaveVersionName(''); setSaveCompanyName(''); }}} className="fixed inset-0 bg-[var(--bg-deep)]/70 z-50" />
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="relative w-full max-w-md rounded-3xl glass-card overflow-hidden">
+                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="elevation-raised relative w-full max-w-md rounded-[20px] overflow-hidden border border-[var(--border-subtle)] bg-[var(--card-bg)]">
                   {saveSuccess ? (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-12 text-center">
-                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 10 }} className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-500/20 border-2 border-green-500 flex items-center justify-center">
+                      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 10 }} className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center bg-[color-mix(in_srgb,var(--success)_18%,transparent)] border-2 border-[var(--success)] icon-status-success">
                         <span className="text-4xl"><span className="material-symbols-rounded text-inherit align-middle">check_circle</span></span>
                       </motion.div>
-                      <h3 className="text-xl font-bold text-white">Saved & Tracked!</h3>
-                      <p className="text-sm text-silver mt-2">Resume saved for <span className="text-cyan-400 font-semibold">{saveCompanyName}</span></p>
-                      <p className="text-xs text-silver/60 mt-1">View in Applications tab →</p>
+                      <h3 className="text-xl font-bold text-[var(--text-primary)]">Saved & Tracked!</h3>
+                      <p className="text-sm text-[var(--text-secondary)] mt-2">Resume saved for <span className="text-[var(--accent)] font-semibold">{saveCompanyName}</span></p>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">View in Applications tab →</p>
                     </motion.div>
                   ) : (
                     <>
-                      <div className="relative p-6 border-b border-white/10">
-                        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-blue-500/10" />
+                      <div className="relative p-6 border-b border-[var(--border-subtle)]">
                         <div className="relative flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center"><span className="text-2xl"><span className="material-symbols-rounded text-inherit align-middle">save</span></span></div>
-                          <div><h3 className="text-xl font-bold text-white">Save & Track</h3><p className="text-sm text-silver">Save this resume and track the application</p></div>
+                          <div className="w-12 h-12 rounded-[12px] flex items-center justify-center bg-[var(--accent-dim)] border border-[var(--border-subtle)] text-[var(--accent)]"><span className="text-2xl"><span className="material-symbols-rounded text-inherit align-middle">save</span></span></div>
+                          <div><h3 className="text-xl font-bold text-[var(--text-primary)]">Save & Track</h3><p className="text-sm text-[var(--text-secondary)]">Save this resume and track the application</p></div>
                         </div>
                       </div>
                       <div className="p-6 space-y-4">
                         <div>
-                          <label className="block text-sm font-medium text-white mb-2">Company Name <span className="text-red-400">*</span></label>
-                          <input type="text" value={saveCompanyName} onChange={(e) => setSaveCompanyName(e.target.value)} placeholder="e.g., Google, Meta, Stripe" autoFocus className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
+                          <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">Company Name <span className="text-[var(--danger)]">*</span></label>
+                          <input type="text" value={saveCompanyName} onChange={(e) => setSaveCompanyName(e.target.value)} placeholder="e.g., Google, Meta, Stripe" autoFocus className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-white mb-2">Resume Version Name</label>
-                          <input type="text" value={saveVersionName} onChange={(e) => setSaveVersionName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && saveCompanyName.trim() && saveVersionName.trim()) confirmSave(); }} placeholder="e.g., Senior PM Resume" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
+                          <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">Resume Version Name</label>
+                          <input type="text" value={saveVersionName} onChange={(e) => setSaveVersionName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && saveCompanyName.trim() && saveVersionName.trim()) confirmSave(); }} placeholder="e.g., Senior PM Resume" className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
                         </div>
-                        <div className="rounded-xl bg-cyan-500/[0.06] border border-cyan-500/[0.12] p-3">
-                          <p className="text-xs text-cyan-400/80"><span className="material-symbols-rounded text-inherit align-middle">lightbulb</span> This will save your resume <strong>and</strong> create an application entry you can track in the Applications tab.</p>
+                        <div className="rounded-[12px] p-3 border border-[var(--border-subtle)] bg-[var(--accent-dim)]">
+                          <p className="text-xs text-[var(--text-secondary)]"><span className="material-symbols-rounded text-inherit align-middle text-[var(--accent)]">lightbulb</span> This will save your resume <strong>and</strong> create an application entry you can track in the Applications tab.</p>
                         </div>
                       </div>
                       <div className="p-6 pt-0 flex gap-3">
-                        <button onClick={() => { setShowSaveModal(false); setSaveVersionName(''); setSaveCompanyName(''); }} disabled={isSaving} className={`flex-1 px-4 py-3 rounded-xl font-medium transition-colors ${isLight ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}>Cancel</button>
-                        <button onClick={confirmSave} disabled={!saveCompanyName.trim() || isSaving} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all disabled:opacity-50 ${isLight ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-md'}`}>
+                        <button onClick={() => { setShowSaveModal(false); setSaveVersionName(''); setSaveCompanyName(''); }} disabled={isSaving} className="flex-1 min-h-[44px] px-4 py-3 rounded-[12px] font-medium transition-colors border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]">Cancel</button>
+                        <button onClick={confirmSave} disabled={!saveCompanyName.trim() || isSaving} className="btn-primary flex-1 min-h-[44px] px-4 py-3 rounded-[12px] font-bold transition-all disabled:opacity-50">
                           {isSaving ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1 animate-spin">hourglass_top</span> Saving...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">save</span> Save & Track</>}
                         </button>
                       </div>
@@ -4002,31 +3983,31 @@ export default function LiquidResumePage() {
               <motion.div className="resume-create-stage" key="info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div className="grid md:grid-cols-2 gap-8">
                   {/* Personal Info */}
-                  <div className="resume-create-section rounded-xl glass-card p-5">
-                    <h3 className="text-base font-semibold text-white mb-4">Personal Information</h3>
+                  <div className="resume-create-section elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+                    <h3 className="text-base font-semibold text-[var(--text-primary)] mb-4">Personal Information</h3>
                     <div className="space-y-4">
-                      <input type="text" value={buildResume.name} onChange={(e) => setBuildResume(prev => ({ ...prev, name: e.target.value }))} placeholder="Full Name" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                      <input type="text" value={buildResume.title} onChange={(e) => setBuildResume(prev => ({ ...prev, title: e.target.value }))} placeholder="Job Title (e.g., Senior Software Engineer)" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                      <input type="email" value={buildResume.email} onChange={(e) => setBuildResume(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                      <input type="text" value={buildResume.phone} onChange={(e) => setBuildResume(prev => ({ ...prev, phone: e.target.value }))} placeholder="Phone" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                      <input type="text" value={buildResume.location} onChange={(e) => setBuildResume(prev => ({ ...prev, location: e.target.value }))} placeholder="Location (e.g., San Francisco, CA)" className="w-full px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
+                      <input type="text" value={buildResume.name} onChange={(e) => setBuildResume(prev => ({ ...prev, name: e.target.value }))} placeholder="Full Name" className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
+                      <input type="text" value={buildResume.title} onChange={(e) => setBuildResume(prev => ({ ...prev, title: e.target.value }))} placeholder="Job Title (e.g., Senior Software Engineer)" className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
+                      <input type="email" value={buildResume.email} onChange={(e) => setBuildResume(prev => ({ ...prev, email: e.target.value }))} placeholder="Email" className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
+                      <input type="text" value={buildResume.phone} onChange={(e) => setBuildResume(prev => ({ ...prev, phone: e.target.value }))} placeholder="Phone" className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
+                      <input type="text" value={buildResume.location} onChange={(e) => setBuildResume(prev => ({ ...prev, location: e.target.value }))} placeholder="Location (e.g., San Francisco, CA)" className="w-full px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
                     </div>
                   </div>
 
                   {/* Summary */}
-                  <div className="resume-create-section rounded-xl glass-card p-5">
+                  <div className="resume-create-section elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-base font-semibold text-white">Professional Summary</h3>
-                      <button onClick={generateSummary} disabled={aiSuggesting} className="px-3 py-1 rounded-lg text-sm bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50">
+                      <h3 className="text-base font-semibold text-[var(--text-primary)]">Professional Summary</h3>
+                      <button onClick={generateSummary} disabled={aiSuggesting} className="min-h-[44px] px-3 py-1 rounded-[10px] text-sm bg-[var(--accent-dim)] text-[var(--accent)] hover:opacity-90 disabled:opacity-50">
                         {aiSuggesting ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span> Generating...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">auto_awesome</span> Generate with AI</>}
                       </button>
                     </div>
-                    <textarea value={buildResume.summary} onChange={(e) => setBuildResume(prev => ({ ...prev, summary: e.target.value }))} placeholder="Write a brief professional summary..." className="w-full h-48 px-4 py-3 rounded-xl glass-card text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none resize-none" />
+                    <textarea value={buildResume.summary} onChange={(e) => setBuildResume(prev => ({ ...prev, summary: e.target.value }))} placeholder="Write a brief professional summary..." className="w-full h-48 px-4 py-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[16px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none resize-none" />
                   </div>
                 </div>
 
                 <div className="mt-6 flex justify-end">
-                  <button onClick={() => setStep('jd')} disabled={!buildResume.name || !buildResume.title} className="px-4 py-2 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] disabled:opacity-50 transition-all">
+                  <button onClick={() => setStep('jd')} disabled={!buildResume.name || !buildResume.title} className="min-h-[44px] px-4 py-2 rounded-[12px] font-medium text-sm bg-[var(--accent-dim)] border border-[var(--accent)] text-[var(--accent)] hover:opacity-90 disabled:opacity-50 transition-all">
                     Add Experience →
                   </button>
                 </div>
@@ -4035,31 +4016,31 @@ export default function LiquidResumePage() {
 
             {step === 'jd' && (
               <motion.div className="resume-create-stage" key="exp" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <div className="resume-create-section rounded-xl glass-card p-5 mb-6">
-                  <h3 className="text-base font-semibold text-white mb-4">Work Experience</h3>
+                <div className="resume-create-section elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 mb-6">
+                  <h3 className="text-base font-semibold text-[var(--text-primary)] mb-4">Work Experience</h3>
                   {buildResume.experience.map((exp, i) => (
-                    <div key={i} className="mb-4 p-4 rounded-xl glass-card">
+                    <div key={i} className="mb-4 p-4 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)]">
                       <div className="grid md:grid-cols-3 gap-3 mb-3">
-                        <input type="text" value={exp.role} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].role = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder="Job Title" className="px-3 py-2 rounded-lg glass-card text-white text-sm placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                        <input type="text" value={exp.company} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].company = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder="Company" className="px-3 py-2 rounded-lg glass-card text-white text-sm placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
-                        <input type="text" value={exp.duration} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].duration = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder="Duration (e.g., 2020-Present)" className="px-3 py-2 rounded-lg glass-card text-white text-sm placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
+                        <input type="text" value={exp.role} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].role = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder="Job Title" className="px-3 py-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-primary)] text-[16px] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
+                        <input type="text" value={exp.company} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].company = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder="Company" className="px-3 py-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-primary)] text-[16px] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
+                        <input type="text" value={exp.duration} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].duration = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder="Duration (e.g., 2020-Present)" className="px-3 py-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-primary)] text-[16px] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
                       </div>
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-slate-500">Achievements</span>
-                        <button onClick={() => generateAchievements(i)} disabled={aiSuggesting} className="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-400">{aiSuggesting ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">auto_awesome</span> Generate</>}</button>
+                        <span className="text-sm text-[var(--text-muted)]">Achievements</span>
+                        <button onClick={() => generateAchievements(i)} disabled={aiSuggesting} className="min-h-[44px] px-2 py-1 rounded-[8px] text-xs bg-[var(--accent-dim)] text-[var(--accent)]">{aiSuggesting ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">auto_awesome</span> Generate</>}</button>
                       </div>
                       {exp.achievements.map((a, j) => (
-                        <input key={j} type="text" value={a} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].achievements[j] = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder={`Achievement ${j + 1}`} className="w-full mb-2 px-3 py-2 rounded-lg glass-card text-white text-sm placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none" />
+                        <input key={j} type="text" value={a} onChange={(e) => { const newExp = [...buildResume.experience]; newExp[i].achievements[j] = e.target.value; setBuildResume(prev => ({ ...prev, experience: newExp })); }} placeholder={`Achievement ${j + 1}`} className="w-full mb-2 px-3 py-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-input)] text-[var(--text-primary)] text-[16px] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none" />
                       ))}
-                      <button onClick={() => { const newExp = [...buildResume.experience]; newExp[i].achievements.push(''); setBuildResume(prev => ({ ...prev, experience: newExp })); }} className="text-xs text-cyan-400">+ Add Achievement</button>
+                      <button onClick={() => { const newExp = [...buildResume.experience]; newExp[i].achievements.push(''); setBuildResume(prev => ({ ...prev, experience: newExp })); }} className="min-h-[44px] text-xs text-[var(--accent)]">+ Add Achievement</button>
                     </div>
                   ))}
-                  <button onClick={() => setBuildResume(prev => ({ ...prev, experience: [...prev.experience, { role: '', company: '', duration: '', achievements: [''] }] }))} className="w-full py-2.5 rounded-xl border border-dashed border-white/[0.08] text-slate-500 hover:border-cyan-500/20 hover:text-white transition-all text-sm">
+                  <button onClick={() => setBuildResume(prev => ({ ...prev, experience: [...prev.experience, { role: '', company: '', duration: '', achievements: [''] }] }))} className="w-full min-h-[44px] py-2.5 rounded-[12px] border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] transition-all text-sm">
                     + Add Experience
                   </button>
                 </div>
                 <div className="flex justify-between">
-                  <button onClick={() => setStep('upload')} className="px-4 py-2 rounded-xl glass-card text-slate-500 hover:border-white/[0.12] text-sm"><span className="material-symbols-rounded text-[14px] align-middle mr-1">arrow_back</span> Back</button>
+                  <button onClick={() => setStep('upload')} className="min-h-[44px] px-4 py-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-card)] text-[var(--text-muted)] hover:border-[var(--border)] hover:text-[var(--text-primary)] text-sm"><span className="material-symbols-rounded text-[14px] align-middle mr-1">arrow_back</span> Back</button>
                   <button
                     onClick={() => {
                       setOriginalResume(buildResume);
@@ -4067,7 +4048,7 @@ export default function LiquidResumePage() {
                       setMode('morph');
                       setStep('jd');
                     }}
-                    className="px-4 py-2 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all"
+                    className="min-h-[44px] px-4 py-2 rounded-[12px] font-medium text-sm bg-[var(--accent-dim)] border border-[var(--accent)] text-[var(--accent)] hover:opacity-90 transition-all"
                   >
                     Continue to Target <span aria-hidden="true">→</span>
                   </button>
@@ -4107,21 +4088,21 @@ export default function LiquidResumePage() {
                                     selectTemplate(t);
                                   }
                                 }}
-                                className={`p-3 rounded-xl border text-left text-sm relative transition-all ${
+                                className={`p-3 rounded-[12px] border text-left text-sm relative transition-all ${
                                   isLocked
-                                    ? 'border-[var(--border-subtle)] bg-[var(--bg-card)] opacity-70 cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-500/40'
+                                    ? 'border-[var(--border-subtle)] bg-[var(--bg-card)] opacity-70 cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--accent)]'
                                     : isSelected
-                                      ? 'border-cyan-500/[0.2] bg-cyan-500/[0.03]'
+                                      ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                                       : 'border-[var(--border-subtle)] bg-[var(--bg-card)] hover:border-[var(--border)] cursor-pointer'
                                 }`}
                               >
-                                {isLocked && <span className="absolute top-1 right-1 z-10 text-[8px] px-1 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 font-bold">{PAID_TEMPLATE_PLAN_LABEL}</span>}
+                                {isLocked && <span className="absolute top-1 right-1 z-10 text-[11px] px-1 py-0.5 rounded font-bold bg-[var(--accent-dim)] border border-[var(--accent)] text-[var(--accent)]">{PAID_TEMPLATE_PLAN_LABEL}</span>}
                                 {cardThumbnail ? (
-                                  <span className="mb-2 block aspect-[2/3] overflow-hidden rounded-[9px] border border-black/10 bg-white shadow-sm">
+                                  <span className="mb-2 block aspect-[2/3] overflow-hidden rounded-[9px] border border-[var(--border-subtle)] bg-[var(--paper)]">
                                     <img src={cardThumbnail} alt="" className="h-full w-full object-cover object-top" />
                                   </span>
                                 ) : isCurated ? (
-                                  <span className="mb-2 block aspect-[2/3] overflow-hidden rounded-[9px] border border-black/10 bg-white shadow-sm">
+                                  <span className="mb-2 block aspect-[2/3] overflow-hidden rounded-[9px] border border-[var(--border-subtle)] bg-[var(--paper)]">
                                     <CuratedTemplateMiniature template={{ ...t, colors: { ...t.colors, ...cardPalette.colors } }} />
                                   </span>
                                 ) : (
@@ -4133,8 +4114,8 @@ export default function LiquidResumePage() {
                                   </span>
                                 )}
                                 <span className="block font-medium text-[var(--text-primary)]">{t.name}</span>
-                                <span className="mt-1 block text-[9px] font-semibold text-[var(--text-secondary)]">{t.atsClassification}</span>
-                                <span className="mt-1 block truncate text-[10px] text-[var(--text-muted)]">
+                                <span className="mt-1 block text-[11px] font-semibold text-[var(--text-secondary)]">{t.atsClassification}</span>
+                                <span className="mt-1 block truncate text-[11px] text-[var(--text-muted)]">
                                   <span className="font-medium text-[var(--text-secondary)]">{cardPalette.label}</span>
                                   {!canUseTemplatePalettes && <span> · {cardPalette.isDefault ? 'Included' : 'Max palette'}</span>}
                                 </span>
@@ -4145,7 +4126,7 @@ export default function LiquidResumePage() {
                             );
                           })}
                         </div>
-                        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+                        <div className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
                           <div className="mb-2 flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Palette</p>
@@ -4155,7 +4136,7 @@ export default function LiquidResumePage() {
                               <button
                                 type="button"
                                 onClick={openMaxPaletteUpgrade}
-                                className="shrink-0 rounded-[10px] border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                                className="shrink-0 min-h-[44px] rounded-[10px] border border-[var(--accent)] bg-[var(--accent-dim)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--accent)] hover:opacity-90"
                               >
                                 Unlock Max
                               </button>
@@ -4167,13 +4148,13 @@ export default function LiquidResumePage() {
                               aria-haspopup="listbox"
                               aria-expanded={showPaletteMenu}
                               onClick={() => setShowPaletteMenu(open => !open)}
-                              className="flex w-full min-w-0 items-center justify-between gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 py-2 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-amber-500/25"
+                              className="flex w-full min-w-0 min-h-[44px] items-center justify-between gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2 py-2 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                             >
                               <span className="flex min-w-0 items-center gap-2">
                                 <PaletteDots colors={selectedPalette.colors} selected />
                                 <span className="min-w-0">
                                   <span className="block truncate text-[11px] font-semibold text-[var(--text-primary)]">{selectedPalette.label}</span>
-                                  <span className="block truncate text-[9px] text-[var(--text-muted)]">Choose palette</span>
+                                  <span className="block truncate text-[11px] text-[var(--text-muted)]">Choose palette</span>
                                 </span>
                               </span>
                               <span className="material-symbols-rounded shrink-0 text-[17px] text-[var(--text-muted)]">
@@ -4188,7 +4169,7 @@ export default function LiquidResumePage() {
                                   animate={{ opacity: 1, y: 0 }}
                                   exit={{ opacity: 0, y: -6 }}
                                   transition={{ duration: 0.16 }}
-                                  className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[260px] overflow-y-auto rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1.5 shadow-xl"
+                                  className="elevation-raised absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-[260px] overflow-y-auto rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-1.5"
                                   role="listbox"
                                   aria-label={`${selectedTemplate.name} palette choices`}
                                 >
@@ -4203,16 +4184,16 @@ export default function LiquidResumePage() {
                                         aria-selected={paletteSelected}
                                         aria-label={`${selectedTemplate.name} ${palette.label} palette${paletteLocked ? ', Talent Max' : ''}`}
                                         onClick={() => selectTemplatePalette(selectedTemplate, palette)}
-                                        className={`flex w-full min-w-0 items-center gap-2 rounded-[10px] border px-2 py-1.5 text-left transition-all focus:outline-none focus:ring-2 focus:ring-amber-500/25 ${
+                                        className={`flex w-full min-w-0 min-h-[44px] items-center gap-2 rounded-[10px] border px-2 py-1.5 text-left transition-all focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
                                           paletteSelected
-                                            ? 'border-amber-400/70 bg-amber-400/[0.08]'
+                                            ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                                             : 'border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-card)]'
                                         }`}
                                       >
                                         <PaletteDots colors={palette.colors} selected={paletteSelected} locked={paletteLocked} />
                                         <span className="min-w-0">
                                           <span className="block truncate text-[11px] font-semibold text-[var(--text-primary)]">{palette.label}</span>
-                                          <span className="block truncate text-[9px] text-[var(--text-muted)]">{palette.isDefault ? 'Included' : canUseTemplatePalettes ? 'Max palette' : 'Max locked'}</span>
+                                          <span className="block truncate text-[11px] text-[var(--text-muted)]">{palette.isDefault ? 'Included' : canUseTemplatePalettes ? 'Max palette' : 'Max locked'}</span>
                                         </span>
                                       </button>
                                     );
@@ -4222,49 +4203,49 @@ export default function LiquidResumePage() {
                             </AnimatePresence>
                           </div>
                         </div>
-                        <button onClick={() => setStep('preview')} className="w-full py-2.5 rounded-xl font-medium text-sm bg-cyan-500/[0.08] border border-cyan-500/[0.15] text-cyan-400 hover:bg-cyan-500/[0.12] transition-all">Preview & Export →</button>
+                        <button onClick={() => setStep('preview')} className="w-full min-h-[44px] py-2.5 rounded-[12px] font-medium text-sm bg-[var(--accent-dim)] border border-[var(--accent)] text-[var(--accent)] hover:opacity-90 transition-all">Preview & Export →</button>
                       </>
                     )}
                     {step === 'preview' && (
-                      <div className="rounded-xl glass-card p-5 space-y-3">
-                        <h3 className="font-semibold text-white mb-4">Export</h3>
+                      <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 space-y-3">
+                        <h3 className="font-semibold text-[var(--text-primary)] mb-4">Export</h3>
 
                         {/* Free-tier usage counter */}
-                        {!isPro && user && (
-                          <div className={`mb-1 px-3 py-2 rounded-lg flex items-center gap-2 ${isLight ? 'bg-amber-50 border border-amber-200' : 'bg-amber-500/[0.08] border border-amber-500/[0.15]'}`}>
-                            <span className={`material-symbols-rounded text-[16px] ${isLight ? 'text-amber-600' : 'text-amber-400'}`}>token</span>
-                            <span className={`text-xs ${isLight ? 'text-slate-700' : 'text-amber-300'}`}>{remaining('morphs')} of {caps?.morphs || 3} free uses left</span>
+                        {!isPro && user && caps?.morphs != null && (
+                          <div className="mb-1 px-3 py-2 rounded-[10px] flex items-center gap-2 border border-[color-mix(in_srgb,var(--warning)_15%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)]">
+                            <span className="material-symbols-rounded icon-status-warning text-[16px]">token</span>
+                            <span className="text-xs text-[var(--text-secondary)]">{remaining('morphs')} of {caps.morphs} free uses left</span>
                           </div>
                         )}
                         {!user && (
-                          <div className={`mb-1 px-3 py-2 rounded-lg flex items-center gap-2 ${isLight ? 'bg-cyan-50 border border-cyan-200' : 'bg-cyan-500/[0.06] border border-cyan-500/[0.12]'}`}>
-                            <span className={`material-symbols-rounded text-[16px] ${isLight ? 'text-cyan-600' : 'text-cyan-400'}`}>lock_open</span>
-                            <span className={`text-xs ${isLight ? 'text-slate-700' : 'text-cyan-300'}`}>Sign in to download your resume</span>
+                          <div className="mb-1 px-3 py-2 rounded-[10px] flex items-center gap-2 border border-[var(--border-subtle)] bg-[var(--accent-dim)]">
+                            <span className="material-symbols-rounded text-[16px] text-[var(--accent)]">lock_open</span>
+                            <span className="text-xs text-[var(--text-secondary)]">Sign in to download your resume</span>
                           </div>
                         )}
 
                         <div className="grid grid-cols-2 gap-2">
-                          <button onClick={downloadPDF} disabled={isLoading} className="py-2.5 rounded-xl font-semibold bg-cyan-500/[0.1] border border-cyan-500/[0.2] text-cyan-400 hover:bg-cyan-500/[0.15] transition-all disabled:opacity-50 text-sm">{isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">description</span> PDF</>}</button>
-                          <button onClick={downloadWord} disabled={isLoading} className="py-2.5 rounded-xl font-semibold bg-blue-500/[0.08] border border-blue-500/[0.15] text-blue-400 hover:bg-blue-500/[0.12] transition-all disabled:opacity-50 text-sm">{isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">edit_document</span> Word</>}</button>
+                          <button onClick={downloadPDF} disabled={isLoading} className="min-h-[44px] py-2.5 rounded-[12px] font-semibold bg-[var(--accent-dim)] border border-[var(--accent)] text-[var(--accent)] hover:opacity-90 transition-all disabled:opacity-50 text-sm">{isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">description</span> PDF</>}</button>
+                          <button onClick={downloadWord} disabled={isLoading} className="min-h-[44px] py-2.5 rounded-[12px] font-semibold bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--border)] transition-all disabled:opacity-50 text-sm">{isLoading ? <><span className="material-symbols-rounded text-[14px] align-middle mr-1">hourglass_top</span>...</> : <><span className="material-symbols-rounded text-[14px] align-middle mr-1">edit_document</span> Word</>}</button>
                         </div>
-                        <button onClick={saveVersionOnly} disabled={isSaving} className="w-full py-2.5 rounded-xl font-medium bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] text-white transition-all text-sm disabled:opacity-50">
+                        <button onClick={saveVersionOnly} disabled={isSaving} className="w-full min-h-[44px] py-2.5 rounded-[12px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-primary)] transition-all text-sm disabled:opacity-50">
                           {isSaving ? <><span className="material-symbols-rounded text-inherit align-middle animate-spin">hourglass_top</span> Saving...</> : saveInlineStatus?.type === 'success' ? <><span className="material-symbols-rounded text-inherit align-middle">check_circle</span> Saved</> : <><span className="material-symbols-rounded text-inherit align-middle">save</span> Save Version</>}
                         </button>
                         {saveInlineStatus && (
-                          <div className={`rounded-xl border px-3 py-2 text-xs ${
+                          <div className={`rounded-[12px] border px-3 py-2 text-xs ${
                             saveInlineStatus.type === 'success'
-                              ? 'bg-emerald-500/[0.08] border-emerald-500/[0.18] text-emerald-300'
-                              : 'bg-red-500/[0.08] border-red-500/[0.18] text-red-300'
+                              ? 'border-[color-mix(in_srgb,var(--success)_18%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)] text-[var(--success)]'
+                              : 'border-[color-mix(in_srgb,var(--danger)_18%,transparent)] bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] text-[var(--danger)]'
                           }`}>
                             {saveInlineStatus.message}
                           </div>
                         )}
-                        <button onClick={() => setStep('template')} className="w-full py-2.5 rounded-xl font-medium bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] text-slate-500 transition-all text-sm"><span className="material-symbols-rounded text-inherit align-middle">palette</span> Change Template</button>
+                        <button onClick={() => setStep('template')} className="w-full min-h-[44px] py-2.5 rounded-[12px] font-medium bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all text-sm"><span className="material-symbols-rounded text-inherit align-middle">palette</span> Change Template</button>
                       </div>
                     )}
                   </div>
                   <div className="min-w-0 lg:col-span-2">
-                    <div className="rounded-xl glass-card p-4">
+                    <div className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
                       <div ref={resumeRef}>
                         <ResponsiveResumePreview resume={displayResume} template={selectedTemplateWithPalette} />
                       </div>
@@ -4335,7 +4316,7 @@ function ResponsiveResumePreview({
   return (
     <div
       ref={frameRef}
-      className="mx-auto min-w-0 w-full max-w-[794px] overflow-hidden rounded-[10px] bg-white shadow-xl"
+      className="elevation-raised mx-auto min-w-0 w-full max-w-[794px] overflow-hidden rounded-[10px] bg-[var(--paper)]"
       style={{ height: `${previewMetrics.height}px`, position: 'relative' }}
     >
       <div

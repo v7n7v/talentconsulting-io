@@ -49,23 +49,23 @@ function UnsubscribeForm() {
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-slate-950 px-4 py-12 text-white">
-      <section className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900 p-7 shadow-2xl sm:p-9" aria-labelledby="unsubscribe-title">
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--bg-deep)] px-4 py-12 text-[var(--text-primary)]">
+      <section className="elevation-raised w-full max-w-lg rounded-3xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-7 sm:p-9" aria-labelledby="unsubscribe-title">
         <img src="/brand/talentconsulting-logo-email.png" alt="TalentConsulting.io" className="mb-8 h-auto w-56 max-w-full" />
-        <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-indigo-300">Email preferences</p>
-        <h1 id="unsubscribe-title" className="text-2xl font-bold">Unsubscribe from {category}</h1>
-        {state === 'checking' ? <p className="mt-5 text-sm text-slate-300" role="status">Checking your secure link…</p> : null}
+        <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--accent)]">Email preferences</p>
+        <h1 id="unsubscribe-title" className="text-2xl font-bold text-[var(--text-primary)]">Unsubscribe from {category}</h1>
+        {state === 'checking' ? <p className="mt-5 text-sm text-[var(--text-secondary)]" role="status">Checking your secure link…</p> : null}
         {state === 'ready' || state === 'saving' ? (
           <div className="mt-5">
-            <p className="text-sm leading-6 text-slate-300">You will stop receiving {category}. Required account, security, billing, and service messages are not affected.</p>
-            <button type="button" onClick={unsubscribe} disabled={state === 'saving'} className="mt-6 min-h-12 rounded-xl bg-indigo-500 px-5 py-3 text-sm font-bold hover:bg-indigo-400 disabled:opacity-60">
+            <p className="text-sm leading-6 text-[var(--text-secondary)]">You will stop receiving {category}. Required account, security, billing, and service messages are not affected.</p>
+            <button type="button" onClick={unsubscribe} disabled={state === 'saving'} className="btn-primary mt-6 min-h-12 px-5 py-3 text-sm">
               {state === 'saving' ? 'Updating preference…' : 'Confirm unsubscribe'}
             </button>
           </div>
         ) : null}
-        {state === 'success' ? <p className="mt-5 rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-4 text-sm text-emerald-100" role="status">Your preference was updated successfully.</p> : null}
-        {state === 'error' ? <p className="mt-5 rounded-xl border border-red-400/25 bg-red-400/10 p-4 text-sm text-red-100" role="alert">{error}</p> : null}
-        <Link href="/suite/settings?tab=notifications" className="mt-7 inline-flex text-sm font-semibold text-indigo-300 underline underline-offset-4">Review all email preferences</Link>
+        {state === 'success' ? <p className="mt-5 rounded-xl border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] p-4 text-sm text-[var(--text-primary)]" role="status">Your preference was updated successfully.</p> : null}
+        {state === 'error' ? <p className="mt-5 rounded-xl border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-4 text-sm text-[var(--text-primary)]" role="alert">{error}</p> : null}
+        <Link href="/suite/settings?tab=notifications" className="mt-7 inline-flex text-sm font-semibold text-[var(--accent)] underline underline-offset-4">Review all email preferences</Link>
       </section>
     </main>
   );
@@ -79,5 +79,5 @@ function preferenceLabel(value?: string): string {
 }
 
 export default function UnsubscribePage() {
-  return <Suspense fallback={<main className="flex min-h-dvh items-center justify-center bg-slate-950 text-slate-300">Checking your secure link…</main>}><UnsubscribeForm /></Suspense>;
+  return <Suspense fallback={<main className="flex min-h-dvh items-center justify-center bg-[var(--bg-deep)] text-[var(--text-secondary)]">Checking your secure link…</main>}><UnsubscribeForm /></Suspense>;
 }

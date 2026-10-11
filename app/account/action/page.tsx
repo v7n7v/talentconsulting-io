@@ -50,32 +50,32 @@ function AccountActionContent() {
 
   const deleting = action === 'delete';
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-slate-950 px-4 py-12 text-white">
-      <section className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl sm:p-8" aria-labelledby="account-action-title">
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--bg-deep)] px-4 py-12 text-[var(--text-primary)]">
+      <section className="elevation-raised w-full max-w-lg rounded-3xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 sm:p-8" aria-labelledby="account-action-title">
         <Link href="/" aria-label="TalentConsulting.io home"><Image src="/brand/talentconsulting-logo-email.png" alt="TalentConsulting.io" width={448} height={88} className="h-auto w-56 max-w-full" priority /></Link>
-        <p className="mt-8 text-xs font-bold uppercase tracking-[0.18em] text-indigo-300">Account security</p>
-        <h1 id="account-action-title" className="mt-2 text-2xl font-bold">
+        <p className="mt-8 text-xs font-bold uppercase tracking-[0.18em] text-[var(--accent)]">Account security</p>
+        <h1 id="account-action-title" className="mt-2 text-2xl font-bold text-[var(--text-primary)]">
           {state === 'success' ? 'Request confirmed' : deleting ? 'Confirm permanent deletion' : 'Confirm account deactivation'}
         </h1>
-        {state === 'checking' ? <p className="mt-5 text-sm text-slate-300" role="status">Checking your secure link…</p> : null}
+        {state === 'checking' ? <p className="mt-5 text-sm text-[var(--text-secondary)]" role="status">Checking your secure link…</p> : null}
         {state === 'ready' || state === 'submitting' ? (
           <div className="mt-5">
-            <p className="text-sm leading-6 text-slate-300">{deleting
+            <p className="text-sm leading-6 text-[var(--text-secondary)]">{deleting
               ? 'Confirming records your permanent deletion request for secure processing under the retention policy. Data and access may not be recoverable after completion.'
               : 'Confirming pauses optional email and records your account as deactivated. Your retained data remains subject to the privacy policy.'}</p>
-            <button type="button" onClick={confirm} disabled={state === 'submitting'} className={`mt-6 min-h-12 w-full rounded-xl px-5 py-3 text-sm font-bold text-white disabled:opacity-60 ${deleting ? 'bg-rose-600 hover:bg-rose-500' : 'bg-amber-500 hover:bg-amber-400'}`}>
+            <button type="button" onClick={confirm} disabled={state === 'submitting'} className={`mt-6 min-h-12 w-full rounded-xl px-5 py-3 text-sm font-bold text-[var(--accent-on)] transition hover:opacity-90 disabled:opacity-60 ${deleting ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'}`}>
               {state === 'submitting' ? 'Confirming…' : deleting ? 'Confirm deletion request' : 'Deactivate my account'}
             </button>
           </div>
         ) : null}
-        {state === 'success' ? <div className="mt-5 rounded-2xl border border-emerald-400/25 bg-emerald-400/10 p-4 text-sm leading-6 text-emerald-100" role="status">{deleting ? 'Your deletion request is confirmed and queued for secure processing.' : 'Your account is deactivated and optional email is paused.'}</div> : null}
-        {state === 'error' ? <div className="mt-5 rounded-2xl border border-red-400/25 bg-red-400/10 p-4 text-sm text-red-100" role="alert">{error}</div> : null}
-        <Link href="/" className="mt-6 inline-flex text-sm font-semibold text-indigo-300 underline underline-offset-4">Return to TalentConsulting.io</Link>
+        {state === 'success' ? <div className="mt-5 rounded-2xl border border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] p-4 text-sm leading-6 text-[var(--text-primary)]" role="status">{deleting ? 'Your deletion request is confirmed and queued for secure processing.' : 'Your account is deactivated and optional email is paused.'}</div> : null}
+        {state === 'error' ? <div className="mt-5 rounded-2xl border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] p-4 text-sm text-[var(--text-primary)]" role="alert">{error}</div> : null}
+        <Link href="/" className="mt-6 inline-flex text-sm font-semibold text-[var(--accent)] underline underline-offset-4">Return to TalentConsulting.io</Link>
       </section>
     </main>
   );
 }
 
 export default function AccountActionPage() {
-  return <Suspense fallback={<main className="flex min-h-dvh items-center justify-center bg-slate-950 text-sm text-slate-300">Checking your secure link…</main>}><AccountActionContent /></Suspense>;
+  return <Suspense fallback={<main className="flex min-h-dvh items-center justify-center bg-[var(--bg-deep)] text-sm text-[var(--text-secondary)]">Checking your secure link…</main>}><AccountActionContent /></Suspense>;
 }

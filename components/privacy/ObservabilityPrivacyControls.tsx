@@ -169,7 +169,7 @@ function DiagnosticGrantList({ noticeVersion, uid }: { noticeVersion: string; ui
   const visibleCases = cases.filter(item => item.grantState !== 'not_granted');
 
   return (
-    <div className="mt-5 border-t border-[var(--theme-border)] pt-5">
+    <div className="mt-5 border-t border-[var(--border-subtle)] pt-5">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h4 className="text-sm font-bold text-[var(--text-primary)]">Diagnostic-sharing grants</h4>
@@ -181,7 +181,7 @@ function DiagnosticGrantList({ noticeVersion, uid }: { noticeVersion: string; ui
           <button
             type="button"
             onClick={() => void loadCases()}
-            className="min-h-12 rounded-xl border border-[var(--theme-border)] px-3 text-sm font-semibold text-[var(--text-primary)]"
+            className="min-h-12 rounded-xl border border-[var(--border-subtle)] px-3 text-sm font-semibold text-[var(--text-primary)]"
           >
             Retry
           </button>
@@ -191,11 +191,11 @@ function DiagnosticGrantList({ noticeVersion, uid }: { noticeVersion: string; ui
       {status === 'loading' ? (
         <p className="mt-3 text-xs text-[var(--text-muted)]" aria-live="polite">Loading diagnostic grants…</p>
       ) : status === 'error' ? (
-        <p className="mt-3 rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-3 text-xs text-rose-500">
+        <p className="mt-3 rounded-xl border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] px-4 py-3 text-xs text-[var(--danger)]">
           Sign in again or retry when diagnostic-sharing grants are available.
         </p>
       ) : visibleCases.length === 0 ? (
-        <p className="mt-3 rounded-xl bg-[var(--theme-surface-hover)] px-4 py-3 text-xs text-[var(--text-secondary)]">
+        <p className="mt-3 rounded-xl bg-[var(--bg-hover)] px-4 py-3 text-xs text-[var(--text-secondary)]">
           No diagnostic-sharing grants are recorded.
         </p>
       ) : (
@@ -206,7 +206,7 @@ function DiagnosticGrantList({ noticeVersion, uid }: { noticeVersion: string; ui
             return (
               <li
                 key={item.caseId}
-                className="flex flex-col gap-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-hover)] p-4 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-hover)] p-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
@@ -225,7 +225,7 @@ function DiagnosticGrantList({ noticeVersion, uid }: { noticeVersion: string; ui
                     type="button"
                     disabled={revoking === item.caseId}
                     onClick={() => void revoke(item.caseId)}
-                    className="min-h-12 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 text-sm font-bold text-rose-600 transition hover:bg-rose-500/15 disabled:opacity-50 dark:text-rose-400"
+                    className="min-h-12 rounded-xl border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] px-4 text-sm font-bold text-[var(--danger)] transition hover:bg-[color-mix(in_srgb,var(--danger)_16%,transparent)] disabled:opacity-50"
                   >
                     {revoking === item.caseId ? 'Revoking…' : 'Revoke access'}
                   </button>
@@ -447,7 +447,7 @@ function ObservabilityDataControls({ disabled, uid }: { disabled: boolean; uid: 
   const resetReady = confirmation === 'RESET OBSERVABILITY DATA';
 
   return (
-    <div className="mt-5 border-t border-[var(--theme-border)] pt-5">
+    <div className="mt-5 border-t border-[var(--border-subtle)] pt-5">
       <h4 className="text-sm font-bold text-[var(--text-primary)]">Your observability data</h4>
       <p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--text-secondary)]">
         Download the bounded metadata we retain or queue an observability-only reset. These controls
@@ -464,17 +464,17 @@ function ObservabilityDataControls({ disabled, uid }: { disabled: boolean; uid: 
           type="button"
           onClick={() => void exportMetadata()}
           disabled={disabled || action !== 'idle'}
-          className="min-h-12 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 text-sm font-bold text-cyan-700 outline-none transition hover:-translate-y-0.5 hover:bg-cyan-500/15 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-cyan-300"
+          className="min-h-12 rounded-xl border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-4 text-sm font-bold text-[var(--accent)] outline-none transition hover:-translate-y-0.5 hover:bg-[var(--accent-dim)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {action === 'exporting' ? 'Preparing download...' : 'Download metadata'}
         </button>
 
-        <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
+        <div className="rounded-xl border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--danger)_8%,transparent)] p-3">
           <label
             htmlFor="observability-reset-confirmation"
             className="block text-xs font-semibold text-[var(--text-primary)]"
           >
-            Type <span className="font-mono text-rose-500">RESET OBSERVABILITY DATA</span>
+            Type <span className="font-mono text-[var(--danger)]">RESET OBSERVABILITY DATA</span>
           </label>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row">
             <input
@@ -484,14 +484,14 @@ function ObservabilityDataControls({ disabled, uid }: { disabled: boolean; uid: 
               disabled={disabled}
               autoComplete="off"
               spellCheck={false}
-              className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] px-3 text-base text-[var(--text-primary)] outline-none transition focus-visible:border-rose-500 focus-visible:ring-2 focus-visible:ring-rose-500/30 disabled:opacity-50"
+              className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none transition focus-visible:border-[var(--danger)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--danger)_30%,transparent)] disabled:opacity-50"
               aria-describedby="observability-data-action-status"
             />
             <button
               type="button"
               onClick={() => void resetMetadata()}
               disabled={disabled || !resetReady || action !== 'idle'}
-              className="min-h-12 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 text-sm font-bold text-rose-600 outline-none transition hover:bg-rose-500/15 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-rose-400"
+              className="min-h-12 rounded-xl border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] px-4 text-sm font-bold text-[var(--danger)] outline-none transition hover:bg-[color-mix(in_srgb,var(--danger)_16%,transparent)] focus-visible:ring-2 focus-visible:ring-[var(--danger)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {action === 'resetting' ? 'Queuing reset...' : 'Reset metadata'}
             </button>
@@ -501,7 +501,7 @@ function ObservabilityDataControls({ disabled, uid }: { disabled: boolean; uid: 
 
       <p
         id="observability-data-action-status"
-        className={`mt-3 text-xs leading-5 ${isError ? 'text-rose-500' : 'text-[var(--text-secondary)]'}`}
+        className={`mt-3 text-xs leading-5 ${isError ? 'text-[var(--danger)]' : 'text-[var(--text-secondary)]'}`}
         aria-live="polite"
       >
         {message}
@@ -669,13 +669,13 @@ export default function ObservabilityPrivacyControls() {
 
   return (
     <section
-      className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-5 shadow-[var(--theme-shadow)] sm:p-6"
+      className="elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 sm:p-6"
       aria-labelledby="product-analytics-heading"
     >
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 max-w-2xl">
           <div className="flex items-center gap-2">
-            <span className="material-symbols-rounded text-cyan-500" aria-hidden="true">privacy_tip</span>
+            <span className="material-symbols-rounded text-[var(--accent)]" aria-hidden="true">privacy_tip</span>
             <h3 id="product-analytics-heading" className="text-lg font-semibold text-[var(--text-primary)]">
               Privacy-safe product analytics
             </h3>
@@ -686,9 +686,9 @@ export default function ObservabilityPrivacyControls() {
             companies, job titles, email addresses, or other document content.
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold">
-            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-500">Content excluded</span>
-            <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-cyan-700 dark:text-cyan-300">Optional</span>
-            <span className="rounded-full border border-violet-600/30 bg-violet-500/15 px-2.5 py-1 text-violet-900 dark:border-violet-400/35 dark:text-violet-200">Revocable</span>
+            <span className="rounded-full border border-[color-mix(in_srgb,var(--success)_20%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] px-2.5 py-1 text-[var(--success)]">Content excluded</span>
+            <span className="rounded-full border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] bg-[var(--accent-dim)] px-2.5 py-1 text-[var(--accent)]">Optional</span>
+            <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-hover)] px-2.5 py-1 text-[var(--text-secondary)]">Revocable</span>
           </div>
           <p className="mt-3 text-xs text-[var(--text-muted)]">
             {unavailable
@@ -708,18 +708,18 @@ export default function ObservabilityPrivacyControls() {
           onClick={() => void update(!granted)}
           className={`relative inline-flex min-h-12 w-full shrink-0 items-center justify-between rounded-xl border px-3.5 py-2 text-sm font-semibold transition sm:w-44 ${
             granted
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500'
-              : 'border-[var(--theme-border)] bg-[var(--theme-surface-hover)] text-[var(--text-secondary)]'
+              ? 'border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]'
+              : 'border-[var(--border-subtle)] bg-[var(--bg-hover)] text-[var(--text-secondary)]'
           } disabled:cursor-not-allowed disabled:opacity-55`}
         >
           <span>{state === 'saving' ? 'Saving…' : granted ? 'Analytics on' : 'Analytics off'}</span>
           <span
             aria-hidden="true"
             className={`relative h-6 w-11 rounded-full transition ${
-              granted ? 'bg-emerald-500' : 'bg-[var(--border-subtle)]'
+              granted ? 'bg-[var(--success)]' : 'bg-[var(--border-subtle)]'
             }`}
           >
-            <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+            <span className={`absolute top-1 h-4 w-4 rounded-full bg-[var(--paper)] transition-transform ${
               granted ? 'translate-x-6' : 'translate-x-1'
             }`} />
           </span>
@@ -729,7 +729,7 @@ export default function ObservabilityPrivacyControls() {
       <p
         id="product-analytics-status"
         className={`mt-4 text-xs leading-5 ${
-          state === 'error' ? 'text-rose-500' : 'text-[var(--text-secondary)]'
+          state === 'error' ? 'text-[var(--danger)]' : 'text-[var(--text-secondary)]'
         }`}
         aria-live="polite"
       >
@@ -749,7 +749,7 @@ export default function ObservabilityPrivacyControls() {
             const uid = activeUid.current;
             if (uid) void load(uid);
           }}
-          className="mt-3 min-h-12 rounded-xl border border-[var(--theme-border)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:bg-[var(--theme-surface-hover)]"
+          className="mt-3 min-h-12 rounded-xl border border-[var(--border-subtle)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
         >
           Retry
         </button>

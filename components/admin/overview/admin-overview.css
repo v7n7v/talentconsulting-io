@@ -95,7 +95,7 @@
 
 .admin-command-grid .admin-today-heading time {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -123,7 +123,7 @@
 
 .admin-command-grid .admin-today-metrics .admin-metric-label {
   color: var(--admin-text-secondary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 730;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -146,7 +146,7 @@
 
 .admin-command-grid .admin-today-metrics .admin-metric-detail {
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .admin-selected-signal {
@@ -185,7 +185,7 @@
 .admin-command-grid .admin-incident-eyebrow {
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -220,7 +220,7 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--admin-text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .admin-command-grid .admin-overview-main {
@@ -278,7 +278,7 @@
   background: transparent;
   color: var(--admin-text-muted);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -315,7 +315,7 @@
   min-height: 32px;
   border-radius: 7px;
   padding: 0 26px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -333,7 +333,7 @@
   background: var(--admin-surface-elevated);
   padding: 0 36px 0 14px;
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -465,12 +465,12 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .admin-command-grid .admin-freshness-copy strong {
   color: var(--admin-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .admin-freshness-progress {
@@ -510,7 +510,7 @@
   border-radius: 99px;
   background: var(--admin-critical-soft);
   color: var(--admin-critical);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -560,7 +560,7 @@
 .admin-command-grid .admin-event-row strong {
   overflow: hidden;
   color: var(--admin-text-primary);
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -569,17 +569,17 @@
 .admin-command-grid .admin-event-row small {
   overflow: hidden;
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .admin-command-grid .admin-priority-row > span:nth-child(n+3) {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .admin-inline-status {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 730;
 }
 
@@ -609,7 +609,7 @@
 .admin-command-grid .admin-event-row time,
 .admin-command-grid .admin-event-row > span:nth-child(4) {
   color: var(--admin-text-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .admin-command-grid .admin-event-row > .material-symbols-rounded {
@@ -652,7 +652,7 @@
 .admin-command-grid .admin-queue-clear p {
   margin: 0;
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .admin-command-grid .admin-panel-footer-actions {
@@ -666,7 +666,7 @@
 .admin-command-grid .admin-panel-footer-actions > a,
 .admin-command-grid .admin-panel-text-link {
   color: var(--admin-info);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-decoration: none;
 }
@@ -711,7 +711,7 @@
 
 .admin-command-grid .admin-incident-evidence-grid span {
   color: var(--admin-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -881,7 +881,7 @@
     z-index: 8;
     bottom: env(safe-area-inset-bottom);
     background: var(--admin-surface-panel);
-    box-shadow: 0 -10px 24px color-mix(in srgb, var(--admin-canvas) 78%, transparent);
+    box-shadow: var(--elevation-card);
   }
 
   .admin-command-grid .admin-overview-main .admin-panel-header {

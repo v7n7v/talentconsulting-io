@@ -10,7 +10,6 @@ interface Module {
   icon: string;
   path: string;
   description: string;
-  color: string;
 }
 
 const modules: Module[] = [
@@ -20,7 +19,6 @@ const modules: Module[] = [
     icon: 'description',
     path: '/suite/resume',
     description: 'Liquid Resume Builder',
-    color: '#ffffff',
   },
   {
     id: 'interview-studio',
@@ -28,7 +26,6 @@ const modules: Module[] = [
     icon: 'interpreter_mode',
     path: '/suite/interview-sim',
     description: 'Practice + Debrief',
-    color: '#06b6d4',
   },
   {
     id: 'oracle',
@@ -36,7 +33,6 @@ const modules: Module[] = [
     icon: '🔮',
     path: '/suite/market-oracle',
     description: 'JD Decoder + Career Intel',
-    color: '#00ff88',
   },
 ];
 
@@ -75,25 +71,20 @@ export default function CommandBar() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: 'spring', damping: 20 }}
       >
-        <div className="glass-card px-4 py-3 bg-black/40 border-white/10"
-             style={{
-               backdropFilter: 'blur(40px)',
-               WebkitBackdropFilter: 'blur(40px)',
-             }}
-        >
+        <div className="elevation-raised rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3">
           <div className="flex items-center gap-2">
             {/* Current Module */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-white/5 transition-colors"
+              className="flex min-h-11 items-center gap-3 px-4 py-2 rounded-xl transition-colors hover:bg-[var(--bg-hover)]"
             >
               <span className="text-2xl">{currentModule.icon}</span>
               <div className="text-left">
-                <div className="text-sm font-semibold text-white">{currentModule.name}</div>
-                <div className="text-xs text-slate-500">{currentModule.description}</div>
+                <div className="text-sm font-semibold text-[var(--text-primary)]">{currentModule.name}</div>
+                <div className="text-xs text-[var(--text-muted)]">{currentModule.description}</div>
               </div>
               <svg
-                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -102,15 +93,15 @@ export default function CommandBar() {
               </svg>
             </button>
 
-            <div className="w-px h-8 bg-white/10" />
+            <div className="w-px h-8 bg-[var(--border-subtle)]" />
 
             {/* Quick Actions */}
             <button
               onClick={() => setShowPalette(true)}
-              className="p-2 rounded-lg hover:bg-white/5 transition-colors group"
+              className="group flex min-h-11 min-w-11 items-center justify-center rounded-lg p-2 transition-colors hover:bg-[var(--bg-hover)]"
               title="Command Palette (Cmd+K)"
             >
-              <svg className="w-5 h-5 text-slate-400 group-hover:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
               </svg>
             </button>
@@ -126,22 +117,22 @@ export default function CommandBar() {
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="pt-3 mt-3 border-t border-white/10 grid grid-cols-2 gap-2">
+                <div className="pt-3 mt-3 border-t border-[var(--border-subtle)] grid grid-cols-2 gap-2">
                   {modules.map((module) => (
                     <button
                       key={module.id}
                       onClick={() => handleModuleClick(module)}
-                      className={`p-3 rounded-xl text-left transition-all ${
+                      className={`min-h-11 p-3 rounded-xl text-left transition-colors ${
                         currentModule.id === module.id
-                          ? 'bg-cyan-500/10 border border-cyan-500/30'
-                          : 'hover:bg-white/5 border border-transparent'
+                          ? 'bg-[var(--accent-dim)] border border-[var(--accent)]'
+                          : 'border border-transparent hover:bg-[var(--bg-hover)]'
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">{module.icon}</span>
                         <div className="flex-1">
-                          <div className="text-sm font-semibold text-white">{module.name}</div>
-                          <div className="text-xs text-slate-500">{module.description}</div>
+                          <div className="text-sm font-semibold text-[var(--text-primary)]">{module.name}</div>
+                          <div className="text-xs text-[var(--text-muted)]">{module.description}</div>
                         </div>
                       </div>
                     </button>
@@ -160,31 +151,27 @@ export default function CommandBar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-start justify-center pt-32"
+            className="fixed inset-0 z-[100] flex items-start justify-center bg-[color-mix(in_srgb,var(--bg-deep)_82%,transparent)] backdrop-blur-sm pt-32"
             onClick={() => setShowPalette(false)}
           >
             <motion.div
               initial={{ scale: 0.95, y: -20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: -20 }}
-              className="glass-card p-6 w-full max-w-2xl mx-4 bg-black/60"
-              style={{
-                backdropFilter: 'blur(40px)',
-                WebkitBackdropFilter: 'blur(40px)',
-              }}
+              className="elevation-raised mx-4 w-full max-w-2xl rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center gap-3 mb-4">
-                <svg className="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                 </svg>
                 <input
                   type="text"
                   placeholder="Search modules..."
-                  className="flex-1 bg-transparent border-none outline-none text-white placeholder-slate-500"
+                  className="min-h-11 flex-1 border-none bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
                   autoFocus
                 />
-                <kbd className="px-2 py-1 text-xs rounded bg-white/10 text-slate-400">ESC</kbd>
+                <kbd className="rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--text-muted)]">ESC</kbd>
               </div>
 
               <div className="space-y-1">
@@ -195,22 +182,19 @@ export default function CommandBar() {
                       handleModuleClick(module);
                       setShowPalette(false);
                     }}
-                    className="w-full p-4 rounded-xl hover:bg-white/5 transition-colors text-left group"
+                    className="group w-full min-h-11 p-4 rounded-xl text-left transition-colors hover:bg-[var(--bg-hover)]"
                   >
                     <div className="flex items-center gap-4">
-                      <div
-                        className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                        style={{ background: `${module.color}20`, border: `1px solid ${module.color}40` }}
-                      >
+                      <span className="icon-shell-neutral inline-grid h-12 w-12 shrink-0 place-items-center rounded-xl border text-2xl">
                         {module.icon}
-                      </div>
+                      </span>
                       <div className="flex-1">
-                        <div className="font-semibold text-white group-hover:text-cyan-400 transition-colors">
+                        <div className="font-semibold text-[var(--text-primary)] transition-colors group-hover:text-[var(--accent)]">
                           {module.name}
                         </div>
-                        <div className="text-sm text-slate-400">{module.description}</div>
+                        <div className="text-sm text-[var(--text-muted)]">{module.description}</div>
                       </div>
-                      <svg className="w-5 h-5 text-slate-600 group-hover:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
                       </svg>
                     </div>
@@ -218,9 +202,9 @@ export default function CommandBar() {
                 ))}
               </div>
 
-              <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between text-xs text-slate-500">
-                <div>Press <kbd className="px-1.5 py-0.5 rounded bg-white/10"><span className="material-symbols-rounded align-middle mr-1">keyboard_command_key</span>K</kbd> to open</div>
-                <div>Navigate with <kbd className="px-1.5 py-0.5 rounded bg-white/10">↑↓</kbd></div>
+              <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] flex items-center justify-between text-xs text-[var(--text-muted)]">
+                <div>Press <kbd className="rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5"><span className="material-symbols-rounded align-middle mr-1">keyboard_command_key</span>K</kbd> to open</div>
+                <div>Navigate with <kbd className="rounded border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5">↑↓</kbd></div>
               </div>
             </motion.div>
           </motion.div>

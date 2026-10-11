@@ -1,0 +1,16 @@
+[
+ {"query":"the applications table is scrolling sideways on my phone, can you check it","should_trigger":true},
+ {"query":"i changed the suite header layout - does it still work at 320","should_trigger":true},
+ {"query":"take a screenshot of /suite/job-search in light mode so i can see it","should_trigger":true},
+ {"query":"there's a console error on the resume page but only sometimes","should_trigger":true},
+ {"query":"the two resume template captures are still blocked because the browser wouldn't load localhost","should_trigger":true},
+ {"query":"check the new empty state renders properly in both themes before i merge","should_trigger":true},
+ {"query":"buttons on the mobile quick tools rail feel tiny, are they big enough to tap","should_trigger":true},
+ {"query":"is the cover letter editor done? i just finished restyling it","should_trigger":true},
+ {"query":"what breakpoints does tailwind use by default","should_trigger":false},
+ {"query":"write a playwright test that logs in and creates an application","should_trigger":false},
+ {"query":"our LCP is 3.1s on the landing page, how do we get it under 2.5","should_trigger":false},
+ {"query":"add aria-labels to the sidebar navigation items","should_trigger":false},
+ {"query":"the build is failing with a module not found error","should_trigger":false},
+ {"query":"how do i run the dev server on a different port","should_trigger":false}
+]

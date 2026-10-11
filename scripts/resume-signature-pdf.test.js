@@ -358,7 +358,8 @@ test('content inventory is canonical, flow-safe, and omits empty sections', asyn
   assert.doesNotMatch(source, /\bfixed(?:=|\s)/);
   assert.doesNotMatch(source, /position\s*:\s*['"]absolute['"]/);
   assert.doesNotMatch(source, /wrap=\{false\}/);
-  assert.match(source, /size="A4"/);
+  // Default A4 and explicit Letter dimensions are checked on real artifacts in
+  // resume-pdf-page-size.test.js; template source need not hardcode either size.
   assert.doesNotMatch(source, /fontSize\s*:\s*[0-6](?:\D|$)/);
   assert.match(source, /Omit<FlowTextProps, 'hyphenationCallback'>/);
   assert.match(source, /<PDFText \{\.\.\.props\} hyphenationCallback=\{NO_HYPHENATION\} \/>/);

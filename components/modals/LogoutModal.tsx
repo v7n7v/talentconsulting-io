@@ -19,7 +19,8 @@ export default function LogoutModal({ isOpen, onClose, onConfirm }: LogoutModalP
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 backdrop-blur-sm z-[100]"
+            style={{ background: 'var(--modal-backdrop)' }}
           />
 
           {/* Modal */}
@@ -29,9 +30,9 @@ export default function LogoutModal({ isOpen, onClose, onConfirm }: LogoutModalP
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="w-full max-w-xs rounded-2xl overflow-hidden shadow-xl"
+              className="w-full max-w-xs rounded-2xl overflow-hidden elevation-raised"
               style={{
-                background: 'var(--bg-surface)',
+                background: 'var(--card-bg)',
                 border: '1px solid var(--border-subtle)',
               }}
             >
@@ -40,7 +41,7 @@ export default function LogoutModal({ isOpen, onClose, onConfirm }: LogoutModalP
                 {/* Icon */}
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center mx-auto mb-4"
-                  style={{ background: 'rgba(239,68,68,0.1)' }}
+                  style={{ background: 'color-mix(in srgb, var(--danger) 12%, transparent)' }}
                 >
                   <span className="material-symbols-rounded icon-status-danger text-[22px]">logout</span>
                 </div>
@@ -55,14 +56,17 @@ export default function LogoutModal({ isOpen, onClose, onConfirm }: LogoutModalP
                 <div className="flex gap-2.5">
                   <button
                     onClick={onClose}
-                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+                    className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
                     style={{ border: '1px solid var(--border-subtle)' }}
                   >
                     Cancel
                   </button>
                   <button
                     onClick={onConfirm}
-                    className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                    className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                    style={{ background: 'var(--danger)', color: 'var(--accent-on)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'color-mix(in srgb, var(--danger) 88%, var(--bg-deep))')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'var(--danger)')}
                   >
                     Sign out
                   </button>

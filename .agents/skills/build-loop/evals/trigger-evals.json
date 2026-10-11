@@ -1,0 +1,18 @@
+[
+ {"query":"work through phase 1 of docs/design-system-v2-plan.md and keep going until the gates are green","should_trigger":true},
+ {"query":"continue with the migration until it's done, i'm going to bed","should_trigger":true},
+ {"query":"type-check is failing after my change, fix it and re-run everything","should_trigger":true},
+ {"query":"is this change actually complete? i don't want to merge something half done","should_trigger":true},
+ {"query":"the release-safety suite is red on stripe-checkout-recovery. can you just skip that test for now","should_trigger":true},
+ {"query":"finish the email v2 cutover","should_trigger":true},
+ {"query":"run through all the remaining phases back to back and report at the end","should_trigger":true},
+ {"query":"design-audit --ci says 3 metrics regressed, sort it out","should_trigger":true},
+ {"query":"what does the isMasterAccount helper do","should_trigger":false},
+ {"query":"explain how firestore rules enforce the resume truth locks","should_trigger":false},
+ {"query":"write a changelog entry for the admin command grid work","should_trigger":false},
+ {"query":"what's our current conversion rate target for activated users","should_trigger":false},
+ {"query":"add a tooltip to the ats score breakdown","should_trigger":false},
+ {"query":"summarise what the observability tracker says is still blocked","should_trigger":false},
+ {"query":"which deploy path serves production, cloud run or firebase ssr","should_trigger":false},
+ {"query":"i pasted a stack trace, what's causing it","should_trigger":false}
+]

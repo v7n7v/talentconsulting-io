@@ -30,21 +30,20 @@ const stressMarks = Array.from({ length: 24 }, (_, index) => ({
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} onClick={onChange} className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
-      <span className={`relative h-6 w-11 rounded-full border transition-colors ${checked ? 'border-cyan-400/50 bg-cyan-400/25' : 'border-[var(--border)] bg-[var(--bg-hover)]'}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-transform ${checked ? 'translate-x-5 bg-cyan-300' : 'translate-x-0.5 bg-[var(--text-muted)]'}`} />
+    <button type="button" role="switch" aria-checked={checked} onClick={onChange} className="inline-flex min-h-11 items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
+      <span className={`relative h-6 w-11 rounded-full border transition-colors ${checked ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border)] bg-[var(--bg-hover)]'}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-transform ${checked ? 'translate-x-5 bg-[var(--accent)]' : 'translate-x-0.5 bg-[var(--text-muted)]'}`} />
       </span>
       {label}
     </button>
   );
 }
 
-function PreviewStage({ theme, state, activity }: { theme: 'light' | 'dark'; state: Exclude<AssistantMarkMotionState, 'responding'>; activity: number }) {
-  const light = theme === 'light';
+function PreviewStage({ surface, label, state, activity }: { surface: string; label: string; state: Exclude<AssistantMarkMotionState, 'responding'>; activity: number }) {
   return (
-    <figure className={`grid min-h-[320px] place-items-center border p-8 ${light ? 'border-slate-200 bg-[#f7f9fc]' : 'border-white/10 bg-[#0c0e12]'}`}>
-      <AssistantMarkMotion size="lg" state={state} activity={activity} title={`Taco ${state} preview on ${theme}`} />
-      <figcaption className={`self-end text-[11px] font-semibold uppercase tracking-[0.12em] ${light ? 'text-slate-500' : 'text-slate-400'}`}>{theme}</figcaption>
+    <figure className={`grid min-h-[320px] place-items-center border border-[var(--border-subtle)] p-8 ${surface}`}>
+      <AssistantMarkMotion size="lg" state={state} activity={activity} title={`Taco ${state} preview on ${label}`} />
+      <figcaption className="self-end text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</figcaption>
     </figure>
   );
 }
@@ -91,10 +90,10 @@ export default function TacoMotionLab() {
       <header className="border-b border-[var(--border-subtle)] pb-5 pt-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-500">Taco identity</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">Taco identity</p>
             <h1 className="mt-1 text-2xl font-bold text-[var(--text-primary)]">Motion lab</h1>
           </div>
-          <span className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-cyan-500">Review candidate</span>
+          <span className="rounded-full border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--accent)]">Review candidate</span>
         </div>
       </header>
 
@@ -108,7 +107,7 @@ export default function TacoMotionLab() {
                 type="button"
                 aria-pressed={selectedState === item.id && !microphone.active}
                 onClick={() => { setSelectedState(item.id); setAutoCycle(false); }}
-                className={`min-h-9 min-w-0 rounded-[5px] px-1.5 text-[11px] font-semibold transition-colors sm:shrink-0 sm:px-3 sm:text-xs ${selectedState === item.id && !microphone.active ? 'bg-[var(--bg-hover)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+                className={`min-h-11 min-w-0 rounded-[5px] px-1.5 text-[11px] font-semibold transition-colors sm:shrink-0 sm:px-3 sm:text-xs ${selectedState === item.id && !microphone.active ? 'border border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
               >
                 {item.label}
               </button>
@@ -129,7 +128,7 @@ export default function TacoMotionLab() {
               value={Math.round(activity * 100)}
               disabled={microphone.active}
               onChange={event => setActivity(Number(event.target.value) / 100)}
-              className="h-2 w-full accent-cyan-500 disabled:opacity-45"
+              className="box-content h-2 w-full cursor-pointer py-[18px] accent-[var(--accent)] disabled:opacity-45"
               aria-label="Taco activity level"
             />
           </label>
@@ -137,7 +136,7 @@ export default function TacoMotionLab() {
           <button
             type="button"
             onClick={handleMicrophone}
-            className={`inline-flex h-10 items-center gap-2 rounded-[6px] border px-3 text-xs font-semibold transition-colors ${microphone.active ? 'border-emerald-400/35 bg-emerald-400/12 text-emerald-400' : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
+            className={`inline-flex h-11 items-center gap-2 rounded-[6px] border px-3 text-xs font-semibold transition-colors ${microphone.active ? 'border-transparent bg-[var(--success)] text-[var(--accent-on)]' : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
             aria-pressed={microphone.active}
           >
             <span className="material-symbols-rounded text-[17px]">{microphone.active ? 'mic' : 'mic_none'}</span>
@@ -153,8 +152,8 @@ export default function TacoMotionLab() {
           <span className="text-xs capitalize text-[var(--text-muted)]">{previewState}</span>
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
-          <PreviewStage theme="dark" state={previewState} activity={previewActivity} />
-          <PreviewStage theme="light" state={previewState} activity={previewActivity} />
+          <PreviewStage surface="bg-[var(--bg-deep)]" label="App surface" state={previewState} activity={previewActivity} />
+          <PreviewStage surface="bg-[var(--paper)]" label="Paper" state={previewState} activity={previewActivity} />
         </div>
       </section>
 

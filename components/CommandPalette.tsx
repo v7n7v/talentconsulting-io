@@ -266,12 +266,12 @@ export default function CommandPalette() {
         <button
           type="button"
           onClick={openPalette}
-          className="fixed bottom-5 left-1/2 z-30 hidden -translate-x-1/2 items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] shadow-sm transition hover:border-[var(--border)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 lg:flex"
+          className="elevation-card fixed bottom-5 left-1/2 z-30 hidden min-h-11 -translate-x-1/2 items-center gap-2 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30 lg:flex"
           aria-label="Open command palette"
         >
           <Icon name="search" className="text-[17px]" />
           <span>Command</span>
-          <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+          <kbd className="rounded-[7px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
             Cmd K
           </kbd>
         </button>
@@ -286,7 +286,7 @@ export default function CommandPalette() {
           onMouseDown={closePalette}
         >
           <div
-            className="w-full max-w-2xl overflow-hidden rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl"
+            className="elevation-raised w-full max-w-2xl overflow-hidden rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)]"
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="flex min-w-0 items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
@@ -298,14 +298,14 @@ export default function CommandPalette() {
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={handlePaletteKeyDown}
                 placeholder="Search tools or run an action"
-                className="min-h-10 min-w-0 flex-1 bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+                className="min-h-11 min-w-0 flex-1 bg-transparent text-base text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
                 aria-label="Search commands"
                 aria-activedescendant={selectedCommand ? `command-${selectedCommand.id}` : undefined}
               />
               <button
                 type="button"
                 onClick={closePalette}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
                 aria-label="Close command palette"
               >
                 <Icon name="close" className="text-[18px]" />
@@ -328,7 +328,7 @@ export default function CommandPalette() {
 
                   return (
                     <section key={category} className="py-1" aria-label={categoryLabels[category]}>
-                      <h2 className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                      <h2 className="px-3 py-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">
                         {categoryLabels[category]}
                       </h2>
                       <div className="space-y-1">
@@ -358,7 +358,7 @@ export default function CommandPalette() {
                                     {command.label}
                                   </span>
                                   {command.recommended && (
-                                    <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+                                    <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
                                       Review first
                                     </span>
                                   )}

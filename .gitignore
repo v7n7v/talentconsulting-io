@@ -90,3 +90,9 @@ YOUR_CREDENTIALS.txt
 # .claude/skills is the local install target, per docs/claude-skills/README.md.
 # Tracking both would let the two copies diverge silently.
 /.claude
+
+# Local project tracking
+/.project-map/
+
+# Local website research captures
+.firecrawl/

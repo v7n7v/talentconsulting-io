@@ -124,6 +124,13 @@ function daysUntil(value?: string) {
   return Math.ceil((date - Date.now()) / (1000 * 60 * 60 * 24));
 }
 
+// match_score is `Number(data.fitScore || data.match_score || 0)` — a 0 means the
+// packet was never scored, not a measured 0% fit. Never render that 0 as data:
+// a genuine fit score renders as its percentage, an absent one as a labelled absence.
+function hasMatchScore(item: AgentQueueItem) {
+  return typeof item.match_score === 'number' && item.match_score > 0;
+}
+
 function deriveNextAction(item: AgentQueueItem) {
   if (item.nextAction) return item.nextAction;
   if (hasApplicationTracker(item)) return 'Tracker draft created. Submit manually from the posting, then mark applied in Applications.';
@@ -437,7 +444,7 @@ function packetRequirementStatus(isReady: boolean, hasConcern = false): ProofReq
 }
 
 function buildQueueProofReport(item: AgentQueueItem, twin?: CareerTwinSummary | null): ProofEngineReportData {
-  const score = clampScore(item.match_score || 0);
+  const score = hasMatchScore(item) ? clampScore(item.match_score) : null;
   const fitSignals = item.fitSignals || [];
   const riskSignals = item.riskSignals || [];
   const skillGaps = twin?.memory?.activeSearch?.skillGaps || [];
@@ -450,8 +457,8 @@ function buildQueueProofReport(item: AgentQueueItem, twin?: CareerTwinSummary | 
   const requirements: ProofEngineReportData['requirements'] = [
     {
       label: 'Role fit',
-      status: score >= 75 ? 'matched' : score >= 55 ? 'partial' : 'missing',
-      evidence: item.match_reason || `${score}% match score from the queued role.`,
+      status: score == null ? 'missing' : score >= 75 ? 'matched' : score >= 55 ? 'partial' : 'missing',
+      evidence: item.match_reason || (score != null ? `${score}% match score from the queued role.` : 'No fit score was measured for this role yet.'),
       source: 'Taco fit score',
     },
     {
@@ -768,7 +775,7 @@ function CareerTwinQueueContext({
 
   return (
     <section
-      className="mb-5 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4"
+      className="elevation-card mb-5 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4"
       aria-busy={loading}
     >
       <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -793,7 +800,7 @@ function CareerTwinQueueContext({
         <button
           type="button"
           onClick={onAskSona}
-          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
         >
           <AssistantMark size="xs" state="listening" />
           Review memory
@@ -809,7 +816,7 @@ function CareerTwinQueueContext({
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
           >
             <span className="material-symbols-rounded text-[16px]" aria-hidden="true">refresh</span>
             Retry
@@ -857,7 +864,7 @@ function ActionTile({
       type="button"
       onClick={onClick}
       data-tone={tone}
-      className="group flex min-w-0 items-center gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+      className="group elevation-interactive flex min-w-0 items-center gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 text-left transition-all hover:border-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
     >
       <SuiteToolIcon icon={icon} size="sm" />
       <div className="min-w-0 flex-1">
@@ -900,20 +907,24 @@ function QueueCard({
 
   return (
     <article
-      className={`rounded-[22px] border bg-[var(--card-bg)] p-4 transition-all hover:border-[var(--border)] ${
+      className={`elevation-card rounded-[22px] border bg-[var(--card-bg)] p-4 transition-all hover:border-[var(--border)] ${
         selected ? 'border-[var(--border)] ring-2 ring-[var(--accent)]' : 'border-[var(--border-subtle)]'
       }`}
     >
       <button type="button" onClick={onSelect} className="block w-full text-left focus:outline-none">
         <div className="flex min-w-0 items-start gap-3">
           <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-primary)]">
-            <span className="text-sm font-black tabular-nums">{Math.round(item.match_score || 0)}%</span>
+            {hasMatchScore(item) ? (
+              <span className="text-sm font-black tabular-nums">{Math.round(item.match_score)}%</span>
+            ) : (
+              <span className="material-symbols-rounded text-[22px] text-[var(--text-muted)]" role="img" aria-label="Fit not scored">remove</span>
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="min-w-0 text-base font-bold leading-6 text-[var(--text-primary)]">{item.job_title}</h3>
               {expiringSoon && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-primary)]">
+                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-bold text-[var(--text-primary)]">
                   <span className="material-symbols-rounded icon-status-warning text-[13px]" aria-hidden="true">schedule</span>
                   Expiring
                 </span>
@@ -955,7 +966,7 @@ function QueueCard({
               status: item.status,
             },
           )}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] transition-all hover:bg-[var(--bg-hover)]"
+          className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-semibold text-[var(--text-primary)] transition-all hover:bg-[var(--bg-hover)]"
         >
           <AssistantMark size="xs" state="idle" />
           Ask Taco
@@ -967,15 +978,15 @@ function QueueCard({
               onClick={onApprove}
               disabled={loading || approvalBlocked}
               title={approvalBlocked ? `Resolve before approval: ${approvalBlockers.slice(0, 3).join(', ')}` : undefined}
-              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--text-primary)] px-3 py-2 text-xs font-semibold text-[var(--bg-deep)] transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--text-primary)] px-3 py-2 text-xs font-semibold text-[var(--bg-deep)] transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
             >
               {approvalBlocked ? 'Resolve checks first' : 'Approve packet'}
             </button>
-            <button type="button" onClick={onDismiss} disabled={loading} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-hover)] disabled:opacity-45">Dismiss</button>
+            <button type="button" onClick={onDismiss} disabled={loading} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-hover)] disabled:opacity-45">Dismiss</button>
           </>
         )}
         {trackable && (
-          <button type="button" onClick={onApply} disabled={loading} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--text-primary)] px-3 py-2 text-xs font-semibold text-[var(--bg-deep)] transition-all hover:opacity-90 disabled:opacity-45">Track and open posting</button>
+          <button type="button" onClick={onApply} disabled={loading} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--text-primary)] px-3 py-2 text-xs font-semibold text-[var(--bg-deep)] transition-all hover:opacity-90 disabled:opacity-45">Track and open posting</button>
         )}
       </div>
     </article>
@@ -992,14 +1003,14 @@ function ActionFeedback({
   if (!message) return null;
 
   return (
-    <div role="alert" className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
+    <div role="alert" className="elevation-card rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
       <div className="flex min-w-0 items-start gap-2">
         <span className="material-symbols-rounded icon-status-danger mt-0.5 shrink-0 text-[18px]" aria-hidden="true">error</span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-[var(--text-primary)]">Action needs attention</p>
           <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{message}</p>
         </div>
-        <button type="button" onClick={onDismiss} className="rounded-lg p-1 text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" aria-label="Dismiss action message">
+        <button type="button" onClick={onDismiss} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-lg text-[var(--text-muted)] transition hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" aria-label="Dismiss action message">
           <span className="material-symbols-rounded text-[18px]" aria-hidden="true">close</span>
         </button>
       </div>
@@ -1019,16 +1030,9 @@ function PacketReadinessCockpit({
   const reviewCount = readiness.filter(entry => entry.status === 'review').length;
   const blockedCount = readiness.filter(entry => entry.status === 'blocked').length;
   const readyCount = readiness.filter(entry => entry.status === 'ready' || entry.status === 'approved').length;
-  const readinessScore = Math.round(
-    (readiness.reduce((sum, entry) => {
-      if (entry.status === 'blocked') return sum;
-      if (entry.status === 'review') return sum + 0.6;
-      return sum + 1;
-    }, 0) / readiness.length) * 100,
-  );
 
   return (
-    <section className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
+    <section className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Packet cockpit</p>
@@ -1037,8 +1041,9 @@ function PacketReadinessCockpit({
             Resume, cover letter, outreach, screening notes, proof checks, and approval gate in one place. Current state: {formatPacketState(item.packetStatus)}.
           </p>
         </div>
-        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
-          <span className="text-lg font-black tabular-nums text-[var(--text-primary)]">{readinessScore}%</span>
+        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card">
+          <span className="text-lg font-black tabular-nums text-[var(--text-primary)]">{readyCount}/{readiness.length}</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">Ready</span>
         </div>
       </div>
 
@@ -1053,7 +1058,7 @@ function PacketReadinessCockpit({
                   <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{entry.description}</p>
                 </div>
               </div>
-              <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold ${READINESS_STATUS_CLASS[entry.status]}`}>
+              <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-bold ${READINESS_STATUS_CLASS[entry.status]}`}>
                 {entry.status === 'blocked' && <span className="material-symbols-rounded icon-status-danger text-[13px]" aria-hidden="true">error</span>}
                 {entry.status === 'review' && <span className="material-symbols-rounded icon-status-warning text-[13px]" aria-hidden="true">rate_review</span>}
                 {entry.statusLabel}
@@ -1066,15 +1071,15 @@ function PacketReadinessCockpit({
       <div className="mt-4 grid gap-2 sm:grid-cols-3">
         <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
           <p className="text-xl font-black tabular-nums text-[var(--text-primary)]">{readyCount}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Ready</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Ready</p>
         </div>
         <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
           <p className="text-xl font-black tabular-nums text-[var(--text-primary)]">{reviewCount}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Review</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Review</p>
         </div>
         <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
           <p className="text-xl font-black tabular-nums text-[var(--text-primary)]">{blockedCount}</p>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Blocked</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Blocked</p>
         </div>
       </div>
 
@@ -1097,7 +1102,7 @@ function PacketReadinessCockpit({
                   twin,
                   { packetId: item.id, company: item.company, role: item.job_title },
                 )}
-                className="shrink-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
               >
                 {draft.actionLabel}
               </button>
@@ -1195,7 +1200,7 @@ function PacketDrawer({
     <>
       <button
         type="button"
-        className="fixed inset-0 z-[54] cursor-default bg-black/20 backdrop-blur-[1px] lg:hidden"
+        className="fixed inset-0 z-[54] cursor-default bg-[var(--modal-backdrop)] backdrop-blur-[1px] lg:hidden"
         onClick={onClose}
         aria-label="Close application packet"
         tabIndex={-1}
@@ -1203,7 +1208,7 @@ function PacketDrawer({
       <aside
         ref={drawerRef}
         tabIndex={-1}
-        className="fixed inset-x-3 bottom-3 top-[7.25rem] z-[55] overflow-hidden rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] shadow-2xl outline-none lg:sticky lg:top-6 lg:z-auto lg:h-[calc(100dvh-3rem)] lg:w-[430px] lg:shrink-0"
+        className="elevation-raised fixed inset-x-3 bottom-3 top-[7.25rem] z-[55] overflow-hidden rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] outline-none lg:sticky lg:top-6 lg:z-auto lg:h-[calc(100dvh-3rem)] lg:w-[430px] lg:shrink-0"
         role="dialog"
         aria-modal="true"
         aria-label="Application packet"
@@ -1219,27 +1224,31 @@ function PacketDrawer({
                 <p className="mt-1 text-sm leading-5 text-[var(--text-secondary)]">{item.company} · {item.location}</p>
               </div>
             </div>
-            <button ref={closeButtonRef} type="button" onClick={onClose} className="rounded-xl p-2 text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" aria-label="Close packet">
+            <button ref={closeButtonRef} type="button" onClick={onClose} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl text-[var(--text-muted)] transition-all hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" aria-label="Close packet">
               <span className="material-symbols-rounded text-[20px]">close</span>
             </button>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
-              <p className="text-xl font-black tabular-nums text-[var(--text-primary)]">{Math.round(item.match_score || 0)}%</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Fit</p>
+              {hasMatchScore(item) ? (
+                <p className="text-xl font-black tabular-nums text-[var(--text-primary)]">{Math.round(item.match_score)}%</p>
+              ) : (
+                <p className="text-sm font-bold text-[var(--text-muted)]">Not scored</p>
+              )}
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Fit</p>
             </div>
             <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
               <p className="text-sm font-bold text-[var(--text-primary)]">{formatShortDate(item.expires_at)}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Review by</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Review by</p>
             </div>
             <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
               <p className="text-sm font-bold text-[var(--text-primary)]">{status.label}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Status</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Status</p>
             </div>
             <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
               <p className="truncate text-sm font-bold text-[var(--text-primary)]">{item.sourceMeta?.sourceType ? formatSourceType(item.sourceMeta.sourceType) : getPacketSourceName(item)}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Source</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Source</p>
             </div>
           </div>
         </div>
@@ -1265,7 +1274,7 @@ function PacketDrawer({
                     packetStatus: item.packetStatus,
                   },
                 )}
-                className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
                 <AssistantMark size="xs" state="listening" />
                 Ask Taco to review
@@ -1277,7 +1286,7 @@ function PacketDrawer({
                 onClick={onApprove}
                 disabled={actionLoading || item.source === 'legacy_sona' || approvalBlocked}
                 title={approvalBlocked ? `Resolve before approval: ${approvalBlockers.slice(0, 3).join(', ')}` : undefined}
-                className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <span className="material-symbols-rounded text-[18px]" aria-hidden="true">{approvalBlocked ? 'lock' : 'task_alt'}</span>
                 {approvalBlocked ? 'Resolve checks first' : 'Approve packet'}
@@ -1287,7 +1296,7 @@ function PacketDrawer({
                 type="button"
                 onClick={onApply}
                 disabled={actionLoading}
-                className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:opacity-45"
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:opacity-45"
               >
                 <span className="material-symbols-rounded text-[18px]" aria-hidden="true">open_in_new</span>
                 Track and open posting
@@ -1314,7 +1323,7 @@ function PacketDrawer({
                 riskSignals: item.riskSignals || [],
               },
             )}
-            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
           >
             <span className="material-symbols-rounded text-[18px]" aria-hidden="true">science</span>
             Resolve checks with Taco
@@ -1372,7 +1381,7 @@ function PacketDrawer({
                     nextAction: deriveNextAction(item),
                   },
                 )}
-                className="mt-3 inline-flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-bold text-[var(--text-primary)]"
+                className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-xs font-bold text-[var(--text-primary)]"
               >
                 <AssistantMark size="xs" state="listening" />
                 Ask Taco for a plan
@@ -1406,7 +1415,7 @@ function PacketDrawer({
                     twin,
                     { packetId: item.id, company: item.company, role: item.job_title },
                   )}
-                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
                 >
                   Improve
                 </button>
@@ -1433,7 +1442,7 @@ function PacketDrawer({
                     type="button"
                     onClick={() => onFeedback(tag)}
                     disabled={item.source === 'legacy_sona'}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-45 ${
+                    className={`inline-flex min-h-11 items-center justify-center rounded-full border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-45 ${
                       active
                         ? 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                         : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
@@ -1495,7 +1504,7 @@ function QueueErrorState({
   onRetry: () => void;
 }) {
   return (
-    <section role="alert" className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
+    <section role="alert" className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <AnimatedToolIcon icon="error" tone="rose" size="sm" />
@@ -1507,7 +1516,7 @@ function QueueErrorState({
         <button
           type="button"
           onClick={onRetry}
-          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
         >
           <span className="material-symbols-rounded text-[18px]" aria-hidden="true">refresh</span>
           Retry
@@ -1533,7 +1542,7 @@ function AgentQueueEmptyState({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(320px,1.05fr)]">
-      <section className="rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
+      <section className="elevation-card rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
         <div className="flex min-w-0 items-start gap-4">
           <div className="grid h-16 w-16 shrink-0 place-items-center rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
             <AssistantMark size="md" state="thinking" />
@@ -1567,7 +1576,7 @@ function AgentQueueEmptyState({
           <button
             type="button"
             onClick={onSetPreferences}
-            className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
           >
             <span className="material-symbols-rounded text-[18px]" aria-hidden="true">tune</span>
             Set preferences
@@ -1575,7 +1584,7 @@ function AgentQueueEmptyState({
           <button
             type="button"
             onClick={onAskSona}
-            className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
           >
             <AssistantMark size="xs" state="listening" />
             Ask Taco
@@ -1873,7 +1882,7 @@ export default function AgentQueuePage() {
     return (
       <div className="mobile-app-content min-h-dvh px-4 py-3 md:p-6 lg:p-8">
         <div className="mx-auto grid max-w-5xl items-start gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-          <section className="rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 shadow-sm sm:p-8">
+          <section className="elevation-card rounded-[28px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 sm:p-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
               <div className="grid h-20 w-20 shrink-0 place-items-center rounded-[24px] border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
                 <AssistantMark size="md" state="idle" />
@@ -1912,7 +1921,7 @@ export default function AgentQueuePage() {
               ['Truth gate', 'Resume facts, risk notes, and missing proof stay visible before approval.', 'verified_user'],
               ['Manual control', 'Taco prepares the next move. You decide what gets submitted.', 'approval_delegation'],
             ].map(([title, body, icon]) => (
-              <div key={title} className="rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+              <div key={title} className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
                   <span className="material-symbols-rounded text-[19px]">{icon}</span>
                 </span>
@@ -1936,7 +1945,7 @@ export default function AgentQueuePage() {
 
   return (
     <div className="mobile-app-content min-h-dvh px-4 py-3 lg:p-8">
-      <div className="relative mb-6 rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 lg:p-6">
+      <div className="elevation-card relative mb-6 rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 lg:p-6">
         <div className="absolute right-4 top-4 lg:right-6 lg:top-6">
           <PageHelp toolId="agent-queue" />
         </div>
@@ -1958,7 +1967,7 @@ export default function AgentQueuePage() {
                 twin,
                 { queueTotal: stats.total, pending: stats.pending, risks: stats.risks },
               )}
-              className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] transition-all hover:bg-[var(--bg-hover)]"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] transition-all hover:bg-[var(--bg-hover)]"
             >
               <AssistantMark size="xs" state="listening" />
               Ask Taco
@@ -1966,7 +1975,7 @@ export default function AgentQueuePage() {
             <button
               type="button"
               onClick={() => router.push('/suite/job-search')}
-              className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] transition-all hover:bg-[var(--bg-hover)]"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] transition-all hover:bg-[var(--bg-hover)]"
             >
               <span className="material-symbols-rounded text-[18px]">tune</span>
               Preferences
@@ -2020,7 +2029,7 @@ export default function AgentQueuePage() {
             />
           </section>
 
-          <section className="mb-5 overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)]">
+          <section className="elevation-card mb-5 overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)]">
             <div className="flex gap-2 overflow-x-auto p-3" aria-label="Agent Queue status summary">
               {[
                 { icon: 'inventory_2', label: 'Total', value: stats.total, action: () => { setView('queue'); setStatusFilter('all'); } },
@@ -2043,7 +2052,7 @@ export default function AgentQueuePage() {
             </div>
           </section>
 
-          <div className="mb-5 flex flex-col gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="elevation-card mb-5 flex flex-col gap-3 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex overflow-x-auto rounded-xl bg-[var(--bg-surface)] p-1" role="group" aria-label="Agent Queue view">
               {(Object.keys(VIEW_CONFIG) as QueueView[]).map(key => (
                 <button
@@ -2052,8 +2061,8 @@ export default function AgentQueuePage() {
                   aria-pressed={view === key}
                   aria-current={view === key ? 'page' : undefined}
                   onClick={() => { setView(key); setSelected(null); setActionError(''); }}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all ${
-                    view === key ? 'bg-[var(--card-bg)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  className={`inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all ${
+                    view === key ? 'elevation-card bg-[var(--card-bg)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   <span className="material-symbols-rounded text-[16px]">{VIEW_CONFIG[key].icon}</span>
@@ -2069,13 +2078,13 @@ export default function AgentQueuePage() {
                   value={query}
                   onChange={event => setQuery(event.target.value)}
                   placeholder="Search role, company, signal..."
-                  className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] py-2.5 pl-14 pr-3 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--border)] focus:ring-2 focus:ring-[var(--accent)]"
+                  className="min-h-11 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] py-2.5 pl-14 pr-3 text-base text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--border)] focus:ring-2 focus:ring-[var(--accent)]"
                 />
               </div>
               <select
                 value={statusFilter}
                 onChange={event => setStatusFilter(event.target.value as StatusFilter)}
-                className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2.5 text-sm font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--border)] focus:ring-2 focus:ring-[var(--accent)]"
+                className="min-h-11 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2.5 text-base font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--border)] focus:ring-2 focus:ring-[var(--accent)]"
               >
                 <option value="all">All statuses</option>
                 {(Object.keys(STATUS_CONFIG) as AgentQueueItem['status'][]).map(status => (
@@ -2098,7 +2107,7 @@ export default function AgentQueuePage() {
               )}
             />
           ) : visibleItems.length === 0 ? (
-            <div className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-8 text-center">
+            <div className="elevation-card rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-8 text-center">
               <AnimatedToolIcon icon="filter_alt_off" tone="slate" size="md" />
               <h2 className="mt-4 text-xl font-bold text-[var(--text-primary)]">No packets match the current filters</h2>
               <p className="mt-2 text-sm text-[var(--text-secondary)]">Clear the search or switch status to see the rest of the queue.</p>
@@ -2107,7 +2116,7 @@ export default function AgentQueuePage() {
             <div className="flex gap-5">
               <main className="min-w-0 flex-1">
                 {view === 'settings' ? (
-                  <div className="rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
+                  <div className="elevation-card rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
                     <div className="flex items-start gap-4">
                       <AnimatedToolIcon icon="tune" tone="blue" size="md" />
                       <div>
@@ -2116,7 +2125,7 @@ export default function AgentQueuePage() {
                         <button
                           type="button"
                           onClick={() => router.push('/suite/job-search')}
-                          className="mt-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
+                          className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
                         >
                           Open preferences
                         </button>
@@ -2126,17 +2135,21 @@ export default function AgentQueuePage() {
                 ) : view === 'board' ? (
                   <div className="grid gap-4 xl:grid-cols-5">
                     {groupedBoard.map(group => (
-                      <section key={group.status} className="min-w-0 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3">
+                      <section key={group.status} className="elevation-card min-w-0 rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-3">
                         <div className="mb-3 flex items-center justify-between">
                           <span className="text-xs font-bold text-[var(--text-primary)]">{STATUS_CONFIG[group.status].label}</span>
-                          <span className="rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[10px] font-bold text-[var(--text-secondary)]">{group.items.length}</span>
+                          <span className="rounded-full bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] font-bold text-[var(--text-secondary)]">{group.items.length}</span>
                         </div>
                         <div className="space-y-2">
                           {group.items.map(item => (
                             <button key={item.id} type="button" onClick={() => selectPacket(item)} className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-left transition-all hover:border-[var(--border)]">
                               <p className="line-clamp-2 text-sm font-bold leading-5 text-[var(--text-primary)]">{item.job_title}</p>
                               <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">{item.company}</p>
-                              <p className="mt-2 text-xs font-black tabular-nums text-[var(--text-primary)]">{item.match_score}%</p>
+                              {hasMatchScore(item) ? (
+                                <p className="mt-2 text-xs font-black tabular-nums text-[var(--text-primary)]">{Math.round(item.match_score)}%</p>
+                              ) : (
+                                <p className="mt-2 text-[11px] font-semibold text-[var(--text-muted)]">Not scored</p>
+                              )}
                             </button>
                           ))}
                         </div>
@@ -2160,7 +2173,7 @@ export default function AgentQueuePage() {
                               twin,
                               { pending: stats.pending, expiring: stats.expiring, risks: stats.risks },
                             )}
-                            className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
+                            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
                           >
                             Prioritize with Taco
                           </button>
@@ -2188,7 +2201,7 @@ export default function AgentQueuePage() {
                       </div>
                     </section>
                     ) : (
-                      <section className="rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                      <section className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <h2 className="text-base font-bold text-[var(--text-primary)]">All visible packets are prioritized above</h2>
@@ -2197,7 +2210,7 @@ export default function AgentQueuePage() {
                           <button
                             type="button"
                             onClick={() => setView('queue')}
-                            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
+                            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-bold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)]"
                           >
                             <span className="material-symbols-rounded text-[17px]" aria-hidden="true">view_list</span>
                             Open Queue

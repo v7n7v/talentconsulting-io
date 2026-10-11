@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '@/components/ThemeProvider';
+import { motion } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { authFetch } from '@/lib/auth-fetch';
 import { openSona } from '@/lib/assistant/execution-context';
@@ -21,7 +20,7 @@ import {
   titleCase,
   type CareerTwinSummary,
 } from '@/lib/career-twin-client';
-import { SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
+import { SuiteEmptyState, SuiteMetricCard, SuitePanel, SuiteToolHeader, SuiteToolIcon, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import SuiteSignedOut from '@/components/suite/SuiteSignedOut';
 import dynamic from 'next/dynamic';
 
@@ -136,7 +135,7 @@ function MemoryFact({
       <div className="flex min-w-0 items-start gap-2">
         <Icon name={icon} className="icon-neutral mt-0.5 shrink-0 text-[16px]" />
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">{label}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">{label}</p>
           <p className="premium-copy-wrap mt-1 text-sm font-semibold text-[var(--text-primary)]">{value}</p>
         </div>
       </div>
@@ -237,7 +236,7 @@ function CareerTwinMemoryPanel({
             <button
               type="button"
               onClick={() => onAskSona('My Career Twin memory loaded with missing fields. Help me identify what data to add next.', 'Career Twin repair')}
-              className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
+              className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
             >
               <Icon name="auto_awesome" className="text-[18px]" />
               Ask Taco
@@ -267,8 +266,10 @@ function CareerTwinMemoryPanel({
     skillGaps: [],
     fitAnalysisCount: 0,
   };
-  const completeness = clampScore(normalizedTwin.completeness.score);
-  const coverage = clampScore(normalizedTwin.behavioralBank.coverageScore);
+  const completenessRaw = normalizedTwin.completeness.score;
+  const coverageRaw = normalizedTwin.behavioralBank.coverageScore;
+  const completeness = completenessRaw != null && completenessRaw > 0 ? clampScore(completenessRaw) : null;
+  const coverage = coverageRaw != null && coverageRaw > 0 ? clampScore(coverageRaw) : null;
   const nextActions = memory.nextBestActions || [];
   const missing = normalizedTwin.completeness.missing || [];
 
@@ -295,7 +296,7 @@ function CareerTwinMemoryPanel({
               <button
                 type="button"
                 onClick={() => onAskSona('Review my Career Twin memory. Tell me what is strongest, what is missing, and the next 3 actions that would improve my job search this week.', 'Career Twin')}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
               >
                 <Icon name="auto_awesome" className="text-[18px]" />
                 Ask Taco
@@ -304,7 +305,7 @@ function CareerTwinMemoryPanel({
                 type="button"
                 onClick={onExport}
                 disabled={!normalizedTwin.exportable || exporting}
-                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
               >
                 <Icon name={exporting ? 'progress_activity' : 'download'} className={`text-[16px] ${exporting ? 'animate-spin' : ''}`} />
                 {normalizedTwin.exportable ? 'Export JSON' : 'Export locked'}
@@ -313,8 +314,8 @@ function CareerTwinMemoryPanel({
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MemoryFact label="Completeness" value={`${completeness}%`} icon="fact_check" />
-            <MemoryFact label="Story coverage" value={`${coverage}% across ${normalizedTwin.behavioralBank.totalStories} stories`} icon="auto_stories" />
+            <MemoryFact label="Completeness" value={completeness != null ? `${completeness}%` : 'Not computed'} icon="fact_check" />
+            <MemoryFact label="Story coverage" value={coverage != null ? `${coverage}% across ${normalizedTwin.behavioralBank.totalStories} stories` : 'Not computed'} icon="auto_stories" />
             <MemoryFact label="Applications" value={metricValue(activeSearch.totalApplications)} icon="work" />
             <MemoryFact label="Queued packets" value={metricValue(activeSearch.queuedApplications)} icon="pending_actions" />
           </div>
@@ -427,7 +428,7 @@ function CareerTwinMemoryPanel({
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <p className="premium-heading-wrap text-sm font-bold text-[var(--text-primary)]">{action.label}</p>
-                      <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                      <span className="rounded-[8px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">
                         {action.priority}
                       </span>
                     </div>
@@ -438,7 +439,7 @@ function CareerTwinMemoryPanel({
                   <button
                     type="button"
                     onClick={() => onOpenAction(action.path)}
-                    className="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
                   >
                     <Icon name="open_in_new" className="text-[15px]" />
                     Open
@@ -446,7 +447,7 @@ function CareerTwinMemoryPanel({
                   <button
                     type="button"
                     onClick={() => onAskSona(`Prepare this Career Twin action for review: ${action.label}. Reason: ${action.reason}. Do not submit, message, or change anything externally.`, action.label)}
-                    className="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-3 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
+                    className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-3 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/30"
                   >
                     <Icon name="auto_awesome" className="text-[15px]" />
                     Ask Taco
@@ -467,10 +468,10 @@ function CareerTwinMemoryPanel({
           <div className="mt-5 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-muted)]">Completeness</span>
-              <span className="text-xs font-bold tabular-nums text-[var(--text-primary)]">{completeness}%</span>
+              <span className="text-xs font-bold tabular-nums text-[var(--text-primary)]">{completeness != null ? `${completeness}%` : 'Not computed'}</span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--bg-elevated)]" aria-label="Career Twin completeness">
-              <div className="h-full rounded-full bg-[var(--text-primary)]" style={{ width: `${completeness}%` }} />
+              <div className="h-full rounded-full bg-[var(--text-primary)]" style={{ width: `${completeness ?? 0}%` }} />
             </div>
             {missing.length > 0 && (
               <p className="premium-copy-wrap mt-3 text-xs leading-5 text-[var(--text-muted)]">
@@ -485,8 +486,6 @@ function CareerTwinMemoryPanel({
 }
 
 export default function IntelligencePage() {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const router = useRouter();
   const { user } = useStore();
 
@@ -597,13 +596,10 @@ export default function IntelligencePage() {
     }
   }, [activeTab, user]);
 
-  const cardBg = isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.03)';
-  const cardBorder = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)';
-
   const getScoreColor = (score: number) => {
-    if (score >= 70) return '#22c55e';
-    if (score >= 45) return '#f59e0b';
-    return '#ef4444';
+    if (score >= 70) return 'var(--success)';
+    if (score >= 45) return 'var(--warning)';
+    return 'var(--danger)';
   };
 
   const getScoreLabel = (score: number) => {
@@ -648,24 +644,15 @@ export default function IntelligencePage() {
   const outcomesMovedForward = (outcomeStats?.callbackCount || 0)
     + (outcomeStats?.interviewCount || 0)
     + (outcomeStats?.offerCount || 0);
-  const outcomeInsightColor = outcomesMovedForward > 0 ? '#22c55e' : '#f59e0b';
+  const outcomeInsightColor = outcomesMovedForward > 0 ? 'var(--success)' : 'var(--warning)';
 
   const ratedColor = getScoreColor(profile?.healthScore ?? 0);
   const scoreColor = ratingIsSupported ? ratedColor : 'var(--text-secondary)';
-  const scoreHeroBg = ratingIsSupported
-    ? `linear-gradient(135deg, ${ratedColor}06, ${cardBg})`
-    : cardBg;
-  const scoreHeroBorder = ratingIsSupported ? `${ratedColor}20` : 'var(--border-subtle)';
-  const scorePillBg = ratingIsSupported ? `${ratedColor}15` : 'var(--bg-elevated)';
-  const scorePillBorder = ratingIsSupported ? `${ratedColor}25` : 'var(--border-subtle)';
 
   return (
     <SuiteToolShell variant="standard">
       <SuiteToolHeader tool="intelligence">
-        <div className="flex gap-1 p-1 rounded-xl w-full sm:w-fit mt-3 overflow-x-auto scrollbar-hide" style={{
-          background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-        }}>
+        <div className="mt-3 flex w-full gap-1 overflow-x-auto scrollbar-hide rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1 sm:w-fit">
           {([
             { key: 'overview' as IntelTab, label: 'Overview', icon: 'neurology' },
             { key: 'pulse' as IntelTab, label: 'Weekly Pulse', icon: 'monitor_heart' },
@@ -675,10 +662,10 @@ export default function IntelligencePage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              className={`flex min-h-11 items-center gap-2 whitespace-nowrap rounded-[10px] px-3 py-2.5 text-sm font-medium transition-colors sm:px-4 ${
                 activeTab === tab.key
-                  ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                  ? 'border border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
               }`}
             >
               <span className="material-symbols-rounded text-[18px]">{tab.icon}</span>
@@ -728,30 +715,22 @@ export default function IntelligencePage() {
               {/* KPI Cards. Every rate here is null until it has a denominator;
                   `?? 0` would print four undefined ratios as measured zeros,
                   which is what this tab used to do on a brand-new account. */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                 {[
-                  { label: 'Response Rate', value: pctOrDash(outcomeStats.responseRate), icon: 'reply', color: '#06b6d4', desc: `Of ${outcomeStats.totalApplied} sent` },
-                  { label: 'Ghost Rate', value: pctOrDash(outcomeStats.ghostRate), icon: 'visibility_off', color: '#6b7280', desc: `Of ${outcomeStats.totalReported} reported` },
-                  { label: 'Avg Response', value: outcomeStats.avgDaysToResponse ? `${outcomeStats.avgDaysToResponse}d` : '—', icon: 'schedule', color: '#f59e0b', desc: 'Days until first response' },
-                  { label: 'Interview Rate', value: pctOrDash(outcomeStats.interviewRate), icon: 'groups', color: '#8b5cf6', desc: `Of ${outcomeStats.totalApplied} sent` },
-                  { label: 'Offer Rate', value: pctOrDash(outcomeStats.offerRate), icon: 'celebration', color: '#22c55e', desc: `Of ${outcomeStats.totalApplied} sent` },
+                  { label: 'Response Rate', value: pctOrDash(outcomeStats.responseRate), icon: 'reply', desc: `Of ${outcomeStats.totalApplied} sent` },
+                  { label: 'Ghost Rate', value: pctOrDash(outcomeStats.ghostRate), icon: 'visibility_off', desc: `Of ${outcomeStats.totalReported} reported` },
+                  { label: 'Avg Response', value: outcomeStats.avgDaysToResponse ? `${outcomeStats.avgDaysToResponse}d` : '—', icon: 'schedule', desc: 'Days until first response' },
+                  { label: 'Interview Rate', value: pctOrDash(outcomeStats.interviewRate), icon: 'groups', desc: `Of ${outcomeStats.totalApplied} sent` },
+                  { label: 'Offer Rate', value: pctOrDash(outcomeStats.offerRate), icon: 'celebration', desc: `Of ${outcomeStats.totalApplied} sent` },
                 ].map((kpi, i) => (
                   <motion.div
                     key={kpi.label}
+                    className="min-w-0"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.06 }}
-                    className="rounded-xl p-4"
-                    style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
-                        <span className="material-symbols-rounded text-[16px]" style={{ color: kpi.color }}>{kpi.icon}</span>
-                      </div>
-                      <span className="text-[10px] text-[var(--text-tertiary)] font-medium">{kpi.label}</span>
-                    </div>
-                    <p className="text-2xl font-black text-[var(--text-primary)] tabular-nums mb-0.5">{kpi.value}</p>
-                    <p className="text-[9px] text-[var(--text-muted)]">{kpi.desc}</p>
+                    <SuiteMetricCard icon={kpi.icon} label={kpi.label} value={kpi.value} description={kpi.desc} />
                   </motion.div>
                 ))}
               </div>
@@ -761,20 +740,19 @@ export default function IntelligencePage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.35 }}
-                className="rounded-2xl p-5"
-                style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
               >
-                <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                  <span className="material-symbols-rounded text-base" style={{ color: '#06b6d4' }}>donut_large</span>
+                <SuitePanel>
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                  <span className="material-symbols-rounded text-base text-[var(--text-muted)]">donut_large</span>
                   Outcome Breakdown
                 </h3>
                 {(() => {
                   const outcomes = [
-                    { key: 'callback', label: 'Callback', count: outcomeStats.callbackCount || 0, color: '#3b82f6' },
-                    { key: 'interview', label: 'Interview', count: outcomeStats.interviewCount || 0, color: '#8b5cf6' },
-                    { key: 'offer', label: 'Offer', count: outcomeStats.offerCount || 0, color: '#22c55e' },
-                    { key: 'rejection', label: 'Rejected', count: outcomeStats.rejectionCount || 0, color: '#ef4444' },
-                    { key: 'ghosted', label: 'Ghosted', count: outcomeStats.ghostedCount || 0, color: '#6b7280' },
+                    { key: 'callback', label: 'Callback', count: outcomeStats.callbackCount || 0, color: 'var(--accent)' },
+                    { key: 'interview', label: 'Interview', count: outcomeStats.interviewCount || 0, color: 'var(--accent)' },
+                    { key: 'offer', label: 'Offer', count: outcomeStats.offerCount || 0, color: 'var(--success)' },
+                    { key: 'rejection', label: 'Rejected', count: outcomeStats.rejectionCount || 0, color: 'var(--danger)' },
+                    { key: 'ghosted', label: 'Ghosted', count: outcomeStats.ghostedCount || 0, color: 'var(--text-muted)' },
                   ];
                   const maxCount = Math.max(...outcomes.map(o => o.count), 1);
                   const totalOutcomes = outcomes.reduce((s, o) => s + o.count, 0);
@@ -783,22 +761,22 @@ export default function IntelligencePage() {
                     <div className="space-y-3">
                       {outcomes.filter(o => o.count > 0).map((outcome, i) => (
                         <div key={outcome.key}>
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="mb-1 flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full" style={{ background: outcome.color }} />
+                              <span className="h-2.5 w-2.5 rounded-full" style={{ background: outcome.color }} />
                               <span className="text-xs font-semibold text-[var(--text-secondary)]">{outcome.label}</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-black tabular-nums" style={{ color: outcome.color }}>{outcome.count}</span>
-                              <span className="text-[10px] text-[var(--text-muted)]">
+                              <span className="text-[11px] text-[var(--text-muted)]">
                                 ({Math.round((outcome.count / totalOutcomes) * 100)}%)
                               </span>
                             </div>
                           </div>
-                          <div className="h-3 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
+                          <div className="h-3 overflow-hidden rounded-full" style={{ background: 'var(--border-subtle)' }}>
                             <motion.div
                               className="h-full rounded-full"
-                              style={{ background: `linear-gradient(90deg, ${outcome.color}, ${outcome.color}cc)` }}
+                              style={{ background: outcome.color }}
                               initial={{ width: 0 }}
                               animate={{ width: `${(outcome.count / maxCount) * 100}%` }}
                               transition={{ delay: i * 0.1, duration: 0.6 }}
@@ -808,12 +786,13 @@ export default function IntelligencePage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center py-6">
-                      <span className="material-symbols-rounded text-[28px] block mb-2" style={{ color: '#6b7280' }}>fact_check</span>
+                    <div className="py-6 text-center">
+                      <span className="material-symbols-rounded mb-2 block text-[28px] text-[var(--text-muted)]">fact_check</span>
                       <p className="text-xs text-[var(--text-muted)]">No outcomes reported yet. Report outcomes from the Applications page.</p>
                     </div>
                   );
                 })()}
+                </SuitePanel>
               </motion.div>
 
               {/* Insight Card */}
@@ -822,21 +801,22 @@ export default function IntelligencePage() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5 }}
-                  className="rounded-2xl p-4 flex items-start gap-3"
+                  className="flex items-start gap-3 rounded-[16px] p-4"
                   style={{
-                    background: `${outcomeInsightColor}08`,
-                    border: `1px solid ${outcomeInsightColor}20`,
+                    background: `color-mix(in srgb, ${outcomeInsightColor} 8%, var(--bg-surface))`,
+                    border: `1px solid color-mix(in srgb, ${outcomeInsightColor} 30%, transparent)`,
                   }}
                 >
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{
-                    background: `${outcomeInsightColor}15`,
-                  }}>
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px]"
+                    style={{ background: `color-mix(in srgb, ${outcomeInsightColor} 15%, transparent)` }}
+                  >
                     <span className="material-symbols-rounded text-lg" style={{ color: outcomeInsightColor }}>
                       {outcomesMovedForward > 0 ? 'trending_up' : 'lightbulb'}
                     </span>
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: outcomeInsightColor }}>
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: outcomeInsightColor }}>
                       Outcome Insight
                     </p>
                     <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
@@ -852,37 +832,26 @@ export default function IntelligencePage() {
               )}
             </>
           ) : (
-            <div className="text-center py-16">
-              <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-emerald-500/5" />
-                <div className="relative">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
-                    <span className="material-symbols-rounded text-3xl text-cyan-500">
-                      {outcomeFailed ? 'cloud_off' : 'fact_check'}
-                    </span>
-                  </div>
-                  {/* Two different facts, two different sentences. The failure
-                      branch must not claim anything about the user's data —
-                      the request that would have told us did not come back. */}
-                  <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">
-                    {outcomeFailed ? 'Outcomes could not be loaded' : 'No Outcome Data'}
-                  </h3>
-                  <p className="text-sm text-[var(--text-tertiary)] mb-5">
-                    {outcomeFailed
-                      ? 'This tab could not read your outcomes just now, so nothing here is a statement about your applications. Try again in a moment.'
-                      : 'Conversion rates are counted from applications you have marked as sent. None are marked yet, so there is no rate to show — not a rate of zero.'}
-                  </p>
-                  <button
-                    onClick={() => (outcomeFailed ? window.location.reload() : router.push('/suite/applications'))}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                    style={{ background: 'linear-gradient(135deg, #06b6d4, #10b981)', boxShadow: '0 4px 16px rgba(6,182,212,0.3)' }}
-                  >
-                    <span className="material-symbols-rounded text-sm">{outcomeFailed ? 'refresh' : 'open_in_new'}</span>
-                    {outcomeFailed ? 'Retry' : 'Go to Applications'}
-                  </button>
-                </div>
-              </div>
-            </div>
+            /* Two different facts, two different sentences. The failure branch
+               must not claim anything about the user's data — the request that
+               would have told us did not come back. */
+            <SuiteEmptyState
+              icon={outcomeFailed ? 'cloud_off' : 'fact_check'}
+              title={outcomeFailed ? 'Outcomes could not be loaded' : 'No outcome data yet'}
+              description={outcomeFailed
+                ? 'This tab could not read your outcomes just now, so nothing here is a statement about your applications. Try again in a moment.'
+                : 'Conversion rates are counted from applications you have marked as sent. None are marked yet, so there is no rate to show — not a rate of zero.'}
+              action={
+                <button
+                  type="button"
+                  onClick={() => (outcomeFailed ? window.location.reload() : router.push('/suite/applications'))}
+                  className="btn-primary inline-flex items-center gap-2"
+                >
+                  <span className="material-symbols-rounded text-[18px]">{outcomeFailed ? 'refresh' : 'open_in_new'}</span>
+                  {outcomeFailed ? 'Retry' : 'Go to Applications'}
+                </button>
+              }
+            />
           )}
         </motion.div>
       )}
@@ -904,24 +873,17 @@ export default function IntelligencePage() {
 
       {!loading && user && !profile && (
         <div className="space-y-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-8">
-            <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-indigo-500/5" />
-              <div className="relative">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                  <span className="material-symbols-rounded text-3xl text-violet-500">neurology</span>
-                </div>
-                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Unable to Load Intelligence</h3>
-                <p className="text-sm text-[var(--text-tertiary)] mb-5">Start using the suite tools to build your career profile.</p>
-                <button onClick={loadIntelligence}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                  style={{ background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', boxShadow: '0 4px 16px rgba(139,92,246,0.3)' }}>
-                  <span className="material-symbols-rounded text-sm">refresh</span>
-                  Try Again
-                </button>
-              </div>
-            </div>
-          </motion.div>
+          <SuiteEmptyState
+            icon="neurology"
+            title="Unable to load intelligence"
+            description="Start using the suite tools — upload a resume, track applications, log debriefs — and your career profile will build here."
+            action={
+              <button type="button" onClick={loadIntelligence} className="btn-primary inline-flex items-center gap-2">
+                <span className="material-symbols-rounded text-[18px]">refresh</span>
+                Try Again
+              </button>
+            }
+          />
           <CareerTwinMemoryPanel
             twin={null}
             exporting={false}
@@ -934,20 +896,15 @@ export default function IntelligencePage() {
 
       {profile && (<>
       {/* ── Health Score Hero ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="rounded-2xl p-4 sm:p-6 flex flex-col sm:flex-row items-center gap-4 sm:gap-8"
-        style={{
-          background: scoreHeroBg,
-          border: `1px solid ${scoreHeroBorder}`,
-        }}
-      >
-        {/* Animated Ring */}
-        <div className="relative w-24 h-24 sm:w-32 sm:h-32 flex-shrink-0">
-          <svg viewBox="0 0 120 120" className="w-24 h-24 sm:w-32 sm:h-32 -rotate-90">
-            <circle cx="60" cy="60" r="54" fill="none" strokeWidth="6"
-              stroke={isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'} />
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+        <SuitePanel className="flex flex-col items-center gap-4 sm:flex-row sm:gap-8">
+        {/* Animated Ring — a ring of the measured healthScore. It stays neutral
+            ink until the rating is actually supported, so the number appears
+            without a red/amber/green verdict it has not earned. */}
+        {profile.healthScore != null && profile.healthScore > 0 ? (
+        <div className="relative h-24 w-24 flex-shrink-0 sm:h-32 sm:w-32">
+          <svg viewBox="0 0 120 120" className="h-24 w-24 -rotate-90 sm:h-32 sm:w-32">
+            <circle cx="60" cy="60" r="54" fill="none" strokeWidth="6" stroke="var(--border-subtle)" />
             <motion.circle
               cx="60" cy="60" r="54" fill="none" strokeWidth="6" strokeLinecap="round"
               stroke={scoreColor}
@@ -965,20 +922,25 @@ export default function IntelligencePage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.8 }}
             >{profile.healthScore}</motion.span>
-            <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Health</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Health</span>
           </div>
         </div>
+        ) : (
+          <div className="flex h-24 w-24 flex-shrink-0 flex-col items-center justify-center rounded-full border border-dashed border-[var(--border-subtle)] text-center sm:h-32 sm:w-32">
+            <span className="text-2xl font-black text-[var(--text-muted)]">—</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Not scored</span>
+          </div>
+        )}
 
         {/* Score Context. The rating word is only shown when at least three of
             the four bands are measured — a label derived from one group out of
             four describes that group, not the search. */}
         <div className="min-w-0 flex-1 sm:min-w-[200px]">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 mb-2">
+          <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
             {ratingIsSupported && (
               <span className="text-lg font-bold" style={{ color: scoreColor }}>{getScoreLabel(profile.healthScore)}</span>
             )}
-            <span className="whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums"
-              style={{ background: scorePillBg, color: scoreColor, border: `1px solid ${scorePillBorder}` }}>
+            <span className="whitespace-nowrap rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-bold tabular-nums text-[var(--text-secondary)]">
               {profile.daysActive}d active
             </span>
           </div>
@@ -994,7 +956,7 @@ export default function IntelligencePage() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 text-center">
+        <div className="grid grid-cols-2 gap-2 text-center sm:gap-3">
           {[
             { label: 'Apps', value: profile.pipeline.totalApps, icon: 'send' },
             // Debriefs, not interviews. `totalDebriefs` counts documents in
@@ -1003,13 +965,14 @@ export default function IntelligencePage() {
             { label: 'Stories', value: profile.stories.totalStories, icon: 'auto_stories' },
             { label: 'Skills', value: profile.skills.confirmed.length, icon: 'code' },
           ].map(s => (
-            <div key={s.label} className="px-3 py-2 rounded-lg" style={{ background: cardBg }}>
+            <div key={s.label} className="rounded-[12px] bg-[var(--bg-elevated)] px-3 py-2">
               <span className="material-symbols-rounded text-[14px] text-[var(--text-muted)]">{s.icon}</span>
               <p className="text-lg font-bold text-[var(--text-primary)]">{s.value}</p>
-              <p className="text-[9px] text-[var(--text-muted)]">{s.label}</p>
+              <p className="text-[11px] text-[var(--text-muted)]">{s.label}</p>
             </div>
           ))}
         </div>
+        </SuitePanel>
       </motion.div>
 
       {/* ── Health breakdown ──
@@ -1068,7 +1031,7 @@ export default function IntelligencePage() {
                       transition={{ duration: 0.8, delay: 0.2 }}
                     />
                   </div>
-                  <p className="premium-copy-wrap mt-1 text-[10px] leading-4 text-[var(--text-muted)]">
+                  <p className="premium-copy-wrap mt-1 text-[11px] leading-4 text-[var(--text-muted)]">
                     {measuredItems.length} of {bandItem.items.length} measured
                     {bandItem.available < bandItem.max
                       ? ` — ${bandItem.max - bandItem.available} points not on the table yet`
@@ -1092,8 +1055,8 @@ export default function IntelligencePage() {
       {/* ── Recommendations ── */}
       {recommendations.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base" style={{ color: '#f59e0b' }}>lightbulb</span>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">lightbulb</span>
             Smart Recommendations ({recommendations.length})
           </h2>
           <div className="space-y-2">
@@ -1103,28 +1066,27 @@ export default function IntelligencePage() {
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 + i * 0.06 }}
-                className="flex items-start gap-3 p-4 rounded-xl cursor-pointer group"
+                className="group flex cursor-pointer items-start gap-3 rounded-[16px] p-4 elevation-interactive"
                 style={{
-                  background: cardBg,
-                  border: `1px solid ${rec.priority === 'critical' ? `${rec.color}30` : cardBorder}`,
+                  background: 'var(--bg-surface)',
+                  border: `1px solid ${rec.priority === 'critical' ? 'var(--danger)' : 'var(--border-subtle)'}`,
                 }}
                 onClick={() => router.push(rec.actionPath)}
               >
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${rec.color}12`, border: `1px solid ${rec.color}20` }}>
-                  <span className="material-symbols-rounded text-lg" style={{ color: rec.color }}>{rec.icon}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
+                <span className="icon-shell-neutral inline-grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border" aria-hidden="true">
+                  <span className="material-symbols-rounded icon-neutral text-lg leading-none">{rec.icon}</span>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 flex items-center gap-2">
                     <p className="text-sm font-semibold text-[var(--text-primary)]">{rec.title}</p>
                     {rec.priority === 'critical' && (
-                      <span className="text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase" style={{
-                        background: `${rec.color}15`, color: rec.color,
-                      }}>Critical</span>
+                      <span className="rounded-full border border-[var(--danger)] px-1.5 py-0.5 text-[11px] font-black uppercase text-[var(--danger)]">
+                        Critical
+                      </span>
                     )}
                   </div>
-                  <p className="text-xs text-[var(--text-secondary)] mb-1.5">{rec.description}</p>
-                  <span className="text-[11px] font-bold group-hover:underline" style={{ color: rec.color }}>
+                  <p className="mb-1.5 text-xs text-[var(--text-secondary)]">{rec.description}</p>
+                  <span className="text-[11px] font-bold text-[var(--accent)] group-hover:underline">
                     {rec.action} →
                   </span>
                 </div>
@@ -1135,14 +1097,14 @@ export default function IntelligencePage() {
       )}
 
       {/* ── Pipeline Funnel ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-          className="rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base text-blue-500">filter_alt</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">filter_alt</span>
             Pipeline Funnel
           </h3>
           {/* Every value here is a count the graph produced, not a count
@@ -1161,17 +1123,17 @@ export default function IntelligencePage() {
               nulls is how "Not measurable" ended up captioning a solid
               full-width bar next to the count 0. */}
           {[
-            { label: 'Applied', value: profile.pipeline.appliedApps, pct: null, bar: profile.pipeline.appliedApps > 0 ? 100 : 0, basis: '', color: '#3b82f6' },
-            { label: 'Responded', value: profile.pipeline.responded, pct: profile.pipeline.responseRate, bar: profile.pipeline.responseRate ?? 0, basis: 'of applications sent', color: '#06b6d4' },
-            { label: 'Interviews', value: profile.pipeline.interviews, pct: profile.pipeline.interviewConversion, bar: profile.pipeline.interviewConversion ?? 0, basis: 'of responses', color: '#8b5cf6' },
-            { label: 'Offers', value: profile.pipeline.offers, pct: profile.pipeline.offerConversion, bar: profile.pipeline.offerConversion ?? 0, basis: 'of interviews', color: '#22c55e' },
+            { label: 'Applied', value: profile.pipeline.appliedApps, pct: null, bar: profile.pipeline.appliedApps > 0 ? 100 : 0, basis: '', color: 'var(--accent)' },
+            { label: 'Responded', value: profile.pipeline.responded, pct: profile.pipeline.responseRate, bar: profile.pipeline.responseRate ?? 0, basis: 'of applications sent', color: 'var(--accent)' },
+            { label: 'Interviews', value: profile.pipeline.interviews, pct: profile.pipeline.interviewConversion, bar: profile.pipeline.interviewConversion ?? 0, basis: 'of responses', color: 'var(--accent)' },
+            { label: 'Offers', value: profile.pipeline.offers, pct: profile.pipeline.offerConversion, bar: profile.pipeline.offerConversion ?? 0, basis: 'of interviews', color: 'var(--success)' },
           ].map((stage, i) => (
             <div key={stage.label} className="mb-3">
-              <div className="flex items-center justify-between mb-1">
+              <div className="mb-1 flex items-center justify-between">
                 <span className="text-xs text-[var(--text-secondary)]">{stage.label}</span>
                 <span className="text-xs font-bold tabular-nums text-[var(--text-primary)]">{stage.value}</span>
               </div>
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
+              <div className="h-2 overflow-hidden rounded-full" style={{ background: 'var(--border-subtle)' }}>
                 {/* No 2% floor. A visible sliver at zero reads as a small
                     measured value; an empty track reads as nothing, which is
                     what it is. */}
@@ -1184,48 +1146,55 @@ export default function IntelligencePage() {
                 />
               </div>
               {i > 0 && (
-                <span className="text-[9px] mt-0.5 block" style={{ color: stage.color }}>
+                <span className="mt-0.5 block text-[11px] text-[var(--text-muted)]">
                   {stage.pct === null ? `Not measurable — no ${stage.basis.replace('of ', '')} yet` : `${stage.pct}% ${stage.basis}`}
                 </span>
               )}
             </div>
           ))}
+          </SuitePanel>
         </motion.div>
 
         {/* ── Interview Radar ── */}
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          className="rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base text-purple-500">psychology</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">psychology</span>
             Interview Readiness
           </h3>
           {profile.interviews.totalDebriefs === 0 ? (
-            <div className="text-center py-6">
-              <span className="material-symbols-rounded text-[32px] block mb-2" style={{ color: '#6b7280' }}>mic</span>
+            <div className="py-6 text-center">
+              <span className="material-symbols-rounded mb-2 block text-[32px] text-[var(--text-muted)]">mic</span>
               <p className="text-xs text-[var(--text-muted)]">Log debriefs to see your interview readiness</p>
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-4">
+              {/* avgConfidence and passRate are averaged from the confidence and
+                  outcome the user logged per debrief — measured values, shown
+                  only once at least one debrief exists. */}
+              <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-2xl font-bold text-[var(--text-primary)]">{profile.interviews.avgConfidence}%</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">Avg Confidence</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">Avg Confidence</p>
                 </div>
                 <div className="text-right">
                   <div className="flex items-center gap-1">
-                    <span className="material-symbols-rounded text-sm" style={{
-                      color: profile.interviews.confidenceTrend === 'improving' ? '#22c55e'
-                        : profile.interviews.confidenceTrend === 'declining' ? '#ef4444' : '#f59e0b',
-                    }}>
+                    <span
+                      className="material-symbols-rounded text-sm"
+                      style={{
+                        color: profile.interviews.confidenceTrend === 'improving' ? 'var(--success)'
+                          : profile.interviews.confidenceTrend === 'declining' ? 'var(--danger)' : 'var(--warning)',
+                      }}
+                    >
                       {profile.interviews.confidenceTrend === 'improving' ? 'trending_up'
                         : profile.interviews.confidenceTrend === 'declining' ? 'trending_down' : 'trending_flat'}
                     </span>
                     <span className="text-xs capitalize text-[var(--text-secondary)]">{profile.interviews.confidenceTrend}</span>
                   </div>
-                  <p className="text-[10px] text-[var(--text-muted)]">{profile.interviews.passRate}% pass rate</p>
+                  <p className="text-[11px] text-[var(--text-muted)]">{profile.interviews.passRate}% pass rate</p>
                 </div>
               </div>
 
@@ -1233,65 +1202,65 @@ export default function IntelligencePage() {
               <div className="space-y-2">
                 {[...profile.interviews.strongCategories.slice(0, 2), ...profile.interviews.weakCategories.slice(0, 2)]
                   .sort((a, b) => b.avgConfidence - a.avgConfidence)
-                  .map((cat, i) => (
+                  .map((cat, i) => {
+                    const catColor = cat.avgConfidence >= 70 ? 'var(--success)' : cat.avgConfidence >= 50 ? 'var(--warning)' : 'var(--danger)';
+                    return (
                     <div key={cat.category} className="flex items-center gap-2">
-                      <span className="text-[10px] w-24 text-[var(--text-secondary)] truncate">{cat.category}</span>
-                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)' }}>
+                      <span className="w-24 truncate text-[11px] text-[var(--text-secondary)]">{cat.category}</span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: 'var(--border-subtle)' }}>
                         <motion.div className="h-full rounded-full"
-                          style={{ background: cat.avgConfidence >= 70 ? '#22c55e' : cat.avgConfidence >= 50 ? '#f59e0b' : '#ef4444' }}
+                          style={{ background: catColor }}
                           initial={{ width: 0 }}
                           animate={{ width: `${cat.avgConfidence}%` }}
                           transition={{ duration: 0.6, delay: 0.6 + i * 0.1 }}
                         />
                       </div>
-                      <span className="text-[10px] font-bold w-8 text-right"
-                        style={{ color: cat.avgConfidence >= 70 ? '#22c55e' : cat.avgConfidence >= 50 ? '#f59e0b' : '#ef4444' }}>
+                      <span className="w-8 text-right text-[11px] font-bold" style={{ color: catColor }}>
                         {cat.avgConfidence}%
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
               </div>
             </>
           )}
+          </SuitePanel>
         </motion.div>
       </div>
 
       {/* ── Skill Landscape ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-        className="rounded-xl p-5"
-        style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-      >
-        <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-          <span className="material-symbols-rounded text-base text-cyan-500">hub</span>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+        <SuitePanel>
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+          <span className="material-symbols-rounded text-base text-[var(--text-muted)]">hub</span>
           Skill Landscape
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {/* Confirmed */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Confirmed ({profile.skills.confirmed.length})
+            <p className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--success)]" /> Confirmed ({profile.skills.confirmed.length})
             </p>
             <div className="flex flex-wrap gap-1">
               {profile.skills.confirmed.slice(0, 10).map((s, index) => (
-                <span key={`${s || 'confirmed-skill'}-${index}`} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: '#22c55e12', color: '#22c55e', border: '1px solid #22c55e20' }}>{s}</span>
+                <span key={`${s || 'confirmed-skill'}-${index}`} className="rounded-full px-2 py-0.5 text-[11px]"
+                  style={{ background: 'color-mix(in srgb, var(--success) 12%, transparent)', color: 'var(--success)', border: '1px solid color-mix(in srgb, var(--success) 24%, transparent)' }}>{s}</span>
               ))}
               {profile.skills.confirmed.length > 10 && (
-                <span className="text-[10px] text-[var(--text-muted)]">+{profile.skills.confirmed.length - 10} more</span>
+                <span className="text-[11px] text-[var(--text-muted)]">+{profile.skills.confirmed.length - 10} more</span>
               )}
             </div>
           </div>
 
-          {/* Market Hot */}
+          {/* Market Hot — a market signal, not a verdict on the user, so these
+              are neutral tags rather than a success/warning/danger colour. */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-orange-500" /> In Demand ({profile.skills.marketHot.length})
+            <p className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              <span className="h-2 w-2 rounded-full bg-[var(--text-muted)]" /> In Demand ({profile.skills.marketHot.length})
             </p>
             <div className="flex flex-wrap gap-1">
               {profile.skills.marketHot.slice(0, 8).map((s, index) => (
-                <span key={`${s || 'market-skill'}-${index}`} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: '#f9731612', color: '#f97316', border: '1px solid #f9731620' }}>{s}</span>
+                <span key={`${s || 'market-skill'}-${index}`} className="wrap-natural rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">{s}</span>
               ))}
             </div>
           </div>
@@ -1300,10 +1269,10 @@ export default function IntelligencePage() {
               you against N roles and found nothing missing" OR "never compared
               you against anything". The second is not a clean bill of health. */}
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2 flex items-center gap-1">
+            <p className="mb-2 flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
-                style={{ background: profile.skills.fitAnalysisCount > 0 ? '#ef4444' : 'var(--text-muted)' }}
+                style={{ background: profile.skills.fitAnalysisCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}
               />
               Gaps{profile.skills.fitAnalysisCount > 0 ? ` (${profile.skills.gap.length})` : ''}
             </p>
@@ -1316,12 +1285,12 @@ export default function IntelligencePage() {
             ) : profile.skills.gap.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {profile.skills.gap.map((s, index) => (
-                  <span key={`${s || 'skill-gap'}-${index}`} className="wrap-natural text-[10px] px-2 py-0.5 rounded-full"
-                    style={{ background: '#ef444412', color: '#ef4444', border: '1px solid #ef444420' }}>{s}</span>
+                  <span key={`${s || 'skill-gap'}-${index}`} className="wrap-natural rounded-full px-2 py-0.5 text-[11px]"
+                    style={{ background: 'color-mix(in srgb, var(--danger) 12%, transparent)', color: 'var(--danger)', border: '1px solid color-mix(in srgb, var(--danger) 24%, transparent)' }}>{s}</span>
                 ))}
               </div>
             ) : (
-              <p className="premium-copy-wrap flex min-w-0 items-start gap-1 text-[10px] leading-4 text-[var(--text-secondary)]">
+              <p className="premium-copy-wrap flex min-w-0 items-start gap-1 text-[11px] leading-4 text-[var(--text-secondary)]">
                 <span className="material-symbols-rounded shrink-0 text-[12px] text-[var(--text-muted)]">remove</span>
                 <span className="min-w-0">
                   No gaps found across {profile.skills.fitAnalysisCount} analyzed{' '}
@@ -1331,18 +1300,19 @@ export default function IntelligencePage() {
             )}
           </div>
         </div>
+        </SuitePanel>
       </motion.div>
 
       {/* ── Wellbeing + Search pace ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Morale */}
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}
-          className="rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base" style={{ color: '#ec4899' }}>self_improvement</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">self_improvement</span>
             Wellbeing
           </h3>
           {/* Morale is self-reported on the Weekly Pulse tab. With no check-in
@@ -1356,7 +1326,7 @@ export default function IntelligencePage() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('pulse')}
-                  className="btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                  className="btn-secondary inline-flex min-h-11 items-center gap-1.5 px-3 py-2 text-xs font-semibold"
                 >
                   <span className="material-symbols-rounded text-[14px]">monitor_heart</span>
                   Check in on Weekly Pulse
@@ -1365,47 +1335,54 @@ export default function IntelligencePage() {
             />
           ) : (
           <div className="flex min-w-0 items-center gap-4">
-            <span className="material-symbols-rounded shrink-0 text-[36px]" style={{ color: ['#ef4444', '#f59e0b', '#6b7280', '#22c55e', '#10b981'][profile.morale.current - 1] || '#6b7280' }}>{['sentiment_very_dissatisfied', 'sentiment_dissatisfied', 'sentiment_neutral', 'sentiment_satisfied', 'sentiment_very_satisfied'][profile.morale.current - 1] || 'sentiment_neutral'}</span>
+            <span
+              className="material-symbols-rounded shrink-0 text-[36px]"
+              style={{ color: ['var(--danger)', 'var(--warning)', 'var(--text-muted)', 'var(--success)', 'var(--success)'][profile.morale.current - 1] || 'var(--text-muted)' }}
+            >{['sentiment_very_dissatisfied', 'sentiment_dissatisfied', 'sentiment_neutral', 'sentiment_satisfied', 'sentiment_very_satisfied'][profile.morale.current - 1] || 'sentiment_neutral'}</span>
             <div className="min-w-0">
               <p className="text-sm font-semibold tabular-nums text-[var(--text-primary)]">{profile.morale.current}/5 Morale</p>
               {profile.morale.trend && (
-                <p className="text-xs text-[var(--text-secondary)] capitalize">{profile.morale.trend} trend</p>
+                <p className="text-xs capitalize text-[var(--text-secondary)]">{profile.morale.trend} trend</p>
               )}
               {profile.morale.burnoutRisk && (
-                <p className="text-[10px] mt-0.5" style={{
-                  color: profile.morale.burnoutRisk === 'low' ? '#22c55e'
-                    : profile.morale.burnoutRisk === 'moderate' ? '#f59e0b' : '#ef4444',
-                }}>Burnout risk: {profile.morale.burnoutRisk}</p>
+                <p
+                  className="mt-0.5 text-[11px]"
+                  style={{
+                    color: profile.morale.burnoutRisk === 'low' ? 'var(--success)'
+                      : profile.morale.burnoutRisk === 'moderate' ? 'var(--warning)' : 'var(--danger)',
+                  }}
+                >Burnout risk: {profile.morale.burnoutRisk}</p>
               )}
             </div>
           </div>
           )}
           {profile.morale.history.length > 0 && (
-            <div className="flex items-end gap-0.5 h-8 mt-3">
+            <div className="mt-3 flex h-8 items-end gap-0.5">
               {profile.morale.history.map((m, i) => (
                 <motion.div key={m.week} className="flex-1 rounded-t-sm"
                   initial={{ height: 0 }}
                   animate={{ height: `${m.score * 20}%` }}
                   transition={{ delay: 0.8 + i * 0.05 }}
                   style={{
-                    background: m.score >= 4 ? '#22c55e' : m.score >= 3 ? '#f59e0b' : '#ef4444',
+                    background: m.score >= 4 ? 'var(--success)' : m.score >= 3 ? 'var(--warning)' : 'var(--danger)',
                     opacity: 0.6,
                   }}
                 />
               ))}
             </div>
           )}
+          </SuitePanel>
         </motion.div>
 
         {/* Search pace — counted, never projected. There is no honest weeks-to-offer
             number without the user's own offer conversion, which needs an offer. */}
         <motion.div
+          className="h-full"
           initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
-          className="min-w-0 rounded-xl p-5"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
         >
-          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <span className="material-symbols-rounded text-base text-blue-500">speed</span>
+          <SuitePanel className="h-full">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+            <span className="material-symbols-rounded text-base text-[var(--text-muted)]">speed</span>
             Search pace
           </h3>
           {profile.pipeline.appliedApps > 0 ? (
@@ -1435,7 +1412,7 @@ export default function IntelligencePage() {
                   </div>
                 ))}
               </dl>
-              <p className="premium-copy-wrap mt-3 text-[10px] leading-4 text-[var(--text-muted)]">
+              <p className="premium-copy-wrap mt-3 text-[11px] leading-4 text-[var(--text-muted)]">
                 Counted from what you have tracked here. No timeline is projected from it.
               </p>
             </div>
@@ -1449,7 +1426,7 @@ export default function IntelligencePage() {
                 <button
                   type="button"
                   onClick={() => router.push('/suite/applications')}
-                  className="btn-secondary inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold"
+                  className="btn-secondary inline-flex min-h-11 items-center gap-1.5 px-3 py-2 text-xs font-semibold"
                 >
                   <span className="material-symbols-rounded text-[14px]">add</span>
                   Track an application
@@ -1457,6 +1434,7 @@ export default function IntelligencePage() {
               }
             />
           )}
+          </SuitePanel>
         </motion.div>
       </div>
 

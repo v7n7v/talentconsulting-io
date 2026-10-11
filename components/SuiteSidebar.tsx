@@ -90,7 +90,6 @@ interface NavigationItem {
   path: string;
   badge?: string;
   iconName: string;
-  color: { iconColor: string };
 }
 
 interface NavigationGroup {
@@ -112,7 +111,6 @@ const navGroups: NavigationGroup[] = [
         path: '/suite/agent',
         badge: 'MAX',
         iconName: 'auto_awesome',
-        color: { iconColor: '#f43f5e' },
       },
     ],
   },
@@ -127,7 +125,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Resume Builder + AI Morph',
         path: '/suite/resume',
         iconName: 'description',
-        color: { iconColor: '#f59e0b' },
       },
       {
         id: 'ats-analyzer',
@@ -135,7 +132,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Preview + Match Score',
         path: '/suite/ats-analyzer',
         iconName: 'scanner',
-        color: { iconColor: '#06b6d4' },
       },
       {
         id: 'writing-toolkit',
@@ -143,7 +139,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Cover letters, LinkedIn, humanizer, and messages',
         path: '/suite/gallery',
         iconName: 'widgets',
-        color: { iconColor: '#8b5cf6' },
       },
     ],
   },
@@ -158,7 +153,6 @@ const navGroups: NavigationGroup[] = [
         description: 'AI Opportunity Radar',
         path: '/suite/job-search',
         iconName: 'radar',
-        color: { iconColor: '#06b6d4' },
       },
       {
         id: 'oracle',
@@ -166,7 +160,6 @@ const navGroups: NavigationGroup[] = [
         description: 'JD Decoder + Fit Score',
         path: '/suite/market-oracle',
         iconName: 'troubleshoot',
-        color: { iconColor: '#a855f7' },
       },
       {
         id: 'applications',
@@ -174,7 +167,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Pipeline Tracker',
         path: '/suite/applications',
         iconName: 'work',
-        color: { iconColor: '#1a73e8' },
       },
       {
         id: 'network',
@@ -182,7 +174,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Contact Tracker',
         path: '/suite/network',
         iconName: 'contacts',
-        color: { iconColor: '#8b5cf6' },
       },
       {
         id: 'agent-queue',
@@ -190,7 +181,6 @@ const navGroups: NavigationGroup[] = [
         description: 'AI-Prepared Applications',
         path: '/suite/agent/queue',
         iconName: 'smart_toy',
-        color: { iconColor: '#06b6d4' },
       },
     ],
   },
@@ -205,7 +195,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Taco Mock + Avatar + Debrief',
         path: '/suite/interview-sim',
         iconName: 'interpreter_mode',
-        color: { iconColor: '#06b6d4' },
       },
       {
         id: 'stories',
@@ -213,7 +202,6 @@ const navGroups: NavigationGroup[] = [
         description: 'STAR Stories + Answer RAG',
         path: '/suite/agent/stories',
         iconName: 'auto_stories',
-        color: { iconColor: '#2563eb' },
       },
       {
         id: 'skill-bridge',
@@ -221,7 +209,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Gap-to-Ready Paths',
         path: '/suite/skill-bridge',
         iconName: 'route',
-        color: { iconColor: '#64748b' },
       },
     ],
   },
@@ -236,7 +223,6 @@ const navGroups: NavigationGroup[] = [
         description: 'Health Score + Pulse + Insights',
         path: '/suite/intelligence',
         iconName: 'neurology',
-        color: { iconColor: '#8b5cf6' },
       },
     ],
   },
@@ -724,7 +710,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           aria-label="Open main menu"
           aria-expanded={false}
           aria-controls="suite-sidebar"
-          className="fixed left-3 top-3 z-[60] flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] shadow-lg transition-[background-color,color] duration-200 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+          className="elevation-raised fixed left-3 top-3 z-[60] flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] transition-[background-color,color] duration-200 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
           <span className="material-symbols-rounded text-2xl" aria-hidden="true">menu</span>
         </button>
@@ -736,7 +722,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           type="button"
           aria-label="Close main menu"
           onClick={() => closeMobileMenu(true)}
-          className="fixed inset-0 z-40 bg-black/50"
+          className="fixed inset-0 z-40 bg-[var(--modal-backdrop)]"
         />
       )}
 
@@ -757,7 +743,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           height: `calc(100dvh - ${shellVerticalOffset * 2}px)`,
           transform: isMobile ? (isMobileOpen ? 'translateX(0)' : 'translateX(calc(-100% - 16px))') : 'translateX(0)',
         }}
-        className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] shadow-[var(--theme-shadow)] transition-all duration-200 ease-out"
+        className="elevation-raised fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] transition-all duration-200 ease-out"
       >
         {/* Header */}
         <div className={`flex shrink-0 p-2 ${isCompactRail ? 'flex-col items-center gap-1.5' : 'items-center justify-between'}`}>
@@ -781,7 +767,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
               type="button"
               onClick={() => setIsCollapsed(!isCollapsed)}
               aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-[var(--text-secondary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               <span className="material-symbols-rounded text-[22px]" aria-hidden="true">
@@ -794,7 +780,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
               type="button"
               onClick={() => closeMobileMenu(true)}
               aria-label="Close main menu"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             >
               <span className="material-symbols-rounded text-2xl" aria-hidden="true">close</span>
             </button>
@@ -833,7 +819,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
                     onClick={() => toggleGroup(group.label)}
                     aria-expanded={isExpanded}
                     aria-controls={groupId}
-                    className="mt-2 flex min-h-7 w-full items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+                    className="mt-2 flex min-h-11 w-full items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] transition-colors duration-150 hover:bg-[var(--theme-surface-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   >
                     <span
                       className="material-symbols-rounded text-base transition-transform duration-150"
@@ -844,7 +830,7 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
                     </span>
                     <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
                     {hasActiveChild && (
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--sidebar-text-active)]" aria-hidden="true" />
                     )}
                   </button>
                 )}

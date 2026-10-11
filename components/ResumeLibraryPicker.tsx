@@ -102,7 +102,7 @@ export default function ResumeLibraryPicker({
     <button
       type="button"
       onClick={() => setOpen(true)}
-      className={`flex min-w-0 items-center justify-center gap-2 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-600 transition hover:bg-blue-500/15 focus:outline-none focus:ring-2 focus:ring-blue-500/25 dark:text-blue-300 ${compact ? '' : 'min-w-[128px]'}`}
+      className={`flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-semibold text-[var(--accent)] transition hover:bg-[var(--accent-dim)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${compact ? '' : 'min-w-[128px]'}`}
       aria-label={selectedName ? `Change resume. Current resume: ${selectedName}` : 'Choose a saved resume'}
     >
       <span className="material-symbols-rounded text-[16px]" aria-hidden="true">description</span>
@@ -111,26 +111,26 @@ export default function ResumeLibraryPicker({
   );
 
   const selectedPill = selectedId ? (
-    <div className={`flex min-w-0 items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 ${compact ? 'w-full sm:w-auto' : ''}`}>
-      <span className="material-symbols-rounded shrink-0 text-[16px] text-emerald-600 dark:text-emerald-300" aria-hidden="true">check_circle</span>
-      <span className={`text-xs font-semibold leading-4 text-emerald-700 dark:text-emerald-300 ${compact ? 'min-w-0 flex-1 truncate sm:max-w-[220px]' : 'max-w-[180px] truncate'}`}>
+    <div className={`flex min-w-0 items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--success)_25%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] px-3 py-2 ${compact ? 'w-full sm:w-auto' : ''}`}>
+      <span className="material-symbols-rounded shrink-0 text-[16px] text-[var(--success)]" aria-hidden="true">check_circle</span>
+      <span className={`text-xs font-semibold leading-4 text-[var(--success)] ${compact ? 'min-w-0 flex-1 truncate sm:max-w-[220px]' : 'max-w-[180px] truncate'}`}>
         {selectedName ? `Selected: ${selectedName}` : 'Resume selected'}
       </span>
     </div>
   ) : null;
 
   const pickerPanel = (
-    <div className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-[0_24px_80px_rgba(15,23,42,0.20)]">
+    <div className="elevation-raised rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
       <div className="flex min-w-0 items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Resume Library</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--text-muted)]">Resume Library</p>
           <h3 className="mt-1 text-base font-semibold text-[var(--text-primary)]">Select a resume to work with</h3>
           <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Saved versions from your resume library.</p>
         </div>
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
           aria-label="Close resume picker"
         >
           <span className="material-symbols-rounded text-xl">close</span>
@@ -146,7 +146,7 @@ export default function ResumeLibraryPicker({
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Search resume name, role, or summary"
-                className="h-11 w-full rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] pl-10 pr-3 text-sm outline-none transition focus:border-blue-500/40"
+                className="h-11 w-full rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] pl-10 pr-3 text-base text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]"
               />
             </label>
           )}
@@ -155,7 +155,7 @@ export default function ResumeLibraryPicker({
               <select
                 value={dateFilter}
                 onChange={e => setDateFilter(e.target.value as DateFilter)}
-                className="h-11 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-blue-500/40"
+                className="h-11 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               >
                 <option value="all">All dates</option>
                 <option value="30">Last month</option>
@@ -165,7 +165,7 @@ export default function ResumeLibraryPicker({
               <select
                 value={sortMode}
                 onChange={e => setSortMode(e.target.value as SortMode)}
-                className="h-11 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-blue-500/40"
+                className="h-11 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 text-base text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
@@ -193,7 +193,7 @@ export default function ResumeLibraryPicker({
                   onClick={() => handleSelect(rv)}
                   aria-pressed={selected}
                   aria-label={`${selected ? 'Selected resume' : 'Select resume'}: ${rv.version_name}`}
-                  className={`group min-w-0 rounded-[16px] border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-blue-500/25 ${selected ? 'border-blue-500/35 bg-blue-500/10' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] hover:border-blue-500/25 hover:bg-blue-500/[0.04]'}`}
+                  className={`group min-w-0 rounded-[16px] border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${selected ? 'border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)] bg-[var(--card-bg)] hover:border-[color-mix(in_srgb,var(--accent)_25%,transparent)] hover:bg-[var(--accent-dim)]'}`}
                 >
                   <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
                     <div className="min-w-0">
@@ -201,7 +201,7 @@ export default function ResumeLibraryPicker({
                       <p className="mt-1 truncate text-xs text-[var(--text-secondary)]">{role}</p>
                       <p className="mt-2 text-[11px] text-[var(--text-muted)]">{resumeSubtitle(rv)}</p>
                     </div>
-                    <span className={`inline-flex min-h-9 w-fit items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold ${selected ? 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'}`}>
+                    <span className={`inline-flex min-h-9 w-fit items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold ${selected ? 'border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]' : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'}`}>
                       <span className="material-symbols-rounded text-[15px]" aria-hidden="true">{selected ? 'check' : 'touch_app'}</span>
                       {selected ? 'Selected' : 'Use resume'}
                     </span>
@@ -225,7 +225,7 @@ export default function ResumeLibraryPicker({
         <AnimatePresence>
           {open && (
             <motion.div
-              className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/35 p-4 backdrop-blur-sm"
+              className="fixed inset-0 z-[120] grid place-items-center bg-[color-mix(in_srgb,var(--bg-deep)_55%,transparent)] p-4 backdrop-blur-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -256,7 +256,7 @@ export default function ResumeLibraryPicker({
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className={`flex min-w-0 items-center justify-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 text-blue-500 transition-colors hover:bg-blue-500/20 ${compact ? 'w-full sm:w-auto' : ''}`}
+          className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] bg-[var(--accent-dim)] px-3 py-1.5 text-[var(--accent)] transition-colors hover:bg-[var(--accent-dim)] ${compact ? 'w-full sm:w-auto' : ''}`}
           aria-label={selectedName ? `Change resume. Current resume: ${selectedName}` : 'Choose a saved resume'}
         >
           <span className="material-symbols-rounded shrink-0 text-[14px]" aria-hidden="true">description</span>
@@ -277,13 +277,13 @@ export default function ResumeLibraryPicker({
               : 'overflow-hidden col-span-full'
             }
           >
-            <div className={`${compact ? '' : 'mt-3'} rounded-2xl p-4 shadow-[0_18px_50px_rgba(15,23,42,0.16)]`} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+            <div className={`elevation-raised ${compact ? '' : 'mt-3'} rounded-2xl p-4`} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
-                  <span className="material-symbols-rounded text-lg text-blue-500">description</span>
+                  <span className="material-symbols-rounded text-lg text-[var(--accent)]">description</span>
                   Select a resume to work with
                 </h3>
-                <button onClick={() => setOpen(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                <button onClick={() => setOpen(false)} className="inline-flex min-h-11 min-w-11 items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)]" aria-label="Close resume picker">
                   <span className="material-symbols-rounded text-lg">close</span>
                 </button>
               </div>
@@ -296,7 +296,7 @@ export default function ResumeLibraryPicker({
                     aria-label={`${selectedId === rv.id ? 'Selected resume' : 'Select resume'}: ${rv.version_name}`}
                     className={`rounded-xl border p-3 text-left transition-all ${
                       selectedId === rv.id
-                        ? 'border-blue-500/40 bg-blue-500/10'
+                        ? 'border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-[var(--accent-dim)]'
                         : 'border-[var(--border-subtle)] hover:border-[var(--text-tertiary)]'
                     }`}
                     style={{ background: selectedId === rv.id ? undefined : 'var(--bg-elevated)' }}
@@ -304,9 +304,9 @@ export default function ResumeLibraryPicker({
                     <div className="flex min-w-0 items-start justify-between gap-3">
                       <span className="min-w-0">
                         <span className="block truncate text-[12px] font-bold text-[var(--text-primary)]">{rv.version_name}</span>
-                        <span className="mt-0.5 block text-[10px] text-[var(--text-tertiary)]">{resumeSubtitle(rv)}</span>
+                        <span className="mt-0.5 block text-[11px] text-[var(--text-tertiary)]">{resumeSubtitle(rv)}</span>
                       </span>
-                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold ${selectedId === rv.id ? 'border-blue-500/30 text-blue-600 dark:text-blue-300' : 'border-[var(--border-subtle)] text-[var(--text-secondary)]'}`}>
+                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${selectedId === rv.id ? 'border-[color-mix(in_srgb,var(--accent)_30%,transparent)] text-[var(--accent)]' : 'border-[var(--border-subtle)] text-[var(--text-secondary)]'}`}>
                         <span className="material-symbols-rounded text-[12px]" aria-hidden="true">{selectedId === rv.id ? 'check' : 'touch_app'}</span>
                         {selectedId === rv.id ? 'Selected' : 'Use'}
                       </span>

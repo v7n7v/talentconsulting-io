@@ -16,11 +16,11 @@ interface PendingOutcome {
 }
 
 const OUTCOMES = [
-  { id: 'callback',  label: 'Callback',  icon: 'call',         color: '#10b981' },
-  { id: 'interview', label: 'Interview', icon: 'mic',          color: '#3b82f6' },
-  { id: 'offer',     label: 'Offer!',    icon: 'celebration',  color: '#f59e0b' },
-  { id: 'rejection', label: 'Rejected',  icon: 'cancel',       color: '#ef4444' },
-  { id: 'ghosted',   label: 'Ghosted',   icon: 'visibility_off', color: '#6b7280' },
+  { id: 'callback',  label: 'Callback',  icon: 'call',         color: 'var(--success)' },
+  { id: 'interview', label: 'Interview', icon: 'mic',          color: 'var(--accent)' },
+  { id: 'offer',     label: 'Offer!',    icon: 'celebration',  color: 'var(--warning)' },
+  { id: 'rejection', label: 'Rejected',  icon: 'cancel',       color: 'var(--danger)' },
+  { id: 'ghosted',   label: 'Ghosted',   icon: 'visibility_off', color: 'var(--text-muted)' },
 ];
 
 const DISMISS_KEY = 'talent-outcome-check-dismissed';
@@ -93,19 +93,19 @@ export default function OutcomeCheckWidget() {
       {/* Header */}
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-            <span className="material-symbols-rounded text-white text-[13px]">update</span>
+          <div className="w-6 h-6 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-subtle)] flex items-center justify-center">
+            <span className="material-symbols-rounded text-[var(--accent)] text-[13px]">update</span>
           </div>
           <h2 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
             Any Updates?
           </h2>
-          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/10 text-amber-500">
+          <span className="px-1.5 py-0.5 text-[11px] font-bold rounded-full bg-[var(--accent-dim)] text-[var(--accent)]">
             {pending.length}
           </span>
         </div>
         <button
           onClick={handleDismiss}
-          className="text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors flex items-center gap-1"
+          className="inline-flex min-h-[44px] items-center text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors gap-1"
         >
           Skip for now
           <span className="material-symbols-rounded text-[13px]">close</span>
@@ -131,14 +131,7 @@ export default function OutcomeCheckWidget() {
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0"
-                    style={{
-                      background: 'rgba(99,102,241,0.1)',
-                      border: '1px solid rgba(99,102,241,0.2)',
-                      color: '#818cf8',
-                    }}
-                  >
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 border border-[var(--border-subtle)] bg-[var(--accent-dim)] text-[var(--accent)]">
                     {app.company_name[0]}
                   </div>
                   <div className="min-w-0">
@@ -152,9 +145,9 @@ export default function OutcomeCheckWidget() {
                 </div>
                 {app.talent_density_score && (
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-lg ${
-                    app.talent_density_score >= 80 ? 'bg-emerald-500/10 text-emerald-500' :
-                    app.talent_density_score >= 60 ? 'bg-cyan-500/10 text-cyan-500' :
-                    'bg-amber-500/10 text-amber-500'
+                    app.talent_density_score >= 80 ? 'bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]' :
+                    app.talent_density_score >= 60 ? 'bg-[var(--accent-dim)] text-[var(--accent)]' :
+                    'bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)]'
                   }`}>
                     {app.talent_density_score}%
                   </span>
@@ -168,10 +161,10 @@ export default function OutcomeCheckWidget() {
                     key={o.id}
                     onClick={() => handleReport(app.id, o.id)}
                     disabled={reportingId === app.id}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all hover:scale-[1.03] active:scale-[0.97] disabled:opacity-50"
+                    className="flex min-h-[44px] items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all hover:scale-[1.03] active:scale-[0.97] disabled:opacity-50"
                     style={{
-                      borderColor: `${o.color}25`,
-                      background: `${o.color}08`,
+                      borderColor: `color-mix(in srgb, ${o.color} 25%, transparent)`,
+                      background: `color-mix(in srgb, ${o.color} 8%, transparent)`,
                       color: o.color,
                     }}
                   >

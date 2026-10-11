@@ -41,7 +41,7 @@ export interface ProofEngineFormatCheck {
 export interface ProofEngineReportData {
   title: string;
   description: string;
-  score: number;
+  score: number | null;
   scoreLabel: string;
   sourceLabel: string;
   requirements: ProofEngineRequirement[];
@@ -256,7 +256,9 @@ export function ProofEngineReport({
     item => item.status === 'missing' || item.status === 'blocked',
   ).length;
   const checkedCount = report.requirements.length;
-  const boundedScore = Math.min(Math.max(Math.round(report.score), 0), 100);
+  const boundedScore = report.score == null || !Number.isFinite(report.score)
+    ? null
+    : Math.min(Math.max(Math.round(report.score), 0), 100);
   const firstGapIndex = Math.max(
     report.requirements.findIndex(item => item.status === 'missing' || item.status === 'blocked'),
     0,
@@ -437,18 +439,17 @@ export function ProofEngineReport({
           </span>
         </div>
 
-        <div className="proof-fit-cluster" aria-label={`${report.scoreLabel}: ${boundedScore}%`}>
+        <div className="proof-fit-cluster" aria-label={`${report.scoreLabel}: ${boundedScore == null ? 'not scored' : boundedScore + '%'}`}>
           <span className="proof-fit-marker">
-            <strong>{boundedScore}%</strong>
-            <small>{report.scoreLabel}</small>
+            <strong>{boundedScore == null ? '—' : `${boundedScore}%`}</strong>
           </span>
           <span className="proof-fit-track">
             <span className="proof-fit-track__label">
               <small>{report.scoreLabel}</small>
-              <small>{boundedScore}%</small>
+              <small>{boundedScore == null ? 'Not scored' : `${boundedScore}%`}</small>
             </span>
-            <progress max={100} value={boundedScore}>
-              {boundedScore}%
+            <progress max={100} value={boundedScore ?? 0}>
+              {boundedScore == null ? 'Not scored' : `${boundedScore}%`}
             </progress>
             <span className="proof-fit-track__range">
               <small>0%</small>

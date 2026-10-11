@@ -26,21 +26,22 @@ import { stripeAccountReviewReceiptPresentation } from '@/lib/billing/stripe-acc
 import { foundingOfferForPrice } from '@/lib/billing/founding-offer';
 import { mfaEnrollmentEnabled } from '@/lib/auth-flow';
 import ObservabilityPrivacyControls from '@/components/privacy/ObservabilityPrivacyControls';
+import { SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import { readPrivacySafeDiagnosticNoticeVersion } from '@/lib/observability/client';
 
 type SettingsTab = 'profile' | 'display' | 'ai-safety' | 'subscription' | 'security' | 'notifications' | 'help' | 'feedback' | 'sessions' | 'data-privacy';
 
-const TABS: { id: SettingsTab; label: string; icon: string; description: string; color: string }[] = [
-    { id: 'profile', label: 'Profile', icon: 'person', description: 'Personal info & avatar', color: 'text-cyan-500' },
-    { id: 'display', label: 'Display', icon: 'palette', description: 'Theme & appearance', color: 'text-violet-500' },
-    { id: 'ai-safety', label: 'AI Safety', icon: 'verified_user', description: 'Morph guardrails & consent', color: 'text-emerald-500' },
-    { id: 'subscription', label: 'Subscription', icon: 'diamond', description: 'Plan & billing', color: 'text-amber-500' },
-    { id: 'security', label: 'Security', icon: 'shield_person', description: mfaEnrollmentEnabled ? 'Password, 2FA & login' : 'Password & login', color: 'text-emerald-500' },
-    { id: 'notifications', label: 'Notifications', icon: 'notifications', description: 'Email & push alerts', color: 'text-purple-500' },
-    { id: 'help', label: 'Help', icon: 'help', description: 'Guides, FAQs & Support', color: 'text-sky-500' },
-    { id: 'feedback', label: 'Feedback', icon: 'rate_review', description: 'Requests & product notes', color: 'text-emerald-500' },
-    { id: 'sessions', label: 'Sessions', icon: 'computer', description: 'Active devices', color: 'text-indigo-500' },
-    { id: 'data-privacy', label: 'Data & Privacy', icon: 'database', description: 'Export, pause, or delete', color: 'text-rose-500' },
+const TABS: { id: SettingsTab; label: string; icon: string; description: string }[] = [
+    { id: 'profile', label: 'Profile', icon: 'person', description: 'Personal info & avatar' },
+    { id: 'display', label: 'Display', icon: 'palette', description: 'Theme & appearance' },
+    { id: 'ai-safety', label: 'AI Safety', icon: 'verified_user', description: 'Morph guardrails & consent' },
+    { id: 'subscription', label: 'Subscription', icon: 'diamond', description: 'Plan & billing' },
+    { id: 'security', label: 'Security', icon: 'shield_person', description: mfaEnrollmentEnabled ? 'Password, 2FA & login' : 'Password & login' },
+    { id: 'notifications', label: 'Notifications', icon: 'notifications', description: 'Email & push alerts' },
+    { id: 'help', label: 'Help', icon: 'help', description: 'Guides, FAQs & Support' },
+    { id: 'feedback', label: 'Feedback', icon: 'rate_review', description: 'Requests & product notes' },
+    { id: 'sessions', label: 'Sessions', icon: 'computer', description: 'Active devices' },
+    { id: 'data-privacy', label: 'Data & Privacy', icon: 'database', description: 'Export, pause, or delete' },
 ];
 
 type VisibleJobAlertsFrequency = Extract<JobAlertsFrequency, 'daily' | 'weekly'>;
@@ -66,21 +67,18 @@ export default function SettingsPage() {
             <motion.div
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="relative mb-4 overflow-hidden rounded-3xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-5 shadow-[var(--theme-shadow)] md:mb-8 md:p-8"
+                className="relative mb-4 overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card md:mb-8 md:p-8"
             >
-                <div className="absolute inset-0 opacity-20">
-                    <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/30 rounded-full blur-3xl" />
-                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl" />
+                <div className="absolute inset-0 opacity-60" aria-hidden="true">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-[var(--accent-dim)] rounded-full blur-3xl" />
                 </div>
                 <div className="relative z-10 flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-500 to-slate-700 shadow-lg md:h-16 md:w-16">
-                        <span className="text-2xl md:text-3xl"><span className="material-symbols-rounded align-middle">settings</span></span>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] md:h-16 md:w-16">
+                        <span className="material-symbols-rounded align-middle text-2xl text-[var(--text-primary)] md:text-3xl">settings</span>
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold md:text-4xl">
-                            <span className="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-                                Account Settings
-                            </span>
+                        <h1 className="text-2xl font-bold text-[var(--text-primary)] md:text-4xl">
+                            Account Settings
                         </h1>
                         <p className="text-[var(--text-secondary)]">Manage your profile, security, and preferences</p>
                     </div>
@@ -97,7 +95,7 @@ export default function SettingsPage() {
                 >
                     <nav
                         aria-label="Account settings sections"
-                        className="flex gap-2 overflow-x-auto rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-2 shadow-[var(--theme-shadow)] lg:sticky lg:top-8 lg:block lg:space-y-1.5 lg:overflow-visible"
+                        className="flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2 elevation-card lg:sticky lg:top-8 lg:block lg:space-y-1.5 lg:overflow-visible"
                     >
                         {TABS.map((tab) => (
                             <NavigationRailRow
@@ -231,7 +229,7 @@ function AISafetyTab() {
             exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
         >
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                     <div>
                         <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] font-semibold">Resume Morph Guardrails</p>
@@ -240,8 +238,8 @@ function AISafetyTab() {
                             Talent Studio can rewrite phrasing, emphasis, and ordering. It cannot invent schools, degrees, certifications, licenses, employers, job titles, dates, or contact details.
                         </p>
                     </div>
-                    <div className={`rounded-2xl border px-4 py-3 ${status.unlocked100 ? 'border-emerald-500/25 bg-emerald-500/10' : 'border-amber-500/25 bg-amber-500/10'}`}>
-                        <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Current limit</p>
+                    <div className={`rounded-2xl border px-4 py-3 ${status.unlocked100 ? 'border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)]' : 'border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)]'}`}>
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)]">Current limit</p>
                         <p className="mt-1 text-xl font-semibold text-[var(--text-primary)]">
                             {loading ? 'Loading' : status.unlocked100 ? `${RESUME_MORPH_FULL_UNLOCK}% unlocked` : `${RESUME_MORPH_DEFAULT_MAX}% max`}
                         </p>
@@ -259,7 +257,7 @@ function AISafetyTab() {
                         { icon: 'badge', label: 'Credentials locked', detail: 'Certifications and licenses cannot be added by the model.' },
                         { icon: 'work_history', label: 'Work facts locked', detail: 'Employers, titles, dates, and locations stay tied to the source resume.' },
                     ].map((item) => (
-                        <div key={item.label} className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface-hover)] p-4">
+                        <div key={item.label} className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
                             <span className="material-symbols-rounded text-[22px] text-[var(--text-secondary)]">{item.icon}</span>
                             <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{item.label}</p>
                             <p className="mt-1 text-xs leading-relaxed text-[var(--text-secondary)]">{item.detail}</p>
@@ -269,12 +267,12 @@ function AISafetyTab() {
             </div>
 
             {!user ? (
-                <div className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-6">
+                <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
                     <h3 className="text-lg font-semibold text-[var(--text-primary)]">Sign in required</h3>
                     <p className="mt-2 text-sm text-[var(--text-secondary)]">100% Morph unlock is tied to your account and consent record.</p>
                 </div>
             ) : status.unlocked100 ? (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-6">
+                <div className="rounded-2xl border border-[color-mix(in_srgb,var(--success)_25%,transparent)] bg-[color-mix(in_srgb,var(--success)_8%,transparent)] elevation-card p-6">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div>
                             <h3 className="text-lg font-semibold text-[var(--text-primary)]">100% Morph is enabled</h3>
@@ -284,16 +282,16 @@ function AISafetyTab() {
                             type="button"
                             onClick={disableFullMorph}
                             disabled={saving}
-                            className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition hover:bg-[var(--theme-surface-hover)] disabled:opacity-60"
+                            className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-hover)] disabled:opacity-60"
                         >
                             {saving ? 'Saving...' : 'Disable 100% Morph'}
                         </button>
                     </div>
                 </div>
             ) : (
-                <div className="rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] shadow-[var(--theme-shadow)] p-6">
+                <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card p-6">
                     <div className="flex items-start gap-3">
-                        <span className="material-symbols-rounded text-[24px] text-amber-500">contract</span>
+                        <span className="material-symbols-rounded text-[24px] text-[var(--warning)]">contract</span>
                         <div>
                             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Unlock 100% Morph</h3>
                             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--text-secondary)]">
@@ -304,12 +302,12 @@ function AISafetyTab() {
 
                     <div className="mt-5 space-y-3">
                         {RESUME_MORPH_ACKNOWLEDGEMENTS.map((text, index) => (
-                            <label key={text} className="flex items-start gap-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-hover)] p-4 text-sm text-[var(--text-secondary)]">
+                            <label key={text} className="flex items-start gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4 text-sm text-[var(--text-secondary)]">
                                 <input
                                     type="checkbox"
                                     checked={accepted[index] === true}
                                     onChange={(event) => setAccepted(prev => ({ ...prev, [index]: event.target.checked }))}
-                                    className="mt-0.5 h-4 w-4 rounded accent-emerald-600"
+                                    className="mt-0.5 h-4 w-4 rounded accent-[var(--accent)]"
                                 />
                                 <span>{text}</span>
                             </label>
@@ -323,7 +321,7 @@ function AISafetyTab() {
                             value={typedName}
                             onChange={(event) => setTypedName(event.target.value)}
                             placeholder={user.displayName || user.email || 'Your name'}
-                            className="mt-2 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-hover)] px-4 py-3 text-[16px] text-[var(--text-primary)] outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10"
+                            className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3 text-[16px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]"
                         />
                     </div>
 
@@ -334,7 +332,7 @@ function AISafetyTab() {
                         className={`mt-5 w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
                             canUnlock
                                 ? 'bg-[var(--text-primary)] text-[var(--bg-deep)] hover:opacity-90'
-                                : 'border border-[var(--theme-border)] bg-[var(--theme-surface-hover)] text-[var(--text-tertiary)] cursor-not-allowed'
+                                : 'border border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-tertiary)] cursor-not-allowed'
                         }`}
                     >
                         {saving ? 'Saving attestation...' : 'Unlock 100% Morph'}
@@ -440,20 +438,20 @@ function SubscriptionTab() {
             </div>
 
             {billingNotice && (
-                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] px-4 py-3 text-sm text-[var(--text-primary)]">
+                <div className="rounded-xl border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-4 py-3 text-sm text-[var(--text-primary)]">
                     {billingNotice}
                 </div>
             )}
 
             {supportReceiptLoading && (
-                <div className="rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-4" role="status" aria-label="Loading billing support status">
-                    <div className="h-4 w-40 animate-pulse rounded bg-[var(--theme-surface-hover)]" />
-                    <div className="mt-3 h-3 w-full max-w-md animate-pulse rounded bg-[var(--theme-surface-hover)]" />
+                <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4" role="status" aria-label="Loading billing support status">
+                    <div className="h-4 w-40 animate-pulse rounded bg-[var(--bg-elevated)]" />
+                    <div className="mt-3 h-3 w-full max-w-md animate-pulse rounded bg-[var(--bg-elevated)]" />
                 </div>
             )}
 
             {!supportReceiptLoading && supportReceiptError && (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] p-4" role="alert">
+                <div className="rounded-xl border border-[color-mix(in_srgb,var(--warning)_25%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] p-4" role="alert">
                     <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
                             <p className="text-sm font-bold text-[var(--text-primary)]">Billing support status is unavailable</p>
@@ -482,27 +480,27 @@ function SubscriptionTab() {
                 return (
                     <div className={`rounded-xl border p-4 ${
                         presentation.tone === 'ready'
-                            ? 'border-blue-500/25 bg-blue-500/[0.07]'
+                            ? 'border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--accent-dim)]'
                             : presentation.tone === 'working'
-                                ? 'border-cyan-500/20 bg-cyan-500/[0.06]'
-                                : 'border-amber-500/20 bg-amber-500/[0.07]'
+                                ? 'border-[var(--border-subtle)] bg-[var(--bg-elevated)]'
+                                : 'border-[color-mix(in_srgb,var(--warning)_25%,transparent)] bg-[color-mix(in_srgb,var(--warning)_10%,transparent)]'
                     }`} role="status">
                         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex min-w-0 items-start gap-3">
-                                <span className="material-symbols-rounded mt-0.5 text-[22px] text-blue-500" aria-hidden="true">
+                                <span className={`material-symbols-rounded mt-0.5 text-[22px] ${(presentation.tone === 'ready' || presentation.tone === 'working') ? 'text-[var(--accent)]' : 'text-[var(--warning)]'}`} aria-hidden="true">
                                     {presentation.tone === 'ready' ? 'task_alt' : presentation.tone === 'working' ? 'manage_search' : 'schedule'}
                                 </span>
                                 <div className="min-w-0">
                                     <p className="text-sm font-bold text-[var(--text-primary)]">{presentation.title}</p>
                                     <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">{presentation.message}</p>
-                                    {timeLabel && <p className="mt-1 text-[10px] text-[var(--text-muted)]">Updated {timeLabel}</p>}
+                                    {timeLabel && <p className="mt-1 text-[11px] text-[var(--text-muted)]">Updated {timeLabel}</p>}
                                 </div>
                             </div>
                             {presentation.actionLabel && (
                                 <button
                                     type="button"
                                     onClick={() => router.push('/suite/upgrade')}
-                                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white transition hover:bg-blue-500"
+                                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-xs font-bold text-[var(--accent-on)] transition hover:bg-[var(--accent-active)]"
                                 >
                                     <span className="material-symbols-rounded text-[17px]" aria-hidden="true">arrow_forward</span>
                                     {presentation.actionLabel}
@@ -524,12 +522,12 @@ function SubscriptionTab() {
             })()}
 
             {loading ? (
-                <div className="rounded-[22px] border border-[var(--theme-border)] bg-[var(--theme-bg-card)] p-6">
+                <div className="rounded-[22px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
                     <div className="animate-pulse space-y-4">
-                        <div className="h-10 w-10 rounded-2xl bg-[var(--theme-surface-hover)]" />
-                        <div className="h-6 w-1/3 rounded-lg bg-[var(--theme-surface-hover)]" />
-                        <div className="h-4 w-2/3 rounded-lg bg-[var(--theme-surface-hover)]" />
-                        <div className="h-10 w-full rounded-xl bg-[var(--theme-surface-hover)]" />
+                        <div className="h-10 w-10 rounded-2xl bg-[var(--bg-elevated)]" />
+                        <div className="h-6 w-1/3 rounded-lg bg-[var(--bg-elevated)]" />
+                        <div className="h-4 w-2/3 rounded-lg bg-[var(--bg-elevated)]" />
+                        <div className="h-10 w-full rounded-xl bg-[var(--bg-elevated)]" />
                     </div>
                 </div>
             ) : (
@@ -636,10 +634,10 @@ function ProfileTab({ user, setUser }: { user: any; setUser: any }) {
             className="space-y-6"
         >
             {/* Avatar & Name */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] overflow-hidden">
-                <div className="h-24 bg-emerald-500/10 border-b border-emerald-500/20 relative">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card overflow-hidden">
+                <div className="h-24 bg-[var(--accent-dim)] border-b border-[var(--border-subtle)] relative">
                     <div className="absolute -bottom-10 left-6">
-                        <div className="w-20 h-20 rounded-2xl bg-[var(--theme-surface)] flex items-center justify-center text-3xl font-bold text-[var(--text-primary)] border-4 border-[var(--theme-bg)] shadow-xl">
+                        <div className="w-20 h-20 rounded-2xl bg-[var(--bg-elevated)] flex items-center justify-center text-3xl font-bold text-[var(--text-primary)] border-4 border-[var(--bg-deep)] elevation-card">
                             {user?.email?.[0]?.toUpperCase() || '?'}
                         </div>
                     </div>
@@ -648,11 +646,11 @@ function ProfileTab({ user, setUser }: { user: any; setUser: any }) {
                     <div className="flex items-start justify-between mb-6">
                         <div>
                             <h2 className="text-xl font-bold text-[var(--text-primary)]">{user?.displayName || user?.email?.split('@')[0] || 'User'}</h2>
-                            <p className="text-sm text-[var(--text-secondary)]">{user?.email || 'dev@talentconsulting.io'}</p>
+                            <p className="text-sm text-[var(--text-secondary)]">{user?.email || 'Not available'}</p>
                         </div>
                         <button
                             onClick={() => setEditing(!editing)}
-                            className="px-4 py-2 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--theme-surface-active)] transition-all"
+                            className="min-h-[44px] px-4 py-2 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all"
                         >
                             {editing ? 'Cancel' : <><span className="material-symbols-rounded align-middle mr-1">edit</span> Edit Profile</>}
                         </button>
@@ -673,7 +671,7 @@ function ProfileTab({ user, setUser }: { user: any; setUser: any }) {
                                         value={displayName}
                                         onChange={(e) => setDisplayName(e.target.value)}
                                         placeholder="Your full name"
-                                        className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20"
+                                        className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]"
                                     />
                                 </div>
                                 <div>
@@ -683,7 +681,7 @@ function ProfileTab({ user, setUser }: { user: any; setUser: any }) {
                                         value={phone}
                                         onChange={(e) => setPhone(e.target.value)}
                                         placeholder="+1 (555) 000-0000"
-                                        className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20"
+                                        className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]"
                                     />
                                 </div>
                                 <div>
@@ -693,7 +691,7 @@ function ProfileTab({ user, setUser }: { user: any; setUser: any }) {
                                         onChange={(e) => setBio(e.target.value)}
                                         placeholder="Tell us about yourself..."
                                         rows={3}
-                                        className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 resize-none"
+                                        className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)] resize-none"
                                     />
                                 </div>
                                 <motion.button
@@ -701,7 +699,7 @@ function ProfileTab({ user, setUser }: { user: any; setUser: any }) {
                                     whileTap={{ scale: 0.98 }}
                                     onClick={handleSaveProfile}
                                     disabled={saving}
-                                    className="w-full px-6 py-3 rounded-xl bg-emerald-500/10 border border-cyan-500/20 text-cyan-400 font-medium hover:bg-emerald-500/20 hover:border-cyan-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="w-full px-6 py-3 rounded-xl bg-[var(--accent)] border border-transparent text-[var(--accent-on)] font-medium hover:bg-[var(--accent-active)] elevation-card transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
                                     {saving ? 'Saving...' : <><span className="material-symbols-rounded align-middle mr-1">save</span> Save Profile</>}
                                 </motion.button>
@@ -712,18 +710,18 @@ function ProfileTab({ user, setUser }: { user: any; setUser: any }) {
             </div>
 
             {/* Account Details Card */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
                     <span><span className="text-xl align-middle"><span className="material-symbols-rounded">edit_document</span></span></span> Account Details
                 </h3>
                 <div className="space-y-3">
                     {[
-                        { label: 'Email', value: user?.email || 'dev@talentconsulting.io', icon: 'mail' },
-                        { label: 'User ID', value: user?.uid || user?.id || 'dev-user', icon: 'badge' },
-                        { label: 'Member Since', value: user?.metadata?.creationTime ? new Date(user.metadata.creationTime).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Development Mode', icon: 'calendar_month' },
+                        { label: 'Email', value: user?.email || 'Not available', icon: 'mail' },
+                        { label: 'User ID', value: user?.uid || user?.id || 'Not available', icon: 'badge' },
+                        { label: 'Member Since', value: user?.metadata?.creationTime ? new Date(user.metadata.creationTime).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not available', icon: 'calendar_month' },
                         { label: 'Auth Provider', value: user?.providerData?.[0]?.providerId || 'Email/Password', icon: 'key' },
                     ].map((item, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]">
+                        <div key={i} className="flex items-center justify-between p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
                             <div className="flex items-center gap-3">
                                 <span className="text-xl mr-1 material-symbols-rounded align-middle">{item.icon}</span>
                                 <span className="text-sm text-[var(--text-secondary)]">{item.label}</span>
@@ -775,9 +773,9 @@ function SecurityTab({ user }: { user: any }) {
         if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
         if (/\d/.test(pw)) s++;
         if (/[^a-zA-Z0-9]/.test(pw)) s++;
-        if (s <= 2) return { strength: s, label: 'Weak', color: 'bg-red-500' };
-        if (s <= 3) return { strength: s, label: 'Medium', color: 'bg-yellow-500' };
-        return { strength: s, label: 'Strong', color: 'bg-green-500' };
+        if (s <= 2) return { strength: s, label: 'Weak', color: 'bg-[var(--danger)]' };
+        if (s <= 3) return { strength: s, label: 'Medium', color: 'bg-[var(--warning)]' };
+        return { strength: s, label: 'Strong', color: 'bg-[var(--success)]' };
     };
 
     const handlePasswordChange = async (e: React.FormEvent) => {
@@ -821,7 +819,13 @@ function SecurityTab({ user }: { user: any }) {
             setSecretKey(result.secretKey || '');
             if (result.qrCodeUrl) {
                 const QRCode = (await import('qrcode')).default;
-                const dataUrl = await QRCode.toDataURL(result.qrCodeUrl, { width: 200, margin: 2, color: { dark: '#ffffff', light: '#00000000' } });
+                // Module colour comes from the theme token so the QR is legible in
+                // both themes (a hardcoded white foreground was invisible on the
+                // light-theme card). Background stays transparent.
+                const moduleColor = (typeof window !== 'undefined'
+                    ? getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim()
+                    : '') || 'rgba(17,17,17,1)';
+                const dataUrl = await QRCode.toDataURL(result.qrCodeUrl, { width: 200, margin: 2, color: { dark: moduleColor, light: 'rgba(0,0,0,0)' } });
                 setQrDataUrl(dataUrl);
             }
             setMfaStep('qr');
@@ -855,17 +859,17 @@ function SecurityTab({ user }: { user: any }) {
     return (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
             {/* Security Overview */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2"><span className="text-xl align-middle"><span className="material-symbols-rounded">lock</span></span> Security Overview</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
-                        { label: 'Password', status: 'Set', icon: 'key', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-                        { label: '2FA', status: mfaStatus.enrolled ? 'Enabled' : 'Disabled', icon: 'shield_person', color: mfaStatus.enrolled ? 'text-emerald-400' : 'text-amber-400', bg: mfaStatus.enrolled ? 'bg-emerald-500/10' : 'bg-amber-500/10' },
-                        { label: 'Last Login', status: user?.metadata?.lastSignInTime ? new Date(user.metadata.lastSignInTime).toLocaleDateString() : 'Recently', icon: 'history', color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
+                        { label: 'Password', status: 'Set', icon: 'key', color: 'text-[var(--success)]', bg: 'bg-[color-mix(in_srgb,var(--success)_12%,transparent)]' },
+                        { label: '2FA', status: mfaStatus.enrolled ? 'Enabled' : 'Disabled', icon: 'shield_person', color: mfaStatus.enrolled ? 'text-[var(--success)]' : 'text-[var(--warning)]', bg: mfaStatus.enrolled ? 'bg-[color-mix(in_srgb,var(--success)_12%,transparent)]' : 'bg-[color-mix(in_srgb,var(--warning)_12%,transparent)]' },
+                        { label: 'Last Login', status: user?.metadata?.lastSignInTime ? new Date(user.metadata.lastSignInTime).toLocaleDateString() : 'Not recorded', icon: 'history', color: 'text-[var(--text-secondary)]', bg: 'bg-[var(--bg-elevated)]' },
                     ].map((item, i) => (
-                        <div key={i} className={`p-4 rounded-xl ${item.bg} border border-[var(--theme-border)]`}>
+                        <div key={i} className={`p-4 rounded-xl ${item.bg} border border-[var(--border-subtle)]`}>
                             <div className="flex items-center gap-3">
-                                <span className="text-2xl material-symbols-rounded">{item.icon}</span>
+                                <span className={`text-2xl material-symbols-rounded ${item.color}`}>{item.icon}</span>
                                 <div>
                                     <p className="text-sm text-[var(--text-secondary)]">{item.label}</p>
                                     <p className={`text-sm font-semibold ${item.color}`}>{item.status}</p>
@@ -877,10 +881,10 @@ function SecurityTab({ user }: { user: any }) {
             </div>
 
             {/* Change Password */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] overflow-hidden">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card overflow-hidden">
                 <button onClick={() => setIsPasswordOpen(!isPasswordOpen)} className="w-full p-6 flex items-center justify-between group">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center"><span className="text-xl"><span className="material-symbols-rounded">lock</span></span></div>
+                        <div className="w-10 h-10 rounded-xl bg-[var(--accent-dim)] flex items-center justify-center"><span className="text-xl"><span className="material-symbols-rounded">lock</span></span></div>
                         <div className="text-left">
                             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Change Password</h3>
                             <p className="text-sm text-[var(--text-secondary)]">Update your account password</p>
@@ -893,21 +897,21 @@ function SecurityTab({ user }: { user: any }) {
                         <motion.form initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} onSubmit={handlePasswordChange} className="px-6 pb-6 space-y-4 overflow-hidden">
                             <div>
                                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Current Password</label>
-                                <input type={showPasswords ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Enter current password" className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20" />
+                                <input type={showPasswords ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Enter current password" className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]" />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">New Password</label>
                                 <div className="relative">
-                                    <input type={showPasswords ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Enter new password" className="w-full px-4 py-3 pr-12 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20" />
-                                    <button type="button" onClick={() => setShowPasswords(!showPasswords)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-sm"><span className="material-symbols-rounded text-lg">{showPasswords ? 'visibility_off' : 'visibility'}</span></button>
+                                    <input type={showPasswords ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Enter new password" className="w-full px-4 py-3 pr-12 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]" />
+                                    <button type="button" aria-label={showPasswords ? 'Hide password' : 'Show password'} onClick={() => setShowPasswords(!showPasswords)} className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center justify-center min-w-[44px] min-h-[44px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-sm"><span className="material-symbols-rounded text-lg">{showPasswords ? 'visibility_off' : 'visibility'}</span></button>
                                 </div>
                                 {newPassword && (
                                     <div className="mt-2">
                                         <div className="flex items-center justify-between mb-1">
                                             <span className="text-xs text-[var(--text-tertiary)]">Strength:</span>
-                                            <span className={`text-xs font-medium ${pwStrength.label === 'Weak' ? 'text-red-400' : pwStrength.label === 'Medium' ? 'text-yellow-400' : 'text-green-400'}`}>{pwStrength.label}</span>
+                                            <span className={`text-xs font-medium ${pwStrength.label === 'Weak' ? 'text-[var(--danger)]' : pwStrength.label === 'Medium' ? 'text-[var(--warning)]' : 'text-[var(--success)]'}`}>{pwStrength.label}</span>
                                         </div>
-                                        <div className="w-full h-1.5 bg-[var(--theme-surface-hover)] rounded-full overflow-hidden">
+                                        <div className="w-full h-1.5 bg-[var(--bg-elevated)] rounded-full overflow-hidden">
                                             <motion.div initial={{ width: 0 }} animate={{ width: `${(pwStrength.strength / 5) * 100}%` }} className={`h-full ${pwStrength.color}`} />
                                         </div>
                                     </div>
@@ -915,10 +919,10 @@ function SecurityTab({ user }: { user: any }) {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Confirm Password</label>
-                                <input type={showPasswords ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20" />
-                                {confirmPassword && newPassword !== confirmPassword && <p className="mt-1 text-xs text-red-400"><span className="material-symbols-rounded">warning</span> Passwords don't match</p>}
+                                <input type={showPasswords ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm new password" className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]" />
+                                {confirmPassword && newPassword !== confirmPassword && <p className="mt-1 text-xs text-[var(--danger)]"><span className="material-symbols-rounded">warning</span> Passwords don't match</p>}
                             </div>
-                            <button type="submit" disabled={isUpdatingPassword} className="w-full px-6 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all disabled:opacity-50">
+                            <button type="submit" disabled={isUpdatingPassword} className="w-full px-6 py-3 rounded-xl bg-[var(--accent)] border border-transparent text-[var(--accent-on)] font-medium hover:bg-[var(--accent-active)] elevation-card transition-all disabled:opacity-50">
                                 {isUpdatingPassword ? 'Updating...' : 'Update Password'}
                             </button>
                         </motion.form>
@@ -927,10 +931,10 @@ function SecurityTab({ user }: { user: any }) {
             </div>
 
             {/* Change Email */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] overflow-hidden">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card overflow-hidden">
                 <button onClick={() => setIsEmailOpen(!isEmailOpen)} className="w-full p-6 flex items-center justify-between group">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center"><span className="text-xl"><span className="material-symbols-rounded">mail</span></span></div>
+                        <div className="w-10 h-10 rounded-xl bg-[var(--accent-dim)] flex items-center justify-center"><span className="text-xl"><span className="material-symbols-rounded">mail</span></span></div>
                         <div className="text-left">
                             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Change Email</h3>
                             <p className="text-sm text-[var(--text-secondary)]">Verify the new address before it replaces your current one</p>
@@ -943,10 +947,10 @@ function SecurityTab({ user }: { user: any }) {
                         <motion.form initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} onSubmit={handleEmailChange} className="px-6 pb-6 space-y-4 overflow-hidden">
                             <div>
                                 <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">New Email Address</label>
-                                <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@email.com" className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20" />
+                                <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@email.com" className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]" />
                                 <p className="mt-2 text-xs text-[var(--text-tertiary)]"><span className="material-symbols-rounded text-sm align-middle mr-1">lock</span> We will send a verification link. Your current email stays active until you confirm the new one.</p>
                             </div>
-                            <button type="submit" disabled={isUpdatingEmail} className="w-full px-6 py-3 rounded-xl bg-emerald-500/10 border border-cyan-500/20 text-cyan-400 font-medium hover:bg-emerald-500/20 hover:border-cyan-500/30 transition-all disabled:opacity-50">
+                            <button type="submit" disabled={isUpdatingEmail} className="w-full px-6 py-3 rounded-xl bg-[var(--accent)] border border-transparent text-[var(--accent-on)] font-medium hover:bg-[var(--accent-active)] elevation-card transition-all disabled:opacity-50">
                                 {isUpdatingEmail ? 'Sending link...' : 'Send verification link'}
                             </button>
                         </motion.form>
@@ -955,30 +959,30 @@ function SecurityTab({ user }: { user: any }) {
             </div>
 
             {/* Enrollment remains hidden until Firebase MFA is enabled for this project. */}
-            {mfaEnrollmentEnabled && <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            {mfaEnrollmentEnabled && <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center"><span className="text-xl material-symbols-rounded">lock</span></div>
+                        <div className="w-10 h-10 rounded-xl bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] flex items-center justify-center"><span className="text-xl material-symbols-rounded text-[var(--warning)]">lock</span></div>
                         <div>
                             <h3 className="text-lg font-semibold text-[var(--text-primary)]">Two-Factor Authentication</h3>
                             <p className="text-sm text-[var(--text-secondary)]">Google Authenticator / TOTP</p>
                         </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${mfaStatus.enrolled ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-slate-500/20 text-[var(--text-tertiary)] border-slate-500/30'}`}>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${mfaStatus.enrolled ? 'bg-[color-mix(in_srgb,var(--success)_18%,transparent)] text-[var(--success)] border-[color-mix(in_srgb,var(--success)_30%,transparent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)] border-[var(--border-subtle)]'}`}>
                         {mfaStatus.enrolled ? '✓ Enabled' : 'Not Enrolled'}
                     </span>
                 </div>
 
                 {mfaStatus.enrolled ? (
                     <div className="space-y-3">
-                        <div className="p-4 rounded-xl bg-green-500/5 border border-green-500/20 flex items-center gap-3">
-                            <span className="text-xl"><span className="material-symbols-rounded">shield_person</span></span>
+                        <div className="p-4 rounded-xl bg-[color-mix(in_srgb,var(--success)_8%,transparent)] border border-[color-mix(in_srgb,var(--success)_25%,transparent)] flex items-center gap-3">
+                            <span className="text-xl text-[var(--success)]"><span className="material-symbols-rounded">shield_person</span></span>
                             <div>
                                 <p className="text-[var(--text-primary)] font-medium">Authenticator Active</p>
                                 <p className="text-sm text-[var(--text-secondary)]">{mfaStatus.hints[0]?.displayName || 'Google Authenticator'}</p>
                             </div>
                         </div>
-                        <button onClick={handleRemoveMFA} disabled={mfaLoading} className="w-full px-6 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 font-medium hover:bg-red-500/20 transition-all disabled:opacity-50">
+                        <button onClick={handleRemoveMFA} disabled={mfaLoading} className="w-full px-6 py-3 rounded-xl bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] text-[var(--danger)] font-medium hover:bg-[color-mix(in_srgb,var(--danger)_18%,transparent)] transition-all disabled:opacity-50">
                             {mfaLoading && mfaStep === 'unenrolling' ? 'Removing...' : <><span className="material-symbols-rounded align-middle mr-1">delete</span> Remove 2FA</>}
                         </button>
                     </div>
@@ -986,32 +990,32 @@ function SecurityTab({ user }: { user: any }) {
                     <div className="space-y-4">
                         {qrDataUrl && (
                             <div className="flex flex-col items-center">
-                                <p className="text-[var(--text-secondary)] text-sm mb-3 text-center">Scan with <strong className="text-amber-400">Google Authenticator</strong></p>
-                                <div className="p-4 rounded-2xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]"><img src={qrDataUrl} alt="QR" className="w-48 h-48" /></div>
+                                <p className="text-[var(--text-secondary)] text-sm mb-3 text-center">Scan with <strong className="text-[var(--text-primary)]">Google Authenticator</strong></p>
+                                <div className="p-4 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]"><img src={qrDataUrl} alt="QR" className="w-48 h-48" /></div>
                             </div>
                         )}
-                        <div className="p-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]">
+                        <div className="p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
                             <p className="text-xs text-[var(--text-tertiary)] mb-1">Manual key:</p>
                             <div className="flex items-center gap-2">
-                                <code className="flex-1 text-sm text-amber-400 font-mono break-all">{secretKey}</code>
-                                <button onClick={() => { navigator.clipboard.writeText(secretKey); showToast('Copied!', 'content_paste'); }} className="px-2 py-1 rounded-lg bg-[var(--theme-surface-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-xs">Copy</button>
+                                <code className="flex-1 text-sm text-[var(--accent)] font-mono break-all">{secretKey}</code>
+                                <button onClick={() => { navigator.clipboard.writeText(secretKey); showToast('Copied!', 'content_paste'); }} className="min-h-[44px] px-3 py-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-xs">Copy</button>
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">6-digit code</label>
-                            <input type="text" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full px-4 py-4 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] text-center text-2xl tracking-[0.3em] font-mono focus:outline-none focus:border-amber-500/50" placeholder="000000" maxLength={6} autoFocus />
+                            <input type="text" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full px-4 py-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-center text-2xl tracking-[0.3em] font-mono focus:outline-none focus:border-[var(--accent)]" placeholder="000000" maxLength={6} autoFocus />
                         </div>
-                        {mfaError && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30"><p className="text-sm text-red-300">{mfaError}</p></div>}
+                        {mfaError && <div className="p-3 rounded-xl bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] border border-[color-mix(in_srgb,var(--danger)_30%,transparent)]"><p className="text-sm text-[var(--danger)]">{mfaError}</p></div>}
                         <div className="flex gap-3">
-                            <button onClick={handleVerifyMFA} disabled={mfaLoading || verifyCode.length < 6} className="flex-1 px-6 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium hover:bg-amber-500/20 transition-all disabled:opacity-50">{mfaLoading ? 'Verifying...' : 'Verify & Enable'}</button>
-                            <button onClick={() => { setMfaStep('idle'); setVerifyCode(''); setMfaError(''); }} className="px-4 py-3 rounded-xl border border-[var(--theme-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Cancel</button>
+                            <button onClick={handleVerifyMFA} disabled={mfaLoading || verifyCode.length < 6} className="flex-1 px-6 py-3 rounded-xl bg-[var(--accent)] border border-transparent text-[var(--accent-on)] font-medium hover:bg-[var(--accent-active)] transition-all disabled:opacity-50 elevation-card">{mfaLoading ? 'Verifying...' : 'Verify & Enable'}</button>
+                            <button onClick={() => { setMfaStep('idle'); setVerifyCode(''); setMfaError(''); }} className="px-4 py-3 rounded-xl border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Cancel</button>
                         </div>
                     </div>
                 ) : (
                     <div className="space-y-3">
                         <p className="text-xs text-[var(--text-tertiary)]">Use Google Authenticator, Authy, or any TOTP-compatible app for extra security.</p>
-                        {mfaError && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30"><p className="text-sm text-red-300">{mfaError}</p></div>}
-                        <button onClick={handleStartMFA} disabled={mfaLoading} className="w-full px-6 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium hover:bg-amber-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                        {mfaError && <div className="p-3 rounded-xl bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] border border-[color-mix(in_srgb,var(--danger)_30%,transparent)]"><p className="text-sm text-[var(--danger)]">{mfaError}</p></div>}
+                        <button onClick={handleStartMFA} disabled={mfaLoading} className="w-full px-6 py-3 rounded-xl bg-[var(--accent)] border border-transparent text-[var(--accent-on)] font-medium hover:bg-[var(--accent-active)] transition-all disabled:opacity-50 flex items-center justify-center gap-2 elevation-card">
                             {mfaLoading ? 'Setting up...' : <><span className="material-symbols-rounded align-middle mr-1">lock</span> Set Up Authenticator</>}
                         </button>
                     </div>
@@ -1168,13 +1172,13 @@ function NotificationsTab() {
             aria-label={label}
             onClick={onChange}
             disabled={isSaving}
-            className={`relative grid h-11 min-w-[44px] w-12 shrink-0 place-items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${isSaving ? 'opacity-60' : ''}`}
+            className={`relative grid h-11 min-w-[44px] w-12 shrink-0 place-items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${isSaving ? 'opacity-60' : ''}`}
         >
-            <span className={`absolute h-7 w-12 rounded-full transition-colors ${enabled ? 'bg-blue-600' : 'bg-[var(--theme-surface-active)]'}`} aria-hidden="true" />
+            <span className={`absolute h-7 w-12 rounded-full transition-colors ${enabled ? 'bg-[var(--accent)]' : 'bg-[var(--bg-hover)]'}`} aria-hidden="true" />
             <motion.div
                 animate={{ x: enabled ? 26 : 4 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                className="absolute left-0 h-5 w-5 rounded-full bg-white shadow-md"
+                className="absolute left-0 h-5 w-5 rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)]"
                 aria-hidden="true"
             />
         </button>
@@ -1183,26 +1187,26 @@ function NotificationsTab() {
     return (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
             {/* Email Digest Notifications — wired to Firestore */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-1 flex items-center gap-2"><span><span className="text-xl align-middle material-symbols-rounded">mail</span></span> Email Digests</h3>
                 <p className="text-xs text-[var(--text-tertiary)] mb-4">Control which automated emails you receive from TalentConsulting.io.</p>
                 {loading ? (
                     <div className="animate-pulse space-y-3">
-                        <div className="h-14 bg-[var(--theme-surface-hover)] rounded-xl" />
-                        <div className="h-14 bg-[var(--theme-surface-hover)] rounded-xl" />
+                        <div className="h-14 bg-[var(--bg-elevated)] rounded-xl" />
+                        <div className="h-14 bg-[var(--bg-elevated)] rounded-xl" />
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        <div className="p-4 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]">
+                        <div className="p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
                             <div className="flex items-start justify-between gap-4">
                                 <div className="flex items-start gap-3">
-                                    <span className="material-symbols-rounded text-xl text-cyan-400">radar</span>
+                                    <span className="material-symbols-rounded text-xl text-[var(--accent)]">radar</span>
                                     <div>
                                         <p className="text-sm font-medium text-[var(--text-primary)]">Career Picks by Taco</p>
                                         <p className="text-xs text-[var(--text-secondary)]">Crafted job matches with fit reasons, salary signals, and application prep links.</p>
-                                        <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+                                        <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
                                             {settings.jobAlertsLastSentAt
-                                                ? `Last sent ${new Date(settings.jobAlertsLastSentAt).toLocaleDateString()} with ${settings.jobAlertsLastJobCount || 0} jobs`
+                                                ? `Last sent ${new Date(settings.jobAlertsLastSentAt).toLocaleDateString()}${settings.jobAlertsLastJobCount ? ` with ${settings.jobAlertsLastJobCount} jobs` : ''}`
                                                 : 'No digest sent yet'}
                                         </p>
                                     </div>
@@ -1220,30 +1224,30 @@ function NotificationsTab() {
                                                 onClick={() => saveJobAlertsFrequency(option.value)}
                                                 disabled={saving === 'jobAlertsFrequency'}
                                                 aria-pressed={selected}
-                                                className={`rounded-xl border px-3 py-2 text-left transition disabled:opacity-60 ${selected ? 'border-cyan-500/30 bg-cyan-500/10' : 'border-[var(--theme-border)] bg-[var(--theme-surface-hover)] hover:border-cyan-500/20'}`}
+                                                className={`min-h-[44px] rounded-xl border px-3 py-2 text-left transition disabled:opacity-60 ${selected ? 'border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] hover:border-[color-mix(in_srgb,var(--accent)_25%,transparent)]'}`}
                                             >
                                                 <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-                                                    <span className="material-symbols-rounded text-[14px] text-cyan-500">{option.icon}</span>
+                                                    <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">{option.icon}</span>
                                                     {option.label}
                                                 </span>
-                                                <span className="mt-0.5 block text-[10px] leading-4 text-[var(--text-tertiary)]">{option.desc}</span>
+                                                <span className="mt-0.5 block text-[11px] leading-4 text-[var(--text-tertiary)]">{option.desc}</span>
                                             </button>
                                         );
                                     })}
                                 </div>
                             ) : (
-                                <div className="mt-4 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2">
+                                <div className="mt-4 rounded-xl border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-2">
                                     <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-                                        <span className="material-symbols-rounded text-[14px] text-cyan-500">calendar_month</span>
+                                        <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">calendar_month</span>
                                         Weekly delivery
                                     </span>
-                                    <span className="mt-0.5 block text-[10px] text-[var(--text-tertiary)]">Career Picks by Taco sends every Monday when this toggle is enabled.</span>
+                                    <span className="mt-0.5 block text-[11px] text-[var(--text-tertiary)]">Career Picks by Taco sends every Monday when this toggle is enabled.</span>
                                 </div>
                             )}
                         </div>
-                        <div className="flex items-center justify-between p-4 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]">
+                        <div className="flex items-center justify-between p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
                             <div className="flex items-center gap-3">
-                                <span className="material-symbols-rounded text-xl text-emerald-400">route</span>
+                                <span className="material-symbols-rounded text-xl text-[var(--accent)]">route</span>
                                 <div>
                                     <p className="text-sm font-medium text-[var(--text-primary)]">Study Reminders</p>
                                     <p className="text-xs text-[var(--text-secondary)]">Daily Skill Bridge progress emails</p>
@@ -1256,7 +1260,7 @@ function NotificationsTab() {
             </div>
 
             {/* Other Email Notifications */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2"><span><span className="text-xl align-middle material-symbols-rounded">notifications</span></span> Activity Notifications</h3>
                 <div className="space-y-4">
                     {[
@@ -1265,7 +1269,7 @@ function NotificationsTab() {
                         { key: 'emailOffers' as const, label: 'Offer Notifications', desc: 'When you receive an offer' },
                         { key: 'emailNewsletter' as const, label: 'Product Newsletter', desc: 'Job market insights, product notes, and career tips' },
                     ].map((item) => (
-                        <div key={item.key} className="flex items-center justify-between p-4 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]">
+                        <div key={item.key} className="flex items-center justify-between p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
                             <div>
                                 <p className="text-sm font-medium text-[var(--text-primary)]">{item.label}</p>
                                 <p className="text-xs text-[var(--text-secondary)]">{item.desc}</p>
@@ -1277,7 +1281,7 @@ function NotificationsTab() {
             </div>
 
             {/* Push Notifications */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2"><span><span className="material-symbols-rounded text-inherit align-middle">smartphone</span></span> Push Notifications</h3>
                 <div className="space-y-4">
                     {[
@@ -1285,7 +1289,7 @@ function NotificationsTab() {
                         { key: 'pushStatusUpdates' as const, label: 'Status Updates', desc: 'Real-time application status changes' },
                         { key: 'pushReminders' as const, label: 'Follow-up Reminders', desc: 'Reminders to follow up on applications' },
                     ].map((item) => (
-                        <div key={item.key} className="flex items-center justify-between p-4 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]">
+                        <div key={item.key} className="flex items-center justify-between p-4 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
                             <div>
                                 <p className="text-sm font-medium text-[var(--text-primary)]">{item.label}</p>
                                 <p className="text-xs text-[var(--text-secondary)]">{item.desc}</p>
@@ -1334,16 +1338,16 @@ function FeedbackTab() {
     }, [userUid]);
 
     const categories = [
-        { id: 'bug', label: 'Bug', icon: 'bug_report', color: '#ef4444' },
-        { id: 'feature', label: 'Feature', icon: 'lightbulb', color: '#3b82f6' },
-        { id: 'general', label: 'General', icon: 'chat_bubble', color: '#10b981' },
-        { id: 'other', label: 'Other', icon: 'help', color: '#6b7280' },
+        { id: 'bug', label: 'Bug', icon: 'bug_report', color: 'var(--danger)' },
+        { id: 'feature', label: 'Feature', icon: 'lightbulb', color: 'var(--accent)' },
+        { id: 'general', label: 'General', icon: 'chat_bubble', color: 'var(--success)' },
+        { id: 'other', label: 'Other', icon: 'help', color: 'var(--text-muted)' },
     ];
 
     const moods = [
-        { value: 1, icon: 'sentiment_very_dissatisfied', label: 'Frustrated', color: '#ef4444' },
-        { value: 3, icon: 'sentiment_neutral', label: 'Neutral', color: '#a3a3a3' },
-        { value: 5, icon: 'sentiment_very_satisfied', label: 'Delighted', color: '#10b981' },
+        { value: 1, icon: 'sentiment_very_dissatisfied', label: 'Frustrated', color: 'var(--danger)' },
+        { value: 3, icon: 'sentiment_neutral', label: 'Neutral', color: 'var(--text-muted)' },
+        { value: 5, icon: 'sentiment_very_satisfied', label: 'Delighted', color: 'var(--success)' },
     ];
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -1457,18 +1461,18 @@ function FeedbackTab() {
             exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
         >
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <div className="flex items-start justify-between gap-4 mb-5">
                     <div>
                         <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                            <span className="material-symbols-rounded text-emerald-400">rate_review</span>
+                            <span className="material-symbols-rounded text-[var(--accent)]">rate_review</span>
                             Feedback
                         </h3>
                         <p className="text-sm text-[var(--text-secondary)] mt-1">
                             Share bugs, requests, or product notes. This now lives in Settings so the main sidebar stays focused.
                         </p>
                     </div>
-                    <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-400">
+                    <span className="rounded-full border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] px-3 py-1 text-[11px] font-semibold text-[var(--accent)]">
                         Product notes
                     </span>
                 </div>
@@ -1486,10 +1490,10 @@ function FeedbackTab() {
                                         setDiagnosticAcknowledgement(null);
                                     }
                                 }}
-                                className="flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-all"
+                                className="flex min-h-[44px] items-center gap-2 rounded-xl border px-3 py-2 text-left transition-all"
                                 style={{
-                                    borderColor: active ? `${cat.color}55` : 'var(--theme-border)',
-                                    background: active ? `${cat.color}10` : 'var(--theme-surface-hover)',
+                                    borderColor: active ? `color-mix(in srgb, ${cat.color} 33%, transparent)` : 'var(--border-subtle)',
+                                    background: active ? `color-mix(in srgb, ${cat.color} 10%, transparent)` : 'var(--bg-elevated)',
                                 }}
                             >
                                 <span className="material-symbols-rounded text-[18px]" style={{ color: active ? cat.color : 'var(--text-tertiary)' }}>
@@ -1510,10 +1514,10 @@ function FeedbackTab() {
                     rows={6}
                     maxLength={5000}
                     placeholder="Describe what happened, what you expected, or what would make Talent Studio better..."
-                    className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 resize-none"
+                    className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)] resize-none"
                 />
                 <div className="mt-2 flex items-center justify-between gap-3">
-                    <span className="text-[10px] text-[var(--text-tertiary)]">
+                    <span className="text-[11px] text-[var(--text-tertiary)]">
                         {message.length > 0 ? `${message.length}/5000` : 'Minimum 5 characters'}
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -1523,10 +1527,10 @@ function FeedbackTab() {
                                 type="button"
                                 onClick={() => setMood(mood === m.value ? null : m.value)}
                                 title={m.label}
-                                className="flex h-9 w-9 items-center justify-center rounded-xl border transition-all hover:scale-105"
+                                className="flex h-11 w-11 items-center justify-center rounded-xl border transition-all hover:scale-105"
                                 style={{
-                                    borderColor: mood === m.value ? `${m.color}55` : 'var(--theme-border)',
-                                    background: mood === m.value ? `${m.color}10` : 'var(--theme-surface-hover)',
+                                    borderColor: mood === m.value ? `color-mix(in srgb, ${m.color} 33%, transparent)` : 'var(--border-subtle)',
+                                    background: mood === m.value ? `color-mix(in srgb, ${m.color} 10%, transparent)` : 'var(--bg-elevated)',
                                     color: mood === m.value ? m.color : 'var(--text-tertiary)',
                                 }}
                             >
@@ -1537,13 +1541,13 @@ function FeedbackTab() {
                 </div>
 
                 {category === 'bug' ? (
-                    <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.05] p-4">
+                    <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] bg-[var(--accent-dim)] p-4">
                         <input
                             type="checkbox"
                             checked={shareDiagnostics}
                             disabled={diagnosticPolicyLoading || submitting}
                             onChange={(event) => void updateDiagnosticSharing(event.target.checked)}
-                            className="mt-1 h-4 w-4 rounded border-[var(--theme-border)] accent-cyan-500"
+                            className="mt-1 h-4 w-4 rounded border-[var(--border-subtle)] accent-[var(--accent)]"
                         />
                         <span className="min-w-0">
                             <span className="block text-sm font-semibold text-[var(--text-primary)]">
@@ -1568,7 +1572,7 @@ function FeedbackTab() {
             <button
                 type="submit"
                 disabled={submitting}
-                className="w-full px-6 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium hover:bg-emerald-500/20 hover:border-emerald-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full px-6 py-3 rounded-xl bg-[var(--accent)] border border-transparent text-[var(--accent-on)] font-medium hover:bg-[var(--accent-active)] elevation-card transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
                 <span className="material-symbols-rounded text-[18px]">send</span>
                 {submitting ? 'Sending...' : 'Send Feedback'}
@@ -1579,69 +1583,39 @@ function FeedbackTab() {
 
 // ===== SESSIONS TAB =====
 function SessionsTab({ user }: { user: any }) {
-    const sessions = [
-        { device: 'This Device', browser: 'Chrome on macOS', ip: '127.0.0.1', lastActive: 'Active now', current: true, icon: 'computer' },
-        { device: 'iPhone 15', browser: 'Safari on iOS', ip: '192.168.1.x', lastActive: '2 hours ago', current: false, icon: 'smartphone' },
-    ];
-
+    // No real session/login-history data source exists. Per the truth rule we
+    // render an honest labelled absence rather than fabricated device, browser,
+    // IP, location or timestamp values. The only thing genuinely known is that
+    // the account is signed in on this device right now (trivially true — the
+    // user is viewing this page here).
     return (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
-                <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2"><span><span className="material-symbols-rounded text-inherit align-middle">computer</span></span> Active Sessions</h3>
-                    <button className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-medium hover:bg-red-500/20 transition-all" onClick={() => showToast('All other sessions will be signed out', 'info')}>
-                        Sign Out All Others
-                    </button>
-                </div>
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
+                <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2 mb-6"><span><span className="material-symbols-rounded text-inherit align-middle">computer</span></span> Active Sessions</h3>
                 <div className="space-y-3">
-                    {sessions.map((session, i) => (
-                        <div key={i} className={`p-4 rounded-xl border ${session.current ? 'bg-emerald-500/5 border-cyan-500/20' : 'bg-[var(--theme-surface-hover)] border-[var(--theme-border)]'}`}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <span className="text-2xl material-symbols-rounded flex-shrink-0">{session.icon}</span>
-                                    <div>
-                                        <p className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
-                                            {session.device}
-                                            {session.current && <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-cyan-400 text-[10px]">Current</span>}
-                                        </p>
-                                        <p className="text-xs text-[var(--text-secondary)]">{session.browser} • {session.ip}</p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className={`text-xs font-medium ${session.current ? 'text-green-400' : 'text-[var(--text-secondary)]'}`}>{session.lastActive}</p>
-                                    {!session.current && (
-                                        <button className="text-xs text-red-400 hover:underline mt-1" onClick={() => showToast('Session revoked', 'check_circle')}>Revoke</button>
-                                    )}
-                                </div>
-                            </div>
+                    <div className="p-4 rounded-xl border bg-[var(--accent-dim)] border-[color-mix(in_srgb,var(--accent)_25%,transparent)]">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl material-symbols-rounded flex-shrink-0 text-[var(--text-secondary)]">computer</span>
+                            <p className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+                                This device
+                                <span className="px-2 py-0.5 rounded-full bg-[var(--accent-dim)] text-[var(--accent)] text-[11px]">Current</span>
+                            </p>
                         </div>
-                    ))}
+                    </div>
+                    <SuiteUnmeasured
+                        label="Active session details aren't available yet"
+                        reason="We don't yet track the devices, browsers, locations, or times where your account is signed in, so we can't list or revoke other sessions here."
+                    />
                 </div>
             </div>
 
             {/* Login History */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2"><span><span className="text-xl align-middle"><span className="material-symbols-rounded">content_paste</span></span></span> Login History</h3>
-                <div className="space-y-2">
-                    {[
-                        { time: 'Today, 10:45 PM', method: 'Email/Password', location: 'Atlanta, GA', status: 'success' },
-                        { time: 'Today, 8:12 AM', method: 'Email/Password', location: 'Atlanta, GA', status: 'success' },
-                        { time: 'Yesterday, 11:30 PM', method: 'Email/Password', location: 'Atlanta, GA', status: 'success' },
-                    ].map((entry, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-[var(--theme-surface-hover)]">
-                            <div className="flex items-center gap-3">
-                                <span className={`w-2 h-2 rounded-full ${entry.status === 'success' ? 'bg-green-400' : 'bg-red-400'}`} />
-                                <div>
-                                    <p className="text-sm text-[var(--text-primary)]">{entry.time}</p>
-                                    <p className="text-xs text-[var(--text-secondary)]">{entry.method} • {entry.location}</p>
-                                </div>
-                            </div>
-                            <span className={`text-xs ${entry.status === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                                {entry.status === 'success' ? '✓ Success' : <><span className="material-symbols-rounded align-middle mr-1">close</span> Failed</>}
-                            </span>
-                        </div>
-                    ))}
-                </div>
+                <SuiteUnmeasured
+                    label="Login history isn't available yet"
+                    reason="We don't yet record sign-in times, methods, or locations for your account, so there's nothing to show here."
+                />
             </div>
         </motion.div>
     );
@@ -1683,56 +1657,57 @@ function DataPrivacyTab({ user }: { user: any }) {
 
             <ObservabilityPrivacyControls />
 
-            {/* Stats Overview */}
+            {/* Stats Overview — counts are not wired to a data source on this page, so
+                they render as labelled absences rather than fabricated numbers (MUST6). */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-5 flex flex-col items-center justify-center text-center">
-                    <span className="material-symbols-rounded text-3xl text-cyan-500 mb-2">description</span>
-                    <h4 className="text-2xl font-bold text-[var(--text-primary)]">3</h4>
-                    <p className="text-sm text-[var(--text-secondary)]">Saved Resumes</p>
-                </div>
-                <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-5 flex flex-col items-center justify-center text-center">
-                    <span className="material-symbols-rounded text-3xl text-violet-500 mb-2">cases</span>
-                    <h4 className="text-2xl font-bold text-[var(--text-primary)]">12</h4>
-                    <p className="text-sm text-[var(--text-secondary)]">Tracked Applications</p>
-                </div>
-                <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-5 flex flex-col items-center justify-center text-center">
-                    <span className="material-symbols-rounded text-3xl text-emerald-500 mb-2">person_search</span>
-                    <h4 className="text-2xl font-bold text-[var(--text-primary)]">2</h4>
-                    <p className="text-sm text-[var(--text-secondary)]">Active Personas</p>
-                </div>
+                <SuiteUnmeasured
+                    label="Saved resumes"
+                    reason="Not counted here. Open Liquid Resume to see your saved versions."
+                    density="compact"
+                />
+                <SuiteUnmeasured
+                    label="Tracked applications"
+                    reason="Not counted here. Open Applications to see your tracked roles."
+                    density="compact"
+                />
+                <SuiteUnmeasured
+                    label="Active personas"
+                    reason="Not counted here. Open your profile to manage personas."
+                    density="compact"
+                />
             </div>
 
             {/* Export Data */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2"><span className="material-symbols-rounded text-inherit align-middle">download</span> Export Your Data</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-4">Request a comprehensive zip file of all your stored data, resumes, and application tracking history.</p>
                 <button
                     onClick={() => showToast('Data export is being prepared and will be emailed.', 'info')}
-                    className="px-6 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] font-medium hover:bg-[var(--theme-surface-active)] transition-all flex items-center gap-2"
+                    className="px-6 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-hover)] transition-all flex items-center gap-2"
                 >
                     <span className="material-symbols-rounded">archive</span> Request Export
                 </button>
             </div>
 
             {/* Deactivate Account */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2"><span className="material-symbols-rounded text-inherit align-middle">pause_circle</span> Pause / Deactivate Account</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-4">Temporarily hide your profile and pause all email notifications. Your data remains safe until you return.</p>
                 <button
                     onClick={() => setActionState('deactivate')}
-                    className="px-6 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 font-medium hover:bg-amber-500/20 transition-all flex items-center gap-2"
+                    className="min-h-[44px] px-6 py-3 rounded-xl bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] border border-[color-mix(in_srgb,var(--warning)_25%,transparent)] text-[var(--warning)] font-medium hover:bg-[color-mix(in_srgb,var(--warning)_18%,transparent)] transition-all flex items-center gap-2"
                 >
                     <span className="material-symbols-rounded">pause</span> Deactivate Account
                 </button>
             </div>
 
             {/* Delete Account */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-rose-500/10 shadow-[var(--theme-shadow)] p-6">
-                <h3 className="text-lg font-semibold text-rose-500 mb-2 flex items-center gap-2"><span className="material-symbols-rounded text-inherit align-middle">delete_forever</span> Permanent Deletion</h3>
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[color-mix(in_srgb,var(--danger)_20%,transparent)] elevation-card p-6">
+                <h3 className="text-lg font-semibold text-[var(--danger)] mb-2 flex items-center gap-2"><span className="material-symbols-rounded text-inherit align-middle">delete_forever</span> Permanent Deletion</h3>
                 <p className="text-sm text-[var(--text-secondary)] mb-4">Permanently remove your account, delete all uploaded resumes, and wipe your application tracking data.</p>
                 <button
                     onClick={() => setActionState('delete')}
-                    className="px-6 py-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 font-medium hover:bg-rose-500/20 transition-all flex items-center gap-2"
+                    className="min-h-[44px] px-6 py-3 rounded-xl bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] border border-[color-mix(in_srgb,var(--danger)_25%,transparent)] text-[var(--danger)] font-medium hover:bg-[color-mix(in_srgb,var(--danger)_18%,transparent)] transition-all flex items-center gap-2"
                 >
                     <span className="material-symbols-rounded">delete</span> Delete Account
                 </button>
@@ -1743,11 +1718,11 @@ function DataPrivacyTab({ user }: { user: any }) {
                 {actionState !== 'none' && (
                     <motion.div
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+                        className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--modal-backdrop)] p-4 backdrop-blur-sm"
                     >
                         <motion.div
                             initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-                            className="w-full max-w-lg rounded-[24px] bg-[var(--theme-bg-card)] p-6 shadow-2xl border border-[var(--theme-border)]"
+                            className="w-full max-w-lg rounded-[24px] bg-[var(--bg-surface)] p-6 elevation-raised border border-[var(--border-subtle)]"
                         >
                             {!emailSent ? (
                                 <>
@@ -1761,7 +1736,7 @@ function DataPrivacyTab({ user }: { user: any }) {
                                     <select
                                         value={reason}
                                         onChange={(e) => setReason(e.target.value)}
-                                        className="w-full mb-4 px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] focus:outline-none focus:border-cyan-500"
+                                        className="w-full mb-4 px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                                     >
                                         <option value="" disabled>Select a reason (optional)</option>
                                         <option value="found_job">I found a job!</option>
@@ -1772,9 +1747,9 @@ function DataPrivacyTab({ user }: { user: any }) {
                                         <option value="other">Other</option>
                                     </select>
 
-                                    <div className="p-4 rounded-xl bg-[var(--theme-surface-hover)] mb-6">
+                                    <div className="p-4 rounded-xl bg-[var(--bg-elevated)] mb-6">
                                         <div className="flex items-start gap-3">
-                                            <span className="material-symbols-rounded text-cyan-500 mt-0.5">mail</span>
+                                            <span className="material-symbols-rounded text-[var(--accent)] mt-0.5">mail</span>
                                             <div>
                                                 <h4 className="font-semibold text-[var(--text-primary)] text-sm">Email Verification Required</h4>
                                                 <p className="text-xs text-[var(--text-secondary)] mt-1">
@@ -1787,21 +1762,21 @@ function DataPrivacyTab({ user }: { user: any }) {
                                     <div className="flex justify-end gap-3">
                                         <button
                                             onClick={() => setActionState('none')}
-                                            className="px-5 py-2.5 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium transition-colors"
+                                            className="min-h-[44px] px-5 py-2.5 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium transition-colors"
                                         >
                                             Cancel
                                         </button>
                                         <button
                                             onClick={handleActionInitiation}
                                             disabled={isProcessing}
-                                            className={`px-5 py-2.5 rounded-xl font-medium transition-colors flex items-center gap-2 ${
+                                            className={`min-h-[44px] px-5 py-2.5 rounded-xl font-medium transition-colors flex items-center gap-2 text-[var(--accent-on)] ${
                                                 actionState === 'delete'
-                                                    ? 'bg-rose-500 text-white hover:bg-rose-600'
-                                                    : 'bg-amber-500 text-white hover:bg-amber-600'
+                                                    ? 'bg-[var(--danger)] hover:opacity-90'
+                                                    : 'bg-[var(--warning)] hover:opacity-90'
                                             }`}
                                         >
                                             {isProcessing ? (
-                                                <><span className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-transparent" /> Sending...</>
+                                                <><span className="h-4 w-4 animate-spin rounded-full border-2 border-[color-mix(in_srgb,var(--accent-on)_25%,transparent)] border-t-transparent" /> Sending...</>
                                             ) : (
                                                 'Send Verification Link'
                                             )}
@@ -1810,8 +1785,8 @@ function DataPrivacyTab({ user }: { user: any }) {
                                 </>
                             ) : (
                                 <div className="text-center py-6">
-                                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-cyan-500/10 mb-4">
-                                        <span className="material-symbols-rounded text-3xl text-cyan-500">mark_email_read</span>
+                                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent-dim)] mb-4">
+                                        <span className="material-symbols-rounded text-3xl text-[var(--accent)]">mark_email_read</span>
                                     </div>
                                     <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-2">Check your email</h2>
                                     <p className="text-[var(--text-secondary)] mb-6">
@@ -1819,7 +1794,7 @@ function DataPrivacyTab({ user }: { user: any }) {
                                     </p>
                                     <button
                                         onClick={() => { setActionState('none'); setEmailSent(false); }}
-                                        className="px-6 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] font-medium hover:bg-[var(--theme-surface-active)] transition-colors w-full"
+                                        className="px-6 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium hover:bg-[var(--bg-hover)] transition-colors w-full"
                                     >
                                         Done
                                     </button>
@@ -1840,7 +1815,6 @@ const displayThemeOptions: {
   label: string;
   description: string;
   iconName: string;
-  swatches: string[];
   detail: string;
 }[] = [
   {
@@ -1848,7 +1822,6 @@ const displayThemeOptions: {
     label: 'System',
     description: 'Follow your device automatically.',
     iconName: 'desktop_windows',
-    swatches: ['#ffffff', '#131314', '#10b981'],
     detail: 'Switches between light and dark based on your OS preference.',
   },
   {
@@ -1856,7 +1829,6 @@ const displayThemeOptions: {
     label: 'Light',
     description: 'Bright surfaces for daytime focus.',
     iconName: 'light_mode',
-    swatches: ['#f8f9fa', '#ffffff', '#1a73e8'],
     detail: 'Optimized for well-lit environments and screen glare reduction.',
   },
   {
@@ -1864,7 +1836,6 @@ const displayThemeOptions: {
     label: 'Dark',
     description: 'Low-glare console for deep work.',
     iconName: 'dark_mode',
-    swatches: ['#0b0b0b', '#1a1a1b', '#a8c7fa'],
     detail: 'Reduces eye strain in dim lighting and saves battery on OLED.',
   },
 ];
@@ -1880,7 +1851,7 @@ function DisplayTab() {
             className="space-y-6"
         >
             {/* Appearance */}
-            <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+            <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                 <div className="flex items-center justify-between mb-5">
                     <div>
                         <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
@@ -1905,35 +1876,24 @@ function DisplayTab() {
                                 type="button"
                                 aria-pressed={isActive}
                                 onClick={() => setMode(opt.value)}
-                                className={`group relative flex flex-col rounded-2xl border p-4 text-left transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/30 ${
+                                className={`group relative flex flex-col rounded-2xl border p-4 text-left transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                                     isActive
-                                        ? 'border-cyan-500/30 bg-cyan-500/[0.07] shadow-lg shadow-cyan-500/5'
-                                        : 'border-[var(--theme-border)] hover:border-[var(--theme-border-hover,var(--theme-border))] hover:bg-[var(--theme-surface-hover)]'
+                                        ? 'border-[color-mix(in_srgb,var(--accent)_35%,transparent)] bg-[var(--accent-dim)] elevation-card'
+                                        : 'border-[var(--border-subtle)] hover:border-[var(--border)] hover:bg-[var(--bg-hover)]'
                                 }`}
                             >
-                                {/* Swatch preview */}
-                                <div className="mb-3 flex h-10 w-full overflow-hidden rounded-xl border border-[var(--theme-border)]">
-                                    {opt.swatches.map((swatch) => (
-                                        <span
-                                            key={swatch}
-                                            className="h-full flex-1 transition-transform duration-200 group-hover:scale-[1.02]"
-                                            style={{ backgroundColor: swatch }}
-                                        />
-                                    ))}
-                                </div>
-
                                 {/* Icon + Label */}
                                 <div className="flex items-center gap-2.5 mb-1.5">
                                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${
                                         isActive
-                                            ? 'border-cyan-500/25 bg-cyan-500/10 text-cyan-400'
-                                            : 'border-[var(--theme-border)] bg-[var(--theme-surface-hover)] text-[var(--text-secondary)]'
+                                            ? 'border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                                            : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
                                     }`}>
                                         <span className="material-symbols-rounded text-[18px]">{opt.iconName}</span>
                                     </span>
                                     <span className="text-sm font-semibold text-[var(--text-primary)]">{opt.label}</span>
                                     {isActive && (
-                                        <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-[var(--card-bg)]">
+                                        <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-on)]">
                                             <span className="material-symbols-rounded text-[14px]">check</span>
                                         </span>
                                     )}
@@ -1941,7 +1901,7 @@ function DisplayTab() {
 
                                 {/* Description */}
                                 <p className="text-xs leading-relaxed text-[var(--text-muted)]">{opt.description}</p>
-                                <p className="mt-1.5 text-[10px] leading-4 text-[var(--text-tertiary)]">{opt.detail}</p>
+                                <p className="mt-1.5 text-[11px] leading-4 text-[var(--text-tertiary)]">{opt.detail}</p>
                             </button>
                         );
                     })}
@@ -1961,7 +1921,7 @@ const guides = [
         id: 'liquid-resume',
         title: 'Liquid Resume',
         icon: <span className="material-symbols-rounded">description</span>,
-        color: 'from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/20',
+        color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
         description: 'Build and morph resumes for any job',
         sections: [
             {
@@ -2021,7 +1981,7 @@ const guides = [
         id: 'applications',
         title: 'Applications',
         icon: <span className="material-symbols-rounded">bar_chart</span>,
-        color: 'from-indigo-500/20 to-violet-500/20 text-indigo-400 border border-indigo-500/20',
+        color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
         description: 'Track applications, follow-ups, interviews, and offers',
         sections: [
             {
@@ -2075,7 +2035,7 @@ const guides = [
         id: 'jd-generator',
         title: 'JD Generator',
         icon: <span className="material-symbols-rounded">work</span>,
-        color: 'from-cyan-500/20 to-teal-500/20 text-cyan-400 border border-cyan-500/20',
+        color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
         description: 'Generate and analyze job descriptions',
         sections: [
             {
@@ -2094,7 +2054,7 @@ const guides = [
         id: 'study-cards',
         title: 'Study Cards',
         icon: <span className="material-symbols-rounded">style</span>,
-        color: 'from-rose-500/20 to-pink-500/20 text-rose-400 border border-rose-500/20',
+        color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
         description: 'Flash cards for interview prep',
         sections: [
             {
@@ -2114,7 +2074,7 @@ const guides = [
         id: 'market-oracle',
         title: 'Market Oracle',
         icon: <span className="material-symbols-rounded">query_stats</span>,
-        color: 'from-purple-500/20 to-fuchsia-500/20 text-purple-400 border border-purple-500/20',
+        color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
         description: 'AI-powered career intelligence',
         sections: [
             {
@@ -2133,7 +2093,7 @@ const guides = [
         id: 'settings',
         title: 'Account Settings',
         icon: <span className="material-symbols-rounded">settings</span>,
-        color: 'from-slate-400/20 to-slate-500/20 text-[var(--text-secondary)] border border-slate-500/20',
+        color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]',
         description: 'Manage your account and security',
         sections: [
             {
@@ -2281,9 +2241,9 @@ function HelpTab() {
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${activeTab === tab.id
-                            ? 'bg-emerald-500/10 border border-cyan-500/20 text-cyan-400 shadow-lg'
-                            : 'bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--theme-surface-hover)]'
+                        className={`flex min-h-[44px] items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${activeTab === tab.id
+                            ? 'bg-[var(--accent-dim)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)] text-[var(--accent)]'
+                            : 'bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                             }`}
                     >
                         <span>{tab.icon}</span>
@@ -2298,19 +2258,19 @@ function HelpTab() {
                     <motion.div key="guides" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-4">
                         {/* Quick Start Banner */}
                         {!searchQuery && (
-                            <div className="rounded-2xl bg-[var(--theme-bg-elevated)] border border-[var(--theme-border)] p-6 mb-6">
+                            <div className="rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-6 mb-6">
                                 <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2 flex items-center gap-2"><span className="material-symbols-rounded icon-neutral text-lg">rocket_launch</span> Quick Start</h3>
                                 <div className="grid md:grid-cols-3 gap-4 text-sm">
                                     <div className="flex items-start gap-2">
-                                        <span className="mt-0.5 text-amber-400 font-bold">1.</span>
+                                        <span className="mt-0.5 text-[var(--accent)] font-bold">1.</span>
                                         <p className="text-[var(--text-secondary)]">Upload your resume in <strong className="text-[var(--text-primary)]">Liquid Resume</strong></p>
                                     </div>
                                     <div className="flex items-start gap-2">
-                                        <span className="mt-0.5 text-amber-400 font-bold">2.</span>
+                                        <span className="mt-0.5 text-[var(--accent)] font-bold">2.</span>
                                         <p className="text-[var(--text-secondary)]">Paste a job description and click <strong className="text-[var(--text-primary)]">Morph</strong></p>
                                     </div>
                                     <div className="flex items-start gap-2">
-                                        <span className="mt-0.5 text-amber-400 font-bold">3.</span>
+                                        <span className="mt-0.5 text-[var(--accent)] font-bold">3.</span>
                                         <p className="text-[var(--text-secondary)]">Save, download, and track in <strong className="text-[var(--text-primary)]">Applications</strong></p>
                                     </div>
                                 </div>
@@ -2319,13 +2279,13 @@ function HelpTab() {
 
                         {/* Guide Cards */}
                         {filteredGuides.map((guide) => (
-                            <div key={guide.id} className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] overflow-hidden">
+                            <div key={guide.id} className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card overflow-hidden">
                                 <button
                                     onClick={() => setExpandedGuide(expandedGuide === guide.id ? null : guide.id)}
                                     className="w-full p-6 flex items-center justify-between group"
                                 >
                                     <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${guide.color} flex items-center justify-center text-2xl shadow-lg group-hover:scale-110 transition-transform`}>
+                                        <div className={`w-12 h-12 rounded-xl ${guide.color} flex items-center justify-center text-2xl group-hover:scale-110 transition-transform`}>
                                             {guide.icon}
                                         </div>
                                         <div className="text-left">
@@ -2334,7 +2294,7 @@ function HelpTab() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-xs text-[var(--text-secondary)] bg-[var(--theme-surface-hover)] px-2 py-1 rounded-lg">{guide.sections.length} guides</span>
+                                        <span className="text-xs text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-2 py-1 rounded-lg">{guide.sections.length} guides</span>
                                         <motion.svg animate={{ rotate: expandedGuide === guide.id ? 180 : 0 }} className="w-5 h-5 text-[var(--text-secondary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                         </motion.svg>
@@ -2353,7 +2313,7 @@ function HelpTab() {
                                                 {guide.sections.map((section, si) => (
                                                     <div key={si} className="relative">
                                                         <h4 className="text-base font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-3">
-                                                            <span className={`w-7 h-7 rounded-lg bg-gradient-to-br ${guide.color} flex items-center justify-center text-xs text-[var(--text-primary)] font-bold`}>
+                                                            <span className={`w-7 h-7 rounded-lg ${guide.color} flex items-center justify-center text-xs font-bold`}>
                                                                 {si + 1}
                                                             </span>
                                                             {section.title}
@@ -2361,7 +2321,7 @@ function HelpTab() {
                                                         <div className="pl-10 space-y-2">
                                                             {section.steps.map((step, stepI) => (
                                                                 <div key={stepI} className="flex gap-3">
-                                                                    <span className="w-1.5 h-1.5 mt-2 rounded-full bg-silver/40 flex-shrink-0" />
+                                                                    <span className="w-1.5 h-1.5 mt-2 rounded-full bg-[var(--text-muted)] flex-shrink-0" />
                                                                     <p className="text-sm text-[var(--text-secondary)] leading-relaxed"
                                                                         dangerouslySetInnerHTML={{
                                                                             __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="text-[var(--text-primary)] font-medium">$1</strong>')
@@ -2371,9 +2331,9 @@ function HelpTab() {
                                                             ))}
                                                         </div>
                                                         {section.tips && section.tips.length > 0 && (
-                                                            <div className="ml-10 mt-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 flex items-start gap-3">
-                                                                <span className="material-symbols-rounded icon-neutral mt-0.5 text-base">lightbulb</span>
-                                                                <div className="text-xs text-amber-200/80">
+                                                            <div className="ml-10 mt-3 p-3 rounded-xl bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] border border-[color-mix(in_srgb,var(--warning)_25%,transparent)] flex items-start gap-3">
+                                                                <span className="material-symbols-rounded mt-0.5 text-base text-[var(--warning)]">lightbulb</span>
+                                                                <div className="text-xs text-[var(--text-secondary)]">
                                                                     {section.tips.map((tip, ti) => <p key={ti}>{tip}</p>)}
                                                                 </div>
                                                             </div>
@@ -2398,7 +2358,7 @@ function HelpTab() {
                                     {category.questions.map((faq, i) => {
                                         const faqKey = `${category.category}-${i}`;
                                         return (
-                                            <div key={i} className="rounded-xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] overflow-hidden">
+                                            <div key={i} className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card overflow-hidden">
                                                 <button
                                                     onClick={() => setExpandedFaq(expandedFaq === faqKey ? null : faqKey)}
                                                     className="w-full p-4 flex items-center justify-between text-left"
@@ -2429,17 +2389,17 @@ function HelpTab() {
                 {activeTab === 'shortcuts' && (
                     <motion.div key="shortcuts" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
                         {shortcuts.map((group) => (
-                            <div key={group.category} className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+                            <div key={group.category} className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                                 <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
                                     <span className="material-symbols-rounded">keyboard</span> {group.category}
                                 </h3>
                                 <div className="space-y-3">
                                     {group.items.map((shortcut, i) => (
-                                        <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)]">
+                                        <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
                                             <span className="text-sm text-[var(--text-secondary)]">{shortcut.desc}</span>
                                             <div className="flex gap-1.5">
                                                 {shortcut.keys.map((key, ki) => (
-                                                    <kbd key={ki} className="px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[var(--theme-border)] text-[var(--text-primary)] text-xs font-mono shadow-sm">
+                                                    <kbd key={ki} className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-mono">
                                                         {key}
                                                     </kbd>
                                                 ))}
@@ -2457,36 +2417,36 @@ function HelpTab() {
                         {/* Support Channels */}
                         <div className="grid md:grid-cols-3 gap-4">
                             {[
-                                { icon: <span className="material-symbols-rounded">mail</span>, title: 'Email Support', desc: 'Get help within 24 hours', action: 'Use the form below', color: 'from-indigo-500/10 to-violet-500/10', border: 'border-indigo-500/20' },
-                                { icon: <span className="material-symbols-rounded">chat_bubble</span>, title: 'Live Chat', desc: 'Chat with our AI assistant', action: 'Click the AI bubble →', color: 'from-emerald-500/10 to-teal-500/10', border: 'border-emerald-500/20' },
-                                { icon: <span className="material-symbols-rounded">bug_report</span>, title: 'Report a Bug', desc: 'Help us improve', action: 'Select "Bug Report" below', color: 'from-red-500/10 to-rose-500/10', border: 'border-red-500/20' },
+                                { icon: <span className="material-symbols-rounded">mail</span>, title: 'Email Support', desc: 'Get help within 24 hours', action: 'Use the form below', color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]' },
+                                { icon: <span className="material-symbols-rounded">chat_bubble</span>, title: 'Live Chat', desc: 'Chat with our AI assistant', action: 'Click the AI bubble →', color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]' },
+                                { icon: <span className="material-symbols-rounded">bug_report</span>, title: 'Report a Bug', desc: 'Help us improve', action: 'Select "Bug Report" below', color: 'bg-[var(--accent-dim)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_25%,transparent)]' },
                             ].map((channel, i) => (
-                                <div key={i} className={`rounded-2xl bg-gradient-to-br ${channel.color} border ${channel.border} p-6`}>
-                                    <span className="text-2xl block mb-3 text-white/70">{channel.icon}</span>
+                                <div key={i} className={`rounded-2xl ${channel.color} p-6`}>
+                                    <span className="text-2xl block mb-3 text-[var(--accent)]">{channel.icon}</span>
                                     <h3 className="text-lg font-bold text-[var(--text-primary)] mb-1">{channel.title}</h3>
                                     <p className="text-sm text-[var(--text-secondary)] mb-3">{channel.desc}</p>
-                                    <p className="text-sm text-cyan-400 font-medium">{channel.action}</p>
+                                    <p className="text-sm text-[var(--accent)] font-medium">{channel.action}</p>
                                 </div>
                             ))}
                         </div>
 
                         {/* Feedback Form */}
-                        <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+                        <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                             <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2"><span className="material-symbols-rounded">edit_document</span> Send Feedback</h3>
                             <div className="space-y-4">
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Your Name</label>
-                                        <input type="text" placeholder="Enter your name" value={contactForm.name} onChange={(e) => setContactForm(f => ({ ...f, name: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-amber-500/50" />
+                                        <input type="text" placeholder="Enter your name" value={contactForm.name} onChange={(e) => setContactForm(f => ({ ...f, name: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Email</label>
-                                        <input type="email" placeholder="your@email.com" value={contactForm.email} onChange={(e) => setContactForm(f => ({ ...f, email: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-amber-500/50" />
+                                        <input type="email" placeholder="your@email.com" value={contactForm.email} onChange={(e) => setContactForm(f => ({ ...f, email: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]" />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Category</label>
-                                    <select value={contactForm.category} onChange={(e) => setContactForm(f => ({ ...f, category: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] focus:outline-none focus:border-amber-500/50">
+                                    <select value={contactForm.category} onChange={(e) => setContactForm(f => ({ ...f, category: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]">
                                         <option value="bug">Bug Report</option>
                                         <option value="feature">Feature Request</option>
                                         <option value="general">General Feedback</option>
@@ -2495,10 +2455,10 @@ function HelpTab() {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">Message</label>
-                                    <textarea rows={4} placeholder="Tell us what's on your mind..." value={contactForm.message} onChange={(e) => setContactForm(f => ({ ...f, message: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--theme-surface-hover)] border border-[var(--theme-border)] text-[var(--text-primary)] placeholder-slate-500 focus:outline-none focus:border-amber-500/50 resize-none" />
+                                    <textarea rows={4} placeholder="Tell us what's on your mind..." value={contactForm.message} onChange={(e) => setContactForm(f => ({ ...f, message: e.target.value }))} className="w-full px-4 py-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none" />
                                 </div>
-                                {contactStatus === 'error' && <p className="text-sm text-red-500">{contactError}</p>}
-                                {contactStatus === 'sent' && <p className="text-sm text-emerald-500">✓ Feedback sent successfully. We'll get back to you soon.</p>}
+                                {contactStatus === 'error' && <p className="text-sm text-[var(--danger)]">{contactError}</p>}
+                                {contactStatus === 'sent' && <p className="text-sm text-[var(--success)]">✓ Feedback sent successfully. We'll get back to you soon.</p>}
                                 <button
                                     disabled={contactStatus === 'sending'}
                                     onClick={async () => {
@@ -2519,7 +2479,7 @@ function HelpTab() {
                                             setContactError(err.message);
                                         }
                                     }}
-                                    className="px-6 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 font-medium hover:bg-amber-500/20 hover:border-amber-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                    className="min-h-[44px] px-6 py-3 rounded-xl bg-[var(--accent)] border border-transparent text-[var(--accent-on)] font-medium hover:bg-[var(--accent-active)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 elevation-card"
                                 >
                                     <span className="material-symbols-rounded">{contactStatus === 'sending' ? 'hourglass_empty' : contactStatus === 'sent' ? 'check_circle' : 'rocket_launch'}</span>
                                     {contactStatus === 'sending' ? 'Sending...' : contactStatus === 'sent' ? 'Sent!' : 'Send Feedback'}
@@ -2528,7 +2488,7 @@ function HelpTab() {
                         </div>
 
                         {/* Platform Info */}
-                        <div className="rounded-2xl bg-[var(--theme-bg-card)] border border-[var(--theme-border)] shadow-[var(--theme-shadow)] p-6">
+                        <div className="rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] elevation-card p-6">
                             <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2"><span className="material-symbols-rounded">info</span> Platform Info</h3>
                             <div className="grid md:grid-cols-2 gap-3">
                                 {[
@@ -2537,7 +2497,7 @@ function HelpTab() {
                                     { label: 'Cloud Storage', value: 'Firebase Firestore' },
                                     { label: 'Auth Provider', value: 'Firebase Auth' },
                                 ].map((info, i) => (
-                                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-[var(--theme-surface-hover)]">
+                                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-elevated)]">
                                         <span className="text-sm text-[var(--text-secondary)]">{info.label}</span>
                                         <span className="text-sm text-[var(--text-primary)] font-medium">{info.value}</span>
                                     </div>

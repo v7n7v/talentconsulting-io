@@ -39,8 +39,8 @@ function CopyButton({ text, label = 'Copy', className: cn }: { text: string; lab
   return (
     <button
       onClick={handleCopy}
-      className={cn || `flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-        copied ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20'
+      className={cn || `flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all ${
+        copied ? 'bg-[var(--bg-elevated)] text-[var(--success)] border-[var(--border-subtle)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]'
       }`}
     >
       <span className="material-symbols-rounded text-[14px]">{copied ? 'check' : 'content_copy'}</span>
@@ -187,7 +187,7 @@ function buildCoverLetterProofReport(input: {
   return {
     title: 'Cover letter proof report',
     description: 'This report checks whether the draft is grounded in the resume, tied to the job description, and still safe for user review before copy, save, or export.',
-    score: Math.max(0, Math.min(100, Math.round(result.toneScore || kitContext.atsResult?.data?.overallScore || 0))),
+    score: result.toneScore ?? kitContext.atsResult?.data?.overallScore ?? null,
     scoreLabel: 'Draft trust',
     sourceLabel: jobDescription.trim() ? 'Cover Letter Studio job description' : 'Cover Letter Studio target fields',
     requirements: requirements.slice(0, 12),
@@ -558,24 +558,24 @@ export default function CoverLetterPage() {
             <div className="rounded-2xl p-5" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <span className="material-symbols-rounded text-rose-500 text-lg">folder</span>
+                  <span className="material-symbols-rounded text-[var(--accent)] text-lg">folder</span>
                   Saved Cover Letters
                 </h3>
-                <button onClick={() => setShowSavedLetters(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                <button onClick={() => setShowSavedLetters(false)} className="flex items-center justify-center h-11 w-11 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
                   <span className="material-symbols-rounded text-lg">close</span>
                 </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
                 {savedLetters.map(letter => (
-                  <div key={letter.id} className="p-3 rounded-xl border border-[var(--border-subtle)] group relative" style={{ background: 'var(--bg-elevated)' }}>
-                    <button onClick={() => loadSavedLetter(letter)} className="text-left w-full">
+                  <div key={letter.id} className="p-3 rounded-xl border border-[var(--border-subtle)] elevation-card group relative" style={{ background: 'var(--bg-elevated)' }}>
+                    <button onClick={() => loadSavedLetter(letter)} className="text-left w-full pr-8">
                       <p className="text-[12px] font-bold text-[var(--text-primary)] truncate">{letter.company}</p>
-                      <p className="text-[10px] text-[var(--text-tertiary)]">{letter.job_title}</p>
-                      <p className="text-[9px] text-[var(--text-tertiary)] mt-1">{new Date(letter.created_at).toLocaleDateString()} • {letter.word_count} words</p>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">{letter.job_title}</p>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1">{new Date(letter.created_at).toLocaleDateString()} • {letter.word_count} words</p>
                     </button>
-                    <button onClick={() => handleDeleteLetter(letter.id)}
-                      className="absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-red-500/10 text-red-500 hover:bg-red-500/20">
-                      <span className="material-symbols-rounded text-[14px]">delete</span>
+                    <button onClick={() => handleDeleteLetter(letter.id)} aria-label="Delete cover letter"
+                      className="absolute top-1.5 right-1.5 h-11 w-11 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[var(--danger)] hover:bg-[var(--bg-hover)]">
+                      <span className="material-symbols-rounded text-[16px]">delete</span>
                     </button>
                   </div>
                 ))}
@@ -592,7 +592,7 @@ export default function CoverLetterPage() {
             background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
           }}>
             <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <span className="material-symbols-rounded text-rose-500 text-lg">work</span>
+              <span className="material-symbols-rounded text-[var(--accent)] text-lg">work</span>
               Target Position
             </h3>
 
@@ -600,12 +600,12 @@ export default function CoverLetterPage() {
               <div>
                 <label className="text-[11px] font-semibold text-[var(--text-tertiary)] block mb-1">Company *</label>
                 <input value={company} onChange={e => { setCompany(e.target.value); updateContext({ company: e.target.value }); }} placeholder="e.g. Stripe"
-                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-rose-500/50" />
+                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-base bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]" />
               </div>
               <div>
                 <label className="text-[11px] font-semibold text-[var(--text-tertiary)] block mb-1">Job Title *</label>
                 <input value={jobTitle} onChange={e => { setJobTitle(e.target.value); updateContext({ jobTitle: e.target.value, targetRole: e.target.value }); }} placeholder="e.g. Senior PM"
-                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-rose-500/50" />
+                  className="w-full px-3 py-2.5 min-h-[44px] rounded-xl text-base bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]" />
               </div>
             </div>
 
@@ -614,27 +614,27 @@ export default function CoverLetterPage() {
               <textarea value={jobDescription} onChange={e => { setJobDescription(e.target.value); updateContext({ jobDescription: e.target.value }); }}
                 placeholder="Paste the job description here for the best results..."
                 rows={5}
-                className="w-full px-3 py-2.5 rounded-xl text-sm bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-rose-500/50 resize-none" />
+                className="w-full px-3 py-2.5 rounded-xl text-base bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] resize-none" />
             </div>
           </div>
 
           {/* Tone Picker */}
           <div className="rounded-2xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
             <h4 className="text-xs font-bold text-[var(--text-primary)] mb-2.5 flex items-center gap-1.5">
-              <span className="material-symbols-rounded text-[14px] text-rose-500">tune</span> Tone
+              <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">tune</span> Tone
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {TONES.map(t => (
                 <button key={t.id} onClick={() => setTone(t.id)}
                   className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
-                    tone === t.id ? 'border-2 border-rose-500/40' : 'border border-[var(--border-subtle)]'
+                    tone === t.id ? 'border-2 border-[var(--accent)]' : 'border border-[var(--border-subtle)]'
                   }`}
-                  style={{ background: tone === t.id ? 'rgba(244,63,94,0.06)' : 'var(--bg-elevated)' }}
+                  style={{ background: tone === t.id ? 'var(--accent-dim)' : 'var(--bg-elevated)' }}
                 >
-                  <span className={`material-symbols-rounded text-lg ${tone === t.id ? 'text-rose-500' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
+                  <span className={`material-symbols-rounded text-lg ${tone === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
                   <div>
-                    <p className={`text-[11px] font-bold ${tone === t.id ? 'text-rose-500' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
-                    <p className="text-[9px] text-[var(--text-tertiary)]">{t.desc}</p>
+                    <p className={`text-[11px] font-bold ${tone === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">{t.desc}</p>
                   </div>
                 </button>
               ))}
@@ -644,20 +644,20 @@ export default function CoverLetterPage() {
           {/* Template Picker */}
           <div className="rounded-2xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
             <h4 className="text-xs font-bold text-[var(--text-primary)] mb-2.5 flex items-center gap-1.5">
-              <span className="material-symbols-rounded text-[14px] text-rose-500">dashboard</span> Template
+              <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">dashboard</span> Template
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {TEMPLATES.map(t => (
                 <button key={t.id} onClick={() => setTemplate(t.id)}
                   className={`flex items-center gap-2 p-2.5 rounded-xl text-left transition-all ${
-                    template === t.id ? 'border-2 border-rose-500/40' : 'border border-[var(--border-subtle)]'
+                    template === t.id ? 'border-2 border-[var(--accent)]' : 'border border-[var(--border-subtle)]'
                   }`}
-                  style={{ background: template === t.id ? 'rgba(244,63,94,0.06)' : 'var(--bg-elevated)' }}
+                  style={{ background: template === t.id ? 'var(--accent-dim)' : 'var(--bg-elevated)' }}
                 >
-                  <span className={`material-symbols-rounded text-lg ${template === t.id ? 'text-rose-500' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
+                  <span className={`material-symbols-rounded text-lg ${template === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'}`}>{t.icon}</span>
                   <div>
-                    <p className={`text-[11px] font-bold ${template === t.id ? 'text-rose-500' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
-                    <p className="text-[9px] text-[var(--text-tertiary)]">{t.desc}</p>
+                    <p className={`text-[11px] font-bold ${template === t.id ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{t.label}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">{t.desc}</p>
                   </div>
                 </button>
               ))}
@@ -669,11 +669,11 @@ export default function CoverLetterPage() {
             whileTap={{ scale: 0.995 }}
             onClick={handleGenerate}
             disabled={loading || !company || !jobTitle}
-            className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 text-white disabled:opacity-40 relative overflow-hidden group"
-            style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)', boxShadow: '0 4px 20px rgba(244,63,94,0.2)' }}
+            className="w-full py-3 min-h-[44px] rounded-xl text-sm font-bold flex items-center justify-center gap-2 bg-[var(--accent)] text-[var(--accent-on)] elevation-card disabled:opacity-40 relative overflow-hidden group"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-            {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <div className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"
+              style={{ background: 'linear-gradient(to right, transparent, color-mix(in srgb, var(--text-on-action) 18%, transparent), transparent)' }} />
+            {loading ? <div className="w-4 h-4 border-2 rounded-full animate-spin" style={{ borderColor: 'color-mix(in srgb, var(--accent-on) 35%, transparent)', borderTopColor: 'var(--accent-on)' }} />
               : <span className="material-symbols-rounded text-lg">auto_fix_high</span>}
             {loading ? 'Writing...' : 'Generate Cover Letter'}
           </motion.button>
@@ -681,7 +681,6 @@ export default function CoverLetterPage() {
           {loading && (
             <AssistantThinkingTile
               variant="resume"
-              accentColor="#f43f5e"
               icon="edit_document"
               title="Taco is drafting your cover letter"
               description="Personalizing the opening, mapping resume proof, and checking tone."
@@ -692,12 +691,14 @@ export default function CoverLetterPage() {
           )}
 
           {kitContext.coverLetterResult?.status === 'error' && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-500" role="alert">
+            <div className="rounded-xl border px-3 py-2 text-xs text-[var(--danger)]" role="alert"
+              style={{ background: 'color-mix(in srgb, var(--danger) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--danger) 30%, transparent)' }}>
               {kitContext.coverLetterResult.error || 'Cover letter generation failed. Check the target details and try again.'}
             </div>
           )}
           {kitContext.coverLetterResult?.status === 'success' && result && (
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2 text-xs text-emerald-500">
+            <div className="rounded-xl border px-3 py-2 text-xs text-[var(--success)]"
+              style={{ background: 'color-mix(in srgb, var(--success) 10%, transparent)', borderColor: 'color-mix(in srgb, var(--success) 30%, transparent)' }}>
               Cover letter ready. Copy, export DOCX, save, or continue to LinkedIn.
             </div>
           )}
@@ -712,8 +713,8 @@ export default function CoverLetterPage() {
                 style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
               >
                 <div className="text-center">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-                    <span className="material-symbols-rounded text-3xl text-rose-500">draw</span>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent-dim)] border border-[var(--border-subtle)] flex items-center justify-center">
+                    <span className="material-symbols-rounded text-3xl text-[var(--accent)]">draw</span>
                   </div>
                   <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">Your Cover Letter</h3>
                   <p className="text-sm text-[var(--text-tertiary)] max-w-xs">
@@ -732,18 +733,18 @@ export default function CoverLetterPage() {
                   <div className="flex items-center gap-4">
                     <div className="text-center">
                       <p className="text-lg font-black text-[var(--text-primary)]">{result.wordCount}</p>
-                      <p className="text-[9px] text-[var(--text-tertiary)]">words</p>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">words</p>
                     </div>
                     <div className="w-px h-8" style={{ background: 'var(--border-subtle)' }} />
                     <div className="text-center">
-                      <p className="text-lg font-black text-rose-500">{result.toneScore}</p>
-                      <p className="text-[9px] text-[var(--text-tertiary)]">tone score</p>
+                      <p className="text-lg font-black text-[var(--accent)]">{result.toneScore ?? '—'}</p>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">tone score</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => setShowPreview(!showPreview)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                        showPreview ? 'bg-rose-500/20 text-rose-500 border-rose-500/30' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-rose-500/30'
+                      className={`flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all ${
+                        showPreview ? 'bg-[var(--accent-dim)] text-[var(--accent)] border-[var(--accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)]'
                       }`}>
                       <span className="material-symbols-rounded text-[14px]">{showPreview ? 'edit_note' : 'preview'}</span>
                       {showPreview ? 'Raw' : 'Preview'}
@@ -760,18 +761,18 @@ export default function CoverLetterPage() {
                 }}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Review actions</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Review actions</p>
                       <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">Use these after checking evidence, blocked claims, and missing requirements.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <CopyButton text={result.coverLetter} label="Copy letter" />
                       <button onClick={handleDownloadPDF}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20">
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]">
                         <span className="material-symbols-rounded text-[14px]">download</span>DOCX
                       </button>
                       {user && (
                         <button onClick={handleSaveLetter} disabled={saving}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20 disabled:opacity-50">
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[44px] rounded-xl text-xs font-bold border transition-all bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50">
                           <span className="material-symbols-rounded text-[14px]">{saving ? 'hourglass_top' : 'save'}</span>Save
                         </button>
                       )}
@@ -784,23 +785,23 @@ export default function CoverLetterPage() {
                   background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
                 }}>
                   <div>
-                    <p className="text-[10px] font-bold text-[var(--text-tertiary)] mb-0.5">EMAIL SUBJECT</p>
+                    <p className="text-[11px] font-bold text-[var(--text-tertiary)] mb-0.5">EMAIL SUBJECT</p>
                     <p className="text-sm text-[var(--text-primary)]">{result.subject}</p>
                   </div>
-                  <CopyButton text={result.subject} label="" className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-rose-500 hover:bg-rose-500/10 transition-all" />
+                  <CopyButton text={result.subject} label="" className="flex items-center justify-center h-11 w-11 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--accent-hover)] transition-all" />
                 </div>
 
                 {/* Cover Letter — Preview or Raw */}
                 {showPreview ? (
-                  <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border-subtle)' }}>
-                    <div className="bg-white p-8 md:p-12 text-slate-800 min-h-[400px]" style={{ fontFamily: "'Georgia', serif" }}>
+                  <div className="rounded-2xl overflow-hidden elevation-card" style={{ border: '1px solid var(--border-subtle)' }}>
+                    <div className="bg-[var(--card-bg)] p-8 md:p-12 text-[var(--text-primary)] min-h-[400px]" style={{ fontFamily: "'Georgia', serif" }}>
                       {/* Letter header */}
                       <div className="mb-8">
-                        <p className="text-sm text-slate-500">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                        <p className="text-sm text-slate-500 mt-1">{company} Hiring Team</p>
+                        <p className="text-sm text-[var(--text-muted)]">{new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                        <p className="text-sm text-[var(--text-muted)] mt-1">{company} Hiring Team</p>
                       </div>
                       {/* Letter body */}
-                      <div className="space-y-4 text-[15px] leading-relaxed text-slate-700">
+                      <div className="space-y-4 text-[15px] leading-relaxed text-[var(--text-secondary)]">
                         {result.coverLetter.split('\n\n').filter(Boolean).map((para, i) => (
                           <p key={i}>{para}</p>
                         ))}
@@ -820,13 +821,13 @@ export default function CoverLetterPage() {
                 {/* Key Highlights */}
                 {result.keyHighlights.length > 0 && (
                   <div className="rounded-2xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-                    <h4 className="text-[10px] font-bold text-rose-500 mb-2 flex items-center gap-1">
+                    <h4 className="text-xs font-bold text-[var(--accent)] mb-2 flex items-center gap-1">
                       <span className="material-symbols-rounded text-[14px]">star</span> KEY HIGHLIGHTS USED
                     </h4>
                     <div className="space-y-1.5">
                       {result.keyHighlights.map((h, i) => (
                         <div key={i} className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
-                          <span className="material-symbols-rounded text-[14px] text-rose-400 mt-0.5 shrink-0">check_circle</span>
+                          <span className="material-symbols-rounded text-[14px] text-[var(--accent)] mt-0.5 shrink-0">check_circle</span>
                           {h}
                         </div>
                       ))}
@@ -836,7 +837,7 @@ export default function CoverLetterPage() {
 
                 {/* Regenerate */}
                 <button onClick={handleGenerate} disabled={loading}
-                  className="w-full py-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 text-[var(--text-secondary)] border transition-all hover:border-rose-500/30"
+                  className="w-full py-2.5 min-h-[44px] rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 text-[var(--text-secondary)] border transition-all hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
                   style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}
                 >
                   <span className="material-symbols-rounded text-[14px]">refresh</span> Regenerate with same settings

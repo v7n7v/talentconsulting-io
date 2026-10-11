@@ -24,11 +24,12 @@
   --text-secondary: #A8B4D4;
   --text-tertiary: #8492B6;
   --text-muted: #7182A8;
-  --accent: #00C2CD;
-  --accent-active: #00E0EC;
-  --accent-dim: rgba(0, 194, 205, 0.08);
-  --accent-hover: rgba(0, 194, 205, 0.12);
+  --accent: #4D90FF;
+  --accent-active: #6AA3FF;
+  --accent-dim: rgba(77, 144, 255, 0.10);
+  --accent-hover: rgba(77, 144, 255, 0.14);
   --accent-on: #01081F;
+  --text-on-action: #F8FBFF;
   --danger: #FF9A8F;
   --success: #8AE47A;
   --warning: #F5C860;
@@ -41,13 +42,24 @@
      pointing at a token nothing defined. The default belongs here. */
   --tool-accent: var(--accent);
   --sidebar-bg: #071231;
-  --sidebar-active: rgba(0, 194, 205, 0.08);
+  --sidebar-active: rgba(77, 144, 255, 0.10);
   --sidebar-text: #8492B6;
-  --sidebar-text-active: #00C2CD;
+  --sidebar-text-active: #4D90FF;
   --card-bg: #0B1839;
   --theme-surface-hover: #122045;
   --theme-surface-active: #122045;
   --modal-backdrop: rgba(1, 8, 31, 0.7);
+
+  /* Elevation — the redesign expresses depth with tokenised shadows (never raw
+     literals; the design-audit css-shadow rule permits only var(--elevation-*)).
+     On the navy dark surfaces shadow is subtle; the accent glow carries the
+     "lit" hero look from the Proof Engine card. */
+  --elevation-card: 0 1px 2px rgba(0, 0, 0, 0.40), 0 14px 34px rgba(0, 0, 0, 0.34);
+  --elevation-raised: 0 2px 6px rgba(0, 0, 0, 0.50), 0 22px 50px rgba(0, 0, 0, 0.42);
+  --elevation-glow-accent: 0 0 22px color-mix(in srgb, var(--accent) 20%, transparent);
+  /* Printed-document surface (resume/cover-letter previews): white paper in
+     BOTH themes — a document preview is a sheet of paper, not a themed card. */
+  --paper: #FFFFFF;
 
   /* Tag hues, re-solved against the brand accent rather than inherited from
      Material. Purple resolves to the same pair as blue: purple is not an
@@ -87,11 +99,12 @@
   --text-secondary: #31405F;
   --text-tertiary: #47557A;
   --text-muted: #5C6890;
-  --accent: #00787F;
-  --accent-active: #00666D;
-  --accent-dim: rgba(0, 120, 127, 0.06);
-  --accent-hover: rgba(0, 120, 127, 0.1);
+  --accent: #1B62D4;
+  --accent-active: #1550B0;
+  --accent-dim: rgba(27, 98, 212, 0.06);
+  --accent-hover: rgba(27, 98, 212, 0.10);
   --accent-on: #FFFFFF;
+  --text-on-action: #F8FBFF;
   --danger: #B3261E;
   --success: #2A7A2E;
   --warning: #8A5200;
@@ -99,13 +112,20 @@
   --icon-shell-bg: var(--bg-elevated);
   --icon-shell-border: var(--border-subtle);
   --sidebar-bg: #F5F7FC;
-  --sidebar-active: rgba(0, 120, 127, 0.08);
+  --sidebar-active: rgba(27, 98, 212, 0.08);
   --sidebar-text: #31405F;
-  --sidebar-text-active: #010E2F;
+  --sidebar-text-active: #1B62D4;
   --card-bg: #FFFFFF;
   --theme-surface-hover: #EEF2FA;
   --theme-surface-active: #EAEFF9;
   --modal-backdrop: rgba(1, 14, 47, 0.4);
+
+  /* Elevation — see the dark block. On near-white surfaces a soft neutral drop
+     reads as a raised card; the accent glow is lighter here to stay calm. */
+  --elevation-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 28px rgba(15, 23, 42, 0.09);
+  --elevation-raised: 0 2px 6px rgba(15, 23, 42, 0.09), 0 20px 44px rgba(15, 23, 42, 0.13);
+  --elevation-glow-accent: 0 0 22px color-mix(in srgb, var(--accent) 16%, transparent);
+  --paper: #FFFFFF;
 
   /* Tag hues, re-solved against the brand accent rather than inherited from
      Material. Purple resolves to the same pair as blue: purple is not an
@@ -123,6 +143,17 @@
 
   color-scheme: light;
 }
+
+/* Elevation utilities — apply a tokenised shadow. Tailwind's arbitrary
+   `shadow-[var(--x)]` is parsed as a shadow COLOR (not a full box-shadow) and
+   silently drops, so components use these classes instead. */
+.elevation-card { box-shadow: var(--elevation-card); }
+.elevation-raised { box-shadow: var(--elevation-raised); }
+.elevation-interactive {
+  box-shadow: var(--elevation-card);
+  transition: box-shadow 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+.elevation-interactive:hover { box-shadow: var(--elevation-raised); }
 
 /* ===========================================================================
    THE BRAND SURFACE — .tcl
@@ -479,15 +510,16 @@ body {
    rules (.text-white → var(--text-primary), etc.)
    ============================================ */
 .btn-primary {
-  background-color: #2563eb !important;
-  color: #ffffff !important;
+  background-color: var(--accent) !important;
+  color: var(--accent-on) !important;
   border-radius: 12px;
   font-weight: 500;
+  min-height: 44px;
   transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--elevation-card);
 }
 .btn-primary:hover {
-  background-color: #1d4ed8 !important;
+  background-color: var(--accent-active) !important;
 }
 .btn-primary:disabled {
   opacity: 0.5;
@@ -550,12 +582,13 @@ body {
    ============================================ */
 .btn-primary {
   background: var(--accent);
-  color: #0b0b0b;
+  color: var(--accent-on);
   font-weight: 600;
   font-size: 14px;
   border: none;
   border-radius: 100px;
   padding: 8px 24px;
+  min-height: 44px;
   cursor: pointer;
   transition: background 0.1s ease;
 }

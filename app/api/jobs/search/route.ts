@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateFitScore, type JobSearchParams } from '@/lib/job-search-api';
+import { parseJobSearchQuery, selectJobSearchPage } from '@/lib/job-search-selection';
 import { guardApiRoute } from '@/lib/api-auth';
 import { scoreAllGhostRisks } from '@/lib/ghost-filter';
 import { monitor } from '@/lib/monitor';
@@ -33,16 +34,12 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url);
 
-        const params: JobSearchParams = {
-            query: searchParams.get('query') || 'software engineer',
-            location: searchParams.get('location') || '',
-            country: searchParams.get('country') || 'us',
-            page: parseInt(searchParams.get('page') || '1'),
-            sortBy: (searchParams.get('sortBy') as 'relevance' | 'salary' | 'date') || 'relevance',
-            fullTime: searchParams.get('fullTime') === 'true',
-            salaryMin: searchParams.get('salaryMin') ? parseInt(searchParams.get('salaryMin')!) : undefined,
-            resultsPerPage: parseInt(searchParams.get('limit') || '20'),
-        };
+        let params: JobSearchParams;
+        try {
+            params = parseJobSearchQuery(searchParams);
+        } catch (error) {
+            return NextResponse.json({ success: false, error: (error as Error).message, code: 'invalid_search_parameters' }, { status: 400 });
+        }
 
         const result = await searchTalentJobSupply(params);
         if (!isJobSupplyOperational(result.providerStatus)) {
@@ -118,7 +115,7 @@ export async function GET(request: NextRequest) {
         const isAnonymous = guard.user.uid.startsWith('anon:');
         const db = isAnonymous ? null : getAdminDb();
         const ledger = db ? await loadRecommendationLedger(db, guard.user.uid) : new Map();
-        const jobs = finalizeTalentRecommendations(suppressLedgerMatches(jobsWithGhost, ledger), {
+        const rankedCandidates = finalizeTalentRecommendations(suppressLedgerMatches(jobsWithGhost, ledger), {
             userSkills,
             targetRoles: [params.query],
             preferredCities: params.location ? [params.location] : [],
@@ -126,6 +123,8 @@ export async function GET(request: NextRequest) {
             salaryMin: params.salaryMin || 0,
             ledger,
         });
+        const selection = selectJobSearchPage(rankedCandidates, params);
+        const jobs = selection.jobs;
         const impressionId = db
             ? await createRecommendationImpressionSession(db, guard.user.uid, jobs, {
                 resumeId: scoreResumeId,
@@ -136,15 +135,19 @@ export async function GET(request: NextRequest) {
         if (db) await recordRecommendationImpressions(db, guard.user.uid, jobs).catch(() => {});
 
         const ghostStats = {
-            high: ghostAssessments.filter(g => g.risk === 'high').length,
-            medium: ghostAssessments.filter(g => g.risk === 'medium').length,
-            fresh: ghostAssessments.filter(g => g.fresh).length,
+            high: jobs.filter(job => job.ghostRisk?.risk === 'high').length,
+            medium: jobs.filter(job => job.ghostRisk?.risk === 'medium').length,
+            fresh: jobs.filter(job => job.ghostRisk?.fresh).length,
         };
 
         return NextResponse.json({
             success: true,
             jobs,
-            totalCount: result.totalCount,
+            totalCount: selection.totalCount,
+            page: selection.page,
+            pageSize: selection.pageSize,
+            hasMore: selection.hasMore,
+            candidateScope: 'bounded_provider_batch',
             source: result.source,
             cached: result.cached || false,
             query: params.query,

@@ -7,7 +7,7 @@ import { useAuthGate } from '@/hooks/useAuthGate';
 import { saveJDTemplate, getJDTemplates, type JDTemplate } from '@/lib/database-suite';
 import { useStore } from '@/lib/store';
 import { showToast } from '@/components/Toast';
-import { SuiteToolHeader } from '@/components/suite/SuiteToolChrome';
+import { SuiteToolHeader, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile';
 import { downloadJDPDF } from '@/lib/pdf-templates';
 
@@ -58,6 +58,16 @@ const SENIORITY_LEVELS = ['Entry Level', 'Junior', 'Mid-Level', 'Senior', 'Lead'
 // Departments
 const DEPARTMENTS = ['Engineering', 'Product', 'Design', 'Marketing', 'Sales', 'Operations', 'Finance', 'HR', 'Legal', 'Customer Success', 'Data Science', 'DevOps', 'Security'];
 
+// A qualitative reading of how specific THIS job description is, from its own
+// requirement count and the selected seniority. It is NOT a market measurement
+// of candidate rarity — there is no such data source here — so it renders as a
+// named band, never a measured integer or percentage.
+function requirementBand(score: number): { label: string; hint: string } {
+  if (score < 40) return { label: 'Broad', hint: 'A generalist search — few required qualifications.' };
+  if (score < 70) return { label: 'Focused', hint: 'A moderately specific set of requirements.' };
+  return { label: 'Highly specialized', hint: 'Many requirements and/or senior scope.' };
+}
+
 export default function JDGeneratorPage() {
   const { user } = useStore();
   const { handleApiError, renderAuthModal } = useAuthGate();
@@ -75,7 +85,7 @@ export default function JDGeneratorPage() {
   
   // Result state
   const [generatedJD, setGeneratedJD] = useState<GeneratedJD | null>(null);
-  const [talentDensityScore, setTalentDensityScore] = useState(0);
+  const [talentDensityScore, setTalentDensityScore] = useState<number | null>(null);
   const [biasFlags, setBiasFlags] = useState<{ text: string; issue: string; suggestion: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [savedTemplates, setSavedTemplates] = useState<JDTemplate[]>([]);
@@ -175,7 +185,9 @@ Generate a professional, compelling job description that would attract top-tier 
 
       setGeneratedJD(result);
       
-      // Calculate talent density score based on requirements
+      // Read this JD's requirement profile: a specificity band derived from its
+      // own requirement count + selected seniority. Not a market measure of how
+      // rare candidates are — rendered as a named band, never as an integer/%.
       const reqCount = (result.coreRequirements?.length || 0) + (result.niceToHave?.length || 0) * 0.5;
       const score = Math.min(100, Math.round(30 + reqCount * 5 + (seniority.includes('Senior') || seniority.includes('Lead') ? 20 : 0)));
       setTalentDensityScore(score);
@@ -259,7 +271,7 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
     if (!name) return;
     try {
       const result = await saveJDTemplate(name, editableJD, {
-        talent_density_score: talentDensityScore,
+        talent_density_score: talentDensityScore ?? undefined,
         first_90_days: generatedJD.first90Days,
         culture_pulse: generatedJD.culturePulse,
         bias_flags: biasFlags,
@@ -306,7 +318,7 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
           actions={step !== 'input' ? (
             <button
               onClick={() => { setStep('input'); setGeneratedJD(null); }}
-              className="rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"
+              className="btn-secondary inline-flex min-h-[44px] items-center rounded-[12px] px-4 py-2 text-sm font-medium"
             >
               New JD
             </button>
@@ -323,60 +335,60 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
             <div className="grid lg:grid-cols-3 gap-6">
               {/* Main Form */}
               <div className="lg:col-span-2 space-y-6">
-                <div className="rounded-2xl glass-card border border-cyan-500/20 overflow-hidden">
-                  <div className="p-6 border-b border-white/10">
-                    <h3 className="text-xl font-bold text-white">Role Details</h3>
+                <div className="elevation-card overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)]">
+                  <div className="border-b border-[var(--border-subtle)] p-6">
+                    <h3 className="text-xl font-bold text-[var(--text-primary)]">Role Details</h3>
                   </div>
-                  <div className="p-6 space-y-4">
+                  <div className="space-y-4 p-6">
                     <div>
-                      <label className="text-sm text-silver block mb-2">Role Title *</label>
+                      <label className="mb-2 block text-sm text-[var(--text-secondary)]">Role Title *</label>
                       <input type="text" value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white text-lg focus:border-cyan-500/50 focus:outline-none"
+                        className="w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-lg text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                         placeholder="e.g., Software Engineer, Product Manager"
                       />
                     </div>
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <label className="text-sm text-silver block mb-2">Department</label>
+                        <label className="mb-2 block text-sm text-[var(--text-secondary)]">Department</label>
                         <select value={department} onChange={(e) => setDepartment(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:border-cyan-500/50 focus:outline-none"
+                          className="w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                         >
                           {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="text-sm text-silver block mb-2">Seniority Level</label>
+                        <label className="mb-2 block text-sm text-[var(--text-secondary)]">Seniority Level</label>
                         <select value={seniority} onChange={(e) => setSeniority(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:border-cyan-500/50 focus:outline-none"
+                          className="w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                         >
                           {SENIORITY_LEVELS.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm text-silver block mb-2">Team Context</label>
+                      <label className="mb-2 block text-sm text-[var(--text-secondary)]">Team Context</label>
                       <textarea rows={3} value={teamContext} onChange={(e) => setTeamContext(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-silver focus:border-cyan-500/50 focus:outline-none resize-none"
+                        className="w-full resize-none rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                         placeholder="Describe the team, projects, and what makes it special..."
                       />
                     </div>
                     <div>
-                      <label className="text-sm text-silver block mb-2">Company Info (optional)</label>
+                      <label className="mb-2 block text-sm text-[var(--text-secondary)]">Company Info (optional)</label>
                       <textarea rows={2} value={companyInfo} onChange={(e) => setCompanyInfo(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-silver focus:border-cyan-500/50 focus:outline-none resize-none"
+                        className="w-full resize-none rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 text-base text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                         placeholder="Brief company description, mission, stage..."
                       />
                     </div>
                     <div className="flex items-center gap-4 pt-2">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className="flex min-h-[44px] cursor-pointer items-center gap-2 py-2">
                         <input type="checkbox" checked={includeCompensation} onChange={(e) => setIncludeCompensation(e.target.checked)}
-                          className="w-5 h-5 rounded bg-black/30 border border-white/20 checked:bg-cyan-500"
+                          className="h-5 w-5 rounded border border-[var(--border)] bg-[var(--bg-input)] accent-[var(--accent)]"
                         />
-                        <span className="text-sm text-silver">Include compensation</span>
+                        <span className="text-sm text-[var(--text-secondary)]">Include compensation</span>
                       </label>
                       {includeCompensation && (
                         <input type="text" value={salaryRange} onChange={(e) => setSalaryRange(e.target.value)}
-                          className="flex-1 px-4 py-2 rounded-xl bg-black/30 border border-white/10 text-white text-sm focus:outline-none"
+                          className="flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-2 text-base text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                           placeholder="e.g., $150K - $200K + equity"
                         />
                       )}
@@ -385,18 +397,18 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
                 </div>
 
                 {/* JD Style */}
-                <div className="rounded-2xl glass-card p-6">
-                  <h3 className="font-bold text-white mb-4">JD Style</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
+                  <h3 className="mb-4 font-bold text-[var(--text-primary)]">JD Style</h3>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {JD_STYLES.map((style) => (
                       <button key={style.id} onClick={() => setSelectedStyle(style)}
-                        className={`p-4 rounded-xl border-2 transition-all text-left ${
-                          selectedStyle.id === style.id ? 'border-cyan-400 bg-cyan-500/10' : 'border-white/10 hover:border-white/30'
+                        className={`rounded-[12px] border-2 p-4 text-left transition-all ${
+                          selectedStyle.id === style.id ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)] hover:border-[var(--border)]'
                         }`}
                       >
-                        <span className="w-10 h-10 rounded-lg flex items-center justify-center bg-[var(--tag-cyan-bg)] text-[var(--tag-cyan-text)] mb-3">{style.icon}</span>
-                        <p className="font-semibold text-white text-sm">{style.name}</p>
-                        <p className="text-xs text-silver">{style.description}</p>
+                        <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-[10px] bg-[var(--accent-dim)] text-[var(--accent)]">{style.icon}</span>
+                        <p className="text-sm font-semibold text-[var(--text-primary)]">{style.name}</p>
+                        <p className="text-xs text-[var(--text-muted)]">{style.description}</p>
                       </button>
                     ))}
                   </div>
@@ -404,11 +416,11 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
 
                 {/* Generate Button */}
                 <button onClick={generateJD} disabled={isLoading || !roleTitle.trim()}
-                  className="w-full flex items-center justify-center gap-2 py-5 rounded-2xl font-bold text-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:shadow-lg hover:shadow-cyan-500/25 transition-all disabled:opacity-50"
+                  className="btn-primary flex w-full items-center justify-center gap-2 rounded-[16px] py-4 text-lg font-bold"
                 >
-	                  <span className="material-symbols-rounded">{isLoading ? 'psychology' : 'flare'}</span>
-	                  {isLoading ? 'Generating Mission Blueprint...' : 'Generate Mission Blueprint'}
-	                </button>
+                  <span className="material-symbols-rounded">{isLoading ? 'psychology' : 'flare'}</span>
+                  {isLoading ? 'Generating Mission Blueprint...' : 'Generate Mission Blueprint'}
+                </button>
 	                {isLoading && (
 	                  <AssistantThinkingTile
 	                    variant="jobs"
@@ -425,8 +437,8 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
               {/* Sidebar */}
               <div className="space-y-4">
                 {/* What You Get */}
-                <div className="rounded-2xl glass-card p-6">
-                  <h3 className="font-bold text-white mb-4 flex items-center gap-2"><span className="material-symbols-rounded text-cyan-400">auto_awesome</span> What You'll Get</h3>
+                <div className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
+                  <h3 className="mb-4 flex items-center gap-2 font-bold text-[var(--text-primary)]"><span className="material-symbols-rounded text-[var(--accent)]">auto_awesome</span> What You'll Get</h3>
                   <ul className="space-y-3">
                     {[
                       { icon: <span className="material-symbols-rounded text-[16px]">my_location</span>, text: 'Mission Statement' },
@@ -437,8 +449,8 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
                       { icon: <span className="material-symbols-rounded text-[16px]">rocket_launch</span>, text: 'Growth Path' },
                       { icon: <span className="material-symbols-rounded text-[16px]">balance</span>, text: 'Bias-Free Language' },
                     ].map((item, i) => (
-                      <li key={i} className="flex items-center gap-3 text-sm text-silver">
-                        <span className="flex items-center justify-center w-6 h-6 rounded bg-white/5">{item.icon}</span>{item.text}
+                      <li key={i} className="flex items-center gap-3 text-sm text-[var(--text-secondary)]">
+                        <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--bg-elevated)] text-[var(--accent)]">{item.icon}</span>{item.text}
                       </li>
                     ))}
                   </ul>
@@ -446,20 +458,20 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
 
                 {/* Saved Templates */}
                 {savedTemplates.length > 0 && (
-                  <div className="rounded-2xl glass-card p-6">
-                    <h3 className="font-bold text-white mb-3 flex items-center gap-2"><span className="material-symbols-rounded text-indigo-400">folder</span> Saved Templates</h3>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                  <div className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
+                    <h3 className="mb-3 flex items-center gap-2 font-bold text-[var(--text-primary)]"><span className="material-symbols-rounded text-[var(--accent)]">folder</span> Saved Templates</h3>
+                    <div className="max-h-48 space-y-2 overflow-y-auto">
                       {savedTemplates.slice(0, 5).map((t) => (
                         <button key={t.id} onClick={() => {
                           setEditableJD(t.content);
-                          setTalentDensityScore(t.talent_density_score || 50);
+                          setTalentDensityScore(t.talent_density_score ?? null);
                           setBiasFlags([]);
                           setStep('result');
                         }}
-                          className="w-full p-3 rounded-xl bg-[var(--theme-bg-elevated)] hover:bg-white/10 text-left transition-colors"
+                          className="w-full rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3 text-left transition-colors hover:bg-[var(--bg-hover)]"
                         >
-                          <p className="text-sm font-medium text-white truncate">{t.title}</p>
-                          <p className="text-xs text-silver">{new Date(t.created_at).toLocaleDateString()}</p>
+                          <p className="truncate text-sm font-medium text-[var(--text-primary)]">{t.title}</p>
+                          <p className="text-xs text-[var(--text-muted)]">{new Date(t.created_at).toLocaleDateString()}</p>
                         </button>
                       ))}
                     </div>
@@ -475,22 +487,22 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
           <motion.div key="generating" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="max-w-2xl mx-auto text-center py-20"
           >
-            <div className="w-32 h-32 mx-auto mb-8 relative">
-              <div className="absolute inset-0 rounded-full border-4 border-cyan-500/20" />
-              <div className="absolute inset-0 rounded-full border-4 border-cyan-400 border-t-transparent animate-spin" />
-              <div className="absolute inset-4 rounded-full bg-[var(--tag-cyan-bg)] flex items-center justify-center">
-                <span className="material-symbols-rounded text-4xl text-[var(--tag-cyan-text)] animate-pulse">model_training</span>
+            <div className="relative mx-auto mb-8 h-32 w-32">
+              <div className="absolute inset-0 rounded-full border-4 border-[var(--accent-dim)]" />
+              <div className="absolute inset-0 animate-spin rounded-full border-4 border-[var(--accent)] border-t-transparent" />
+              <div className="absolute inset-4 flex items-center justify-center rounded-full bg-[var(--accent-dim)]">
+                <span className="material-symbols-rounded animate-pulse text-4xl text-[var(--accent)]">model_training</span>
               </div>
             </div>
-            <h2 className="text-2xl font-bold text-white mb-4">Crafting Your Mission Blueprint</h2>
-            <p className="text-silver mb-8">AI is creating a compelling job description optimized for top talent...</p>
+            <h2 className="mb-4 text-2xl font-bold text-[var(--text-primary)]">Crafting Your Mission Blueprint</h2>
+            <p className="mb-8 text-[var(--text-secondary)]">AI is creating a compelling job description optimized for top talent...</p>
             <div className="flex justify-center gap-2">
               {['Mission', 'Requirements', 'Culture', 'Growth'].map((item, i) => (
                 <motion.span key={item}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.3 }}
-                  className="px-3 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 text-sm"
+                  className="rounded-full bg-[var(--accent-dim)] px-3 py-1.5 text-sm text-[var(--accent)]"
                 >{item}</motion.span>
               ))}
             </div>
@@ -505,50 +517,47 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
             <div className="grid lg:grid-cols-3 gap-6">
               {/* Main JD */}
               <div className="lg:col-span-2 space-y-4">
-                {/* Talent Density Gauge */}
-                <div className="rounded-2xl bg-gradient-to-r from-green-500/10 via-yellow-500/10 to-red-500/10 border border-white/10 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-white">Talent Density Score</h3>
-                      <p className="text-sm text-silver">How rare is this candidate?</p>
-                    </div>
-                    <div className="text-right">
-                      <span className={`text-3xl font-bold ${
-                        talentDensityScore < 40 ? 'text-green-400' :
-                        talentDensityScore < 70 ? 'text-yellow-400' : 'text-red-400'
-                      }`}>{talentDensityScore}</span>
-                      <p className="text-xs text-silver">
-                        {talentDensityScore < 40 ? 'Common' : talentDensityScore < 70 ? 'Competitive' : 'Unicorn'}
-                      </p>
-                    </div>
+                {/* JD Requirement Profile — a qualitative reading of THIS JD's
+                    specificity (its own requirement count + selected seniority),
+                    not a market measurement of candidate rarity. No integer, no
+                    %-bar: a discrete band plus the factors it was read from, or a
+                    labelled absence when there is no stored reading. */}
+                <div className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6">
+                  <div className="mb-1">
+                    <h3 className="font-bold text-[var(--text-primary)]">JD Requirement Profile</h3>
+                    <p className="text-sm text-[var(--text-secondary)]">A reading of this JD&apos;s specificity — not a measure of how rare candidates are.</p>
                   </div>
-                  <div className="h-4 bg-white/10 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${talentDensityScore}%` }}
-                      transition={{ duration: 1, ease: 'easeOut' }}
-                      className={`h-full rounded-full ${
-                        talentDensityScore < 40 ? 'bg-gradient-to-r from-green-500 to-green-400' :
-                        talentDensityScore < 70 ? 'bg-gradient-to-r from-yellow-500 to-orange-400' :
-                        'bg-gradient-to-r from-red-500 to-blue-500'
-                      }`}
+                  {talentDensityScore == null ? (
+                    <SuiteUnmeasured
+                      label="Requirement profile not recorded"
+                      reason="This saved template has no stored reading, so there is nothing to show. Regenerate the JD to read its requirement profile."
+                      className="mt-4"
                     />
-                  </div>
-                  <div className="flex justify-between mt-2 text-xs text-silver">
-                    <span><span className="material-symbols-rounded text-green-500">check_circle</span> Common</span>
-                    <span><span className="material-symbols-rounded text-yellow-500">pending</span> Competitive</span>
-                    <span><span className="material-symbols-rounded text-red-500">cancel</span> Unicorn</span>
-                  </div>
+                  ) : (
+                    <div className="mt-4">
+                      <p className="text-2xl font-bold text-[var(--text-primary)]">{requirementBand(talentDensityScore).label}</p>
+                      <p className="mt-1 text-sm text-[var(--text-secondary)]">{requirementBand(talentDensityScore).hint}</p>
+                      {generatedJD ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1 text-xs text-[var(--text-secondary)]">{generatedJD.coreRequirements?.length || 0} core requirements</span>
+                          <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1 text-xs text-[var(--text-secondary)]">{generatedJD.niceToHave?.length || 0} nice-to-have</span>
+                          <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-1 text-xs text-[var(--text-secondary)]">{seniority} seniority</span>
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-xs text-[var(--text-muted)]">Read from the saved JD&apos;s requirement count and seniority.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Editable JD */}
-                <div className="rounded-2xl glass-card overflow-hidden">
-                  <div className="p-6 border-b border-white/10 flex items-center justify-between">
-                    <h3 className="text-xl font-bold text-white">Generated Job Description</h3>
-                    <div className="flex gap-2">
-                      <button onClick={copyToClipboard} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--tag-cyan-bg)] text-[var(--tag-cyan-text)] text-sm hover:opacity-80 transition-opacity"><span className="material-symbols-rounded text-[16px]">content_copy</span> Copy</button>
-                      <button onClick={downloadPDF} disabled={isLoading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-white text-sm hover:bg-white/20 transition-colors disabled:opacity-50"><span className="material-symbols-rounded text-[16px]">picture_as_pdf</span> PDF</button>
-                      <button onClick={saveTemplate} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--tag-blue-bg)] text-[var(--tag-blue-text)] text-sm hover:opacity-80 transition-opacity"><span className="material-symbols-rounded text-[16px]">save</span> Save</button>
+                <div className="elevation-card overflow-hidden rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)]">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] p-6">
+                    <h3 className="text-xl font-bold text-[var(--text-primary)]">Generated Job Description</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={copyToClipboard} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[12px] bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--accent-on)] transition-opacity hover:opacity-90"><span className="material-symbols-rounded text-[18px]">content_copy</span> Copy</button>
+                      <button onClick={downloadPDF} disabled={isLoading} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50"><span className="material-symbols-rounded text-[18px]">picture_as_pdf</span> PDF</button>
+                      <button onClick={saveTemplate} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)]"><span className="material-symbols-rounded text-[18px]">save</span> Save</button>
                     </div>
                   </div>
                   <div className="p-6">
@@ -556,7 +565,7 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
                       value={editableJD}
                       onChange={(e) => setEditableJD(e.target.value)}
                       rows={25}
-                      className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-silver focus:border-cyan-500/50 focus:outline-none resize-none font-mono text-sm leading-relaxed"
+                      className="w-full resize-none rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-input)] px-4 py-3 font-mono text-base leading-relaxed text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -567,44 +576,44 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
               {/* Sidebar */}
               <div className="space-y-4">
                 {/* Bias Detector */}
-                <div className={`rounded-2xl border overflow-hidden transition-all ${
-                  biasFlags.length > 0 ? 'bg-gradient-to-br from-orange-900/20 to-red-900/20 border-orange-500/30' : 'bg-gradient-to-br from-green-900/20 to-cyan-900/20 border-green-500/30'
+                <div className={`elevation-card overflow-hidden rounded-[20px] border bg-[var(--card-bg)] transition-all ${
+                  biasFlags.length > 0 ? 'border-[var(--warning)]' : 'border-[var(--success)]'
                 }`}>
-                  <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 border-b border-[var(--border-subtle)] p-5">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        biasFlags.length > 0 ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400'
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-[12px] ${
+                        biasFlags.length > 0 ? 'bg-[var(--tag-amber-bg)] text-[var(--tag-amber-text)]' : 'bg-[var(--tag-green-bg)] text-[var(--tag-green-text)]'
                       }`}>
                         <span className="material-symbols-rounded">{biasFlags.length > 0 ? 'warning' : 'check_circle'}</span>
                       </div>
                       <div>
-                        <h3 className="font-bold text-white">Bias Detector</h3>
-                        <p className="text-xs text-silver">{biasFlags.length} issues found</p>
+                        <h3 className="font-bold text-[var(--text-primary)]">Bias Detector</h3>
+                        <p className="text-xs text-[var(--text-muted)]">{biasFlags.length} issues found</p>
                       </div>
                     </div>
                     {biasFlags.length > 0 && (
                       <button onClick={fixAllBias}
-                        className="px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 text-xs font-semibold hover:bg-green-500/30"
+                        className="inline-flex min-h-[44px] items-center rounded-[12px] bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--accent-on)] transition-opacity hover:opacity-90"
                       >Fix All</button>
                     )}
                   </div>
-                  <div className="p-4 max-h-64 overflow-y-auto">
+                  <div className="max-h-64 overflow-y-auto p-4">
                     {biasFlags.length === 0 ? (
-                      <p className="text-center text-green-400 py-4">✓ No bias detected!</p>
+                      <p className="py-4 text-center text-[var(--success)]">✓ No bias detected!</p>
                     ) : (
                       <div className="space-y-2">
                         {biasFlags.map((flag, i) => (
-                          <div key={i} className="p-3 rounded-xl glass-card">
+                          <div key={i} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-3">
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <p className="text-sm">
-                                  <span className="text-orange-400 font-semibold">"{flag.text}"</span>
+                                  <span className="font-semibold text-[var(--warning)]">"{flag.text}"</span>
                                 </p>
-                                <p className="text-xs text-silver">{flag.issue}</p>
-                                <p className="text-xs text-green-400">→ Use: "{flag.suggestion}"</p>
+                                <p className="text-xs text-[var(--text-muted)]">{flag.issue}</p>
+                                <p className="text-xs text-[var(--success)]">→ Use: "{flag.suggestion}"</p>
                               </div>
                               <button onClick={() => fixBias(flag)}
-                                className="px-2 py-1 rounded bg-green-500/20 text-green-400 text-xs hover:bg-green-500/30"
+                                className="inline-flex min-h-[44px] items-center rounded-[10px] bg-[var(--accent)] px-3 py-2 text-xs font-medium text-[var(--accent-on)] transition-opacity hover:opacity-90"
                               >Fix</button>
                             </div>
                           </div>
@@ -614,28 +623,28 @@ ${jd.benefits?.length ? `BENEFITS\n${jd.benefits.map(b => `• ${b}`).join('\n')
                   </div>
                 </div>
 
-                <div className="rounded-2xl glass-card p-5">
-                  <h3 className="font-bold text-white mb-4 flex items-center gap-2"><span className="material-symbols-rounded text-[var(--text-muted)]">bolt</span> Quick Actions</h3>
+                <div className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
+                  <h3 className="mb-4 flex items-center gap-2 font-bold text-[var(--text-primary)]"><span className="material-symbols-rounded text-[var(--text-muted)]">bolt</span> Quick Actions</h3>
                   <div className="space-y-2">
                     <button onClick={copyToClipboard}
-                      className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                      className="btn-primary flex w-full items-center justify-center gap-2 rounded-[12px] py-3 font-semibold"
                     ><span className="material-symbols-rounded">content_copy</span> Copy to Clipboard</button>
                     <button onClick={downloadPDF} disabled={isLoading}
-                      className="w-full py-3 rounded-xl font-semibold bg-white/10 text-white hover:bg-white/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="btn-secondary flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[12px] py-3 font-semibold disabled:opacity-50"
                     ><span className="material-symbols-rounded">picture_as_pdf</span> Download PDF</button>
                     <button onClick={saveTemplate}
-                      className="w-full py-3 rounded-xl font-semibold bg-[var(--tag-cyan-bg)] text-[var(--tag-cyan-text)] transition-all flex items-center justify-center gap-2"
+                      className="btn-secondary flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[12px] py-3 font-semibold"
                     ><span className="material-symbols-rounded">save</span> Save to Library</button>
                     <button onClick={() => setStep('input')}
-                      className="w-full py-3 rounded-xl font-semibold bg-[var(--theme-bg-elevated)] border border-white/10 text-silver hover:text-white hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+                      className="btn-secondary flex min-h-[44px] w-full items-center justify-center gap-2 rounded-[12px] py-3 font-semibold"
                     ><span className="material-symbols-rounded">add_circle</span> Generate New JD</button>
                   </div>
                 </div>
 
                 {/* Tips */}
-                <div className="rounded-2xl glass-card p-5">
-                  <h3 className="font-bold text-white mb-3 flex items-center gap-2"><span className="material-symbols-rounded text-yellow-400">lightbulb</span> Pro Tips</h3>
-                  <ul className="space-y-2 text-sm text-silver">
+                <div className="elevation-card rounded-[20px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5">
+                  <h3 className="mb-3 flex items-center gap-2 font-bold text-[var(--text-primary)]"><span className="material-symbols-rounded text-[var(--warning)]">lightbulb</span> Pro Tips</h3>
+                  <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
                     <li>• Keep requirements focused (5-7 core items)</li>
                     <li>• Use inclusive, bias-free language</li>
                     <li>• Be specific about the First 90 Days</li>

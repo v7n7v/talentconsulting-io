@@ -7,10 +7,10 @@ import AssistantThinkingTile from '@/components/assistant/AssistantThinkingTile'
 import { RESUME_UPLOAD_LIMITS, ResumeUploadError, uploadAndParseResume, validateResumeFile } from '@/lib/resume-upload';
 
 const BENEFITS = [
-  { icon: 'auto_awesome', text: 'Optimizes your resume for the role', color: '#f59e0b' },
-  { icon: 'trending_up', text: 'Surfaces ATS and keyword fit', color: '#10b981' },
-  { icon: 'psychology', text: 'Keeps your voice while improving clarity', color: '#06b6d4' },
-  { icon: 'download', text: 'Exports clean PDF and Word files', color: '#a855f7' },
+  { icon: 'auto_awesome', text: 'Optimizes your resume for the role', color: 'var(--accent)' },
+  { icon: 'trending_up', text: 'Surfaces ATS and keyword fit', color: 'var(--success)' },
+  { icon: 'psychology', text: 'Keeps your voice while improving clarity', color: 'var(--accent)' },
+  { icon: 'download', text: 'Exports clean PDF and Word files', color: 'var(--accent)' },
 ];
 
 const INTAKE_STEPS = [
@@ -182,7 +182,7 @@ export default function FileUploadDropzone({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={rows}
-          className={`w-full p-4 rounded-xl bg-[var(--bg-input)] border focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)] text-[var(--text-primary)] placeholder-[var(--text-muted)] resize-none transition-all ${
+          className={`w-full p-4 rounded-xl bg-[var(--bg-input)] border text-base focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-dim)] text-[var(--text-primary)] placeholder-[var(--text-muted)] resize-none transition-all ${
             dragActive ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border-subtle)]'
           }`}
         />
@@ -196,7 +196,7 @@ export default function FileUploadDropzone({
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-[var(--bg-hover)] hover:bg-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium transition-all border border-[var(--border-subtle)] flex items-center gap-1.5 z-10"
+          className="absolute top-3 right-3 min-h-11 px-3 py-1.5 rounded-lg bg-[var(--bg-hover)] hover:bg-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-medium transition-all border border-[var(--border-subtle)] flex items-center gap-1.5 z-10"
         >
           {isUploading ? (
             <>
@@ -220,7 +220,7 @@ export default function FileUploadDropzone({
               exit={{ opacity: 0 }}
               className="absolute inset-0 z-20 rounded-xl bg-[var(--accent-dim)] backdrop-blur-[2px] border-2 border-[var(--accent)] flex items-center justify-center pointer-events-none"
             >
-              <div className="bg-[var(--bg-surface)] px-4 py-2 rounded-lg border border-[var(--accent-hover)] text-[var(--accent)] font-medium flex items-center gap-2 shadow-xl">
+              <div className="elevation-raised bg-[var(--bg-surface)] px-4 py-2 rounded-lg border border-[var(--accent-hover)] text-[var(--accent)] font-medium flex items-center gap-2">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/></svg>
                 Drop to extract text
               </div>
@@ -325,8 +325,8 @@ export default function FileUploadDropzone({
           aria-describedby="resume-studio-upload-help"
           className={`relative overflow-hidden rounded-[16px] border border-dashed px-5 py-8 transition-colors sm:px-8 sm:py-10 ${
             dragActive
-              ? 'border-cyan-500/60 bg-cyan-500/[0.07]'
-              : 'border-[var(--border)] bg-[var(--bg-card)]'
+              ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
+              : 'border-[var(--border)] bg-[var(--card-bg)]'
           }`}
         >
           <div aria-live="polite" className="sr-only">
@@ -370,7 +370,7 @@ export default function FileUploadDropzone({
                 <motion.p
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="text-[16px] font-semibold text-cyan-500"
+                  className="text-[16px] font-semibold text-[var(--accent)]"
                 >
                   Release to add this resume
                 </motion.p>
@@ -387,7 +387,7 @@ export default function FileUploadDropzone({
                       fileInputRef.current?.click();
                     }}
                     disabled={isUploading}
-                    className="mt-5 inline-flex items-center gap-2 rounded-[10px] bg-[var(--text-primary)] px-4 py-2.5 text-[12px] font-semibold text-[var(--bg-deep)] transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/45 disabled:opacity-60"
+                    className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-[var(--text-primary)] px-4 py-2.5 text-[12px] font-semibold text-[var(--bg-deep)] transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
                   >
                     <span className="material-symbols-rounded text-[16px]">upload_file</span>
                     Choose a file
@@ -403,7 +403,7 @@ export default function FileUploadDropzone({
                       event.stopPropagation();
                       setPasteOpen(open => !open);
                     }}
-                    className="flex w-full items-center justify-between gap-3 rounded-[8px] px-1 py-1.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/35"
+                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-[8px] px-1 py-1.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     aria-expanded={pasteOpen}
                   >
                     <span>
@@ -428,7 +428,7 @@ export default function FileUploadDropzone({
                             onChange={(event) => setPasteValue(event.target.value)}
                             rows={5}
                             placeholder="Paste your resume text here."
-                            className="w-full resize-none rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-cyan-500/35"
+                            className="w-full resize-none rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                           />
                           <button
                             type="button"
@@ -436,7 +436,7 @@ export default function FileUploadDropzone({
                               event.stopPropagation();
                               submitPasteText();
                             }}
-                            className="rounded-[10px] bg-[var(--text-primary)] px-4 py-2.5 text-[12px] font-semibold text-[var(--bg-deep)] transition-opacity hover:opacity-90"
+                            className="inline-flex min-h-11 items-center rounded-[10px] bg-[var(--text-primary)] px-4 py-2.5 text-[12px] font-semibold text-[var(--bg-deep)] transition-opacity hover:opacity-90"
                           >
                             Continue with pasted text
                           </button>
@@ -471,7 +471,7 @@ export default function FileUploadDropzone({
         aria-describedby="resume-upload-help"
         className={`p-4 md:p-5 transition-all relative overflow-hidden rounded-2xl ${
           dragActive
-            ? 'bg-cyan-500/[0.06] ring-2 ring-cyan-500/25'
+            ? 'bg-[var(--accent-dim)] ring-2 ring-[var(--accent)]'
             : 'hover:bg-[var(--bg-hover)]'
         }`}
       >
@@ -490,7 +490,7 @@ export default function FileUploadDropzone({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 pointer-events-none"
-              style={{ background: 'linear-gradient(to top, var(--accent-dim), transparent)' }}
+              style={{ background: 'var(--accent-dim)' }}
             />
           )}
         </AnimatePresence>
@@ -521,7 +521,7 @@ export default function FileUploadDropzone({
                 transition={{ duration: 2, ease: 'easeInOut' }}
               />
             </div>
-            <p className="text-[10px] text-[var(--text-secondary)] mt-2 uppercase tracking-wider font-medium">Step {processingStage === 'parsing' ? '3' : processingStage === 'extracting' ? '2' : '1'} of 3</p>
+            <p className="text-[11px] text-[var(--text-secondary)] mt-2 uppercase tracking-wider font-medium">Step {processingStage === 'parsing' ? '3' : processingStage === 'extracting' ? '2' : '1'} of 3</p>
           </motion.div>
         ) : (
           <motion.div
@@ -537,7 +537,7 @@ export default function FileUploadDropzone({
                   {/* Breathing ring */}
                   <motion.div
                     className="absolute inset-0 rounded-full"
-                    style={{ border: '1.5px solid rgba(6,182,212,0.25)' }}
+                    style={{ border: '1.5px solid color-mix(in srgb, var(--accent) 25%, transparent)' }}
                     animate={reduceMotion ? { scale: 1, opacity: 0.45 } : { scale: [1, 1.15, 1], opacity: [0.5, 0.15, 0.5] }}
                     transition={reduceMotion ? undefined : { duration: 3, repeat: Infinity, ease: 'easeInOut' }}
                   />
@@ -558,8 +558,7 @@ export default function FileUploadDropzone({
                         height: p.size,
                         left: p.left,
                         bottom: '30%',
-                        background: 'rgba(6,182,212,0.6)',
-                        boxShadow: '0 0 4px rgba(6,182,212,0.4)',
+                        background: 'color-mix(in srgb, var(--accent) 60%, transparent)',
                       }}
                       animate={{
                         y: [0, -40, -60],
@@ -586,7 +585,7 @@ export default function FileUploadDropzone({
                     {!reduceMotion && (
                       <motion.div
                         className="absolute left-0 right-0 h-[2px] pointer-events-none"
-                        style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(6,182,212,0.5) 50%, transparent 100%)' }}
+                        style={{ background: 'color-mix(in srgb, var(--accent) 50%, transparent)' }}
                         animate={{ top: ['-10%', '110%'] }}
                         transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 2.5, ease: 'easeInOut' }}
                       />
@@ -599,7 +598,7 @@ export default function FileUploadDropzone({
                   <motion.p
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="text-[17px] font-bold text-cyan-500"
+                    className="text-[17px] font-bold text-[var(--accent)]"
                   >
                     Release to analyze
                   </motion.p>
@@ -619,7 +618,7 @@ export default function FileUploadDropzone({
                         fileInputRef.current?.click();
                       }}
                       disabled={isUploading}
-                      className="mb-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold border border-cyan-500/20 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/45 disabled:opacity-60"
+                      className="mb-4 inline-flex min-h-11 items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold border border-[color-mix(in_srgb,var(--accent)_20%,transparent)] bg-[var(--accent-dim)] text-[var(--accent)] hover:bg-[var(--accent-dim)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
                     >
                       <span className="material-symbols-rounded text-[14px]">upload_file</span>
                       Browse files
@@ -634,9 +633,9 @@ export default function FileUploadDropzone({
                       <div
                         className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold"
                         style={{
-                          background: 'linear-gradient(135deg, rgba(6,182,212,0.1) 0%, rgba(59,130,246,0.06) 100%)',
-                          border: '1px solid rgba(6,182,212,0.2)',
-                          color: '#06b6d4',
+                          background: 'var(--accent-dim)',
+                          border: '1px solid color-mix(in srgb, var(--accent) 20%, transparent)',
+                          color: 'var(--accent)',
                         }}
                       >
                         <span className="material-symbols-rounded text-[14px]">upload</span>
@@ -650,7 +649,7 @@ export default function FileUploadDropzone({
                 )}
               </div>
 
-              <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 md:p-6">
+              <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 md:p-6">
                 <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--text-muted)] font-medium">Intake workspace</p>
                 <h3 className="text-[18px] font-semibold text-[var(--text-primary)] mt-1">We turn one file into a working resume system.</h3>
                 <p className="text-[12px] text-[var(--text-secondary)] mt-2 leading-relaxed">
@@ -662,7 +661,7 @@ export default function FileUploadDropzone({
                     <div key={step.label} className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
                       <span className="material-symbols-rounded icon-neutral text-[17px]">{step.icon}</span>
                       <p className="text-[12px] font-semibold text-[var(--text-primary)] mt-2">{step.label}</p>
-                      <p className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">{step.detail}</p>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-snug">{step.detail}</p>
                     </div>
                   ))}
                 </div>
@@ -670,7 +669,7 @@ export default function FileUploadDropzone({
                 <div className="mt-5 space-y-2">
                   {FILE_RULES.map(rule => (
                     <div key={rule.label} className="flex items-start gap-3 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3">
-                      <div className="w-8 h-8 rounded-[9px] bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center flex-shrink-0">
+                      <div className="w-8 h-8 rounded-[9px] bg-[var(--card-bg)] border border-[var(--border-subtle)] flex items-center justify-center flex-shrink-0">
                         <span className="material-symbols-rounded text-[16px] text-[var(--text-secondary)]">{rule.icon}</span>
                       </div>
                       <div>
@@ -682,14 +681,14 @@ export default function FileUploadDropzone({
                 </div>
 
                 {showPasteFallback && onPasteText && (
-                  <div className="mt-5 rounded-[14px] border border-cyan-500/15 bg-cyan-500/[0.04] p-3">
+                  <div className="mt-5 rounded-[14px] border border-[color-mix(in_srgb,var(--accent)_15%,transparent)] bg-[var(--accent-dim)] p-3">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setPasteOpen(open => !open);
                       }}
-                      className="w-full flex items-center justify-between gap-3 text-left"
+                      className="w-full min-h-11 flex items-center justify-between gap-3 text-left"
                     >
                       <span>
                         <span className="block text-[12px] font-semibold text-[var(--text-primary)]">Paste resume text instead</span>
@@ -713,7 +712,7 @@ export default function FileUploadDropzone({
                               onChange={(e) => setPasteValue(e.target.value)}
                               rows={5}
                               placeholder="Paste the resume text here. We will route it through the same parsing flow."
-                              className="w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-cyan-500/35 resize-none"
+                              className="w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-base text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-none"
                             />
                             <button
                               type="button"
@@ -721,7 +720,7 @@ export default function FileUploadDropzone({
                                 e.stopPropagation();
                                 submitPasteText();
                               }}
-                              className="w-full rounded-[11px] bg-[var(--text-primary)] text-[var(--bg-deep)] py-2.5 text-[12px] font-semibold hover:opacity-90 transition-all"
+                              className="w-full min-h-11 rounded-[11px] bg-[var(--text-primary)] text-[var(--bg-deep)] py-2.5 text-[12px] font-semibold hover:opacity-90 transition-all"
                             >
                               Use pasted text
                             </button>

@@ -131,7 +131,7 @@ export function SuiteToolHeader({
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
       className={cx(
-        'suite-tool-header relative rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 shadow-sm md:rounded-[24px] md:p-6',
+        'suite-tool-header elevation-card relative rounded-[22px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 md:rounded-[24px] md:p-6',
         className,
       )}
     >
@@ -145,7 +145,7 @@ export function SuiteToolHeader({
           />
           <div className={cx('min-w-0 flex-1', resolvedHelp && 'pr-12 lg:pr-0')}>
             {resolvedEyebrow && (
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)] md:text-[11px] md:tracking-[0.14em]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)] md:tracking-[0.14em]">
                 {resolvedEyebrow}
               </p>
             )}
@@ -200,7 +200,7 @@ export function SuitePanel({ children, className, as: Component = 'section' }: S
   return (
     <Component
       className={cx(
-        'mobile-tool-shell min-w-0 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm md:p-5',
+        'mobile-tool-shell elevation-card min-w-0 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5',
         className,
       )}
     >
@@ -243,8 +243,8 @@ export function SuiteMetricCard({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={cx(
-        'group min-w-0 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-colors',
-        onClick && 'hover:border-[var(--border)] hover:bg-[var(--bg-hover)]',
+        'group min-w-0 rounded-[16px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left',
+        onClick ? 'elevation-interactive hover:border-[var(--border)] hover:bg-[var(--bg-hover)]' : 'elevation-card',
       )}
     >
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -309,6 +309,38 @@ export function SuiteUnmeasured({
       <p className="premium-copy-wrap mt-1 text-xs leading-5 text-[var(--text-muted)]">{reason}</p>
       {action && <div className="mt-3">{action}</div>}
     </div>
+  );
+}
+
+/**
+ * The four-state evidence badge (verified / inferred / draft / missing).
+ *
+ * Hue is the fourth channel, never the only one: each state carries a distinct
+ * glyph SHAPE and a text LABEL in the accessible name before colour is
+ * considered. Verified is filled; the rest are outlined; missing is a dashed
+ * outline that names the absence — never a measured zero. Closed variant API:
+ * pass a `state`, optionally override the visible `label`; no className.
+ */
+const EVIDENCE_STATES = {
+  verified: { label: 'Verified', icon: 'check_circle', className: 'border-transparent bg-[var(--success)] text-[var(--accent-on)]' },
+  inferred: { label: 'Inferred', icon: 'lightbulb', className: 'border border-dotted border-[var(--border)] text-[var(--text-secondary)]' },
+  draft: { label: 'Draft', icon: 'edit_note', className: 'border border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]' },
+  missing: { label: 'Not in your resume', icon: 'do_not_disturb_on', className: 'border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)]' },
+} as const;
+
+export function EvidenceBadge({
+  state,
+  label,
+}: {
+  state: keyof typeof EVIDENCE_STATES;
+  label?: string;
+}) {
+  const s = EVIDENCE_STATES[state];
+  return (
+    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold', s.className)}>
+      <span className="material-symbols-rounded text-[15px] leading-none" aria-hidden="true">{s.icon}</span>
+      <span>{label || s.label}</span>
+    </span>
   );
 }
 

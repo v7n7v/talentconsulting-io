@@ -1,0 +1,16 @@
+[
+ {"query":"write up what we decided today so claude code can pick it up tomorrow","should_trigger":true},
+ {"query":"i'm going to switch to working in the repo directly - make sure everything transfers","should_trigger":true},
+ {"query":"update CLAUDE.md, half of what's in there about the ai providers is wrong now","should_trigger":true},
+ {"query":"TALENT_SUITE_ARCHITECTURE.md still describes supabase and we've been on firestore for months","should_trigger":true},
+ {"query":"phase 2 is finished, record what changed and what's next","should_trigger":true},
+ {"query":"how do my plans carry over between sessions - do you remember any of this next time","should_trigger":true},
+ {"query":"a new engineer starts monday, what should they read first","should_trigger":true},
+ {"query":"we keep re-arguing the pricing decision every few weeks","should_trigger":true},
+ {"query":"write the readme for the ui-verify script","should_trigger":false},
+ {"query":"draft a linkedin post announcing the launch","should_trigger":false},
+ {"query":"add jsdoc comments to lib/billing-prices.ts","should_trigger":false},
+ {"query":"what did we decide about the accent colour again","should_trigger":false},
+ {"query":"generate api documentation from the route handlers","should_trigger":false},
+ {"query":"summarise this 40 page pdf for me","should_trigger":false}
+]

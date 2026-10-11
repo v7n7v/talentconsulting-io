@@ -20,7 +20,6 @@ import {
   buildSessionTitle,
   buildTrustReport,
   countWords,
-  getTrustColor,
   mapModeToSettings,
   type PipelineStep,
   type RewriteMode,
@@ -113,15 +112,21 @@ function formatVerdict(report: WritingTrustReport | null) {
 }
 
 function scoreTone(score: number) {
-  if (score >= 72) return 'text-emerald-600 dark:text-emerald-400';
-  if (score >= 45) return 'text-amber-600 dark:text-amber-400';
-  return 'text-rose-600 dark:text-rose-400';
+  if (score >= 72) return 'text-[var(--success)]';
+  if (score >= 45) return 'text-[var(--warning)]';
+  return 'text-[var(--danger)]';
+}
+
+function trustColorVar(score: number) {
+  if (score >= 72) return 'var(--success)';
+  if (score >= 45) return 'var(--warning)';
+  return 'var(--danger)';
 }
 
 function ScoreRing({ score, label }: { score: number; label: string }) {
   const radius = 34;
   const circumference = 2 * Math.PI * radius;
-  const color = getTrustColor(score);
+  const color = trustColorVar(score);
   return (
     <div className="relative h-24 w-24 shrink-0">
       <svg className="-rotate-90" width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
@@ -140,7 +145,7 @@ function ScoreRing({ score, label }: { score: number; label: string }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-semibold tracking-tight" style={{ color }}>{score}</span>
-        <span className="text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
       </div>
     </div>
   );
@@ -149,7 +154,7 @@ function ScoreRing({ score, label }: { score: number; label: string }) {
 function MetricTile({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-      <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
       <p className={`mt-1 text-sm font-medium ${tone || 'text-[var(--text-primary)]'}`}>{value}</p>
     </div>
   );
@@ -168,11 +173,11 @@ function SelectField<T extends string>({
 }) {
   return (
     <label className="min-w-0 flex-1">
-      <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
+      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</span>
       <select
         value={value}
         onChange={event => onChange(event.target.value as T)}
-        className="h-10 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-xs font-medium text-[var(--text-primary)] outline-none transition focus:ring-2 focus:ring-cyan-500/25"
+        className="h-11 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-base font-medium text-[var(--text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--accent)] md:h-10 md:text-xs"
       >
         {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
       </select>
@@ -232,9 +237,9 @@ function ActionRail({
             disabled={state === 'blocked' || !!loading}
             className={`flex min-h-[58px] items-center gap-3 rounded-[12px] border px-3 py-2 text-left transition ${
               active
-                ? 'border-cyan-400/50 bg-cyan-500/10'
+                ? 'border-[var(--accent)] bg-[var(--accent-dim)]'
                 : state === 'done'
-                  ? 'border-emerald-500/30 bg-emerald-500/10'
+                  ? 'border-[color-mix(in_srgb,var(--success)_35%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)]'
                   : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--border)] hover:bg-[var(--bg-hover)]'
             } disabled:cursor-not-allowed disabled:opacity-45`}
           >
@@ -331,8 +336,8 @@ function ParagraphDiagnostics({
   const flagged = paragraphs.filter(p => p.score < 68).slice(0, 6);
   if (flagged.length === 0) {
     return (
-      <div className="rounded-[14px] border border-emerald-500/20 bg-emerald-500/10 p-4">
-        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">No priority paragraph flags.</p>
+      <div className="rounded-[14px] border border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] p-4">
+        <p className="text-sm font-medium text-[var(--success)]">No priority paragraph flags.</p>
         <p className="mt-1 text-xs text-[var(--text-muted)]">This is still an indicator, not proof. Use Verify for an originality pass.</p>
       </div>
     );
@@ -350,7 +355,7 @@ function ParagraphDiagnostics({
             <button
               onClick={() => onFix(paragraph.index)}
               disabled={disabled}
-              className="shrink-0 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-50"
+              className="min-h-[44px] shrink-0 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-50"
             >
               Fix section
             </button>
@@ -358,7 +363,7 @@ function ParagraphDiagnostics({
           {paragraph.flags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {paragraph.flags.slice(0, 3).map((flag, index) => (
-                <span key={`${paragraph.index}-${index}-${flag}`} className="rounded-full bg-amber-500/10 px-2 py-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">{flag}</span>
+                <span key={`${paragraph.index}-${index}-${flag}`} className="rounded-full bg-[color-mix(in_srgb,var(--warning)_15%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--warning)]">{flag}</span>
               ))}
             </div>
           )}
@@ -698,7 +703,7 @@ export default function WritingToolsPage() {
               <button
                 onClick={saveSession}
                 disabled={!inputText.trim() || loading === 'save'}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] transition-all disabled:opacity-45"
+                className="inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] text-[12px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border)] transition-all disabled:opacity-45"
               >
                 <span className="material-symbols-rounded text-[15px]">{loading === 'save' ? 'progress_activity' : 'save'}</span>
                 Save
@@ -706,26 +711,26 @@ export default function WritingToolsPage() {
           }
         />
 
-        <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5 shadow-sm">
+        <section className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
           <div className="grid gap-3 lg:grid-cols-[1.25fr_0.75fr_0.75fr_0.75fr_auto] lg:items-end">
             <label>
-              <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Document</span>
+              <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Document</span>
               <input
                 value={documentName}
                 onChange={event => setDocumentName(event.target.value)}
-                className="h-10 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-sm font-medium text-[var(--text-primary)] outline-none transition focus:ring-2 focus:ring-cyan-500/25"
+                className="h-10 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-base font-medium text-[var(--text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--accent)]"
               />
             </label>
             <SelectField label="Domain" value={domain} options={DOMAINS} onChange={setDomain} />
             <SelectField label="Tone" value={tone} options={TONES} onChange={setTone} />
             <SelectField label="Length" value={lengthMode} options={LENGTHS} onChange={setLengthMode} />
             <div className="rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
-              <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Status</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Status</p>
               <p className="mt-1 whitespace-nowrap text-xs font-medium text-[var(--text-primary)]">{saveStatus}</p>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Rewrite mode</span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Rewrite mode</span>
             {REWRITE_MODES.map(mode => (
               <button
                 key={mode.value}
@@ -736,9 +741,9 @@ export default function WritingToolsPage() {
                   setTone(settings.tone);
                   setLengthMode(settings.lengthMode);
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
+                className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
                   rewriteMode === mode.value
-                    ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                    ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                     : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:text-[var(--text-primary)]'
                 }`}
                 title={mode.description}
@@ -750,14 +755,14 @@ export default function WritingToolsPage() {
           </div>
           <div className="mt-4 grid gap-3 lg:grid-cols-[0.8fr_0.9fr_1.4fr]">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Intensity</span>
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Intensity</span>
               {INTENSITIES.map(option => (
                 <button
                   key={option.value}
                   onClick={() => setIntensity(option.value)}
-                  className={`rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
+                  className={`min-h-[44px] rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
                     intensity === option.value
-                      ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -766,14 +771,14 @@ export default function WritingToolsPage() {
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Pace</span>
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Pace</span>
               {QUALITY_MODES.map(option => (
                 <button
                   key={option.value}
                   onClick={() => setQualityMode(option.value)}
-                  className={`inline-flex items-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
+                  className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-medium transition ${
                     qualityMode === option.value
-                      ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
+                      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                       : 'border-[var(--border-subtle)] bg-[var(--card-bg)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:text-[var(--text-primary)]'
                   }`}
                   title={option.description}
@@ -784,12 +789,12 @@ export default function WritingToolsPage() {
               ))}
             </div>
             <label>
-              <span className="mb-1 block text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Protected terms</span>
+              <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Protected terms</span>
               <input
                 value={protectedTermsText}
                 onChange={event => setProtectedTermsText(event.target.value)}
                 placeholder="Optional: names, metrics, citations, URLs, tools"
-                className="h-10 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25"
+                className="h-10 w-full rounded-[11px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 text-base text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)]"
               />
             </label>
           </div>
@@ -812,7 +817,7 @@ export default function WritingToolsPage() {
         {loading && <PipelineWorkingPanel stage={loading} intensity={intensity} qualityMode={qualityMode} />}
 
         <main className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.82fr)]">
-          <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5 shadow-sm">
+          <section className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 md:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Document editor</p>
@@ -835,7 +840,7 @@ export default function WritingToolsPage() {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={!!loading}
-                  className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-45"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-45"
                 >
                   <span className="material-symbols-rounded text-base">{loading === 'file' ? 'progress_activity' : 'upload_file'}</span>
                   Upload
@@ -843,13 +848,13 @@ export default function WritingToolsPage() {
                 {humanizeResult && (
                   <button
                     onClick={() => setShowOriginal(prev => !prev)}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
                   >
                     <span className="material-symbols-rounded text-base">compare_arrows</span>
                     {showOriginal ? 'Show Final' : 'Show Original'}
                   </button>
                 )}
-                <button onClick={clearAll} className="rounded-[10px] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:text-rose-500">
+                <button onClick={clearAll} className="min-h-[44px] rounded-[10px] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:text-[var(--danger)]">
                   Clear
                 </button>
               </div>
@@ -864,7 +869,7 @@ export default function WritingToolsPage() {
               }}
               aria-describedby="writing-editor-help"
               placeholder="Paste a resume summary, cover letter, essay, LinkedIn post, recruiter email, or any high-stakes writing here..."
-              className="min-h-[320px] w-full resize-y rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-input)] p-4 text-sm leading-7 text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-cyan-500/25 sm:min-h-[480px] sm:p-5"
+              className="min-h-[320px] w-full resize-y rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-input)] p-4 text-base leading-7 text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent)] sm:min-h-[480px] sm:p-5"
             />
             <div id="writing-editor-help" className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]" aria-live="polite">
               <span>{wordCount.toLocaleString()} original words · {activeWordCount.toLocaleString()} current words</span>
@@ -881,7 +886,7 @@ export default function WritingToolsPage() {
           </section>
 
           <aside className="space-y-5">
-            <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+            <section className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Trust Cockpit</p>
@@ -901,22 +906,22 @@ export default function WritingToolsPage() {
                 <MetricTile label="Confidence" value={trustReport?.confidenceBand || 'Not scanned'} />
                 <MetricTile label="Originality" value={uniqueness ? `${uniqueness.uniquenessScore}/100` : 'Verify pending'} tone={uniqueness ? scoreTone(uniqueness.uniquenessScore) : undefined} />
                 <MetricTile label="Readability" value={trustReport ? `${trustReport.readability.averageSentenceLength} w/sentence` : 'Pending'} />
-                <MetricTile label="Flags" value={trustReport ? `${trustReport.flags.length}` : '0'} />
+                <MetricTile label="Flags" value={trustReport ? `${trustReport.flags.length}` : 'Not scanned'} />
               </div>
 
               <div className="mt-5 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Next best action</p>
+                <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Next best action</p>
                 <p className="mt-2 text-sm font-medium text-[var(--text-primary)]">{recommendedAction}</p>
                 {deepScan?.summary && <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{deepScan.summary}</p>}
               </div>
               {humanizeResult?.qualityGates && (
                 <div className="mt-4 rounded-[14px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
-                  <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Quality gates</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Quality gates</p>
                   <div className="mt-3 space-y-2">
                     {humanizeResult.qualityGates.slice(0, 5).map(gate => (
                       <div key={gate.id} className="flex items-start justify-between gap-3 text-xs">
                         <span className="font-medium text-[var(--text-secondary)]">{gate.label}</span>
-                        <span className={gate.status === 'pass' ? 'text-emerald-600 dark:text-emerald-400' : gate.status === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}>
+                        <span className={gate.status === 'pass' ? 'text-[var(--success)]' : gate.status === 'warn' ? 'text-[var(--warning)]' : 'text-[var(--danger)]'}>
                           {gate.status}
                         </span>
                       </div>
@@ -929,7 +934,7 @@ export default function WritingToolsPage() {
               )}
             </section>
 
-            <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+            <section className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Priority fixes</p>
@@ -947,13 +952,13 @@ export default function WritingToolsPage() {
               )}
             </section>
 
-            <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+            <section className="elevation-card rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
               <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">Export station</p>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => exportText('docx')}
                   disabled={!activeText.trim() || !!loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 py-3 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 disabled:opacity-45"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 py-3 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90 disabled:opacity-45"
                 >
                   <span className="material-symbols-rounded text-base">description</span>
                   Word
@@ -961,7 +966,7 @@ export default function WritingToolsPage() {
                 <button
                   onClick={() => exportText('txt')}
                   disabled={!activeText.trim() || !!loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-45"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-45"
                 >
                   <span className="material-symbols-rounded text-base">article</span>
                   TXT
@@ -969,7 +974,7 @@ export default function WritingToolsPage() {
                 <button
                   onClick={copyText}
                   disabled={!activeText.trim()}
-                  className="col-span-2 inline-flex items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-45"
+                  className="col-span-2 inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)] disabled:opacity-45"
                 >
                   <span className="material-symbols-rounded text-base">content_copy</span>
                   Copy final text

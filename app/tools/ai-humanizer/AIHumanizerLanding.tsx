@@ -50,8 +50,7 @@ function PrimaryLink({ href, children }: { href: string; children: ReactNode }) 
   return (
     <Link
       href={href}
-      className="inline-flex items-center justify-center rounded-[12px] px-5 py-3 text-sm font-semibold transition hover:opacity-90"
-      style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}
+      className="btn-primary inline-flex min-h-[44px] items-center justify-center rounded-[12px] px-5 py-3 text-sm font-semibold transition hover:opacity-90"
     >
       {children}
     </Link>
@@ -62,7 +61,7 @@ function SecondaryLink({ href, children }: { href: string; children: ReactNode }
   return (
     <Link
       href={href}
-      className="inline-flex items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
+      className="inline-flex min-h-[44px] items-center justify-center rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-sm font-medium text-[var(--text-secondary)] transition hover:border-[var(--border)] hover:text-[var(--text-primary)]"
     >
       {children}
     </Link>
@@ -82,8 +81,7 @@ export default function AIHumanizerLanding() {
             <Link href="/tools/resume-builder" className="hidden text-xs text-[var(--text-muted)] transition hover:text-[var(--text-primary)] sm:inline">Resume Builder</Link>
             <Link
               href="/suite/writing-tools"
-              className="whitespace-nowrap rounded-[10px] px-3 py-2 text-xs font-semibold transition hover:opacity-90 sm:px-4"
-              style={{ background: 'var(--text-primary)', color: 'var(--bg-deep)' }}
+              className="inline-flex min-h-[44px] items-center justify-center whitespace-nowrap rounded-[10px] bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--accent-on)] transition hover:opacity-90 sm:px-4"
             >
               Open Trust Studio
             </Link>
@@ -99,8 +97,8 @@ export default function AIHumanizerLanding() {
             transition={{ duration: 0.45 }}
             className="premium-brand-hero glass-card overflow-hidden rounded-2xl p-6 md:p-8"
           >
-            <div className="premium-brand-kicker mb-5 inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+            <div className="premium-brand-kicker mb-5 inline-flex items-center gap-2 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--text-muted)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
               Career-Grade Humanization
             </div>
             <h1 className="max-w-3xl text-4xl font-semibold tracking-tight md:text-5xl">
@@ -138,7 +136,7 @@ export default function AIHumanizerLanding() {
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.04 }}
-                className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-center shadow-sm"
+                className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-center elevation-card"
               >
                 <div className="text-sm font-semibold text-[var(--success)]">{d.status}</div>
                 <div className="mt-1 text-[11px] text-[var(--text-muted)]">{d.name}</div>
@@ -160,7 +158,7 @@ export default function AIHumanizerLanding() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.06 }}
-                className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm"
+                className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card"
               >
                 <span className="material-symbols-rounded mb-3 block text-2xl text-[var(--accent)]">{f.icon}</span>
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">{f.title}</h3>
@@ -182,18 +180,18 @@ export default function AIHumanizerLanding() {
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                className="overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm"
+                className="overflow-hidden rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card"
               >
                 <div className="border-b border-[var(--border-subtle)] bg-[var(--card-bg)] px-5 py-3 text-xs font-medium text-[var(--text-secondary)]">
                   {ex.label}
                 </div>
                 <div className="grid md:grid-cols-2">
                   <div className="border-b border-[var(--border-subtle)] p-5 md:border-b-0 md:border-r">
-                    <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-rose-500">Low-trust draft</div>
+                    <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--danger)]">Low-trust draft</div>
                     <p className="text-sm leading-6 text-[var(--text-secondary)]">{ex.before}</p>
                   </div>
                   <div className="p-5">
-                    <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--success)]">Voice-preserved rewrite</div>
+                    <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--success)]">Voice-preserved rewrite</div>
                     <p className="text-sm leading-6 text-[var(--text-primary)]">{ex.after}</p>
                   </div>
                 </div>
@@ -209,7 +207,7 @@ export default function AIHumanizerLanding() {
           </div>
           <div className="mx-auto max-w-3xl space-y-2">
             {FAQS.map((faq, i) => (
-              <details key={i} className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm">
+              <details key={i} className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 elevation-card">
                 <summary className="cursor-pointer text-sm font-medium text-[var(--text-primary)]">{faq.q}</summary>
                 <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{faq.a}</p>
               </details>
@@ -218,7 +216,7 @@ export default function AIHumanizerLanding() {
         </section>
 
         <section className="pb-12">
-          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card">
             <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Use with your job-search workflow</h2>
             <div className="mobile-card-rail mt-4 grid gap-3 md:grid-cols-3">
               {[
@@ -236,7 +234,7 @@ export default function AIHumanizerLanding() {
         </section>
 
         <section className="pb-12">
-          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card">
             <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Source context</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
               Use writing-trust signals as guidance, not authorship proof. For responsible AI context, see the{' '}
@@ -248,7 +246,7 @@ export default function AIHumanizerLanding() {
         </section>
 
         <section className="pb-16">
-          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center shadow-sm md:p-8">
+          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center elevation-card md:p-8">
             <h2 className="text-2xl font-semibold tracking-tight">Keep the useful parts. Lose the generic voice.</h2>
             <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--text-secondary)]">
               Use the studio to polish resumes, cover letters, and profile text with control.

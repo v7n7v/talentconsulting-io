@@ -15,12 +15,12 @@ interface SonaCapabilityDrawerProps {
 function ApprovalBadge({ approval }: { approval: SonaCapability['approval'] }) {
   const label = approval === 'external' ? 'Approval' : approval === 'review' ? 'Review' : 'Instant';
   const tone = approval === 'external'
-    ? 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    ? 'border-[color-mix(in_srgb,var(--warning)_30%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)]'
     : approval === 'review'
-      ? 'border-cyan-500/25 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
-      : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
+      ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+      : 'border-[color-mix(in_srgb,var(--success)_30%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]';
   return (
-    <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] ${tone}`}>
+    <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.08em] ${tone}`}>
       {label}
     </span>
   );
@@ -44,7 +44,7 @@ export default function SonaCapabilityDrawer({ capabilities, context, onRun, com
             </p>
           </div>
         </div>
-        <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+        <span className="rounded-full border border-[var(--border-subtle)] px-2 py-0.5 text-[11px] font-semibold text-[var(--text-muted)]">
           {visibleCapabilities.length}
         </span>
       </div>
@@ -52,7 +52,7 @@ export default function SonaCapabilityDrawer({ capabilities, context, onRun, com
       {contextLines.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {contextLines.map((line, index) => (
-            <span key={`${line || 'context-line'}-${index}`} className="wrap-anywhere rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-1 text-[10px] font-medium text-[var(--text-secondary)]">
+            <span key={`${line || 'context-line'}-${index}`} className="wrap-anywhere rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
               {line}
             </span>
           ))}
@@ -65,16 +65,16 @@ export default function SonaCapabilityDrawer({ capabilities, context, onRun, com
             key={item.id}
             type="button"
             onClick={() => onRun(item)}
-            className="group flex w-full min-w-0 items-start gap-2 rounded-[13px] border border-transparent px-2.5 py-2 text-left transition-colors hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/30"
+            className="group flex min-h-[44px] w-full min-w-0 items-start gap-2 rounded-[13px] border border-transparent px-2.5 py-2 text-left transition-colors hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
-            <span className="material-symbols-rounded mt-0.5 shrink-0 text-[17px] text-cyan-600 dark:text-cyan-300">{item.icon}</span>
+            <span className="material-symbols-rounded mt-0.5 shrink-0 text-[17px] text-[var(--accent)]">{item.icon}</span>
             <span className="min-w-0 flex-1">
               <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <span className="wrap-natural text-xs font-bold text-[var(--text-primary)]">{item.shortTitle}</span>
                 <ApprovalBadge approval={item.approval} />
               </span>
               {!compact && (
-                <span className="premium-copy-wrap mt-0.5 block text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                <span className="premium-copy-wrap mt-0.5 block text-[11px] leading-relaxed text-[var(--text-secondary)]">
                   {item.description}
                 </span>
               )}

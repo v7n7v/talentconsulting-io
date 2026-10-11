@@ -21,10 +21,22 @@ const STATUS_LABELS: Record<string, string> = {
   not_applied: 'Saved', applied: 'Applied', screening: 'Screening',
   interviewing: 'Interview', offer: 'Offer', accepted: 'Accepted', rejected: 'Rejected',
 };
-const STATUS_COLORS: Record<string, string> = {
-  not_applied: '#64748b', applied: '#3b82f6', screening: '#06b6d4',
-  interviewing: '#f59e0b', offer: '#10b981', accepted: '#22c55e', rejected: '#ef4444',
+// Colour is the last channel: every status also carries its text label. Each
+// value is a token, mapped by meaning (progress → accent, attention → warning,
+// success → success, terminal-negative → danger, dormant → muted).
+const STATUS_TOKENS: Record<string, string> = {
+  not_applied: 'var(--text-muted)',
+  applied: 'var(--accent)',
+  screening: 'var(--accent)',
+  interviewing: 'var(--warning)',
+  offer: 'var(--success)',
+  accepted: 'var(--success)',
+  rejected: 'var(--danger)',
 };
+
+// A tint derived from a token, never a hex. Used for soft surfaces behind a
+// status glyph so the fill still resolves per-theme.
+const tint = (token: string, pct: number) => `color-mix(in srgb, ${token} ${pct}%, transparent)`;
 
 export function AnalyticsContent() {
   const { user } = useStore();
@@ -53,19 +65,28 @@ export function AnalyticsContent() {
     STATUS_FLOW.forEach(s => statusCounts[s] = apps.filter(a => a.status === s).length);
 
     const active = total - (statusCounts.rejected || 0) - (statusCounts.accepted || 0);
-    const responseRate = total > 0
-      ? Math.round(((statusCounts.screening || 0) + (statusCounts.interviewing || 0) + (statusCounts.offer || 0) + (statusCounts.accepted || 0)) / Math.max(statusCounts.applied || 1, 1) * 100)
-      : 0;
-    const interviewRate = total > 0
-      ? Math.round(((statusCounts.interviewing || 0) + (statusCounts.offer || 0) + (statusCounts.accepted || 0)) / Math.max(statusCounts.applied || 1, 1) * 100)
-      : 0;
-    const offerRate = total > 0
-      ? Math.round(((statusCounts.offer || 0) + (statusCounts.accepted || 0)) / Math.max(statusCounts.applied || 1, 1) * 100)
-      : 0;
 
-    const avgScore = apps.filter(a => a.matchScore).length > 0
-      ? Math.round(apps.filter(a => a.matchScore).reduce((s, a) => s + (a.matchScore || 0), 0) / apps.filter(a => a.matchScore).length)
-      : 0;
+    // Rates are measured against the count of applications actually submitted.
+    // When nothing has been applied to, the rate is not measurable — it is null,
+    // rendered as a labelled absence, never a fabricated percentage from a
+    // floored denominator.
+    const rateBase = statusCounts.applied || 0;
+    const responseRate = rateBase > 0
+      ? Math.round(((statusCounts.screening || 0) + (statusCounts.interviewing || 0) + (statusCounts.offer || 0) + (statusCounts.accepted || 0)) / rateBase * 100)
+      : null;
+    const interviewRate = rateBase > 0
+      ? Math.round(((statusCounts.interviewing || 0) + (statusCounts.offer || 0) + (statusCounts.accepted || 0)) / rateBase * 100)
+      : null;
+    const offerRate = rateBase > 0
+      ? Math.round(((statusCounts.offer || 0) + (statusCounts.accepted || 0)) / rateBase * 100)
+      : null;
+
+    // Average match is only meaningful over applications that carry a score.
+    // With none scored, it is null (absence) rather than a measured zero.
+    const scored = apps.filter(a => typeof a.matchScore === 'number');
+    const avgScore = scored.length > 0
+      ? Math.round(scored.reduce((s, a) => s + (a.matchScore || 0), 0) / scored.length)
+      : null;
 
     // Weekly velocity (apps per week in last 4 weeks)
     const now = Date.now();
@@ -96,10 +117,11 @@ export function AnalyticsContent() {
       heatmapData.push({ date: dateStr, count, dayLabel });
     }
 
-    // Smart insight
+    // Smart insight. Tone is a token key, never a hex — the branch decides which
+    // measured condition holds, the render maps the key to a token surface.
     let smartInsight = '';
     let insightIcon = 'lightbulb';
-    let insightColor = '#f59e0b';
+    let insightTone: 'accent' | 'success' | 'warning' | 'danger' = 'warning';
     const daysSinceLastApp = recentApps.length > 0
       ? Math.floor((now - Math.max(...recentApps.map(a => new Date(a.appliedDate || a.created_at?.toDate?.()?.toISOString?.() || a.created_at || 0).getTime()))) / 86400000)
       : -1;
@@ -107,30 +129,39 @@ export function AnalyticsContent() {
     if (daysSinceLastApp > 5 && daysSinceLastApp >= 0) {
       smartInsight = `You haven't applied in ${daysSinceLastApp} days. Momentum matters in a job search — even 2-3 targeted apps per week keeps your pipeline active.`;
       insightIcon = 'trending_down';
-      insightColor = '#f59e0b';
-    } else if (interviewRate > 20) {
+      insightTone = 'warning';
+    } else if (interviewRate !== null && interviewRate > 20) {
       smartInsight = `Your interview rate is ${interviewRate}% across ${total} tracked applications.`;
       insightIcon = 'trending_up';
-      insightColor = '#10b981';
+      insightTone = 'success';
     } else if (weeklyVelocity < 3 && total > 0) {
       smartInsight = `You are applying at ${weeklyVelocity} per week. Resume Morph tailors for more roles in the same time.`;
       insightIcon = 'speed';
-      insightColor = '#3b82f6';
-    } else if (statusCounts.rejected > statusCounts.interviewing + statusCounts.offer) {
+      insightTone = 'accent';
+    } else if ((statusCounts.rejected || 0) > (statusCounts.interviewing || 0) + (statusCounts.offer || 0)) {
       smartInsight = 'More rejections than interviews. Try running your resume through ATS Preview to optimize keyword matching.';
       insightIcon = 'troubleshoot';
-      insightColor = '#f43f5e';
-    } else if (total > 0) {
+      insightTone = 'danger';
+    } else if (responseRate !== null && total > 0) {
       smartInsight = `You're tracking ${total} applications with a ${responseRate}% response rate. Keep the focus on high-fit roles.`;
       insightIcon = 'insights';
-      insightColor = '#6366f1';
+      insightTone = 'accent';
+    } else if (total > 0) {
+      smartInsight = `You're tracking ${total} applications. Apply to a role to start measuring your response and interview rates.`;
+      insightIcon = 'insights';
+      insightTone = 'accent';
     }
 
     return {
       total, active, statusCounts, responseRate, interviewRate, offerRate,
-      avgScore, weeklyVelocity, topCompanies, heatmapData, smartInsight, insightIcon, insightColor,
+      avgScore, weeklyVelocity, topCompanies, heatmapData, smartInsight, insightIcon, insightTone,
     };
   }, [apps]);
+
+  const insightToneColor: Record<'accent' | 'success' | 'warning' | 'danger', string> = {
+    accent: 'var(--accent)', success: 'var(--success)', warning: 'var(--warning)', danger: 'var(--danger)',
+  };
+  const insightColor = insightToneColor[analytics.insightTone];
 
   // Funnel data
   const funnelStages = ['applied', 'screening', 'interviewing', 'offer', 'accepted'];
@@ -149,23 +180,19 @@ export function AnalyticsContent() {
 
       {apps.length === 0 ? (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16">
-          <div className="max-w-sm mx-auto rounded-2xl p-8 relative overflow-hidden" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/5" />
-            <div className="relative">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                <span className="material-symbols-rounded text-3xl text-blue-500">bar_chart</span>
-              </div>
-              <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">No Pipeline Data Yet</h3>
-              <p className="text-sm text-[var(--text-tertiary)] mb-5">Start tracking applications to unlock visual analytics, conversion funnels, and smart insights.</p>
-              <button
-                onClick={() => router.push('/suite/applications')}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #3b82f6, #6366f1)', boxShadow: '0 4px 16px rgba(59,130,246,0.3)' }}
-              >
-                <span className="material-symbols-rounded text-sm">add</span>
-                Track Your First Application
-              </button>
+          <div className="max-w-sm mx-auto rounded-2xl p-8 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--accent-dim)] flex items-center justify-center">
+              <span className="material-symbols-rounded text-3xl text-[var(--accent)]">bar_chart</span>
             </div>
+            <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">No Pipeline Data Yet</h3>
+            <p className="text-sm text-[var(--text-tertiary)] mb-5">Start tracking applications to unlock visual analytics, conversion funnels, and smart insights.</p>
+            <button
+              onClick={() => router.push('/suite/applications')}
+              className="btn-primary inline-flex items-center gap-2 px-5"
+            >
+              <span className="material-symbols-rounded text-base">add</span>
+              Track Your First Application
+            </button>
           </div>
         </motion.div>
       ) : (
@@ -173,28 +200,31 @@ export function AnalyticsContent() {
           {/* KPI Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {[
-              { label: 'Total', value: analytics.total, icon: 'inbox', color: '#6366f1' },
-              { label: 'Active', value: analytics.active, icon: 'pending', color: '#3b82f6' },
-              { label: 'Response Rate', value: `${analytics.responseRate}%`, icon: 'reply', color: '#06b6d4' },
-              { label: 'Interview Rate', value: `${analytics.interviewRate}%`, icon: 'mic', color: '#f59e0b' },
-              { label: 'Offer Rate', value: `${analytics.offerRate}%`, icon: 'celebration', color: '#10b981' },
-              { label: 'Avg Match', value: analytics.avgScore > 0 ? `${analytics.avgScore}%` : '—', icon: 'target', color: '#f43f5e' },
+              { label: 'Total', value: String(analytics.total), icon: 'inbox' },
+              { label: 'Active', value: String(analytics.active), icon: 'pending' },
+              { label: 'Response Rate', value: analytics.responseRate === null ? null : `${analytics.responseRate}%`, icon: 'reply' },
+              { label: 'Interview Rate', value: analytics.interviewRate === null ? null : `${analytics.interviewRate}%`, icon: 'mic' },
+              { label: 'Offer Rate', value: analytics.offerRate === null ? null : `${analytics.offerRate}%`, icon: 'celebration' },
+              { label: 'Avg Match', value: analytics.avgScore === null ? null : `${analytics.avgScore}%`, icon: 'target' },
             ].map((kpi, i) => (
               <motion.div
                 key={kpi.label}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="rounded-xl p-3"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
+                className="rounded-xl p-3 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]"
               >
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${kpi.color}15` }}>
-                    <span className="material-symbols-rounded text-[14px]" style={{ color: kpi.color }}>{kpi.icon}</span>
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-[var(--accent-dim)]">
+                    <span className="material-symbols-rounded text-[14px] text-[var(--accent)]">{kpi.icon}</span>
                   </div>
-                  <span className="text-[10px] text-[var(--text-tertiary)] font-medium">{kpi.label}</span>
+                  <span className="text-[11px] text-[var(--text-tertiary)] font-medium">{kpi.label}</span>
                 </div>
-                <p className="text-xl font-black text-[var(--text-primary)] tabular-nums">{kpi.value}</p>
+                {kpi.value === null ? (
+                  <p className="text-[11px] font-medium text-[var(--text-muted)]">Not yet measured</p>
+                ) : (
+                  <p className="text-xl font-black text-[var(--text-primary)] tabular-nums">{kpi.value}</p>
+                )}
               </motion.div>
             ))}
           </div>
@@ -204,12 +234,12 @@ export function AnalyticsContent() {
             {/* Smart Insight Card */}
             {analytics.smartInsight && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-                className="rounded-2xl p-4 flex items-start gap-3" style={{ background: `${analytics.insightColor}08`, border: `1px solid ${analytics.insightColor}20` }}>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${analytics.insightColor}15` }}>
-                  <span className="material-symbols-rounded text-lg" style={{ color: analytics.insightColor }}>{analytics.insightIcon}</span>
+                className="rounded-2xl p-4 flex items-start gap-3 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: tint(insightColor, 15) }}>
+                  <span className="material-symbols-rounded text-lg" style={{ color: insightColor }}>{analytics.insightIcon}</span>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: analytics.insightColor }}>Insight</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: insightColor }}>Insight</p>
                   <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{analytics.smartInsight}</p>
                 </div>
               </motion.div>
@@ -217,9 +247,9 @@ export function AnalyticsContent() {
 
             {/* 4-Week Heatmap */}
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-              className="rounded-2xl p-4" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              className="rounded-2xl p-4 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
               <h3 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-                <span className="material-symbols-rounded text-blue-500 text-lg">calendar_month</span>
+                <span className="material-symbols-rounded text-[var(--accent)] text-lg">calendar_month</span>
                 28-Day Activity
               </h3>
               <div className="grid grid-cols-7 gap-1.5">
@@ -230,13 +260,14 @@ export function AnalyticsContent() {
                   return (
                     <div key={day.date} className="relative group">
                       <div
-                        className={`aspect-square rounded-md transition-all ${isToday ? 'ring-1 ring-blue-500/40' : ''}`}
+                        className={`aspect-square rounded-md transition-all border border-[var(--border-subtle)] ${isToday ? 'ring-1 ring-[var(--accent)]' : ''}`}
                         style={{
-                          background: day.count > 0 ? `rgba(59, 130, 246, ${intensity})` : 'var(--bg-elevated)',
-                          border: '1px solid var(--border-subtle)',
+                          background: day.count > 0
+                            ? tint('var(--accent)', Math.round(intensity * 100))
+                            : 'var(--bg-elevated)',
                         }}
                       />
-                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-medium bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none shadow-sm">
+                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-primary)] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none elevation-card">
                         {day.count} app{day.count !== 1 ? 's' : ''}
                       </div>
                     </div>
@@ -244,15 +275,15 @@ export function AnalyticsContent() {
                 })}
               </div>
               <div className="flex items-center justify-between mt-2">
-                <span className="text-[10px] text-[var(--text-muted)]">4 weeks ago</span>
+                <span className="text-[11px] text-[var(--text-muted)]">4 weeks ago</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-[var(--text-muted)] mr-1">Less</span>
+                  <span className="text-[11px] text-[var(--text-muted)] mr-1">Less</span>
                   {[0, 0.2, 0.5, 0.8, 1].map((v, i) => (
-                    <div key={i} className="w-2.5 h-2.5 rounded-sm" style={{ background: v === 0 ? 'var(--bg-elevated)' : `rgba(59, 130, 246, ${v})`, border: '1px solid var(--border-subtle)' }} />
+                    <div key={i} className="w-2.5 h-2.5 rounded-sm border border-[var(--border-subtle)]" style={{ background: v === 0 ? 'var(--bg-elevated)' : tint('var(--accent)', Math.round(v * 100)) }} />
                   ))}
-                  <span className="text-[10px] text-[var(--text-muted)] ml-1">More</span>
+                  <span className="text-[11px] text-[var(--text-muted)] ml-1">More</span>
                 </div>
-                <span className="text-[10px] text-[var(--text-muted)]">Today</span>
+                <span className="text-[11px] text-[var(--text-muted)]">Today</span>
               </div>
             </motion.div>
           </div>
@@ -260,26 +291,26 @@ export function AnalyticsContent() {
           <div className="grid lg:grid-cols-2 gap-4">
             {/* Pipeline Funnel */}
             <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
-              className="rounded-2xl p-5" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              className="rounded-2xl p-5 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
               <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                <span className="material-symbols-rounded text-blue-500 text-lg">filter_alt</span>
+                <span className="material-symbols-rounded text-[var(--accent)] text-lg">filter_alt</span>
                 Pipeline Funnel
               </h3>
               <div className="space-y-3">
                 {funnelStages.map((stage, i) => {
                   const count = analytics.statusCounts[stage] || 0;
                   const pct = (count / funnelMax) * 100;
-                  const color = STATUS_COLORS[stage] || '#64748b';
+                  const color = STATUS_TOKENS[stage] || 'var(--text-muted)';
                   return (
                     <div key={stage}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-semibold text-[var(--text-secondary)]">{STATUS_LABELS[stage]}</span>
                         <span className="text-xs font-black tabular-nums" style={{ color }}>{count}</span>
                       </div>
-                      <div className="h-3 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                      <div className="h-3 rounded-full overflow-hidden bg-[var(--bg-elevated)]">
                         <motion.div
                           className="h-full rounded-full"
-                          style={{ background: `linear-gradient(90deg, ${color}, ${color}cc)` }}
+                          style={{ background: color }}
                           initial={{ width: 0 }}
                           animate={{ width: `${pct}%` }}
                           transition={{ delay: i * 0.1, duration: 0.5 }}
@@ -293,23 +324,23 @@ export function AnalyticsContent() {
 
             {/* Status Distribution */}
             <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-              className="rounded-2xl p-5" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              className="rounded-2xl p-5 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
               <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                <span className="material-symbols-rounded text-blue-500 text-lg">donut_large</span>
+                <span className="material-symbols-rounded text-[var(--accent)] text-lg">donut_large</span>
                 Status Breakdown
               </h3>
               <div className="grid grid-cols-2 gap-2">
                 {STATUS_FLOW.map(status => {
                   const count = analytics.statusCounts[status] || 0;
                   if (count === 0) return null;
-                  const color = STATUS_COLORS[status];
+                  const color = STATUS_TOKENS[status] || 'var(--text-muted)';
                   const pct = Math.round((count / analytics.total) * 100);
                   return (
-                    <div key={status} className="flex items-center gap-2.5 p-2.5 rounded-xl" style={{ background: `${color}08` }}>
+                    <div key={status} className="flex items-center gap-2.5 p-2.5 rounded-xl" style={{ background: tint(color, 8) }}>
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
                       <div className="flex-1 min-w-0">
                         <p className="text-[11px] font-semibold text-[var(--text-primary)]">{STATUS_LABELS[status]}</p>
-                        <p className="text-[10px] text-[var(--text-tertiary)]">{count} ({pct}%)</p>
+                        <p className="text-[11px] text-[var(--text-tertiary)]">{count} ({pct}%)</p>
                       </div>
                     </div>
                   );
@@ -319,16 +350,16 @@ export function AnalyticsContent() {
 
             {/* Velocity */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl p-5" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              className="rounded-2xl p-5 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
               <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                <span className="material-symbols-rounded text-blue-500 text-lg">speed</span>
+                <span className="material-symbols-rounded text-[var(--accent)] text-lg">speed</span>
                 Application Velocity
               </h3>
               <div className="flex items-center gap-4 mb-3">
                 <p className="text-4xl font-black text-[var(--text-primary)] tabular-nums">{analytics.weeklyVelocity}</p>
                 <div>
                   <p className="text-sm font-semibold text-[var(--text-secondary)]">apps/week</p>
-                  <p className="text-[10px] text-[var(--text-tertiary)]">Last 4 weeks average</p>
+                  <p className="text-[11px] text-[var(--text-tertiary)]">Last 4 weeks average</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
@@ -339,9 +370,9 @@ export function AnalyticsContent() {
 
             {/* Top Companies */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl p-5" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+              className="rounded-2xl p-5 elevation-card border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
               <h3 className="text-sm font-bold text-[var(--text-primary)] mb-4 flex items-center gap-2">
-                <span className="material-symbols-rounded text-blue-500 text-lg">apartment</span>
+                <span className="material-symbols-rounded text-[var(--accent)] text-lg">apartment</span>
                 Top Companies
               </h3>
               {analytics.topCompanies.length === 0 ? (
@@ -354,7 +385,7 @@ export function AnalyticsContent() {
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{company}</p>
                       </div>
-                      <span className="text-xs font-bold text-blue-500 tabular-nums">{count}</span>
+                      <span className="text-xs font-bold text-[var(--accent)] tabular-nums">{count}</span>
                     </div>
                   ))}
                 </div>

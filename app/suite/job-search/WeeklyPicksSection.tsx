@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTheme } from '@/components/ThemeProvider';
 import { useStore } from '@/lib/store';
+import { formatJobSalary } from '@/lib/job-display';
+import type { JobSalary } from '@/lib/job-ingestion';
 import { analytics } from '@/lib/analytics';
 import { mergeApplicationKitContext } from '@/lib/application-kit';
 import { useUserTier } from '@/hooks/use-user-tier';
@@ -27,7 +28,7 @@ interface SuggestedJob {
   title: string;
   company: string;
   location: string;
-  salary: { min: number | null; max: number | null; currency: string; isPredicted?: boolean };
+  salary: JobSalary;
   description: string;
   skills: string[];
   url: string;
@@ -48,12 +49,24 @@ interface SuggestedJob {
   };
 }
 
-function getScoreColor(score: number): string {
-  if (score >= 80) return '#10b981';
-  if (score >= 60) return '#3b82f6';
-  if (score >= 40) return '#f59e0b';
-  return '#ef4444';
+// A fit score we can render is one the pipeline actually measured: a finite,
+// positive number. A missing or zero chance is rendered as a labelled absence,
+// never as "0%".
+function hasScore(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
+
+// Map a measured score to a status token (never a hex literal). Colour is not
+// the only channel — getScoreLabel supplies a text label alongside it.
+function getScoreVar(score: number): string {
+  if (score >= 80) return 'var(--success)';
+  if (score >= 60) return 'var(--accent)';
+  if (score >= 40) return 'var(--warning)';
+  return 'var(--danger)';
+}
+
+const scoreBg = (v: string) => `color-mix(in srgb, ${v} 12%, transparent)`;
+const scoreBorder = (v: string) => `color-mix(in srgb, ${v} 25%, transparent)`;
 
 function getScoreLabel(score: number): string {
   if (score >= 85) return 'Excellent';
@@ -63,14 +76,6 @@ function getScoreLabel(score: number): string {
   return 'Low';
 }
 
-function formatSalary(min: number | null, max: number | null): string {
-  if (!min && !max) return '';
-  const fmt = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`;
-  if (min && max && min !== max) return `${fmt(min)} – ${fmt(max)}`;
-  if (min) return `${fmt(min)}+`;
-  if (max) return `Up to ${fmt(max)}`;
-  return '';
-}
 
 interface Props {
   hasPrefs: boolean;
@@ -87,8 +92,6 @@ function formatDeliveryTime(value?: string | null) {
 }
 
 export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const user = useStore((s) => s.user);
   const { tier } = useUserTier();
   const { setAuthModal, renderAuthModal } = useAuthGate();
@@ -189,7 +192,7 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
             const lastAccepted = formatDeliveryTime(d.delivery?.lastAcceptedAt || d.delivery?.lastSentAt);
             const lastDelivered = formatDeliveryTime(d.delivery?.lastDeliveredAt);
             if (status === 'delivered' && lastDelivered) {
-              setDeliveryMessage(`Delivered to your email server ${lastDelivered} with ${d.delivery?.lastJobCount || 0} picks.`);
+              setDeliveryMessage(`Delivered to your email server ${lastDelivered}${typeof d.delivery?.lastJobCount === 'number' ? ` with ${d.delivery.lastJobCount} picks` : ''}.`);
             } else if (status === 'accepted' && lastAccepted) {
               setDeliveryMessage(`Accepted by the email provider ${lastAccepted}. Delivery confirmation is pending.`);
             } else if (status === 'delayed') {
@@ -220,7 +223,7 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
         if (status === 'delivered') {
           setNotifSent(true);
           const deliveredAt = formatDeliveryTime(data.delivery.lastDeliveredAt);
-          setDeliveryMessage(`Delivered to your email server${deliveredAt ? ` ${deliveredAt}` : ''} with ${data.delivery.lastJobCount || 0} picks.`);
+          setDeliveryMessage(`Delivered to your email server${deliveredAt ? ` ${deliveredAt}` : ''}${typeof data.delivery.lastJobCount === 'number' ? ` with ${data.delivery.lastJobCount} picks` : ''}.`);
         } else if (status === 'failed') {
           setNotifSent(false);
           setDeliveryMessage(data.delivery.error || data.delivery.pausedReason || 'The email could not be delivered. Your picks remain available here.');
@@ -365,22 +368,18 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
         type="button"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-5 w-full rounded-2xl border p-5 text-left transition-all hover:border-cyan-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35"
-        style={{
-          background: isLight ? 'linear-gradient(135deg, rgba(6,182,212,0.03), rgba(16,185,129,0.03))' : 'linear-gradient(135deg, rgba(6,182,212,0.05), rgba(16,185,129,0.05))',
-          borderColor: isLight ? 'rgba(6,182,212,0.12)' : 'rgba(6,182,212,0.15)',
-        }}
+        className="elevation-card mb-5 min-h-11 w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 text-left transition-all hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         onClick={onSetupClick}
       >
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center shadow-lg shadow-cyan-500/20 shrink-0">
-            <span className="material-symbols-rounded text-white text-xl">auto_awesome</span>
+          <div className="w-12 h-12 rounded-2xl bg-[var(--accent)] flex items-center justify-center shrink-0">
+            <span className="material-symbols-rounded text-[var(--accent-on)] text-xl">auto_awesome</span>
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-0.5">Set up Career Picks by Taco</h3>
             <p className="text-xs text-[var(--text-secondary)]">Tell us your target roles, preferred cities, and work style to get crafted jobs with fit reasons and prep links.</p>
           </div>
-          <span className="material-symbols-rounded text-cyan-500 text-xl shrink-0">arrow_forward</span>
+          <span className="material-symbols-rounded text-[var(--accent)] text-xl shrink-0">arrow_forward</span>
         </div>
       </motion.button>
     );
@@ -393,14 +392,14 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2 group"
+          className="flex min-h-11 items-center gap-2 group"
         >
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
-            <span className="material-symbols-rounded text-white text-sm">auto_awesome</span>
+          <div className="w-7 h-7 rounded-lg bg-[var(--accent)] flex items-center justify-center">
+            <span className="material-symbols-rounded text-[var(--accent-on)] text-sm">auto_awesome</span>
           </div>
           <h2 className="text-sm font-bold text-[var(--text-primary)]">Career Picks by Taco</h2>
           {jobs.length > 0 && (
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/10 text-cyan-500">{jobs.length}</span>
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-[var(--accent-dim)] text-[var(--accent)]">{jobs.length}</span>
           )}
           <span className={`material-symbols-rounded text-sm text-[var(--text-tertiary)] transition-transform ${expanded ? 'rotate-0' : '-rotate-90'}`}>
             expand_more
@@ -411,19 +410,14 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
             <button
               onClick={alertsSubscribed ? sendEmailDigest : handleSubscribeAlerts}
               disabled={sendingNotif || subscribing}
-              className="flex min-h-10 items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all disabled:opacity-50"
-              style={{
-                background: isLight ? 'rgba(6,182,212,0.06)' : 'rgba(6,182,212,0.08)',
-                border: `1px solid ${isLight ? 'rgba(6,182,212,0.12)' : 'rgba(6,182,212,0.15)'}`,
-                color: '#06b6d4',
-              }}
+              className="flex min-h-11 items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--accent-dim)] px-3 py-1.5 text-[11px] font-medium text-[var(--accent)] transition-all disabled:opacity-50"
             >
               <span className="material-symbols-rounded text-sm">{sendingNotif || subscribing ? 'hourglass_empty' : alertsSubscribed ? 'mail' : 'notifications_active'}</span>
               {sendingNotif ? 'Sending...' : subscribing ? 'Enabling...' : alertsSubscribed ? 'Email me these' : 'Enable email delivery'}
             </button>
           )}
           {notifSent && (
-            <span className="flex min-h-10 items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-300" role="status">
+            <span className="flex min-h-11 items-center gap-1 text-[11px] font-medium text-[var(--accent)]" role="status">
               <span className="material-symbols-rounded text-sm">
                 {deliveryStatus === 'delivered' ? 'mark_email_read' : deliveryStatus === 'delayed' ? 'schedule' : 'outgoing_mail'}
               </span>
@@ -433,12 +427,7 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
           <button
             onClick={fetchSuggestions}
             disabled={loading}
-              className="flex min-h-10 items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all"
-            style={{
-              background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
-              color: 'var(--text-secondary)',
-            }}
+            className="flex min-h-11 items-center gap-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] transition-all"
           >
             <span className={`material-symbols-rounded text-sm ${loading ? 'animate-spin' : ''}`}>refresh</span>
             Refresh
@@ -449,7 +438,7 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
       <div
         className={`mb-3 flex min-w-0 items-start gap-2 rounded-xl border px-3 py-2 text-[11px] leading-5 ${
           deliveryStatus === 'failed'
-            ? 'border-rose-500/25 bg-rose-500/5 text-rose-700 dark:text-rose-300'
+            ? 'border-[var(--danger)] bg-[var(--bg-surface)] text-[var(--danger)]'
             : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'
         }`}
         role="status"
@@ -485,8 +474,8 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
               <div className="flex items-center justify-center py-10">
                 <div className="flex flex-col items-center gap-3">
                   <div className="relative">
-                    <div className="w-12 h-12 rounded-full border-2 border-cyan-500/20 border-t-cyan-500 animate-spin" />
-                    <span className="material-symbols-rounded text-cyan-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-base">auto_awesome</span>
+                    <div className="w-12 h-12 rounded-full border-2 border-[var(--accent-dim)] border-t-[var(--accent)] animate-spin" />
+                    <span className="material-symbols-rounded text-[var(--accent)] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-base">auto_awesome</span>
                   </div>
                   <p className="text-xs text-[var(--text-secondary)] animate-pulse">Finding your best matches...</p>
                 </div>
@@ -507,7 +496,10 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
             {/* Job Cards */}
             {!loading && jobs.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
-                {jobs.map((job, i) => (
+                {jobs.map((job, i) => {
+                  const isSelected = Boolean(selectedJob && getJobResultIdentity(selectedJob) === getJobResultIdentity(job));
+                  const scoreVar = getScoreVar(job.acceptanceChance);
+                  return (
                   <motion.button
                     type="button"
                     key={getJobResultIdentity(job)}
@@ -515,39 +507,44 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.05 }}
                     onClick={() => setSelectedJob(current => current && getJobResultIdentity(current) === getJobResultIdentity(job) ? null : job)}
-                    aria-pressed={selectedJob ? getJobResultIdentity(selectedJob) === getJobResultIdentity(job) : false}
-                    className={`w-full min-w-0 rounded-xl border p-3 text-left transition-all hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 ${selectedJob && getJobResultIdentity(selectedJob) === getJobResultIdentity(job) ? 'border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.1)]' : 'border-[var(--border-subtle)]'
-                      }`}
-                    style={{ background: 'var(--bg-surface)' }}
+                    aria-pressed={isSelected}
+                    className={`elevation-interactive w-full min-w-0 rounded-xl border bg-[var(--bg-surface)] p-3 text-left transition-all hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${isSelected ? 'border-[var(--accent)]' : 'border-[var(--border-subtle)]'}`}
                   >
                     {/* Fit badge */}
                     <div className="flex items-center justify-between mb-2">
-                      <span className="px-2 py-0.5 text-[11px] font-bold rounded-md border" style={{
-                        color: getScoreColor(job.acceptanceChance),
-                        background: `${getScoreColor(job.acceptanceChance)}12`,
-                        borderColor: `${getScoreColor(job.acceptanceChance)}25`,
-                      }}>
-                        <span className="material-symbols-rounded text-[11px] align-middle" style={{ color: getScoreColor(job.acceptanceChance) }}>radar</span> {job.acceptanceChance}%
-                      </span>
-                      <span className="text-[10px] text-[var(--text-tertiary)]">{getScoreLabel(job.acceptanceChance)}</span>
+                      {hasScore(job.acceptanceChance) ? (
+                        <>
+                          <span className="px-2 py-0.5 text-[11px] font-bold rounded-md border" style={{
+                            color: scoreVar,
+                            background: scoreBg(scoreVar),
+                            borderColor: scoreBorder(scoreVar),
+                          }}>
+                            <span className="material-symbols-rounded text-[11px] align-middle" style={{ color: scoreVar }}>radar</span> ~{job.acceptanceChance}%
+                          </span>
+                          <span className="text-[11px] text-[var(--text-tertiary)]">{getScoreLabel(job.acceptanceChance)} · estimate</span>
+                        </>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[11px] font-medium rounded-md border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)]">Fit not scored</span>
+                      )}
                     </div>
 
                     <h4 className="text-[12px] font-semibold text-[var(--text-primary)] leading-snug line-clamp-2 mb-0.5">{job.title}</h4>
                     <p className="text-[11px] text-[var(--text-secondary)] font-medium mb-1">{job.company}</p>
-                    <p className="text-[10px] text-[var(--text-tertiary)] flex items-center gap-1 mb-1">
+                    <p className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1 mb-1">
                       <span className="material-symbols-rounded text-[11px]">location_on</span>
                       {job.location}
                     </p>
                     {(job.salary?.min || job.salary?.max) && (
-                      <p className="text-[10px] text-emerald-500 font-medium">{formatSalary(job.salary.min, job.salary.max)}</p>
+                      <p className="text-[11px] text-[var(--success)] font-medium">{formatJobSalary(job.salary)}</p>
                     )}
 
                     {/* Reason */}
-                    <p className="text-[10px] text-[var(--text-tertiary)] mt-2 pt-2 border-t border-[var(--border-subtle)] italic line-clamp-2">
+                    <p className="text-[11px] text-[var(--text-tertiary)] mt-2 pt-2 border-t border-[var(--border-subtle)] italic line-clamp-2">
                       {job.acceptanceReason}
                     </p>
                   </motion.button>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -558,25 +555,25 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="mt-3 rounded-xl border p-4 overflow-hidden"
-                  style={{
-                    background: 'var(--bg-surface)',
-                    borderColor: 'var(--border-subtle)',
-                  }}
+                  className="elevation-card mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 overflow-hidden"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h3 className="text-sm font-semibold text-[var(--text-primary)]">{selectedJob.title}</h3>
-                      <p className="text-xs text-cyan-500 font-medium">{selectedJob.company} • {selectedJob.location}</p>
+                      <p className="text-xs text-[var(--accent)] font-medium">{selectedJob.company} • {selectedJob.location}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-1 text-xs font-bold rounded-lg" style={{
-                        color: getScoreColor(selectedJob.acceptanceChance),
-                        background: `${getScoreColor(selectedJob.acceptanceChance)}12`,
-                      }}>
-                        <span className="material-symbols-rounded text-[13px] align-middle" style={{ color: getScoreColor(selectedJob.acceptanceChance) }}>radar</span> {selectedJob.acceptanceChance}% fit
-                      </span>
-                      <button onClick={() => setSelectedJob(null)} className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.08)' }}>
+                      {hasScore(selectedJob.acceptanceChance) ? (
+                        <span className="px-2.5 py-1 text-xs font-bold rounded-lg" style={{
+                          color: getScoreVar(selectedJob.acceptanceChance),
+                          background: scoreBg(getScoreVar(selectedJob.acceptanceChance)),
+                        }}>
+                          <span className="material-symbols-rounded text-[13px] align-middle" style={{ color: getScoreVar(selectedJob.acceptanceChance) }}>radar</span> {selectedJob.acceptanceChance}% fit
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 text-xs font-medium rounded-lg border border-dashed border-[var(--border-subtle)] text-[var(--text-muted)]">Fit not scored</span>
+                      )}
+                      <button onClick={() => setSelectedJob(null)} aria-label="Close job detail" className="h-11 w-11 rounded-full flex items-center justify-center bg-[var(--bg-hover)]">
                         <span className="material-symbols-rounded text-sm text-[var(--text-tertiary)]">close</span>
                       </button>
                     </div>
@@ -589,34 +586,18 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
                   {selectedJob.skills.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-3">
                       {selectedJob.skills.slice(0, 8).map(s => (
-                        <span key={s} className="px-1.5 py-0.5 rounded text-[10px] font-medium" style={{
-                          background: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
-                          color: 'var(--text-secondary)',
-                        }}>{s}</span>
+                        <span key={s} className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-[var(--bg-hover)] text-[var(--text-secondary)]">{s}</span>
                       ))}
                     </div>
                   )}
 
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => handleTailorResume(selectedJob)}
-                      className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
-                      style={{
-                        background: isLight ? 'rgba(6,182,212,0.08)' : 'rgba(6,182,212,0.12)',
-                        border: '1px solid rgba(6,182,212,0.2)',
-                        color: '#06b6d4',
-                      }}
-                    >
-                      <span className="material-symbols-rounded text-sm">auto_fix_high</span>
-                      Tailor Resume
-                    </button>
                     {selectedJob.outboundLinkVerified && selectedJob.url ? (
                       <a
                         href={selectedJob.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 text-white"
-                        style={{ background: '#2563eb' }}
+                        className="btn-primary flex-1 min-h-11 px-3 py-2 text-xs flex items-center justify-center gap-1.5"
                       >
                         <span className="material-symbols-rounded text-sm">open_in_new</span>
                         View verified job
@@ -625,13 +606,20 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
                       <button
                         type="button"
                         disabled
-                        className="flex-1 px-3 py-2 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 text-[var(--text-tertiary)] opacity-80"
+                        className="btn-secondary flex-1 min-h-11 px-3 py-2 text-xs flex items-center justify-center gap-1.5 text-[var(--text-tertiary)] opacity-80"
                         title="Taco could not verify this provider link."
                       >
                         <span className="material-symbols-rounded text-sm">shield</span>
                         Source link withheld
                       </button>
                     )}
+                    <button
+                      onClick={() => handleTailorResume(selectedJob)}
+                      className="btn-secondary flex-1 min-h-11 px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-rounded text-sm">auto_fix_high</span>
+                      Tailor Resume
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -643,27 +631,22 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="mt-3 p-3 rounded-xl border flex items-center justify-between"
-                style={{
-                  background: isLight ? 'linear-gradient(135deg, rgba(6,182,212,0.03), rgba(16,185,129,0.03))' : 'linear-gradient(135deg, rgba(6,182,212,0.05), rgba(16,185,129,0.05))',
-                  borderColor: isLight ? 'rgba(6,182,212,0.12)' : 'rgba(6,182,212,0.15)',
-                }}
+                className="elevation-card mt-3 p-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] flex items-center justify-between"
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="material-symbols-rounded text-sm text-cyan-500">mail</span>
+                  <span className="material-symbols-rounded text-sm text-[var(--accent)]">mail</span>
                   <span className="text-[11px] text-[var(--text-secondary)]">
                     Get {getJobAlertSendLimit(tier)} crafted jobs in your inbox every Monday.
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[10px] font-semibold text-cyan-500">
+                  <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] font-semibold text-[var(--accent)]">
                     Weekly
                   </div>
                   <button
                     onClick={handleSubscribeAlerts}
                     disabled={subscribing}
-                    className="px-3 py-1 rounded-lg text-[11px] font-semibold text-white shrink-0 transition-all hover:shadow-md disabled:opacity-50"
-                    style={{ background: 'linear-gradient(135deg, #06b6d4, #10b981)' }}
+                    className="btn-primary min-h-11 px-3 py-1 text-[11px] font-semibold shrink-0 transition-all disabled:opacity-50"
                   >
                     {subscribing ? 'Subscribing...' : 'Subscribe'}
                   </button>
@@ -679,7 +662,7 @@ export default function WeeklyPicksSection({ hasPrefs, onSetupClick }: Props) {
                 <button
                   type="button"
                   onClick={onSetupClick}
-                  className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35"
+                  className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-[11px] bg-[var(--text-primary)] px-4 py-2 text-xs font-semibold text-[var(--bg-deep)] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 >
                   <span className="material-symbols-rounded text-[16px]" aria-hidden="true">tune</span>
                   Review preferences

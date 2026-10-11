@@ -9,7 +9,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { loadStripe } from '@stripe/stripe-js';
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from '@stripe/react-stripe-js';
-import { useTheme } from '@/components/ThemeProvider';
 import { authFetch } from '@/lib/auth-fetch';
 import { useBillingPrices } from '@/hooks/use-billing-prices';
 import { getPlanIdentity } from '@/lib/plan-identity';
@@ -68,8 +67,6 @@ const PLAN_OUTCOMES: Record<PlanOption, Array<{ icon: string; title: string; tex
 };
 
 export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const [selectedPlan, setSelectedPlan] = useState<PlanOption>('pro');
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -318,7 +315,7 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
           onClick={(e) => e.target === e.currentTarget && requestClose()}
         >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 backdrop-blur-sm" style={{ background: 'var(--modal-backdrop)' }} />
 
           {/* Modal */}
           <motion.div
@@ -330,7 +327,7 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl"
+            className="elevation-raised relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl"
             style={{
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
@@ -342,7 +339,7 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
               type="button"
               onClick={requestClose}
               aria-label="Close upgrade options"
-              className="absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+              className="absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-[var(--bg-hover)]"
             >
               <span className="material-symbols-rounded icon-current text-[20px]" aria-hidden="true">close</span>
             </button>
@@ -410,7 +407,7 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
                         onClick={() => handleIntervalChange(int)}
                         className={`relative flex-1 rounded-lg px-2 py-2.5 text-sm font-medium leading-5 transition-all ${
                           interval === int
-                            ? 'shadow-md'
+                            ? ''
                             : 'text-[var(--theme-text-secondary)] hover:text-[var(--theme-text)]'
                         }`}
                         style={interval === int ? { background: selectedIdentity.accent, color: selectedIdentity.buttonText } : undefined}
@@ -420,12 +417,12 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
                           {optionAvailable ? foundingOffer?.display || optionPrice.display : pricesLoading || pricesError || optionPrice.sourceStatus === 'retrieval_error' ? 'Price in secure checkout' : 'Unavailable'}
                         </span>
                         {foundingOffer && (
-                          <span className="block text-[10px] opacity-75">
+                          <span className="block text-[11px] opacity-75">
                             regular {optionPrice.display}
                           </span>
                         )}
                         {int === 'year' && optionAvailable && optionPrice.savingsLabel && (
-                          <span className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          <span className={`mt-1 inline-block rounded-full px-1.5 py-0.5 text-[11px] font-bold ${
                             interval === 'year'
                               ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
                               : 'text-[var(--text-secondary)]'
@@ -483,7 +480,7 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
               )}
 
               {selectedCheckoutAvailable && priceLookupResolved && !selectedPriceAvailable && !loading && !clientSecret && !error && (
-                <p className="mt-3 text-center text-xs text-[var(--theme-text-tertiary)]">
+                <p className="mt-3 text-center text-xs text-[var(--text-tertiary)]">
                   Checkout is being updated. Please try again shortly.
                 </p>
               )}
@@ -552,14 +549,14 @@ export default function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModa
                   stripe={stripePromise}
                   options={{ clientSecret }}
                 >
-                  <div style={{ colorScheme: isLight ? 'light' : 'dark' }}>
+                  <div>
                     <EmbeddedCheckout />
                   </div>
                 </EmbeddedCheckoutProvider>
               )}
             </div>
 
-            <p className="text-[11px] text-center text-[var(--theme-text-tertiary)] pb-4">
+            <p className="text-[11px] text-center text-[var(--text-tertiary)] pb-4">
               Secure checkout by Stripe. Manage billing from Settings.
             </p>
           </motion.div>

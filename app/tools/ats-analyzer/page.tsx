@@ -93,7 +93,7 @@ export default function ATSAnalyzerPage() {
             </div>
           </div>
 
-          <aside className="premium-brand-panel rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+          <aside className="premium-brand-panel rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card">
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">What you get</h2>
             <div className="mt-4 space-y-3">
               {['Keyword match and missing terms', 'Resume formatting risk signals', 'Fit score guidance before applying', 'Next-step edits for stronger alignment'].map((item) => (
@@ -112,7 +112,7 @@ export default function ATSAnalyzerPage() {
             { title: 'Compare your resume', body: 'Check whether your experience is described in the same language recruiters and ATS filters expect.' },
             { title: 'Fix the right gaps', body: 'Improve missing skills, unclear bullets, and formatting issues without stuffing keywords.' },
           ].map((card) => (
-            <div key={card.title} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-sm">
+            <div key={card.title} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 elevation-card">
               <h2 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">{card.title}</h2>
               <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{card.body}</p>
             </div>
@@ -120,7 +120,7 @@ export default function ATSAnalyzerPage() {
         </section>
 
         <section className="grid gap-5 pb-12 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 shadow-sm">
+          <div className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 elevation-card">
             <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">Frequently asked questions</h2>
             <div className="mt-5 space-y-2">
               {FAQS.map((faq) => (

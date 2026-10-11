@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { TalentConsultingWordmark } from '@/components/BrandLogo';
-import { useTheme } from '@/components/ThemeProvider';
 import AssistantPicksCapture from '@/components/assistant/AssistantPicksCapture';
 import SeoTrackedLink from '@/components/seo/SeoTrackedLink';
 
@@ -43,21 +42,18 @@ const FAQS = [
 ];
 
 export default function ResumeBuilderLanding() {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
-
   return (
-    <div className={`premium-brand-page mobile-app-page min-h-dvh ${isLight ? 'bg-gray-50' : 'bg-[#0a0a0b]'}`}>
+    <div className="premium-brand-page mobile-app-page min-h-dvh bg-[var(--bg-deep)] text-[var(--text-primary)]">
       {/* Nav */}
-      <nav className={`sticky top-0 z-50 backdrop-blur-xl border-b ${isLight ? 'bg-white/80 border-gray-200' : 'bg-[#0a0a0b]/80 border-white/[0.04]'}`}>
+      <nav className="sticky top-0 z-50 border-b border-[var(--border-subtle)] bg-[color-mix(in_srgb,var(--bg-deep)_86%,transparent)] backdrop-blur-xl">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link href="/" aria-label="TalentConsulting.io home" className="inline-flex min-w-0 items-center">
             <TalentConsultingWordmark className="w-[min(210px,48vw)]" />
           </Link>
           <div className="flex items-center gap-3 sm:gap-4">
-            <Link href="/templates" className={`hidden text-xs sm:inline ${isLight ? 'text-gray-500 hover:text-gray-900' : 'text-white/30 hover:text-white/60'} transition-colors`}>Templates</Link>
-            <Link href="/tools/ats-analyzer" className={`hidden text-xs sm:inline ${isLight ? 'text-gray-500 hover:text-gray-900' : 'text-white/30 hover:text-white/60'} transition-colors`}>ATS Analyzer</Link>
-            <SeoTrackedLink href="/suite/resume" eventName="seo_resume_builder_click" className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-medium text-white transition-all hover:bg-blue-500">
+            <Link href="/templates" className="hidden text-xs sm:inline-flex sm:min-h-[44px] sm:items-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">Templates</Link>
+            <Link href="/tools/ats-analyzer" className="hidden text-xs sm:inline-flex sm:min-h-[44px] sm:items-center text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">ATS Analyzer</Link>
+            <SeoTrackedLink href="/suite/resume" eventName="seo_resume_builder_click" className="inline-flex min-h-[44px] items-center rounded-lg bg-[var(--accent)] px-4 text-xs font-medium text-[var(--accent-on)] transition-colors hover:bg-[var(--accent-active)]">
               Start Building →
             </SeoTrackedLink>
           </div>
@@ -68,20 +64,20 @@ export default function ResumeBuilderLanding() {
         {/* Hero */}
         <section className="premium-brand-hero my-10">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-            <div className={`premium-brand-kicker inline-block text-xs font-medium px-3 py-1 mb-6 ${isLight ? 'bg-blue-50 text-blue-700' : 'bg-blue-500/10 text-blue-300 border border-blue-500/20'}`}>
+            <div className="premium-brand-kicker inline-block text-xs font-medium px-3 py-1 mb-6 rounded-lg border border-[var(--border-subtle)] bg-[var(--accent-dim)] text-[var(--accent)]">
               AI-Powered Resume Builder
             </div>
-            <h1 className={`text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-5 leading-[1.1] ${isLight ? 'text-gray-900' : 'text-white/90'}`}>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-5 leading-[1.1] text-[var(--text-primary)]">
               Build a resume that proves the right work.
             </h1>
-            <p className={`text-base md:text-lg max-w-2xl mb-8 ${isLight ? 'text-gray-500' : 'text-white/30'}`}>
+            <p className="text-base md:text-lg max-w-2xl mb-8 text-[var(--text-secondary)]">
               Upload your resume or start fresh. Talent Studio helps shape specific, ATS-readable proof without turning your experience into generic AI copy.
             </p>
             <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
-              <SeoTrackedLink href="/suite/resume" eventName="seo_resume_builder_click" className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500">
+              <SeoTrackedLink href="/suite/resume" eventName="seo_resume_builder_click" className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[var(--accent-on)] elevation-card transition-all hover:bg-[var(--accent-active)]">
                 Build Your Resume Free →
               </SeoTrackedLink>
-              <Link href="/templates" className={`px-6 py-3 text-sm font-medium rounded-xl border ${isLight ? 'border-gray-200 text-gray-700 hover:bg-gray-100' : 'border-white/10 text-white/50 hover:bg-white/[0.04]'} transition-all`}>
+              <Link href="/templates" className="inline-flex min-h-[44px] items-center justify-center px-6 py-3 text-sm font-medium rounded-xl border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-all">
                 Browse Templates
               </Link>
             </div>
@@ -89,12 +85,12 @@ export default function ResumeBuilderLanding() {
         </section>
 
         <section className="pb-20">
-          <AssistantPicksCapture sourcePath="resume_builder_landing" tone={isLight ? 'light' : 'dark'} />
+          <AssistantPicksCapture sourcePath="resume_builder_landing" />
         </section>
 
         {/* Features */}
         <section className="pb-20">
-          <h2 className={`text-2xl font-bold text-center mb-10 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>
+          <h2 className="text-2xl font-bold text-center mb-10 text-[var(--text-primary)]">
             Everything you need to land the job
           </h2>
           <div className="mobile-card-rail grid md:grid-cols-3 gap-4">
@@ -105,11 +101,11 @@ export default function ResumeBuilderLanding() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.08 }}
-                className={`rounded-2xl border p-6 ${isLight ? 'bg-white border-gray-200' : 'bg-white/[0.02] border-white/[0.06]'}`}
+                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 elevation-card"
               >
                 <span className="material-symbols-rounded icon-neutral text-2xl mb-3 block">{f.icon}</span>
-                <h3 className={`font-semibold text-sm mb-1 ${isLight ? 'text-gray-900' : 'text-white/70'}`}>{f.title}</h3>
-                <p className={`text-xs leading-relaxed ${isLight ? 'text-gray-500' : 'text-white/25'}`}>{f.desc}</p>
+                <h3 className="font-semibold text-sm mb-1 text-[var(--text-primary)]">{f.title}</h3>
+                <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{f.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -117,7 +113,7 @@ export default function ResumeBuilderLanding() {
 
         {/* How It Works */}
         <section className="pb-20">
-          <h2 className={`text-2xl font-bold text-center mb-10 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>
+          <h2 className="text-2xl font-bold text-center mb-10 text-[var(--text-primary)]">
             How it works
           </h2>
           <div className="mobile-card-rail grid md:grid-cols-4 gap-4">
@@ -128,11 +124,11 @@ export default function ResumeBuilderLanding() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
-                className={`rounded-2xl border p-6 ${isLight ? 'bg-white border-gray-200' : 'bg-white/[0.02] border-white/[0.06]'}`}
+                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 elevation-card"
               >
-                <div className="text-xs font-bold text-blue-600 dark:text-blue-300 mb-3">{s.num}</div>
-                <h3 className={`font-semibold text-sm mb-1 ${isLight ? 'text-gray-900' : 'text-white/70'}`}>{s.title}</h3>
-                <p className={`text-xs leading-relaxed ${isLight ? 'text-gray-500' : 'text-white/25'}`}>{s.desc}</p>
+                <div className="text-xs font-bold text-[var(--accent)] mb-3">{s.num}</div>
+                <h3 className="font-semibold text-sm mb-1 text-[var(--text-primary)]">{s.title}</h3>
+                <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{s.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -140,24 +136,24 @@ export default function ResumeBuilderLanding() {
 
         {/* Comparison Table */}
         <section className="pb-20">
-          <h2 className={`text-2xl font-bold text-center mb-10 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>
+          <h2 className="text-2xl font-bold text-center mb-10 text-[var(--text-primary)]">
             Why TalentConsulting.io vs others
           </h2>
-          <div className={`rounded-2xl border overflow-hidden ${isLight ? 'bg-white border-gray-200' : 'bg-white/[0.02] border-white/[0.06]'}`}>
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className={`border-b ${isLight ? 'border-gray-100' : 'border-white/[0.04]'}`}>
-                  <th className={`text-left p-4 font-medium ${isLight ? 'text-gray-500' : 'text-white/30'}`}>Feature</th>
-                  <th className={`p-4 font-medium text-center text-blue-600 dark:text-blue-300`}>TalentConsulting.io</th>
-                  <th className={`p-4 font-medium text-center ${isLight ? 'text-gray-400' : 'text-white/20'}`}>Others</th>
+                <tr className="border-b border-[var(--border-subtle)]">
+                  <th className="text-left p-4 font-medium text-[var(--text-muted)]">Feature</th>
+                  <th className="p-4 font-medium text-center text-[var(--accent)]">TalentConsulting.io</th>
+                  <th className="p-4 font-medium text-center text-[var(--text-muted)]">Others</th>
                 </tr>
               </thead>
               <tbody>
                 {COMPARISONS.map((c, i) => (
-                  <tr key={i} className={`border-b last:border-b-0 ${isLight ? 'border-gray-50' : 'border-white/[0.02]'}`}>
-                    <td className={`p-4 ${isLight ? 'text-gray-700' : 'text-white/50'}`}>{c.feature}</td>
-                    <td className="p-4 text-center text-blue-600 dark:text-blue-300 text-lg">{c.us ? '✓' : '—'}</td>
-                    <td className={`p-4 text-center text-lg ${isLight ? 'text-gray-300' : 'text-white/15'}`}>{c.others ? '✓' : '—'}</td>
+                  <tr key={i} className="border-b last:border-b-0 border-[var(--border-subtle)]">
+                    <td className="p-4 text-[var(--text-secondary)]">{c.feature}</td>
+                    <td className="p-4 text-center text-[var(--accent)] text-lg">{c.us ? '✓' : '—'}</td>
+                    <td className="p-4 text-center text-lg text-[var(--text-muted)]">{c.others ? '✓' : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -167,7 +163,7 @@ export default function ResumeBuilderLanding() {
 
         {/* FAQ */}
         <section className="pb-20">
-          <h2 className={`text-2xl font-bold text-center mb-8 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>
+          <h2 className="text-2xl font-bold text-center mb-8 text-[var(--text-primary)]">
             Resume guides people use next
           </h2>
           <div className="mobile-card-rail grid gap-4 md:grid-cols-3">
@@ -179,11 +175,11 @@ export default function ResumeBuilderLanding() {
               <Link
                 key={guide.href}
                 href={guide.href}
-                className={`rounded-2xl border p-5 transition-all hover:scale-[1.01] ${isLight ? 'bg-white border-gray-200 hover:shadow-md' : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'}`}
+                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-5 transition-all hover:scale-[1.01] hover:border-[var(--border)] elevation-interactive"
               >
                 <span className="material-symbols-rounded icon-neutral text-2xl mb-3 block">{guide.icon}</span>
-                <h3 className={`font-semibold text-sm ${isLight ? 'text-gray-900' : 'text-white/70'}`}>{guide.title}</h3>
-                <p className={`mt-2 text-xs leading-relaxed ${isLight ? 'text-gray-500' : 'text-white/25'}`}>{guide.desc}</p>
+                <h3 className="font-semibold text-sm text-[var(--text-primary)]">{guide.title}</h3>
+                <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">{guide.desc}</p>
               </Link>
             ))}
           </div>
@@ -191,25 +187,25 @@ export default function ResumeBuilderLanding() {
 
         {/* FAQ */}
         <section className="pb-20">
-          <h2 className={`text-2xl font-bold text-center mb-8 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>
+          <h2 className="text-2xl font-bold text-center mb-8 text-[var(--text-primary)]">
             Frequently Asked Questions
           </h2>
           <div className="max-w-2xl mx-auto space-y-2">
             {FAQS.map((faq, i) => (
-              <details key={i} className={`rounded-xl border p-4 ${isLight ? 'bg-white border-gray-200' : 'bg-white/[0.02] border-white/[0.06]'}`}>
-                <summary className={`font-medium cursor-pointer text-sm ${isLight ? 'text-gray-900' : 'text-white/60'}`}>{faq.q}</summary>
-                <p className={`mt-2 text-sm leading-relaxed ${isLight ? 'text-gray-500' : 'text-white/25'}`}>{faq.a}</p>
+              <details key={i} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                <summary className="font-medium cursor-pointer text-sm text-[var(--text-primary)]">{faq.q}</summary>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">{faq.a}</p>
               </details>
             ))}
           </div>
         </section>
 
         <section className="pb-20">
-          <div className={`rounded-2xl border p-6 ${isLight ? 'bg-white border-gray-200 shadow-sm' : 'bg-white/[0.02] border-white/[0.06]'}`}>
-            <h2 className={`text-lg font-bold mb-2 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>Source context</h2>
-            <p className={`text-sm leading-6 ${isLight ? 'text-gray-500' : 'text-white/30'}`}>
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-6 elevation-card">
+            <h2 className="text-lg font-bold mb-2 text-[var(--text-primary)]">Source context</h2>
+            <p className="text-sm leading-6 text-[var(--text-secondary)]">
               Use resume guidance with current occupation context from the{' '}
-              <a href="https://www.bls.gov/ooh/" rel="noopener noreferrer" target="_blank" className="text-blue-600 hover:underline dark:text-blue-300">
+              <a href="https://www.bls.gov/ooh/" rel="noopener noreferrer" target="_blank" className="text-[var(--accent)] hover:underline">
                 Bureau of Labor Statistics Occupational Outlook Handbook
               </a>.
             </p>
@@ -218,14 +214,14 @@ export default function ResumeBuilderLanding() {
 
         {/* Final CTA */}
         <section className="pb-20">
-          <div className={`rounded-2xl border p-10 text-center ${isLight ? 'bg-blue-50 border-blue-100' : 'bg-blue-500/[0.04] border-blue-500/20'}`}>
-            <h2 className={`text-2xl font-bold mb-3 ${isLight ? 'text-gray-900' : 'text-white/80'}`}>
+          <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--accent-dim)] p-10 text-center">
+            <h2 className="text-2xl font-bold mb-3 text-[var(--text-primary)]">
               Ready to build a resume that works?
             </h2>
-            <p className={`text-sm mb-6 max-w-lg mx-auto ${isLight ? 'text-gray-500' : 'text-white/30'}`}>
+            <p className="text-sm mb-6 max-w-lg mx-auto text-[var(--text-secondary)]">
               Twenty signature templates, an ATS score as you type, and a designed PDF with a linear Word companion. Free to start, no credit card required.
             </p>
-            <SeoTrackedLink href="/suite/resume" eventName="seo_resume_builder_click" className="inline-block rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-500">
+            <SeoTrackedLink href="/suite/resume" eventName="seo_resume_builder_click" className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-[var(--accent)] px-6 py-3 text-sm font-semibold text-[var(--accent-on)] elevation-card transition-all hover:bg-[var(--accent-active)]">
               Build Your Resume Free →
             </SeoTrackedLink>
           </div>

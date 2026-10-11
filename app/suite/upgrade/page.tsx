@@ -84,7 +84,6 @@ function billingLine(plan: PlanOption, price: PublicBillingPrice) {
 
 export default function UpgradePage() {
   const { theme } = useTheme();
-  const isLight = theme === 'light';
   const router = useRouter();
   const { prices, checkout, loading: pricesLoading, error: pricesError, refresh: refreshBilling } = useBillingPrices();
   const [interval, setInterval] = useState<BillingInterval>('month');
@@ -269,10 +268,7 @@ export default function UpgradePage() {
   const selectedFoundingOffer = foundingOfferForPrice(selectedPlan, planCfg);
 
   return (
-    <div
-      className="mobile-app-content flex min-h-dvh flex-col min-[1360px]:flex-row"
-      style={{ background: isLight ? '#F8FAFC' : '#060608' }}
-    >
+    <div className="mobile-app-content flex min-h-dvh flex-col bg-[var(--bg-deep)] min-[1360px]:flex-row">
 
       {/* ───── LEFT PANEL ───── */}
       <div className="flex w-full flex-col overflow-y-auto px-4 py-4 sm:px-10 sm:py-8 min-[1360px]:w-[55%] min-[1360px]:px-14 min-[1360px]:py-14">
@@ -314,11 +310,10 @@ export default function UpgradePage() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => handlePlanChange(plan)}
-                  className="relative min-h-11 min-w-0 overflow-hidden rounded-lg p-4 text-left transition-all"
+                  className="elevation-interactive relative min-h-11 min-w-0 overflow-hidden rounded-lg p-4 text-left transition-all"
                   style={{
                     background: active ? identity.surface : 'var(--bg-surface)',
                     border: `2px solid ${active ? identity.accent : 'var(--border-subtle)'}`,
-                    boxShadow: active ? `0 4px 20px color-mix(in srgb, ${identity.accent} 18%, transparent)` : 'none',
                   }}
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
@@ -353,10 +348,7 @@ export default function UpgradePage() {
 
         {/* Billing Toggle */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-8">
-          <div
-            className="grid w-full max-w-md grid-cols-2 gap-1 rounded-lg p-1"
-            style={{ background: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)' }}
-          >
+          <div className="grid w-full max-w-md grid-cols-2 gap-1 rounded-lg bg-[var(--bg-elevated)] p-1">
             {(['month', 'year'] as BillingInterval[]).map(int => {
               const optionPrice = prices.plans[selectedPlan][int];
               const foundingOffer = foundingOfferForPrice(selectedPlan, optionPrice);
@@ -368,14 +360,13 @@ export default function UpgradePage() {
                   onClick={() => handleIntervalChange(int)}
                   className={`relative min-h-11 min-w-0 rounded-lg px-2 py-2 text-sm font-semibold transition-all ${
                     interval === int
-                      ? 'shadow-lg'
+                      ? 'elevation-card'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                   style={interval === int ? {
                     background: selectedIdentity.surface,
                     color: 'var(--text-primary)',
                     border: `1px solid ${selectedIdentity.border}`,
-                    boxShadow: `0 4px 14px color-mix(in srgb, ${selectedIdentity.accent} 22%, transparent)`,
                   } : {}}
                 >
                   <span className="block">{PLAN_COPY[selectedPlan][int].label}</span>
@@ -433,15 +424,15 @@ export default function UpgradePage() {
                 <h3 className="text-sm font-semibold text-[var(--text-primary)]">{row.label}</h3>
                 <dl className="mt-3 grid grid-cols-3 gap-2">
                   <div className="min-w-0">
-                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Free</dt>
+                    <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--text-muted)]">Free</dt>
                     <dd className="mt-1 break-words text-[11px] leading-4 text-[var(--text-secondary)]">{row.free}</dd>
                   </div>
                   <div className="min-w-0 border-l border-[var(--border-subtle)] pl-2">
-                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: proIdentity.accent }}>Standard</dt>
+                    <dt className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: proIdentity.accent }}>Standard</dt>
                     <dd className="mt-1 break-words text-[11px] font-semibold leading-4" style={{ color: proIdentity.accent }}>{row.pro}</dd>
                   </div>
                   <div className="min-w-0 border-l border-[var(--border-subtle)] pl-2">
-                    <dt className="text-[10px] font-semibold uppercase tracking-[0.08em]" style={{ color: maxIdentity.accent }}>Max</dt>
+                    <dt className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: maxIdentity.accent }}>Max</dt>
                     <dd className="mt-1 break-words text-[11px] font-semibold leading-4" style={{ color: maxIdentity.accent }}>{row.studio}</dd>
                   </div>
                 </dl>
@@ -456,7 +447,7 @@ export default function UpgradePage() {
           >
             <table className="w-full table-fixed text-sm">
               <thead>
-                <tr style={{ background: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)' }}>
+                <tr className="bg-[var(--bg-surface)]">
                   <th className="w-[34%] px-4 py-2.5 text-left text-xs font-medium text-[var(--text-muted)]">Feature</th>
                   <th className="text-center px-3 py-2.5 text-[var(--text-muted)] text-xs font-medium">Free</th>
                   <th className="text-center px-3 py-2.5 text-xs font-bold" style={{ color: proIdentity.accent }}>Standard</th>
@@ -465,7 +456,7 @@ export default function UpgradePage() {
               </thead>
               <tbody>
                 {COMPARISON.map(row => (
-                  <tr key={row.label} style={{ borderTop: `1px solid ${isLight ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)'}` }}>
+                  <tr key={row.label} className="border-t border-[var(--border-subtle)]">
                     <td className="break-words px-4 py-2.5 text-xs text-[var(--text-primary)]">{row.label}</td>
                     <td className="break-words px-3 py-2.5 text-center text-xs text-[var(--text-muted)]">{row.free}</td>
                     <td className="break-words px-3 py-2.5 text-center text-xs font-semibold" style={{ color: proIdentity.accent }}>{row.pro}</td>
@@ -480,18 +471,12 @@ export default function UpgradePage() {
       </div>
 
       {/* ───── RIGHT PANEL: Stripe Checkout ───── */}
-      <div
-        className="flex w-full flex-col justify-start px-4 py-4 sm:px-10 sm:py-8 min-[1360px]:sticky min-[1360px]:top-0 min-[1360px]:h-dvh min-[1360px]:w-[45%] min-[1360px]:px-12 min-[1360px]:py-14"
-        style={{
-          background: isLight ? '#FFFFFF' : '#0A0A0C',
-          borderLeft: `1px solid ${isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.07)'}`,
-        }}
-      >
+      <div className="flex w-full flex-col justify-start border-l border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-4 sm:px-10 sm:py-8 min-[1360px]:sticky min-[1360px]:top-0 min-[1360px]:h-dvh min-[1360px]:w-[45%] min-[1360px]:px-12 min-[1360px]:py-14">
         <div className="max-w-sm mx-auto w-full">
 
           {/* Plan summary card */}
           <div
-            className="mb-6 rounded-lg p-5"
+            className="elevation-card mb-6 rounded-lg p-5"
             style={{
               background: selectedIdentity.surface,
               border: `1px solid ${selectedIdentity.border}`,
@@ -530,8 +515,8 @@ export default function UpgradePage() {
             <div className="flex flex-col items-center justify-center py-20">
               <div className="w-7 h-7 border-2 rounded-full animate-spin mb-4"
                 style={{
-                  borderColor: `color-mix(in srgb, ${selectedIdentity.accent} 30%, transparent)`,
-                  borderTopColor: selectedIdentity.accent,
+                  borderColor: 'var(--accent-dim)',
+                  borderTopColor: 'var(--accent)',
                 }}
               />
               <p className="text-sm text-[var(--text-secondary)]">Opening secure checkout...</p>
@@ -539,9 +524,27 @@ export default function UpgradePage() {
           )}
 
           {error && !loading && (
-            <div className={`rounded-lg border p-5 ${checkoutConfirmationPending ? 'border-blue-500/20 bg-blue-500/[0.06]' : 'border-rose-500/20 bg-rose-500/[0.06]'}`}>
-              <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full ${checkoutConfirmationPending ? 'bg-blue-500/10' : 'bg-rose-500/10'}`}>
-                <span className={`material-symbols-rounded ${checkoutConfirmationPending ? 'text-blue-500' : 'text-rose-500'}`} aria-hidden="true">
+            <div
+              className="rounded-lg border p-5"
+              style={{
+                borderColor: checkoutConfirmationPending
+                  ? 'color-mix(in srgb, var(--accent) 30%, var(--border-subtle))'
+                  : 'color-mix(in srgb, var(--danger) 30%, var(--border-subtle))',
+                background: checkoutConfirmationPending
+                  ? 'var(--accent-dim)'
+                  : 'color-mix(in srgb, var(--danger) 8%, transparent)',
+              }}
+            >
+              <div
+                className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+                style={{
+                  background: checkoutConfirmationPending
+                    ? 'var(--accent-dim)'
+                    : 'color-mix(in srgb, var(--danger) 12%, transparent)',
+                  color: checkoutConfirmationPending ? 'var(--accent)' : 'var(--danger)',
+                }}
+              >
+                <span className="material-symbols-rounded" aria-hidden="true">
                   {checkoutConfirmationPending ? 'schedule' : 'error'}
                 </span>
               </div>
@@ -565,12 +568,7 @@ export default function UpgradePage() {
                   }}
                   disabled={Boolean(recoveryOperation) || (recovery?.primaryAction === 'retry' && !checkoutAvailable)}
                   aria-busy={Boolean(recoveryOperation)}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[13px] px-4 text-sm font-bold transition hover:brightness-105 disabled:cursor-wait disabled:opacity-80 disabled:hover:brightness-100"
-                  style={{
-                    background: recovery?.primaryAction === 'contact_support' || checkoutAvailable ? selectedIdentity.accent : 'var(--bg-elevated)',
-                    color: recovery?.primaryAction === 'contact_support' || checkoutAvailable ? selectedIdentity.buttonText : 'var(--text-muted)',
-                    cursor: recovery?.primaryAction === 'contact_support' || checkoutAvailable ? 'pointer' : 'not-allowed',
-                  }}
+                  className="btn-primary inline-flex w-full items-center justify-center gap-2 disabled:cursor-wait"
                 >
                   <span className={`material-symbols-rounded text-[18px] ${recoveryOperation ? 'animate-spin' : ''}`} aria-hidden="true">
                     {recoveryOperation
@@ -592,7 +590,7 @@ export default function UpgradePage() {
                 <button
                   type="button"
                   onClick={() => router.push('/suite/settings?tab=subscription')}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)]"
+                  className="btn-secondary inline-flex min-h-[44px] w-full items-center justify-center gap-2"
                 >
                   <span className="material-symbols-rounded text-[18px]" aria-hidden="true">settings</span>
                   Billing settings
@@ -613,7 +611,7 @@ export default function UpgradePage() {
           )}
 
           {checkoutUnavailable && !clientSecret && !loading && !error && (
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 text-center">
+            <div className="elevation-card rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 text-center">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">
                 <span className="material-symbols-rounded" aria-hidden="true">credit_card_off</span>
               </div>
@@ -622,7 +620,7 @@ export default function UpgradePage() {
               <button
                 type="button"
                 onClick={refreshBilling}
-                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[13px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 text-sm font-semibold text-[var(--text-primary)]"
+                className="btn-secondary mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2"
               >
                 <span className="material-symbols-rounded text-[18px]" aria-hidden="true">refresh</span>
                 Check again
@@ -631,9 +629,9 @@ export default function UpgradePage() {
           )}
 
           {!checkoutUnavailable && !clientSecret && !loading && !error && (
-            <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
+            <div className="elevation-card rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
-                style={{ background: `color-mix(in srgb, ${selectedIdentity.accent} 12%, transparent)`, color: selectedIdentity.accent }}>
+                style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
                 <span className="material-symbols-rounded">lock</span>
               </div>
               <h2 className="text-center text-base font-bold text-[var(--text-primary)]">Ready when you are</h2>
@@ -644,12 +642,7 @@ export default function UpgradePage() {
                 type="button"
                 onClick={() => createCheckoutSession(selectedPlan, interval)}
                 disabled={!checkoutAvailable}
-                className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[13px] px-4 text-sm font-bold transition hover:brightness-105 disabled:hover:brightness-100"
-                style={{
-                  background: checkoutAvailable ? selectedIdentity.accent : 'var(--bg-elevated)',
-                  color: checkoutAvailable ? selectedIdentity.buttonText : 'var(--text-muted)',
-                  cursor: checkoutAvailable ? 'pointer' : 'not-allowed',
-                }}
+                className="btn-primary mt-5 inline-flex w-full items-center justify-center gap-2"
               >
                 <span className="material-symbols-rounded text-[18px]" aria-hidden="true">lock</span>
                 {checkoutAvailable ? 'Start secure checkout' : 'Checkout unavailable'}
