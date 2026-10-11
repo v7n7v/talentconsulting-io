@@ -1,0 +1,22 @@
+[
+ {"query":"the ats score card on /suite/resume looks kind of cheap and flat, can you make it feel more premium","should_trigger":true},
+ {"query":"adding a new suite page for saved searches - card per search with role, location, match count. some havent run yet","should_trigger":true},
+ {"query":"our admin console looks like a completely different product from the rest of the app. can we make it match","should_trigger":true},
+ {"query":"the job card is overflowing at 320px, something in the header row is too wide","should_trigger":true},
+ {"query":"pick a colour for the 'needs attention' badge on the applications pipeline","should_trigger":true},
+ {"query":"i need an empty state for when a user has no saved resumes yet","should_trigger":true},
+ {"query":"can you review this PR? it restyles the cover letter editor and touches about 15 components","should_trigger":true},
+ {"query":"the light theme on the resume review workbench has white text on a white background again","should_trigger":true},
+ {"query":"build the outcomes-by-month chart for the applications page, interviews/offers/rejections","should_trigger":true},
+ {"query":"why does bg-[var(--bg-elevated)] not render a background on my card","should_trigger":true},
+ {"query":"the resume templates use georgia and impact - should i convert those to our product fonts too","should_trigger":false},
+ {"query":"write the copy for the upgrade page - i need headlines for Free, Pro and Max","should_trigger":false},
+ {"query":"our stripe checkout is returning CHECKOUT_NOT_CONFIGURED in staging","should_trigger":false},
+ {"query":"add a firestore index for job_recommendations sorted by score desc","should_trigger":false},
+ {"query":"the interview simulator's gemini live websocket drops after about 40 seconds","should_trigger":false},
+ {"query":"can you design a database schema for tracking referral payouts","should_trigger":false},
+ {"query":"what's the difference between our pro and studio tier rate limits","should_trigger":false},
+ {"query":"the email templates in emails/previews need a new welcome variant","should_trigger":true},
+ {"query":"run the release safety suite and tell me what's failing","should_trigger":false},
+ {"query":"i want to A/B test the landing page hero headline","should_trigger":false}
+]

@@ -102,3 +102,6 @@ __pycache__/
 
 # Worktree-scoped verified npm distribution and private state
 /.taco-toolcache/
+
+# Local website research captures
+.firecrawl/
