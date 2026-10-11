@@ -56,9 +56,6 @@ export const metadata: Metadata = {
   publisher: BRAND_NAME,
   category: 'Career Tools',
   metadataBase: new URL('https://talentconsulting.io'),
-  alternates: {
-    canonical: '/',
-  },
   openGraph: {
     type: 'website',
     locale: 'en_US',

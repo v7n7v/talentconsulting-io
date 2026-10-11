@@ -1,3 +1,5 @@
+> October 7, 2026 owner update: palette guidance below is historical. The app now follows the canonical paper/ink/coral palette, original blue Taco identity and lavender-only shadows in [the brand system](taco-brand-system.md). Preserve explicit evidence labels and light/dark contrast.
+
 # Design System v2 — "Evidence You Can See"
 
 **Status:** direction approved 25 July 2026. **Phase 1 partially delivered 26 July 2026** — the token layer is on the new accent and the landing module's private palette is retired; see §3.1 for the accent decision, now CLOSED. Metrics below are the 25 July measurement and are stale: re-run `node scripts/design-audit.js` for current values.

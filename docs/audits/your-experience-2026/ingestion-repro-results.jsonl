@@ -1,0 +1,4 @@
+{"model":{},"response":{"body":{"resume":{}},"status":200},"prompt":"Parse and validate this document:\n\nAmina\nOperating [FILTERED]Linux\nEngineer at Northstar."}
+{"model":{"isResume":"false","name":"Invented Person"},"response":{"body":{"resume":{"isResume":"false","name":"Invented Person"}},"status":200},"prompt":"Parse and validate this document:\n\nAmina\nOperating [FILTERED]Linux\nEngineer at Northstar."}
+{"model":{"isResume":true,"name":"Amina","experience":[{"company":"Invented","role":"CEO","achievements":["Saved $9 million"]}]},"response":{"body":{"resume":{"isResume":true,"name":"Amina","experience":[{"company":"Invented","role":"CEO","achievements":["Saved $9 million"]}]}},"status":200},"prompt":"Parse and validate this document:\n\nAmina\nOperating [FILTERED]Linux\nEngineer at Northstar."}
+{"sanitizeInput":"Operating system: Linux","sanitizeOutput":"Operating [FILTERED]Linux"}

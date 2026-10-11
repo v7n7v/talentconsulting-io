@@ -258,3 +258,47 @@ test('actual writing transactions cap concurrent requests and replay settled out
  assert.equal((await server.doc(`users/${owner}/usage/writing_monthly`).get()).data().usedWords,300);
  assert.equal((await server.doc(`users/${owner}/usage/lifetime`).get()).data().writingTools,1);
 });
+
+
+test('sealed role-search sources are owner-readable and immutable, including relabel and receipt stripping', async () => {
+  const record = { id: 'sealed-source', user_id: uid, content: {name:'Synthetic fixture'}, source_confirmation_receipt:{schemaVersion:1}, metadata:{workspace:{schemaVersion:2,kind:'source',purpose:'role_search'}} };
+  await server.doc(`users/${uid}/resume_versions/sealed-source`).set(record);
+  const ref = own('resume_versions/sealed-source');
+  assert.equal((await getDoc(ref)).data().id, 'sealed-source');
+  await assert.rejects(updateDoc(ref,{content:{name:'Changed'}}),denied);
+  await assert.rejects(setDoc(ref,{content:{name:'Relabeled'},metadata:{workspace:{schemaVersion:1,kind:'resume'}}}),denied);
+  await assert.rejects(deleteDoc(ref),denied);
+  for (const envelope of [
+    {source_confirmation_receipt:{schemaVersion:1}},
+    {metadata:{workspace:{schemaVersion:2,kind:'source'}}},
+    {metadata:{workspace:{schemaVersion:2,kind:'resume'}}},
+    {metadata:{workspace:{schemaVersion:1,kind:'source'}}},
+    {metadata:{source_confirmation_receipt:{schemaVersion:1}}},
+  ]) await assert.rejects(setDoc(own('resume_versions/forged-source'),{content:{name:'Synthetic'},...envelope}),denied);
+  await assert.rejects(setDoc(doc(db,`account_source_fences/${uid}`),{status:'active',retentionPolicyVersion:'forged'}),denied);
+});
+
+test('actual Admin source transaction serializes concurrent retries and cannot revive a fenced erased owner', async () => {
+  const {buildSync} = require('esbuild');
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const output = path.join(fs.mkdtempSync(path.join(os.tmpdir(),'emulated-source-')),'service.cjs');
+  buildSync({entryPoints:[path.join(__dirname,'../lib/resume-source-service.ts')],outfile:output,bundle:true,platform:'node',format:'cjs',logLevel:'silent'});
+  const {confirmSearchSource,readSearchSource} = require(output);
+  const owner = 'synthetic-sealed-service-owner';
+  const policy = {enabled:true,retentionPolicyVersion:'synthetic-emulator-v1'};
+  const body = {requestId:'1f8cdef2-d5f4-4f00-a7b8-9165debf0e48',origin:'user_authored',confirmedContent:{name:'Synthetic fixture',title:'',email:'',phone:'',location:'',summary:'Fixture',experience:[],education:[],skills:[],certifications:[]}};
+  const fence = server.doc(`account_source_fences/${owner}`);
+  await fence.set({status:'active',retentionPolicyVersion:policy.retentionPolicyVersion});
+  const results = await Promise.all(Array.from({length:4},()=>confirmSearchSource(server,owner,body,policy)));
+  assert.equal(results.filter(item=>!item.replayed).length,1);
+  assert.equal(new Set(results.map(item=>JSON.stringify(item.receipt))).size,1);
+  const read = await readSearchSource(server,owner,results[0].receipt.sourceId);
+  assert.deepEqual(read.source.content,results[0].source.content);
+  const changed = {...body,confirmedContent:{...body.confirmedContent,summary:'Changed'}};
+  await assert.rejects(confirmSearchSource(server,owner,changed,policy),error=>error.code==='SOURCE_REQUEST_CONFLICT');
+  await fence.set({status:'deleted',retentionPolicyVersion:policy.retentionPolicyVersion});
+  await server.recursiveDelete(server.doc(`users/${owner}`));
+  await assert.rejects(confirmSearchSource(server,owner,body,policy),error=>error.code==='SOURCE_ACCOUNT_UNAVAILABLE');
+  assert.equal((await server.collection(`users/${owner}/resume_versions`).get()).empty,true);
+  fs.rmSync(path.dirname(output),{recursive:true,force:true});
+});

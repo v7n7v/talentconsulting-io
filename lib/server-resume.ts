@@ -1,15 +1,7 @@
-import { normalizeVerifiedResumeProvenance } from '@/lib/resume-provenance';
-import { isValidWorkspaceMetadata } from '@/lib/resume-workspace';
+import { classifyResumeVerification, type ResumeSource, type ResumeVerification } from '@/lib/resume-source-classifier';
 
-type ResumeSource = 'resume_versions' | 'vault' | 'profile';
-
-export type ResumeVerificationKind = 'explicit_user_source' | 'legacy_user_approved' | 'unverified';
-
-export interface ResumeVerification {
-  verified: boolean;
-  kind: ResumeVerificationKind;
-  reason: string;
-}
+export { classifyResumeVerification } from '@/lib/resume-source-classifier';
+export type { ResumeSource, ResumeVerification, ResumeVerificationKind } from '@/lib/resume-source-classifier';
 
 export interface LatestResumeResult {
   resume: any | null;
@@ -44,62 +36,34 @@ function normalizeVaultResume(data: any) {
   return data?.resume || data?.parsed || data?.content || data || null;
 }
 
-function isGeneratedResumeDraft(data: any) {
-  const source = String(data?.source || data?.metadata?.savedFrom || '').toLowerCase();
-  const savedFrom = String(data?.metadata?.savedFrom || '').toLowerCase();
-  const mode = String(data?.mode || '').toLowerCase();
-  const isSonaUpload = source === 'sona_upload' || source === 'sona_resume_upload';
-  const hasMorphMetadata = Boolean(
-    data?.guardrail_report
-    || data?.morph_guardrail_report
-    || data?.morph_effective_percentage
-    || data?.metadata?.guardrailReport
-    || data?.skill_graph?.guardrailReport,
-  );
-
-  return hasMorphMetadata
-    || (source.startsWith('sona') && !isSonaUpload)
-    || source.includes('agent')
-    || source.includes('morph')
-    || source.includes('optimiz')
-    || savedFrom.includes('optimiz')
-    || savedFrom.includes('morph')
-    || source.includes('auto_fix')
-    || source.includes('nightly')
-    || source.includes('apply_pipeline')
-    || mode.includes('agent')
-    || mode.includes('morph');
+function hasV2SourceEnvelope(data: any): boolean {
+  const workspace = data?.metadata?.workspace;
+  return Boolean(workspace && typeof workspace === 'object' && (workspace.schemaVersion === 2 || workspace.kind === 'source'))
+    || data?.source_confirmation_receipt != null || data?.metadata?.source_confirmation_receipt != null;
 }
 
-export function classifyResumeVerification(data: any, source: ResumeSource): ResumeVerification {
-  const workspace = data?.metadata?.workspace;
-  if (workspace != null && !isValidWorkspaceMetadata(workspace)) {
-    return { verified: false, kind: 'unverified', reason: 'Workspace lineage envelope is malformed.' };
+async function readResumeDocument(doc: any, uid: string, source: ResumeSource): Promise<LatestResumeResult | null> {
+  if (doc?.exists === false || typeof doc?.data !== 'function') return null;
+  const data = doc.data() || {};
+  const id = typeof doc.id === 'string' ? doc.id : '';
+  let resume: any;
+  let verification = classifyResumeVerification(data, source);
+  if (hasV2SourceEnvelope(data)) {
+    if (source !== 'resume_versions') return null;
+    const { validateSealedSearchSource } = await import('./resume-source-integrity');
+    const sealed = validateSealedSearchSource(data, { uid, id, collection: 'resume_versions' });
+    if (!sealed) return null;
+    resume = sealed.content;
+    verification = { verified: true, kind: 'explicit_user_source', reason: 'Sealed source integrity verified on read.' };
+  } else {
+    resume = source === 'resume_versions' ? normalizeVersionResume(data) : normalizeVaultResume(data);
   }
-  if (workspace?.schemaVersion === 1) {
-    if (workspace.kind === 'resume') {
-      return { verified: false, kind: 'unverified', reason: 'Resume documents are never promoted to factual source records.' };
-    }
-    if (workspace.kind === 'experience' && (workspace.origin === 'user_upload' || workspace.origin === 'user_authored')) {
-      return { verified: true, kind: 'explicit_user_source', reason: 'Confirmed Experience revision with explicit source lineage.' };
-    }
-    return { verified: false, kind: 'unverified', reason: 'Workspace lineage is generated or unavailable.' };
-  }
-  if (isGeneratedResumeDraft(data)) {
-    return { verified: false, kind: 'unverified', reason: 'Generated or morphed resume output cannot be a source of truth.' };
-  }
-  const rawProvenance = data?.provenance || data?.resume_provenance;
-  const explicitProvenance = normalizeVerifiedResumeProvenance(
-    rawProvenance,
-    String(rawProvenance?.recordedAt || data?.updatedAt || data?.updated_at || data?.createdAt || data?.created_at || ''),
-  );
-  if (explicitProvenance) {
-    return { verified: true, kind: 'explicit_user_source', reason: 'Stored with explicit user-source provenance.' };
-  }
-  if (source === 'resume_versions' && data?.is_active === true) {
-    return { verified: true, kind: 'legacy_user_approved', reason: 'Legacy active resume with no generated-output markers.' };
-  }
-  return { verified: false, kind: 'unverified', reason: 'Resume provenance is missing or ambiguous.' };
+  const sortValue = data.updatedAt || data.createdAt || data.updated_at || data.created_at;
+  return {
+    resume, source, id,
+    updatedAt: timestampToIso(sortValue),
+    verification,
+  };
 }
 
 async function getProfileResume(userRef: any): Promise<LatestResumeResult> {
@@ -137,31 +101,23 @@ export async function getLatestResumeForUser(db: any, uid: string): Promise<Late
   const candidates: Array<LatestResumeResult & { sortTime: number }> = [];
 
   if (versionsSnap && !versionsSnap.empty) {
-    const doc = versionsSnap.docs[0];
-    const data = doc.data();
-    const sortValue = data.updated_at || data.created_at;
-    candidates.push({
-      resume: normalizeVersionResume(data),
-      source: 'resume_versions',
-      id: doc.id,
-      updatedAt: timestampToIso(sortValue),
-      sortTime: timestampToMillis(sortValue),
-      verification: classifyResumeVerification(data, 'resume_versions'),
-    });
+    for (const doc of versionsSnap.docs) {
+      const resolved = await readResumeDocument(doc, uid, 'resume_versions');
+      if (resolved?.resume) {
+        candidates.push({ ...resolved, sortTime: timestampToMillis(resolved.updatedAt) });
+        break;
+      }
+    }
   }
 
   if (vaultSnap && !vaultSnap.empty) {
-    const doc = vaultSnap.docs[0];
-    const data = doc.data();
-    const sortValue = data.updatedAt || data.createdAt || data.updated_at || data.created_at;
-    candidates.push({
-      resume: normalizeVaultResume(data),
-      source: 'vault',
-      id: doc.id,
-      updatedAt: timestampToIso(sortValue),
-      sortTime: timestampToMillis(sortValue),
-      verification: classifyResumeVerification(data, 'vault'),
-    });
+    for (const doc of vaultSnap.docs) {
+      const resolved = await readResumeDocument(doc, uid, 'vault');
+      if (resolved?.resume) {
+        candidates.push({ ...resolved, sortTime: timestampToMillis(resolved.updatedAt) });
+        break;
+      }
+    }
   }
 
   candidates.sort((a, b) => b.sortTime - a.sortTime);
@@ -191,35 +147,24 @@ async function getLatestResumeMatchingVerification(
   const candidates: Array<LatestResumeResult & { sortTime: number }> = [];
 
   if (versionsSnap && !versionsSnap.empty) {
-    const verifiedDoc = versionsSnap.docs.find((doc: any) => accepts(classifyResumeVerification(doc.data(), 'resume_versions')));
-    if (verifiedDoc) {
-      const data = verifiedDoc.data();
-      const sortValue = data.updated_at || data.created_at;
-      candidates.push({
-        resume: normalizeVersionResume(data),
-        source: 'resume_versions',
-        id: verifiedDoc.id,
-        updatedAt: timestampToIso(sortValue),
-        sortTime: timestampToMillis(sortValue),
-        verification: classifyResumeVerification(data, 'resume_versions'),
-      });
+    for (const doc of versionsSnap.docs) {
+      if (!accepts(classifyResumeVerification(doc.data(), 'resume_versions'))) continue;
+      const resolved = await readResumeDocument(doc, uid, 'resume_versions');
+      if (resolved?.resume && resolved.verification && accepts(resolved.verification)) {
+        candidates.push({ ...resolved, sortTime: timestampToMillis(resolved.updatedAt) });
+        break;
+      }
     }
   }
 
   if (vaultSnap && !vaultSnap.empty) {
-    const doc = vaultSnap.docs.find((candidate: any) => accepts(classifyResumeVerification(candidate.data(), 'vault')));
-    if (doc) {
-      const data = doc.data();
-      const verification = classifyResumeVerification(data, 'vault');
-      const sortValue = data.updatedAt || data.createdAt || data.updated_at || data.created_at;
-      candidates.push({
-        resume: normalizeVaultResume(data),
-        source: 'vault',
-        id: doc.id,
-        updatedAt: timestampToIso(sortValue),
-        sortTime: timestampToMillis(sortValue),
-        verification,
-      });
+    for (const doc of vaultSnap.docs) {
+      if (!accepts(classifyResumeVerification(doc.data(), 'vault'))) continue;
+      const resolved = await readResumeDocument(doc, uid, 'vault');
+      if (resolved?.resume && resolved.verification && accepts(resolved.verification)) {
+        candidates.push({ ...resolved, sortTime: timestampToMillis(resolved.updatedAt) });
+        break;
+      }
     }
   }
 
@@ -246,12 +191,13 @@ export async function getLatestVerifiedResumeForUser(db: any, uid: string): Prom
 }
 
 async function getExplicitSourceDocuments(collection: any) {
-  const [provenanceSnap, resumeProvenanceSnap] = await Promise.all([
+  const [provenanceSnap, resumeProvenanceSnap, sealedSourceSnap] = await Promise.all([
     collection.where('provenance.verified', '==', true).get(),
     collection.where('resume_provenance.verified', '==', true).get(),
+    collection.where('metadata.workspace.kind', '==', 'source').get().catch(() => null),
   ]);
   const documents = new Map<string, any>();
-  for (const snapshot of [provenanceSnap, resumeProvenanceSnap]) {
+  for (const snapshot of [provenanceSnap, resumeProvenanceSnap, sealedSourceSnap]) {
     for (const document of snapshot.docs || []) documents.set(document.id, document);
   }
   return Array.from(documents.values());
@@ -269,15 +215,15 @@ export async function getLatestExplicitResumeForUser(db: any, uid: string): Prom
   for (const [documents, source] of [[versionDocs, 'resume_versions'], [vaultDocs, 'vault']] as const) {
     for (const document of documents) {
       const data = document.data() || {};
-      const verification = classifyResumeVerification(data, source);
+      const resolved = await readResumeDocument(document, uid, source);
+      if (hasV2SourceEnvelope(data) && !resolved) continue;
+      const verification = resolved?.verification || classifyResumeVerification(data, source);
       if (!verification.verified || verification.kind !== 'explicit_user_source') continue;
-      const sortValue = data.updatedAt || data.createdAt || data.updated_at || data.created_at;
       candidates.push({
-        resume: source === 'resume_versions' ? normalizeVersionResume(data) : normalizeVaultResume(data),
-        source,
-        id: document.id,
-        updatedAt: timestampToIso(sortValue),
-        sortTime: timestampToMillis(sortValue),
+        resume: resolved?.resume || null,
+        source, id: document.id,
+        updatedAt: resolved?.updatedAt || null,
+        sortTime: timestampToMillis(resolved?.updatedAt),
         verification,
       });
     }
@@ -312,23 +258,23 @@ export async function getVerifiedResumeForUserById(db: any, uid: string, resumeI
     return { resume: null, source: null, id: null, updatedAt: null, verification: { verified: false, kind: 'unverified', reason: 'Resume id is invalid.' } };
   }
   const userRef = db.collection('users').doc(uid);
-  const [versionSnap, vaultSnap] = await Promise.all([
-    userRef.collection('resume_versions').doc(resumeId).get(),
-    userRef.collection('vault').doc(resumeId).get(),
-  ]);
-  for (const [snapshot, source] of [[versionSnap, 'resume_versions'], [vaultSnap, 'vault']] as const) {
-    if (!snapshot?.exists) continue;
-    const data = snapshot.data() || {};
-    const verification = classifyResumeVerification(data, source);
-    if (!verification.verified) continue;
-    const updatedAt = timestampToIso(data.updatedAt || data.createdAt || data.updated_at || data.created_at);
-    return {
-      resume: source === 'resume_versions' ? normalizeVersionResume(data) : normalizeVaultResume(data),
-      source,
-      id: snapshot.id,
-      updatedAt,
-      verification,
-    };
+  const versionSnap = await userRef.collection('resume_versions').doc(resumeId).get();
+  if (versionSnap?.exists) {
+    const data = versionSnap.data() || {};
+    const resolved = await readResumeDocument(versionSnap, uid, 'resume_versions');
+    if (hasV2SourceEnvelope(data)) {
+      if (resolved?.verification?.verified) return resolved;
+      return { resume: null, source: null, id: null, updatedAt: null, verification: { verified: false, kind: 'unverified', reason: 'Selected sealed source failed integrity checks.' } };
+    }
+    const verification = classifyResumeVerification(data, 'resume_versions');
+    if (verification.verified && resolved) return { ...resolved, verification };
+  }
+  const vaultSnap = await userRef.collection('vault').doc(resumeId).get();
+  if (vaultSnap?.exists) {
+    const data = vaultSnap.data() || {};
+    const verification = classifyResumeVerification(data, 'vault');
+    const resolved = await readResumeDocument(vaultSnap, uid, 'vault');
+    if (verification.verified && resolved) return { ...resolved, verification };
   }
   return { resume: null, source: null, id: null, updatedAt: null, verification: { verified: false, kind: 'unverified', reason: 'Selected resume is not a verified user source.' } };
 }

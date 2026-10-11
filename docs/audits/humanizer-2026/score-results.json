@@ -1,0 +1,193 @@
+[
+  {
+    "id": "formal",
+    "text": "I review changes before each scheduled release. I write tests for every reported defect. I document fixes so colleagues can investigate.",
+    "humanScore": 64,
+    "verdict": "likely_human",
+    "breakdown": {
+      "perplexity": 88,
+      "burstiness": 10,
+      "vocabulary": 100,
+      "structure": 68,
+      "zipf": 65,
+      "ngramRepetition": 65,
+      "contractionEntropy": 60
+    },
+    "flags": [
+      {
+        "type": "critical",
+        "category": "burstiness",
+        "message": "Very low burstiness (σ=0.0). Human writing usually has σ > 8."
+      },
+      {
+        "type": "high",
+        "category": "burstiness",
+        "message": "Uniform sentence lengths (σ=0.0) — AI typically writes same-length sentences"
+      },
+      {
+        "type": "medium",
+        "category": "structure",
+        "message": "No contractions — human writing naturally uses contractions"
+      }
+    ],
+    "paragraphScores": [
+      {
+        "index": 0,
+        "text": "I review changes before each scheduled release. I write tests for every reported defect. I document fixes so colleagues can investigate.",
+        "score": 64,
+        "flags": [
+          "Uniform sentence lengths (σ=0.0) — AI typically writes same-length sentences",
+          "Very low burstiness (σ=0.0). Human writing usually has σ > 8."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "contracted",
+    "text": "I review changes before each scheduled release. I write tests for every reported defect. I document fixes so colleagues can investigate. I am available when deployments fail.",
+    "humanScore": 64,
+    "verdict": "likely_human",
+    "breakdown": {
+      "perplexity": 88,
+      "burstiness": 10,
+      "vocabulary": 100,
+      "structure": 68,
+      "zipf": 65,
+      "ngramRepetition": 65,
+      "contractionEntropy": 60
+    },
+    "flags": [
+      {
+        "type": "critical",
+        "category": "burstiness",
+        "message": "Very low burstiness (σ=0.4). Human writing usually has σ > 8."
+      },
+      {
+        "type": "high",
+        "category": "burstiness",
+        "message": "Uniform sentence lengths (σ=0.4) — AI typically writes same-length sentences"
+      },
+      {
+        "type": "medium",
+        "category": "structure",
+        "message": "No contractions — human writing naturally uses contractions"
+      }
+    ],
+    "paragraphScores": [
+      {
+        "index": 0,
+        "text": "I review changes before each scheduled release. I write tests for every reported defect. I document fixes so colleagues can investigate. I am available when deployments fail.",
+        "score": 64,
+        "flags": [
+          "Uniform sentence lengths (σ=0.4) — AI typically writes same-length sentences",
+          "Very low burstiness (σ=0.4). Human writing usually has σ > 8."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "contractedVersion",
+    "text": "I review changes before each scheduled release. I write tests for every reported defect. I document fixes so colleagues can investigate. I'm available when deployments fail.",
+    "humanScore": 66,
+    "verdict": "likely_human",
+    "breakdown": {
+      "perplexity": 88,
+      "burstiness": 10,
+      "vocabulary": 100,
+      "structure": 93,
+      "zipf": 65,
+      "ngramRepetition": 65,
+      "contractionEntropy": 60
+    },
+    "flags": [
+      {
+        "type": "critical",
+        "category": "burstiness",
+        "message": "Very low burstiness (σ=0.9). Human writing usually has σ > 8."
+      },
+      {
+        "type": "high",
+        "category": "burstiness",
+        "message": "Uniform sentence lengths (σ=0.9) — AI typically writes same-length sentences"
+      }
+    ],
+    "paragraphScores": [
+      {
+        "index": 0,
+        "text": "I review changes before each scheduled release. I write tests for every reported defect. I document fixes so colleagues can investigate. I'm available when deployments fail.",
+        "score": 66,
+        "flags": [
+          "Uniform sentence lengths (σ=0.9) — AI typically writes same-length sentences",
+          "Very low burstiness (σ=0.9). Human writing usually has σ > 8."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "spanish",
+    "text": "Reviso los cambios antes de publicar nuevas versiones del sistema. Escribo pruebas para cada error registrado por nuestros clientes. Documento las soluciones para que mis colegas puedan investigar.",
+    "humanScore": 63,
+    "verdict": "likely_human",
+    "breakdown": {
+      "perplexity": 88,
+      "burstiness": 10,
+      "vocabulary": 100,
+      "structure": 60,
+      "zipf": 65,
+      "ngramRepetition": 65,
+      "contractionEntropy": 60
+    },
+    "flags": [
+      {
+        "type": "critical",
+        "category": "burstiness",
+        "message": "Very low burstiness (σ=0.5). Human writing usually has σ > 8."
+      },
+      {
+        "type": "high",
+        "category": "burstiness",
+        "message": "Uniform sentence lengths (σ=0.5) — AI typically writes same-length sentences"
+      },
+      {
+        "type": "medium",
+        "category": "structure",
+        "message": "No contractions — human writing naturally uses contractions"
+      }
+    ],
+    "paragraphScores": [
+      {
+        "index": 0,
+        "text": "Reviso los cambios antes de publicar nuevas versiones del sistema. Escribo pruebas para cada error registrado por nuestros clientes. Documento las soluciones para que mis colegas puedan investigar.",
+        "score": 63,
+        "flags": [
+          "Uniform sentence lengths (σ=0.5) — AI typically writes same-length sentences",
+          "Very low burstiness (σ=0.5). Human writing usually has σ > 8."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "repeatedChinese",
+    "text": "我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。",
+    "humanScore": 67,
+    "verdict": "likely_human",
+    "breakdown": {
+      "perplexity": 70,
+      "burstiness": 60,
+      "vocabulary": 80,
+      "structure": 70,
+      "zipf": 65,
+      "ngramRepetition": 65,
+      "contractionEntropy": 60
+    },
+    "flags": [],
+    "paragraphScores": [
+      {
+        "index": 0,
+        "text": "我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。",
+        "score": 67,
+        "flags": []
+      }
+    ]
+  }
+]

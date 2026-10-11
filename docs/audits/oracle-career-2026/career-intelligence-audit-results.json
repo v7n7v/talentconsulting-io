@@ -1,0 +1,154 @@
+[
+  {
+    "case": "cached twin ignores changed application source indefinitely",
+    "before": 0,
+    "after": 0,
+    "queries": [
+      "users/owner/profile/career_twin"
+    ],
+    "stale": false
+  },
+  {
+    "case": "optional read outages persisted as known defaults",
+    "stale": false,
+    "goals": {
+      "targetRoles": [],
+      "industries": [],
+      "jobSearchStatus": "",
+      "salaryMin": null,
+      "remotePreference": "any"
+    },
+    "constraints": {
+      "preferredCities": [],
+      "excludedCompanies": [],
+      "autonomyLevel": "prepare",
+      "requiresReviewBeforeExternalAction": true
+    },
+    "activeSearch": {
+      "totalApplications": 0,
+      "sentApplications": 0,
+      "responseRate": null,
+      "velocity": 0,
+      "queuedApplications": 0,
+      "staleApplications": 0,
+      "skillGaps": [],
+      "fitAnalysisCount": 0
+    },
+    "writes": 1
+  },
+  {
+    "case": "two empty recent debriefs cause declining confidence",
+    "interviews": {
+      "totalDebriefs": 4,
+      "passRate": 0,
+      "resolvedOutcomeCount": 0,
+      "questionCount": 2,
+      "weakCategories": [],
+      "strongCategories": [
+        {
+          "category": "Leadership",
+          "avgConfidence": 80,
+          "count": 2
+        }
+      ],
+      "avgConfidence": 80,
+      "avgFeeling": 3,
+      "confidenceTrend": "declining",
+      "roundTypeBreakdown": [
+        {
+          "type": "behavioral",
+          "count": 4,
+          "avgConf": 65
+        }
+      ],
+      "companiesInterviewed": []
+    },
+    "recommendations": [
+      "no-resume",
+      "confidence-declining",
+      "low-velocity"
+    ]
+  },
+  {
+    "case": "one fit analysis called frequent postings",
+    "gap": [
+      "rust",
+      "python",
+      "sql"
+    ],
+    "recommendation": {
+      "id": "skill-gaps",
+      "priority": "high",
+      "icon": "school",
+      "title": "3 Skill Gaps Detected",
+      "description": "Jobs you're targeting need: rust, python, sql. These appear frequently in postings but are missing from your resume.",
+      "action": "Build a learning path with Skill Bridge",
+      "actionPath": "/suite/skill-bridge",
+      "color": "#3b82f6",
+      "category": "skill"
+    }
+  },
+  {
+    "case": "101 stories truncated; placeholder tag qualifies as coverage",
+    "total": 100,
+    "bank": {
+      "totalStories": 100,
+      "coveredCategories": [
+        "teamwork"
+      ],
+      "uncoveredCategories": [
+        "leadership",
+        "conflict resolution",
+        "failure",
+        "initiative",
+        "communication",
+        "problem solving",
+        "time management",
+        "adaptability",
+        "creativity",
+        "work ethic",
+        "customer focus"
+      ],
+      "coverageScore": 8
+    }
+  },
+  {
+    "case": "assessment and learning evidence unread",
+    "skills": {
+      "confirmed": [],
+      "resumeHasSkillsSection": false,
+      "growing": [],
+      "weak": [],
+      "marketHot": [],
+      "gap": [],
+      "fitAnalysisCount": 0,
+      "weakEvidenceCategories": 0
+    },
+    "queries": [
+      "users/owner/debriefs",
+      "users/owner/agent_stories",
+      "users/owner/morale",
+      "users/owner/resume_versions",
+      "users/owner/fit_analyses"
+    ]
+  },
+  {
+    "case": "days to response uses latest outcome not first reply",
+    "pipeline": {
+      "totalApps": 1,
+      "appliedApps": 1,
+      "thisWeekApps": 0,
+      "velocity": 0.3,
+      "responded": 1,
+      "interviews": 0,
+      "offers": 0,
+      "responseRate": 100,
+      "interviewConversion": 0,
+      "offerConversion": null,
+      "ghostRate": 0,
+      "topIndustries": [],
+      "topCompanies": [],
+      "avgDaysToResponse": 20
+    }
+  }
+]

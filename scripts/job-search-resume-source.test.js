@@ -1,40 +1,18 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
-const ts = require('typescript');
+const { buildSync } = require('esbuild');
 const test = require('node:test');
 
 const repoRoot = path.join(__dirname, '..');
 
 function loadSourceChooser() {
-  const source = fs.readFileSync(path.join(repoRoot, 'lib/job-search-resume-source.ts'), 'utf8');
-  const output = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-  }).outputText;
+  const result = buildSync({ stdin: { contents: "export * from './lib/job-search-resume-source'; export { classifyResumeVerification } from './lib/server-resume'; export { createWorkspaceMetadata } from './lib/resume-workspace';", resolveDir: repoRoot, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false, logLevel: 'silent' });
   const module = { exports: {} };
-  const context = {
-    module,
-    exports: module.exports,
-    require(request) {
-      if (request === '@/lib/database-suite') return {};
-      if (request === '@/lib/resume-provenance') {
-        return {
-          normalizeVerifiedResumeProvenance(value, recordedAt) {
-            const origins = new Set(['user_upload', 'user_authored', 'onboarding_upload', 'sona_upload']);
-            if (!value || typeof value !== 'object' || value.verified !== true || !origins.has(value.origin)) return null;
-            return { verified: true, origin: value.origin, recordedAt };
-          },
-        };
-      }
-      return require(request);
-    },
-  };
-  vm.runInNewContext(output, context, { filename: 'job-search-resume-source.ts' });
+  new Function('module', 'exports', result.outputFiles[0].text)(module, module.exports);
   return module.exports;
 }
 
-const { chooseJobSearchResumeSource, isEligibleJobSearchResume } = loadSourceChooser();
+const { chooseJobSearchResumeSource, resolveExplicitJobSearchResumeSource, isEligibleJobSearchResume, classifyResumeVerification, createWorkspaceMetadata } = loadSourceChooser();
 
 function resume(id, overrides = {}) {
   return {
@@ -57,6 +35,8 @@ test('source chooser follows server source verification for legacy, confirmed, i
   });
   const activeSource = resume('main', { version_name: 'Main resume', is_active: true });
   const confirmedUpload = resume('upload', {
+    // saveResumeVersion normalizes this into the top-level provenance field.
+    provenance: { verified: true, origin: 'user_upload' },
     metadata: { resumeProvenance: { verified: true, origin: 'user_upload' } },
   });
   const invalidProvenance = resume('invalid', {
@@ -88,4 +68,64 @@ test('source chooser preserves an eligible saved version and recovers an invalid
   const recovered = chooseJobSearchResumeSource([other, saved], 'missing');
   assert.equal(recovered.resume?.id, other.id);
   assert.equal(recovered.recoveredFromId, true);
+});
+
+test('explicit source handoff resolves only its exact eligible ID and never falls back', () => {
+  const requested = resume('source_requested', { is_active: true });
+  const saved = resume('saved', { is_active: true });
+  const generated = resume('source_generated', { is_active: true, guardrail_report: { version: 1 } });
+  const choices = [requested, saved, generated];
+  assert.equal(resolveExplicitJobSearchResumeSource(choices, requested.id), requested);
+  assert.equal(resolveExplicitJobSearchResumeSource(choices, 'missing'), null);
+  assert.equal(resolveExplicitJobSearchResumeSource(choices, generated.id), null);
+  assert.equal(resolveExplicitJobSearchResumeSource(choices, ''), null);
+});
+
+const hash = 'a'.repeat(64);
+function workspaceRecord(kind, overrides = {}) {
+  const content = { name: 'Fictional candidate', skills: ['TypeScript'] };
+  const source = { sourceVersionId: 'confirmed-source', content, contentHash: hash, confirmedAt: '2026-10-09T12:00:00.000Z' };
+  return resume(kind, { is_active: true, provenance: { verified: true, origin: 'user_upload' }, metadata: {
+    workspace: createWorkspaceMetadata({ kind, origin: 'user_upload', contentHash: hash, content, sourceSnapshot: source, sourceVersionId: source.sourceVersionId, sourceConfirmedAt: source.confirmedAt }),
+  }, ...overrides });
+}
+
+test('saved resume documents are never offered as factual sources, even when active and explicitly marked', () => {
+  const document = workspaceRecord('resume');
+  assert.equal(classifyResumeVerification(document, 'resume_versions').verified, false);
+  assert.equal(isEligibleJobSearchResume(document), false);
+  assert.equal(chooseJobSearchResumeSource([document]).resume, null);
+});
+
+test('confirmed experience lineage remains eligible and wins over a newer document', () => {
+  const document = workspaceRecord('resume');
+  const source = workspaceRecord('experience', { id: 'confirmed-source', is_active: false });
+  assert.equal(classifyResumeVerification(source, 'resume_versions').verified, true);
+  assert.equal(isEligibleJobSearchResume(source), true);
+  assert.equal(chooseJobSearchResumeSource([document, source]).resume.id, source.id);
+  const recovered = chooseJobSearchResumeSource([document, source], document.id);
+  assert.equal(recovered.resume.id, source.id);
+  assert.equal(recovered.recoveredFromId, true);
+});
+
+test('malformed workspace envelopes cannot fall back to active or provenance flags', () => {
+  for (const workspace of [{ schemaVersion: 1, kind: 'experience', origin: 'user_upload' },
+    { ...workspaceRecord('experience').metadata.workspace, contentHash: 'invalid' },
+    { ...workspaceRecord('experience').metadata.workspace, sourceVersionId: null }]) {
+    const record = resume('malformed', { is_active: true, provenance: { verified: true, origin: 'user_upload' }, metadata: { workspace } });
+    assert.equal(classifyResumeVerification(record, 'resume_versions').verified, false);
+    assert.equal(isEligibleJobSearchResume(record), false);
+  }
+});
+
+test('legacy eligibility follows actual server verification rather than metadata aliases or generated markers', () => {
+  const cases = [
+    resume('active', { is_active: true }), resume('inactive'),
+    resume('explicit', { provenance: { verified: true, origin: 'user_authored' } }),
+    resume('metadata-only', { metadata: { resumeProvenance: { verified: true, origin: 'user_upload' } } }),
+    resume('optimized', { is_active: true, metadata: { savedFrom: 'resume_studio_optimize' } }),
+    resume('guarded-skill-graph', { is_active: true, skill_graph: { guardrailReport: {} } }),
+    resume('agent-mode', { is_active: true, mode: 'agent' }),
+  ];
+  for (const record of cases) assert.equal(isEligibleJobSearchResume(record), classifyResumeVerification(record, 'resume_versions').verified, record.id);
 });

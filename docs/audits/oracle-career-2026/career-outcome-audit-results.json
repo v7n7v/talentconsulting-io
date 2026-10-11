@@ -1,0 +1,62 @@
+[
+  {
+    "name": "saved_only",
+    "success": true,
+    "pending": [],
+    "count": 0,
+    "stats": {
+      "totalReported": 0,
+      "totalApplied": 1,
+      "responseRate": 0,
+      "ghostRate": null,
+      "avgDaysToResponse": null,
+      "interviewRate": 0,
+      "offerRate": 0,
+      "callbackCount": 0,
+      "interviewCount": 0,
+      "offerCount": 0,
+      "rejectionCount": 0,
+      "ghostedCount": 0
+    }
+  },
+  {
+    "name": "camel_submission",
+    "success": true,
+    "pending": [],
+    "count": 0,
+    "stats": {
+      "totalReported": 0,
+      "totalApplied": 1,
+      "responseRate": 0,
+      "ghostRate": null,
+      "avgDaysToResponse": null,
+      "interviewRate": 0,
+      "offerRate": 0,
+      "callbackCount": 0,
+      "interviewCount": 0,
+      "offerCount": 0,
+      "rejectionCount": 0,
+      "ghostedCount": 0
+    }
+  },
+  {
+    "name": "interview_then_rejection",
+    "success": true,
+    "pending": [],
+    "count": 0,
+    "stats": {
+      "totalReported": 1,
+      "totalApplied": 1,
+      "responseRate": 100,
+      "ghostRate": 0,
+      "avgDaysToResponse": null,
+      "interviewRate": 0,
+      "offerRate": 0,
+      "callbackCount": 0,
+      "interviewCount": 0,
+      "offerCount": 0,
+      "rejectionCount": 1,
+      "ghostedCount": 0
+    }
+  }
+]

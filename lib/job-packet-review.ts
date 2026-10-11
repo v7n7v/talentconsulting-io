@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
+import { classifyResumeVerification } from '@/lib/resume-source-classifier';
 import { normalizeVerifiedResumeProvenance } from '@/lib/resume-provenance';
 import { isPersistedJobPacketReady } from '@/lib/job-packet-state';
+import { validateSealedSearchSource } from '@/lib/resume-source-integrity';
 
 export type PacketKind = 'queue' | 'application';
 export type PacketSourceCollection = 'resume_versions' | 'vault' | 'profile';
@@ -28,7 +30,19 @@ export function getPacketSourceReference(packet: PacketRecord, artifact?: Packet
   return { id, collection: collection as PacketSourceCollection };
 }
 
-export function getPacketSourceContent(data: PacketRecord, collection: PacketSourceCollection) {
+export function getPacketSourceContent(
+  data: PacketRecord,
+  collection: PacketSourceCollection,
+  context?: { uid: string; id: string },
+) {
+  const workspace = data?.metadata?.workspace;
+  const hasV2SourceEnvelope = Boolean(workspace && typeof workspace === 'object' && (workspace.schemaVersion === 2 || workspace.kind === 'source'))
+    || data?.source_confirmation_receipt != null || data?.metadata?.source_confirmation_receipt != null;
+  if (hasV2SourceEnvelope) {
+    if (collection !== 'resume_versions' || !context?.uid || !context.id) return null;
+    return validateSealedSearchSource(data, { uid: context.uid, id: context.id, collection })?.content || null;
+  }
+  if (!classifyResumeVerification(data, collection).verified) return null;
   if (data.guardrail_report || data.morph_guardrail_report || data.morph_effective_percentage) return null;
   const provenance = data.provenance || data.resume_provenance;
   const verified = normalizeVerifiedResumeProvenance(provenance, String(provenance?.recordedAt || data.updated_at || data.created_at || ''));
@@ -54,7 +68,7 @@ export function inspectPacketReview(input: {
 }) {
   const { kind, id, uid, packet, artifact, source } = input;
   const reference = getPacketSourceReference(packet, artifact);
-  const content = reference && source ? getPacketSourceContent(source, reference.collection) : null;
+  const content = reference && source ? getPacketSourceContent(source, reference.collection, { uid, id: reference.id }) : null;
   // Existing generation code hashes JSON source snapshots; retain that contract.
   const sourceHash = content ? createHash('sha256').update(JSON.stringify(content)).digest('hex') : null;
   const expectedSourceHash = packet.morph_source_resume_hash || packet.source_resume_hash || artifact?.source_resume_hash;

@@ -74,7 +74,9 @@ function resumePayloadForIdentity(data: any) {
     skill_graph: data?.skill_graph || null,
     mode: data?.mode || null,
     source: data?.source || null,
-    provenance: data?.provenance || null,
+    // recordedAt is produced by the save command, not part of retry intent.
+    // Keep every other provenance field bound to the original command.
+    provenance: data?.provenance ? Object.fromEntries(Object.entries(data.provenance).filter(([key]) => key !== 'recordedAt')) : null,
     metadata: data?.metadata || {},
   };
 }
@@ -118,6 +120,9 @@ export async function saveResumeVersion(
     const demoMode = isDemoModeEnabled();
     const ownerId = demoMode ? DEMO_USER_ID : getUserId();
     const storedContent = stripUndefined(content);
+    if (metadata?.source_confirmation_receipt || metadata?.workspace?.kind === 'source' || metadata?.workspace?.schemaVersion === 2 || (options.workspace as any)?.kind === 'source' || (options.workspace as any)?.schemaVersion === 2) {
+      return { success: false, error: 'Confirmed role-search sources must be saved through the source service.' };
+    }
     const rawWorkspace = options.workspace || (metadata?.workspace && typeof metadata.workspace === 'object' ? metadata.workspace as CreateWorkspaceMetadataInput : null);
     const workspaceMetadata = rawWorkspace
       ? createWorkspaceMetadata({

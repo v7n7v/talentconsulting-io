@@ -73,7 +73,10 @@ async function setup({ resumes = [makeResume('A', ['TypeScript']), makeResume('B
   globalThis.getUserProfile = async () => profileResult || ({ data: null });
   globalThis.updateApplicationStatus = async () => ({ success: true });
   globalThis.resumeSnapshotToText = resume => (resume?.skills || []).join(' ');
-  globalThis.resumeVersionToApplicationKitContext = resume => ({ resumeVersionId: resume.id });
+  globalThis.resumeVersionToApplicationKitContext = resume => ({
+    resumeVersionId: resume.id, resumeVersionName: resume.version_name,
+    resumeSnapshot: resume.content, resumeText: globalThis.resumeSnapshotToText(resume.content), resumeSource: 'library',
+  });
   globalThis.mergeApplicationKitContext = value => mergeCalls.push(value);
   globalThis.chooseJobSearchResumeSource = items => ({ resume: items[0] || null, recoveredFromId: false });
   globalThis.isEligibleJobSearchResume = resume => resume?.status === 'confirmed';
@@ -119,6 +122,119 @@ async function setup({ resumes = [makeResume('A', ['TypeScript']), makeResume('B
 
 const command = ui => ui.find(node => node.type?.name === 'JobSearchCommandStrip');
 const feed = ui => ui.find(node => node.type?.name === 'OpportunityFeed');
+
+test('selecting another role clears its predecessor application and Oracle draft; revisiting a prepared role rebinds its own packet', async () => {
+  const { ui, mergeCalls } = await setup();
+  try {
+    await search(ui);
+    const [jobA, jobB] = feed(ui).props.jobs;
+    await feed(ui).props.onPrepare(jobA);
+    await ui.settle();
+    const prepared = mergeCalls.at(-1);
+    assert.equal(prepared.applicationId, 'app-1');
+
+    feed(ui).props.onSelect(jobB);
+    ui.flush();
+    const selection = mergeCalls.at(-1);
+    const draft = { ...prepared, oracleDraft: { company: jobA.company, targetRole: jobA.title }, ...selection };
+    assert.equal(draft.applicationId, null, 'role B must not be scoped to role A’s application');
+    assert.equal(draft.oracleDraft, undefined, 'role A’s analysis inputs must not override role B');
+    assert.equal(draft.jobTitle, jobB.title);
+    assert.equal(draft.jobDescription, jobB.description);
+
+    feed(ui).props.onSelect(jobA);
+    ui.flush();
+    assert.equal(mergeCalls.at(-1).applicationId, 'app-1', 'reopening A uses its real source-scoped prepared packet');
+    feed(ui).props.onSelect(jobA);
+    ui.flush();
+    assert.equal(Object.hasOwn(mergeCalls.at(-1), 'oracleDraft'), false, 'reselecting the same unchanged role keeps its analysis inputs');
+  } finally { ui.unmount(); }
+});
+
+test('browsing without a selected resume does not carry an earlier workspace source into role analysis', async () => {
+  const { ui, mergeCalls } = await setup({ resumes: [] });
+  try {
+    await search(ui);
+    const selection = mergeCalls.at(-1);
+    const retained = { resumeVersionId: 'old-source', resumeSnapshot: { name: 'Old draft' }, resumeText: 'Old draft', ...selection };
+    assert.equal(retained.resumeVersionId, null);
+    assert.equal(retained.resumeSnapshot, null);
+    assert.equal(retained.resumeText, '');
+  } finally { ui.unmount(); }
+});
+
+test('automatic selection reconnects a prepared packet when its role returns in a later search', async () => {
+  const jobA = makeJob('job-a');
+  const jobB = makeJob('job-b');
+  const { ui, mergeCalls } = await setup({ searches: [
+    response({ success: true, scoreResumeId: 'A', jobs: [jobB] }),
+    response({ success: true, scoreResumeId: 'A', jobs: [jobA] }),
+    response({ success: true, scoreResumeId: 'A', jobs: [jobB] }),
+  ] });
+  try {
+    await search(ui);
+    await feed(ui).props.onPrepare(jobB);
+    await ui.settle();
+    await search(ui);
+    assert.equal(mergeCalls.at(-1).applicationId, null);
+    await search(ui);
+    assert.equal(feed(ui).props.packets[identity(jobB)]?.status, 'ready');
+    assert.equal(mergeCalls.at(-1).applicationId, 'app-1', 'automatic selection uses the matching packet even when B was absent from the previous results');
+  } finally { ui.unmount(); }
+});
+
+test('preparing a packet keeps its confirmed factual resume as the source for subsequent role analysis', async () => {
+  const source = makeResume('A', ['TypeScript']);
+  const { ui, mergeCalls, pipelineResults } = await setup({ resumes: [source] });
+  try {
+    await search(ui);
+    const job = feed(ui).props.jobs[0];
+    pipelineResults.push(response({
+      success: true, packetStatus: 'ready_for_review', applicationId: 'app-1', morphedVersionId: 'resume-morphed',
+      morphedResume: { skills: ['Generated wording'] }, coverLetter: 'Draft', atsResult: { overallScore: 84 },
+    }));
+    await feed(ui).props.onPrepare(job);
+    await ui.settle();
+    const completion = mergeCalls.at(-1);
+    assert.equal(completion.applicationId, 'app-1');
+    assert.equal(completion.resumeVersionId, source.id, 'analysis must not receive a generated version that source verification rejects');
+    assert.deepEqual(completion.resumeSnapshot, source.content);
+    assert.equal(completion.resumeText, 'TypeScript');
+    assert.equal(completion.targetRole, job.title);
+    assert.equal(feed(ui).props.packets[identity(job)]?.morphedVersionId, 'resume-morphed', 'the prepared document remains available on its own packet');
+    assert.equal(feed(ui).props.packets[identity(job)]?.atsScore, 84);
+    assert.equal(completion.atsResult, undefined, 'the generated document’s score must not become a check of the factual source');
+    assert.equal(completion.coverLetterResult.data.coverLetter, 'Draft');
+  } finally { ui.unmount(); }
+});
+
+test('a pending search cannot detach the application of a packet that finishes before its results arrive', async () => {
+  const job = makeJob('job-a');
+  const searchPending = deferred();
+  const packetPending = deferred();
+  const { ui, mergeCalls, pipelineResults } = await setup({ searches: [
+    response({ success: true, scoreResumeId: 'A', jobs: [job] }),
+    searchPending.promise,
+  ] });
+  try {
+    await search(ui);
+    pipelineResults.push(packetPending.promise);
+    const preparation = feed(ui).props.onPrepare(job);
+    await ui.settle();
+    assert.equal(feed(ui).props.packets[identity(job)]?.status, 'preparing');
+    const searching = command(ui).props.onSearch();
+    await ui.settle();
+    packetPending.resolve(response({ success: true, packetStatus: 'ready_for_review', applicationId: 'app-1', morphedVersionId: 'resume-morphed', coverLetter: 'Draft', atsResult: { overallScore: 84 } }));
+    await preparation;
+    await ui.settle();
+    assert.equal(mergeCalls.at(-1).applicationId, 'app-1');
+    searchPending.resolve(response({ success: true, scoreResumeId: 'A', jobs: [job] }));
+    await searching;
+    await ui.settle();
+    assert.equal(feed(ui).props.packets[identity(job)]?.status, 'ready');
+    assert.equal(mergeCalls.at(-1).applicationId, 'app-1');
+  } finally { ui.unmount(); }
+});
 
 async function search(ui, query = 'Engineer', location = 'Remote') {
   const strip = command(ui);
@@ -193,6 +309,39 @@ test('resume source failure clears cached source evidence and retry restores the
     await ui.settle();
     assert.deepEqual(command(ui).props.resumes.map(resume => resume.id), ['B']);
     assert.equal(command(ui).props.userSkillsCount, 1);
+  } finally { ui.unmount(); }
+});
+
+test('a failed source reload makes interrupted preparation retryable after the same source is restored', async () => {
+  const source = makeResume('A', ['TypeScript']);
+  const pending = deferred();
+  const { ui, pipelineResults, requests } = await setup({ resumeResults: [
+    { success: true, data: [source] }, new Error('resume reload unavailable'), { success: true, data: [source] },
+  ] });
+  try {
+    await search(ui);
+    const job = feed(ui).props.jobs[0];
+    pipelineResults.push(pending.promise);
+    const interrupted = feed(ui).props.onPrepare(job);
+    await ui.settle();
+    assert.equal(feed(ui).props.packets[identity(job)]?.status, 'preparing');
+    ui.user = { uid: 'alice', accessToken: 'refreshed-token' };
+    ui.flush();
+    await ui.settle();
+    assert.equal(command(ui).props.resumes.length, 0);
+    const retry = ui.find(node => node.type === 'button' && JSON.stringify(node.props.children).includes('Retry resume load'));
+    retry.props.onClick();
+    await ui.settle();
+    await search(ui);
+    assert.equal(feed(ui).props.packets[identity(job)]?.status, 'failed', 'cancelled work must stop claiming to be preparing');
+    await feed(ui).props.onPrepare(job);
+    await ui.settle();
+    assert.equal(requests.filter(request => request.url === '/api/agent/apply-pipeline').length, 2);
+    assert.equal(feed(ui).props.packets[identity(job)]?.status, 'ready');
+    pending.resolve(response({ success: true, packetStatus: 'ready_for_review', applicationId: 'old-app', morphedVersionId: 'old-version', coverLetter: 'Old draft', atsResult: { overallScore: 84 } }));
+    await interrupted;
+    await ui.settle();
+    assert.equal(feed(ui).props.packets[identity(job)]?.applicationId, 'app-1', 'a cancelled request cannot overwrite the retried packet');
   } finally { ui.unmount(); }
 });
 

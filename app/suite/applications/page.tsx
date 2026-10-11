@@ -2,14 +2,14 @@
 
 import PageHelp from '@/components/PageHelp';
 import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
-import { buildToolStory, storyStep, trapWorkflowTab } from '@/lib/tool-story-adapters';
+import { applicationsJourneyGuidance, storyStep, trapWorkflowTab } from '@/lib/tool-story-adapters';
 
 import { TacoName, TacoText } from '@/components/BrandLogo';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import QueueContent from '@/app/suite/agent/queue/QueueContent';
 import ManualApplicationForm from '@/components/suite/ManualApplicationForm';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Document, HeadingLevel, Packer, Paragraph, TextRun } from 'docx';
 import { saveAs } from 'file-saver';
@@ -49,11 +49,12 @@ import ApplicationsContext from '@/components/workspace/ApplicationsContext';
 import PacketResumeDocument from '@/components/workspace/PacketResumeDocument';
 import { offerInputSignature } from '@/lib/application-commands';
 import { createApplicationsLifecycleGuard } from '@/lib/applications-lifecycle';
+import { loadApprovedApplicationPacketExport } from '@/lib/application-packet-export';
 
 type ViewMode = 'command' | 'grid' | 'kanban' | 'list';
 type OutcomeFilter = 'all' | 'pending' | 'reported' | 'positive' | 'negative';
 type AttentionKind = 'offer' | 'outcome' | 'followup' | 'prep' | 'apply';
-type InboxDrawerAction = 'offer' | 'outcome' | 'followup' | 'application';
+type InboxDrawerAction = 'offer' | 'outcome' | 'followup' | 'application' | 'review';
 type SkillBridgeSummary = {
   percent: number | null;
   skills: StudyProgress[];
@@ -301,6 +302,9 @@ function ApplicationsWorkspace() {
   const [resumeLoading, setResumeLoading] = useState(false);
   const [showResumePreview, setShowResumePreview] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const packetReviewRevisionRef = useRef(new Map<string, string>());
+  const [packetReviewState, setPacketReviewState] = useState<{ applicationId: string; status: string; revision: string } | null>(null);
+  const exportAbortRef = useRef<AbortController | null>(null);
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null);
   const [followUpLoading, setFollowUpLoading] = useState(false);
   const [followUpDraft, setFollowUpDraft] = useState<{ subject: string; body: string; timing: string; daysSinceApplied: number } | null>(null);
@@ -323,6 +327,10 @@ function ApplicationsWorkspace() {
 
   const selectedActionRef = useRef(selectedApp?.id);
   selectedActionRef.current = selectedApp?.id;
+  const selectedResumeLinkRef = useRef(selectedApp?.resume_version_id);
+  selectedResumeLinkRef.current = selectedApp?.resume_version_id;
+  const linkedResumeIdRef = useRef(linkedResume?.id);
+  linkedResumeIdRef.current = linkedResume?.id;
   const notesRevisionRef = useRef(0);
   const offerRevisionRef = useRef(0);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -347,6 +355,7 @@ function ApplicationsWorkspace() {
       lifecycle.cleanup();
       drawerRequestRef.current += 1;
       applicationLoadRequestRef.current += 1;
+      exportAbortRef.current?.abort();
     };
   }, []);
 
@@ -369,6 +378,9 @@ function ApplicationsWorkspace() {
     ownerRef.current = user?.uid || null;
     if (ownerChanged) {
       drawerRequestRef.current += 1;
+      exportAbortRef.current?.abort();
+      packetReviewRevisionRef.current.clear();
+      setPacketReviewState(null);
       handledApplicationLinkRef.current = false;
       setSelectedApp(null);
       setLinkedResume(null);
@@ -380,6 +392,9 @@ function ApplicationsWorkspace() {
     if (!user) {
       applicationLoadRequestRef.current += 1;
       drawerRequestRef.current += 1;
+      exportAbortRef.current?.abort();
+      packetReviewRevisionRef.current.clear();
+      setPacketReviewState(null);
       handledApplicationLinkRef.current = false;
       setSelectedApp(null);
       setLinkedResume(null);
@@ -427,7 +442,7 @@ function ApplicationsWorkspace() {
   }
 
   useEffect(() => {
-    if (!user || isLoading || handledOutcomeLinkRef.current) return;
+    if (!user || isLoading || loadError || handledOutcomeLinkRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const applicationId = params.get('outcome');
     const outcome = params.get('result') as NonNullable<JobApplication['outcome_response']> | null;
@@ -473,10 +488,10 @@ function ApplicationsWorkspace() {
     setRequestedOutcomeConfirmation(outcome);
     showToast(`Review and confirm: ${OUTCOME_CONFIG[outcome].label}`, 'fact_check');
     cleanOutcomeParams();
-  }, [applications, isLoading, user]);
+  }, [applications, isLoading, loadError, user]);
 
   useEffect(() => {
-    if (!user || isLoading || handledApplicationLinkRef.current) return;
+    if (!user || isLoading || loadError || handledApplicationLinkRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const applicationId = params.get('application');
     const requestedAction = params.get('action');
@@ -496,12 +511,12 @@ function ApplicationsWorkspace() {
     }
 
     setInboxDrawerAction(
-      requestedAction && ['offer', 'outcome', 'followup', 'application'].includes(requestedAction)
+      requestedAction && ['offer', 'outcome', 'followup', 'application', 'review'].includes(requestedAction)
         ? requestedAction as InboxDrawerAction
         : 'application',
     );
     void openDrawer(targetApp);
-  }, [applications, isLoading, user]);
+  }, [applications, isLoading, loadError, user]);
 
   function updateLocalApplication(id: string, patch: Partial<JobApplication>) {
     setApplications(prev => prev.map(app => (app.id === id ? { ...app, ...patch } : app)));
@@ -580,6 +595,9 @@ function ApplicationsWorkspace() {
 
   async function openDrawer(app: JobApplication) {
     if (!selectedApp) returnFocusRef.current = document.activeElement as HTMLElement | null;
+    exportAbortRef.current?.abort();
+    setPacketReviewState(null);
+    setDownloading(false);
     const requestId = ++drawerRequestRef.current;
     setResumeLoading(false); setFollowUpLoading(false); setFollowUpDraft(null); setShowFollowUpModal(false); setPrepLoading(false); setOutcomeLoading(false);
     const userId = user?.uid;
@@ -606,12 +624,15 @@ function ApplicationsWorkspace() {
 
   function closeDrawer() {
     drawerRequestRef.current += 1;
+    exportAbortRef.current?.abort();
+    setDownloading(false);
     setFollowUpLoading(false); setFollowUpDraft(null); setShowFollowUpModal(false); setPrepLoading(false); setOutcomeLoading(false);
     window.requestAnimationFrame(() => returnFocusRef.current?.isConnected && returnFocusRef.current.focus());
     handledApplicationLinkRef.current = false;
     setResumeLoading(false);
     setSelectedApp(null);
     setLinkedResume(null);
+    setPacketReviewState(null);
     setShowResumePreview(false);
     setPrepData(null);
     setShowPrepCard(false);
@@ -623,6 +644,45 @@ function ApplicationsWorkspace() {
     params.delete('action');
     const query = params.toString();
     window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+  }
+
+  const onPacketReviewSnapshot = useCallback((applicationId: string, snapshot: { revision: string; status: string } | null) => {
+    const key = `${user?.uid || ''}:${applicationId}`;
+    if (!snapshot) packetReviewRevisionRef.current.delete(key);
+    else packetReviewRevisionRef.current.set(key, snapshot.revision);
+    setPacketReviewState(snapshot ? { applicationId, ...snapshot } : null);
+  }, [user?.uid]);
+
+  async function getResumeForExport() {
+    if (!linkedResume?.content) return null;
+    if (!selectedApp?.resume_version_id || selectedApp.resume_version_id !== linkedResume.id) {
+      throw new Error('The linked resume changed. Reopen this application before exporting.');
+    }
+    const app = selectedApp;
+    const owner = user?.uid || '';
+    const linkedId = linkedResume.id;
+    const isSelected = () => mountedRef.current && useStore.getState().user?.uid === owner
+      && selectedActionRef.current === app.id && selectedResumeLinkRef.current === linkedId
+      && linkedResumeIdRef.current === linkedId;
+    if (selectedApp.source !== 'apply_pipeline' && selectedApp.source !== 'agent_queue') return { resume: linkedResume.content, isCurrent: isSelected, signal: undefined as AbortSignal | undefined };
+    const expectedRevision = app.source === 'apply_pipeline'
+      ? packetReviewRevisionRef.current.get(`${owner}:${app.id}`) || null
+      : app.source_meta?.review_revision as string | undefined;
+    const isCurrent = () => isSelected() && (app.source !== 'apply_pipeline'
+      || packetReviewRevisionRef.current.get(`${owner}:${app.id}`) === expectedRevision);
+    exportAbortRef.current?.abort();
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
+    const result = await loadApprovedApplicationPacketExport({
+      ownerId: owner,
+      application: app,
+      linkedResume,
+      displayedReviewRevision: expectedRevision,
+      signal: controller.signal,
+      authFetch,
+      isCurrent,
+    });
+    return { resume: result.resume, isCurrent, signal: controller.signal };
   }
 
   async function handleDownloadPDF() {
@@ -640,16 +700,22 @@ function ApplicationsWorkspace() {
       showToast('This linked resume uses a Standard template. Upgrade or choose a free template in Resume Studio.', 'workspace_premium');
       return;
     }
+    const capturedOwner = user?.uid || '';
+    const capturedApplicationId = selectedApp.id;
+    const isStillSelected = () => mountedRef.current && useStore.getState().user?.uid === capturedOwner && selectedActionRef.current === capturedApplicationId;
     setDownloading(true);
     try {
+      const exported = await getResumeForExport();
+      if (!exported || !exported.isCurrent() || exported.signal?.aborted) throw new Error('The selected application changed. Reopen it before exporting.');
+      const exportResume = exported.resume;
       const colors = getPersistedResumePaletteColors(linkedResume);
-      const design = getPersistedResumeDesign(linkedResume, normalizeResume(linkedResume.content));
-      await downloadResumePDF(linkedResume.content as any, colors, undefined, templateId, undefined, design?.pageSize || 'A4', design || undefined);
-      showToast('PDF downloaded', 'check_circle');
+      const design = getPersistedResumeDesign(linkedResume, normalizeResume(exportResume));
+      await downloadResumePDF(exportResume as any, colors, undefined, templateId, () => exported.isCurrent() && !exported.signal?.aborted, design?.pageSize || 'A4', design || undefined);
+      if (exported.isCurrent() && !exported.signal?.aborted) showToast('PDF downloaded', 'check_circle');
     } catch (error: unknown) {
-      showToast(`PDF failed: ${error instanceof Error ? error.message : 'Download failed'}`, 'cancel');
+      if (isStillSelected()) showToast(`PDF failed: ${error instanceof Error ? error.message : 'Download failed'}`, 'cancel');
     } finally {
-      setDownloading(false);
+      if (isStillSelected()) setDownloading(false);
     }
   }
 
@@ -659,7 +725,6 @@ function ApplicationsWorkspace() {
       showToast('The linked resume changed. Reopen this application before exporting.', 'cancel');
       return;
     }
-    const resume = linkedResume.content as any;
     const templateId = getPersistedResumeTemplateId(linkedResume);
     if (tierLoading) {
       showToast('Your plan access is still loading. Try again in a moment.', 'hourglass_top');
@@ -669,12 +734,19 @@ function ApplicationsWorkspace() {
       showToast('This linked resume uses a Standard template. Upgrade or choose a free template in Resume Studio.', 'workspace_premium');
       return;
     }
+    const capturedOwner = user?.uid || '';
+    const capturedApplicationId = selectedApp.id;
+    const isStillSelected = () => mountedRef.current && useStore.getState().user?.uid === capturedOwner && selectedActionRef.current === capturedApplicationId;
     setDownloading(true);
     try {
+      const exported = await getResumeForExport();
+      if (!exported || !exported.isCurrent() || exported.signal?.aborted) throw new Error('The selected application changed. Reopen it before exporting.');
+      const resume = exported.resume as any;
       const design = getPersistedResumeDesign(linkedResume, normalizeResume(resume));
       if (design) {
         const { buildResumeDesignDocxBlob } = await import('@/lib/resume-design/docx');
         const blob = await buildResumeDesignDocxBlob(normalizeResume(resume), design);
+        if (!exported.isCurrent() || exported.signal?.aborted) { if (isStillSelected()) setDownloading(false); return; }
         saveAs(blob, `${resume.name?.replace(/\s+/g, '_') || 'resume'}.docx`);
         showToast('Editable Word companion downloaded', 'check_circle');
         setDownloading(false);
@@ -687,6 +759,7 @@ function ApplicationsWorkspace() {
           templateId,
           getPersistedResumePaletteColors(linkedResume),
         );
+        if (!exported.isCurrent() || exported.signal?.aborted) { if (isStillSelected()) setDownloading(false); return; }
         saveAs(blob, `${resume.name?.replace(/\s+/g, '_') || 'resume'}.docx`);
         showToast('Linear Word companion downloaded', 'check_circle');
         setDownloading(false);
@@ -698,7 +771,7 @@ function ApplicationsWorkspace() {
           children: [
             new Paragraph({ children: [new TextRun({ text: resume.name || '', bold: true, size: 48 })] }),
             new Paragraph({ children: [new TextRun({ text: resume.title || '', size: 28, color: '666666' })] }),
-            new Paragraph({ children: [new TextRun({ text: [resume.email, resume.phone, resume.location].filter(Boolean).join(' | '), size: 20 })] }),
+            new Paragraph({ children: [new TextRun({ text: [resume.email, resume.phone, resume.location, resume.linkedin, resume.website, ...(resume.links || [])].filter(Boolean).join(' | '), size: 20 })] }),
             new Paragraph({ text: '' }),
             ...(resume.summary ? [
               new Paragraph({ text: 'PROFESSIONAL SUMMARY', heading: HeadingLevel.HEADING_2 }),
@@ -715,23 +788,34 @@ function ApplicationsWorkspace() {
             ] : []),
             ...(resume.education?.length ? [
               new Paragraph({ text: 'EDUCATION', heading: HeadingLevel.HEADING_2 }),
-              ...resume.education.map((edu: any) => new Paragraph({ text: `${edu.degree} - ${edu.institution} (${edu.year})` })),
+              ...resume.education.map((edu: any) => new Paragraph({ text: [edu.degree, edu.institution, edu.year, edu.details].filter(Boolean).join(' - ') })),
               new Paragraph({ text: '' }),
             ] : []),
             ...(resume.skills?.length ? [
               new Paragraph({ text: 'SKILLS', heading: HeadingLevel.HEADING_2 }),
               ...resume.skills.map((cat: any) => new Paragraph({ text: `${cat.category}: ${cat.items.join(', ')}` })),
             ] : []),
+            ...(resume.certifications?.length ? [
+              new Paragraph({ text: 'CERTIFICATIONS', heading: HeadingLevel.HEADING_2 }),
+              ...resume.certifications.map((certification: string) => new Paragraph({ text: `- ${certification}`, indent: { left: 360 } })),
+              new Paragraph({ text: '' }),
+            ] : []),
+            ...(resume.additionalSections || []).flatMap((section: { title?: string; items?: string[] }) => [
+              new Paragraph({ text: section.title || 'ADDITIONAL INFORMATION', heading: HeadingLevel.HEADING_2 }),
+              ...(section.items || []).map((item: string) => new Paragraph({ text: `- ${item}`, indent: { left: 360 } })),
+              new Paragraph({ text: '' }),
+            ]),
           ],
         }],
       });
       const blob = await Packer.toBlob(doc);
+      if (!exported.isCurrent() || exported.signal?.aborted) { if (isStillSelected()) setDownloading(false); return; }
       saveAs(blob, `${resume.name?.replace(/\s+/g, '_') || 'resume'}.docx`);
       showToast('Word document downloaded', 'check_circle');
-    } catch {
-      showToast('Download failed', 'cancel');
+    } catch (error: unknown) {
+      if (isStillSelected()) showToast(error instanceof Error ? error.message : 'Download failed', 'cancel');
     }
-    setDownloading(false);
+    if (isStillSelected()) setDownloading(false);
   }
 
   async function handleFollowUp(appId: string) {
@@ -990,14 +1074,19 @@ function ApplicationsWorkspace() {
   // labelled absence, never a fabricated "0%" or "0".
   const hasAppliedApps = applications.some(app => app.status !== 'not_applied');
 
-  useToolGuidance(buildToolStory({
-    toolId: 'applications', title: 'Applications', contextKey: JSON.stringify([selectedApp?.id || 'tracker', viewMode]), modalSurface: selectedApp ? 'application-detail' : undefined,
-    purpose: 'Track real applications, inspect prepared documents and record only the events that happened.',
-    pending: isLoading || followUpLoading || outcomeLoading, hasResult: Boolean(selectedApp), failed: Boolean(loadError || drawerActionError),
-    work: [storyStep('capture', 'Track a real application', 'Open Track an application to record an external submission or an unsent tracker. Generation is not required.', 'applications-capture'), storyStep('find', 'Find your record', 'Search or filter your real application history. Choose a record yourself to open its details.', 'applications-search'), storyStep('records', 'Open the application you need', 'The current view shows loaded records, not invented examples. Opening a record does not change its status.', 'applications-records')],
-    result: [...(selectedApp?.status === 'offer' ? [storyStep('offer', 'Review the actual offer', 'Enter genuine compensation and deadlines, review any brief against those inputs, and record the decision only after it occurs. Saving an offer or copying counter language never sends it.', 'application-offer')] : []), storyStep('review', 'Inspect this record', 'Check the role, status, linked source, notes and real timeline. Prepared and submitted remain separate.', 'application-detail'), storyStep('documents', 'Review prepared documents when present', 'Compare the source and drafts. Explicit approval applies to a document revision and does not submit it.', 'application-document-review', 'This application has no inline prepared-document review. Queue packets link to their own review.'), storyStep('followup', 'Choose the next action', 'Draft a follow-up only when appropriate; a draft is not an email sent. Record status or outcome only after the event occurred.', 'application-followup', 'Follow-up drafting is available only for eligible application statuses. Other record actions remain in the drawer.')],
-    recovery: [storyStep('retry', 'Review the existing error', 'A failed load or action does not confirm a saved change. Keep your current work and use the tool recovery control when ready.', 'applications-records', 'Close the details yourself to reach the tracker load message if it is behind the drawer.')],
-  }));
+  const applicationsStory = applicationsJourneyGuidance({
+    ownerId: user?.uid || 'guest', viewMode, pending: isLoading || followUpLoading || outcomeLoading,
+    failed: Boolean(loadError || drawerActionError),
+    record: selectedApp ? { id: selectedApp.id, status: selectedApp.status, source: selectedApp.source, queueId: selectedApp.source_meta?.queue_id } : null,
+    review: selectedApp && packetReviewState?.applicationId === selectedApp.id
+      ? { revision: packetReviewState.revision, status: packetReviewState.status }
+      : null,
+  });
+  if (selectedApp?.status === 'offer') {
+    const resultChapter = applicationsStory.chapters.find(chapter => chapter.id === 'result');
+    resultChapter?.steps.unshift(storyStep('offer', 'Review the actual offer', 'Enter genuine compensation and deadlines, review any brief against those inputs, and record the decision only after it occurs. Saving an offer or copying counter language never sends it.', 'application-offer'));
+  }
+  useToolGuidance(applicationsStory);
 
   const hasFilters = Boolean(searchQuery.trim()) || statusFilter !== 'all' || outcomeFilter !== 'all';
 
@@ -1210,6 +1299,8 @@ function ApplicationsWorkspace() {
         onDelete={handleDelete}
         onDownloadPDF={handleDownloadPDF}
         onDownloadWord={handleDownloadWord}
+        packetExportApproved={Boolean(selectedApp && ((packetReviewState?.applicationId === selectedApp.id && packetReviewState.status === 'approved') || (selectedApp.source === 'agent_queue' && selectedApp.source_meta?.packet_status === 'approved')))}
+        onPacketReviewSnapshot={onPacketReviewSnapshot}
         onOutcome={handleOutcome}
         onOfferInputChange={() => { offerRevisionRef.current += 1; }}
         onSaveOffer={handleSaveOffer}
@@ -2150,6 +2241,8 @@ function ApplicationDrawer({
   onDelete,
   onDownloadPDF,
   onDownloadWord,
+  packetExportApproved,
+  onPacketReviewSnapshot,
   onOutcome,
   onOfferInputChange,
   onSaveOffer,
@@ -2186,6 +2279,8 @@ function ApplicationDrawer({
   onDelete: (id: string) => void;
   onDownloadPDF: () => void;
   onDownloadWord: () => void;
+  packetExportApproved: boolean;
+  onPacketReviewSnapshot: (applicationId: string, snapshot: { revision: string; status: string } | null) => void;
   onOutcome: (outcome: NonNullable<JobApplication['outcome_response']>) => Promise<void>;
   onOfferInputChange: () => void;
   onSaveOffer: (app: JobApplication, offerDetails: OfferDetails, status?: JobApplication['negotiation_status']) => Promise<JobApplication | null>;
@@ -2286,7 +2381,7 @@ function ApplicationDrawer({
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
               <div className="space-y-4">
-                <ApplicationPacketReview key={app.id} app={app} />
+                <ApplicationPacketReview key={app.id} app={app} onSnapshot={onPacketReviewSnapshot} />
                 <ApplicationDossier app={app} linkedResume={linkedResume} skillProgress={skillProgress} skillSummary={skillSummary} />
                 <SkillBridgePanel app={app} summary={skillSummary} />
 
@@ -2344,7 +2439,7 @@ function ApplicationDrawer({
                   {prepLoading && <AssistantThinkingTile compact variant="agent" title="Taco is preparing" description="Building interview questions and notes." className="mt-3" />}
                 </DrawerSection>
 
-                <DrawerSection title="Linked resume" icon="description">
+                <DrawerSection id="application-action-export" title="Linked resume" icon="description">
                   {resumeLoading ? (
                     <AssistantThinkingTile compact variant="resume" title="Loading resume" description="Finding the version tied to this application." />
                   ) : linkedResume ? (
@@ -2359,9 +2454,10 @@ function ApplicationDrawer({
                         </div>
                         <button type="button" onClick={() => setShowResumePreview(!showResumePreview)} className="text-xs font-semibold text-[var(--accent)]">{showResumePreview ? 'Hide' : 'Preview'}</button>
                       </div>
+                      {(app.source === 'apply_pipeline' || app.source === 'agent_queue') && !packetExportApproved && <p className="text-sm text-[var(--text-secondary)]">Review and approve this exact packet before exporting. Downloads check the current approval again.</p>}
                       <div className="flex gap-2">
-                        <button type="button" onClick={onDownloadPDF} disabled={downloading} className="flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50">Download PDF</button>
-                        <button type="button" onClick={onDownloadWord} disabled={downloading} className="flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50">Download Word</button>
+                        <button type="button" onClick={onDownloadPDF} disabled={downloading || ((app.source === 'apply_pipeline' || app.source === 'agent_queue') && !packetExportApproved)} className="flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50">Download PDF</button>
+                        <button type="button" onClick={onDownloadWord} disabled={downloading || ((app.source === 'apply_pipeline' || app.source === 'agent_queue') && !packetExportApproved)} className="flex-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50">Download Word</button>
                       </div>
                       <AnimatePresence>
                         {showResumePreview && (
@@ -3025,7 +3121,7 @@ interface ApplicationReviewSnapshot {
   keyword_gaps?: string[];
 }
 
-function ApplicationPacketReview({ app }: { app: JobApplication }) {
+function ApplicationPacketReview({ app, onSnapshot }: { app: JobApplication; onSnapshot: (applicationId: string, snapshot: { revision: string; status: string } | null) => void }) {
   const user = useStore(state => state.user);
   const [snapshot, setSnapshot] = useState<ApplicationReviewSnapshot | null>(null);
   const [error, setError] = useState('');
@@ -3037,17 +3133,25 @@ function ApplicationPacketReview({ app }: { app: JobApplication }) {
 
   useEffect(() => {
     if (!generated || !user?.uid) return;
+    onSnapshot(app.id, null);
     const controller = new AbortController();
     operationRef.current = controller;
     authFetch(`/api/agent/packet-review?kind=application&id=${encodeURIComponent(app.id)}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.error || 'The current packet could not be loaded.');
-        if (!controller.signal.aborted) { setSnapshot(result.data[0]); setError(''); }
+        if (!controller.signal.aborted) {
+          const loaded = result.data[0] as ApplicationReviewSnapshot;
+          if (loaded?.id !== app.id || loaded?.user_id !== user.uid || !/^[a-f0-9]{64}$/.test(loaded?.review_revision || '')) {
+            throw new Error('The current packet review could not be confirmed. Reload the application and try again.');
+          }
+          setSnapshot(loaded); setError('');
+          onSnapshot(app.id, { revision: loaded.review_revision, status: loaded.review_status });
+        }
       })
-      .catch(failure => { if (!controller.signal.aborted) setError(failure.message || 'The current packet could not be loaded.'); });
-    return () => controller.abort();
-  }, [app.id, generated, reload, user?.uid]);
+      .catch(failure => { if (!controller.signal.aborted) { setSnapshot(null); onSnapshot(app.id, null); setError(failure.message || 'The current packet could not be loaded.'); } });
+    return () => { controller.abort(); onSnapshot(app.id, null); };
+  }, [app.id, generated, reload, user?.uid, onSnapshot]);
 
   async function approve() {
     if (!visibleSnapshot?.review_ready || !operationRef.current || operationRef.current.signal.aborted) return;
@@ -3061,38 +3165,39 @@ function ApplicationPacketReview({ app }: { app: JobApplication }) {
       });
       const result = await response.json();
       if (controller.signal.aborted) return;
-      if (!response.ok || !result.success) {
-        setSnapshot(null);
+      if (!response.ok || !result.success || result.revision !== visibleSnapshot.review_revision) {
+        setSnapshot(null); onSnapshot(app.id, null);
         throw new Error(result.error || 'The review could not be saved.');
       }
-      setSnapshot(previous => previous ? { ...previous, review_status: 'approved' } : null);
+      setSnapshot({ ...visibleSnapshot, review_status: 'approved' });
+      onSnapshot(app.id, { revision: visibleSnapshot.review_revision, status: 'approved' });
     } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'The review could not be saved.');
+      if (!controller.signal.aborted) { setSnapshot(null); onSnapshot(app.id, null); setError(failure instanceof Error ? failure.message : 'The review could not be saved.'); }
     } finally {
       if (!controller.signal.aborted) setBusy(false);
     }
   }
 
   if (app.source === 'agent_queue' && app.source_meta?.queue_id) return (
-    <DrawerSection title="Packet review" icon="fact_check">
+    <DrawerSection title="Packet review" icon="fact_check"><div data-guide="application-document-review">
       <Link href={`/suite/agent/queue?packet=${encodeURIComponent(app.source_meta.queue_id)}`} className="font-semibold text-[var(--accent)]">Open the linked packet and its review</Link>
       <p className="mt-2 text-sm text-[var(--text-secondary)]">The tracker records your application separately from the packet review.</p>
-    </DrawerSection>
+    </div></DrawerSection>
   );
   if (!generated) return null;
   return (
-    <DrawerSection title="Review prepared documents" icon="fact_check"><div data-guide="application-document-review">
+    <DrawerSection id="application-action-review" title="Review prepared documents" icon="fact_check"><div data-guide="application-document-review">
       <p className="text-sm leading-6 text-[var(--text-secondary)]">Compare the saved source with the prepared resume and cover letter. Approval applies to these drafts and does not submit an application.</p>
       {error && <p className="mt-3 text-sm text-[var(--danger)]" role="alert">{error}</p>}
       {!visibleSnapshot && !error && <p className="mt-3 text-sm" role="status">Loading the current documents…</p>}
       {visibleSnapshot && (
         <div className="mt-3 space-y-3">
           {visibleSnapshot.review_error && <p className="text-sm text-[var(--warning)]">{visibleSnapshot.review_error}</p>}
-          <details className="border border-[var(--border-subtle)] p-3">
+          <details id="application-review-source" open className="border border-[var(--border-subtle)] p-3">
             <summary className="cursor-pointer font-semibold">Source resume</summary>
                 {visibleSnapshot.review_source ? <PacketResumeDocument resume={visibleSnapshot.review_source} /> : <p className="mt-2 text-sm">The source is no longer available.</p>}
           </details>
-          <details open className="border border-[var(--border-subtle)] p-3">
+          <details id="application-review-compare" open className="border border-[var(--border-subtle)] p-3">
             <summary className="cursor-pointer font-semibold">Prepared resume</summary>
                 {visibleSnapshot.review_resume ? <PacketResumeDocument resume={visibleSnapshot.review_resume} /> : <p className="mt-2 text-sm">The prepared resume is not available.</p>}
           </details>
@@ -3101,12 +3206,16 @@ function ApplicationPacketReview({ app }: { app: JobApplication }) {
             <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{visibleSnapshot.cover_letter || 'The cover letter is not available.'}</p>
           </details>
           {Boolean(visibleSnapshot.keyword_gaps?.length) && <p className="text-sm text-[var(--text-secondary)]">Terms to check against your experience: {visibleSnapshot.keyword_gaps!.join(', ')}. These are suggestions to review.</p>}
-          {visibleSnapshot.review_status === 'approved'
-            ? <p className="border border-[var(--theme-border)] bg-[var(--bg-elevated)] p-3 font-semibold" role="status">These drafts are approved for use.</p>
-            : <button type="button" onClick={approve} disabled={busy || !visibleSnapshot.review_ready} className="min-h-11 border border-[var(--theme-border)] bg-[var(--accent)] px-4 py-2 font-semibold text-[var(--text-primary)] disabled:opacity-50">{busy ? 'Saving review…' : 'Approve these drafts for use'}</button>}
+          <div id="application-review-approve">
+            {visibleSnapshot.review_status === 'approved'
+              ? <p className="border border-[var(--theme-border)] bg-[var(--bg-elevated)] p-3 font-semibold" role="status">These drafts are approved for use.</p>
+              : <button type="button" onClick={approve} disabled={busy || !visibleSnapshot.review_ready} className="min-h-11 border border-[var(--theme-border)] bg-[var(--accent)] px-4 py-2 font-semibold text-[var(--text-primary)] disabled:opacity-50">{busy ? 'Saving review…' : 'Approve these drafts for use'}</button>}
+          </div>
+          <p id="application-review-export" className="text-sm text-[var(--text-secondary)]">After approval, export the approved version from Linked resume. Then submit yourself on the employer’s site and explicitly mark this application submitted only after you do.</p>
+          <p id="application-manual-submission" className="text-sm text-[var(--text-secondary)]">Approval does not submit anything. Export the approved documents, submit them yourself, then update the application status to Submitted.</p>
         </div>
       )}
-      <button type="button" onClick={() => { setSnapshot(null); setError(''); setBusy(false); setReload(value => value + 1); }} disabled={busy} className="mt-3 min-h-11 px-2 text-sm font-semibold text-[var(--accent)] disabled:opacity-50">Reload current documents</button></div>
+      <button type="button" onClick={() => { setSnapshot(null); onSnapshot(app.id, null); setError(''); setBusy(false); setReload(value => value + 1); }} disabled={busy} className="mt-3 min-h-11 px-2 text-sm font-semibold text-[var(--accent)] disabled:opacity-50">Reload current documents</button></div>
     </DrawerSection>
   );
 }

@@ -10,7 +10,7 @@ import { showToast } from '@/components/Toast';
 import { SuiteToolShell } from '@/components/suite/SuiteToolChrome';
 import PageHelp from '@/components/PageHelp';
 import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
-import { createResumeGuidance, resumeGuidanceContext } from '@/lib/resume-guidance';
+import { chooseCurrentResumeRoleFacts, createResumeGuidance, resumeGuidanceContext } from '@/lib/resume-guidance';
 import { downloadResumePDF } from '@/lib/pdf-templates';
 import { ResumeExportPreview } from '@/components/resume-studio/ResumeExportPreview';
 import { ResumeDesignPanel } from '@/components/resume-studio/ResumeDesignPanel';
@@ -55,6 +55,9 @@ import { PLAN_IDENTITIES } from '@/lib/plan-identity';
 // docx is imported dynamically in downloadWord() to avoid naming conflicts with @react-pdf/renderer
 import { saveAs } from 'file-saver';
 import { authFetch } from '@/lib/auth-fetch';
+import { auth } from '@/lib/firebase';
+import { confirmResumeSearchSource, prepareSavedResumeRoleSearchReview } from '@/lib/resume-search-source-client';
+import type { ConfirmSearchSourceRequest } from '@/lib/resume-search-source';
 import { analytics } from '@/lib/analytics';
 import FileUploadDropzone from '@/components/FileUploadDropzone';
 import SkillGapWarningModal from '@/components/modals/SkillGapWarningModal';
@@ -605,6 +608,8 @@ function ResumeWorkspace() {
   const draftOwnerRef = useRef<string | null | undefined>(undefined);
   const sourceParseRequestRef = useRef(0);
   const sourceParseMountedRef = useRef(true);
+  const sourceHandoffRevisionRef = useRef(0);
+  const roleSearchAbortRef = useRef<AbortController | null>(null);
   const sourceUploadOperationRef = useRef<{ id: string; cancel: () => void; revision: number; ownerId: string | null } | null>(null);
 
   // ===== STATE =====
@@ -643,7 +648,11 @@ function ResumeWorkspace() {
   const [intakeResume, setIntakeResume] = useState<ResumeData | null>(null);
   const [intakeWarnings, setIntakeWarnings] = useState<string[]>([]);
   const [intakeAcknowledged, setIntakeAcknowledged] = useState(false);
+  const [intakeRoleSearchOrigin, setIntakeRoleSearchOrigin] = useState<'user_upload' | 'user_authored'>('user_upload');
   const [alsoSaveExperience, setAlsoSaveExperience] = useState(false);
+  const [roleSearchPending, setRoleSearchPending] = useState(false);
+  const [roleSearchError, setRoleSearchError] = useState('');
+  const [roleSearchStatus, setRoleSearchStatus] = useState('');
   const [intakeError, setIntakeError] = useState('');
   const sourceAbortRef = useRef<AbortController | null>(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
@@ -809,6 +818,7 @@ function ResumeWorkspace() {
       sourceParseMountedRef.current = false;
       sourceUploadOperationRef.current?.cancel(); sourceUploadOperationRef.current = null;
       sourceAbortRef.current?.abort();
+      roleSearchAbortRef.current?.abort(); roleSearchAbortRef.current = null;
       morphAbortRef.current?.abort();
       sourceParseRequestRef.current += 1;
     };
@@ -969,6 +979,7 @@ function ResumeWorkspace() {
       if (draft.targetPageCount === 'auto' || draft.targetPageCount === 1 || draft.targetPageCount === 2) setTargetPageCount(draft.targetPageCount);
       setProofData(draft.proofData || null); setGuardrailReport(draft.guardrailReport || null);
       if (draft.intakeResume || (draft.showSourceConfirmation && draft.originalResume)) setIntakeResume(normalizeResume(draft.intakeResume || draft.originalResume) as ResumeData);
+      setIntakeRoleSearchOrigin(draft.sourceResumeMeta?.sourceType === 'library' ? 'user_authored' : 'user_upload');
       if (typeof draft.rawSourceText === 'string') setRawSourceText(draft.rawSourceText);
       if (typeof draft.intakeError === 'string') setIntakeError(draft.intakeError);
       if (typeof draft.sourcePasteText === 'string') setSourcePasteText(draft.sourcePasteText);
@@ -1368,7 +1379,7 @@ function ResumeWorkspace() {
       setTemplateBrowsing(view === 'templates'); setMode('choose');
     }
     if (requestedVersion) {
-      const version = versions.find(item => item.id === requestedVersion && item.metadata?.workspace?.kind !== 'experience');
+      const version = versions.find(item => item.id === requestedVersion && item.metadata?.workspace?.kind === 'resume');
       if (version) loadVersionToMorph(version);
       else setLibraryError('That resume could not be found in your account. Choose another version or retry.');
     }
@@ -1440,7 +1451,7 @@ function ResumeWorkspace() {
     try {
       const parsed = await Promise.race([parseResumeWithAI(text, controller.signal), new Promise<never>((_, reject) => { deadline = setTimeout(() => { reject(new Error('Reading your resume took too long. Retry, or continue with the extracted text.')); controller.abort(); }, 35_000); })]);
       if (!isCurrent()) return;
-      setIntakeResume(parsed.resume); setIntakeWarnings(parsed.warnings);
+      setIntakeResume(parsed.resume); setIntakeWarnings(parsed.warnings); setIntakeRoleSearchOrigin('user_upload');
       // Staging is local. Only confirmation publishes this exact corrected source.
       setShowSourceConfirmation(true); setShowImport(true);
       showToast('Check the extracted facts before confirming.', 'fact_check');
@@ -1454,6 +1465,10 @@ function ResumeWorkspace() {
   };
 
   const beginSourceUpload = () => {
+    sourceHandoffRevisionRef.current += 1;
+    roleSearchAbortRef.current?.abort(); roleSearchAbortRef.current = null;
+    setRoleSearchPending(false);
+    setRoleSearchError('');
     sourceUploadOperationRef.current?.cancel(); sourceUploadOperationRef.current = null;
     morphAbortRef.current?.abort(); morphRequestRef.current += 1;
     sourceAbortRef.current?.abort(); sourceParseRequestRef.current += 1;
@@ -1947,6 +1962,7 @@ function ResumeWorkspace() {
 
   const loadVersionToMorph = (version: ResumeVersion, goal: 'edit' | 'tailor' = 'edit') => {
     if (tierLoading) { showToast('Your plan access is still loading. Try again in a moment.', 'hourglass_top'); return; }
+    invalidateRoleSearchSource();
     sourceUploadOperationRef.current?.cancel(); sourceUploadOperationRef.current = null;
     sourceAbortRef.current?.abort(); sourceParseRequestRef.current += 1; morphRequestRef.current += 1;
     morphAbortRef.current?.abort();
@@ -2844,6 +2860,7 @@ function ResumeWorkspace() {
 
 
   const resetAll = () => {
+    invalidateRoleSearchSource();
     sourceUploadOperationRef.current?.cancel(); sourceUploadOperationRef.current = null;
     sourceParseRequestRef.current += 1; sourceAbortRef.current?.abort(); morphRequestRef.current += 1; morphAbortRef.current?.abort();
     setActiveGeneration(null); setSelectedAppliedVersionId(null); setPreviousGenerations([]);
@@ -2883,6 +2900,7 @@ function ResumeWorkspace() {
   };
 
   const clearDocumentContext = () => {
+    invalidateRoleSearchSource();
     sourceUploadOperationRef.current?.cancel(); sourceUploadOperationRef.current = null;
     sourceAbortRef.current?.abort(); sourceParseRequestRef.current += 1; morphRequestRef.current += 1;
     morphAbortRef.current?.abort(); setActiveGeneration(null); setSelectedAppliedVersionId(null); setPreviousGenerations([]);
@@ -2930,7 +2948,7 @@ function ResumeWorkspace() {
         experienceConfirmationRef.current = { key, confirmedAt };
       }
       const { confirmedAt } = experienceConfirmationRef.current;
-      const source: WorkspaceSourceSnapshot = { sourceVersionId: ownerId ? `handoff_${key}` : null, content: resume, contentHash, confirmedAt };
+      const source: WorkspaceSourceSnapshot = { sourceVersionId: ownerId ? `handoff_${key}` : null, content: resume, contentHash, confirmedAt, origin };
       if (ownerId) {
         const result = await saveResumeVersion(`${resume.name || 'My'} — experience`, resume as any, {}, 'technical', {
           savedFrom: 'experience_confirmed', resumeProvenance: { verified: true, origin },
@@ -2955,6 +2973,167 @@ function ResumeWorkspace() {
       return null;
     } finally { experienceSaveBusy.current = false; if (sourceParseMountedRef.current) setExperienceSaving(false); }
   };
+
+  const invalidateRoleSearchSource = () => {
+    sourceHandoffRevisionRef.current += 1;
+    roleSearchAbortRef.current?.abort();
+    roleSearchAbortRef.current = null;
+    setRoleSearchPending(false);
+    setRoleSearchError('');
+  };
+
+  const findRolesFromConfirmedFacts = async (
+    sourceInput: ResumeData | CanonicalResume | null,
+    origin: 'user_upload' | 'user_authored',
+    intake?: ConfirmSearchSourceRequest['intake'],
+  ) => {
+    if (!sourceInput || roleSearchPending) return;
+    if (intakeWarnings.length > 0 && intake && !intakeAcknowledged) return;
+    const ownerId = user?.uid;
+    if (!ownerId || auth.currentUser?.uid !== ownerId) {
+      setRoleSearchStatus('Sign in to save this confirmed résumé for role search. Your import and review stay in this tab.');
+      setShowDownloadAuth('signup');
+      return;
+    }
+
+    const revision = sourceHandoffRevisionRef.current;
+    const requestNumber = sourceParseRequestRef.current;
+    const controller = new AbortController();
+    roleSearchAbortRef.current?.abort();
+    roleSearchAbortRef.current = controller;
+    const isCurrent = () => sourceParseMountedRef.current && !controller.signal.aborted
+      && sourceHandoffRevisionRef.current === revision
+      && sourceParseRequestRef.current === requestNumber
+      && user?.uid === ownerId
+      && useStore.getState().user?.uid === ownerId
+      && auth.currentUser?.uid === ownerId;
+
+    let confirmedContent: CanonicalResume;
+    let request: ConfirmSearchSourceRequest;
+    try {
+      // JSON round-tripping strips undefined values and captures one immutable
+      // snapshot for both the request and its stable retry identity.
+      confirmedContent = JSON.parse(JSON.stringify(normalizeResume(sourceInput))) as CanonicalResume;
+      const confirmedIntake = intake ? JSON.parse(JSON.stringify(intake)) : undefined;
+      request = {
+        requestId: '', // The client assigns once and persists this before the first network attempt.
+        confirmedContent,
+        origin,
+        ...(confirmedIntake && Object.keys(confirmedIntake).length ? { intake: confirmedIntake } : {}),
+      };
+    } catch {
+      setRoleSearchError('This résumé could not be prepared for source verification. Review the imported facts and retry.');
+      return;
+    }
+
+    setRoleSearchPending(true);
+    setRoleSearchError('');
+    setRoleSearchStatus('Saving and verifying this confirmed résumé…');
+    try {
+      const { receipt } = await confirmResumeSearchSource({ ownerId, request, signal: controller.signal });
+      if (!isCurrent()) return;
+      setRoleSearchStatus('Résumé source saved and verified. Opening role search…');
+      router.push(`/suite/job-search?source=${encodeURIComponent(receipt.sourceId)}`);
+    } catch (error) {
+      if (!isCurrent()) return;
+      setRoleSearchError(error instanceof Error ? error.message : 'The résumé source could not be verified. Your imported content is still here; retry.');
+      setRoleSearchStatus('');
+    } finally {
+      if (sourceHandoffRevisionRef.current === revision && roleSearchAbortRef.current === controller) {
+        roleSearchAbortRef.current = null;
+        setRoleSearchPending(false);
+      }
+    }
+  };
+
+  const findRolesFromImportedResume = () => {
+    if (!intakeResume || (intakeWarnings.length > 0 && !intakeAcknowledged)) return;
+    const intake: NonNullable<ConfirmSearchSourceRequest['intake']> = {};
+    if (sourceResumeMeta.fileName) intake.fileName = sourceResumeMeta.fileName.slice(0, 1000);
+    if (sourceResumeMeta.sourceType) intake.sourceType = sourceResumeMeta.sourceType.slice(0, 1000);
+    if (rawSourceText.length > 0 && rawSourceText.length <= 100_000) intake.rawText = rawSourceText;
+    if (intakeWarnings.length) { intake.warnings = [...intakeWarnings]; intake.acknowledgedWarnings = intakeAcknowledged; }
+    void findRolesFromConfirmedFacts(intakeResume, intakeRoleSearchOrigin, Object.keys(intake).length ? intake : undefined);
+  };
+
+  const currentRoleSearchFacts = (): { content: CanonicalResume; origin: 'user_upload' | 'user_authored' } | null => {
+    const selected = chooseCurrentResumeRoleFacts({ documentOrigin, documentManualEdits, buildResume, workspaceSource, originalResume });
+    if (!selected || !hasResumeData(selected.content as ResumeData)) return null;
+    return { content: normalizeResume(selected.content) as CanonicalResume, origin: selected.origin };
+  };
+
+  const findRolesFromCurrentResume = async () => {
+    const selected = chooseCurrentResumeRoleFacts({ documentOrigin, documentManualEdits, buildResume, workspaceSource, originalResume });
+    const source = currentRoleSearchFacts();
+    if (!source) {
+      setRoleSearchError('Open or enter a factual résumé first. Generated editor output cannot be used as a role-search source.');
+      return;
+    }
+    if (documentOrigin === 'tailored') {
+      const revision = sourceHandoffRevisionRef.current;
+      const request = sourceParseRequestRef.current;
+      const ownerId = user?.uid || null;
+      const isCurrent = () => sourceParseMountedRef.current && revision === sourceHandoffRevisionRef.current
+        && request === sourceParseRequestRef.current && (useStore.getState().user?.uid || null) === ownerId
+        && (auth.currentUser?.uid || null) === ownerId;
+      try {
+        const currentHash = await stableWorkspaceContentHash(source.content);
+        if (!isCurrent()) return;
+        if (!selected?.expectedHash || currentHash !== selected.expectedHash) {
+          setRoleSearchError('The retained original résumé could not be verified. Return to Source and reopen the factual résumé before using Find roles.');
+          return;
+        }
+      } catch {
+        if (isCurrent()) setRoleSearchError('The retained original résumé could not be verified. Return to Source and reopen the factual résumé before using Find roles.');
+        return;
+      }
+    }
+    void findRolesFromConfirmedFacts(source.content, source.origin);
+  };
+
+  const findRolesFromSavedResume = async (version: ResumeVersion) => {
+    invalidateRoleSearchSource();
+    const revision = sourceHandoffRevisionRef.current;
+    const request = sourceParseRequestRef.current;
+    const ownerId = user?.uid || null;
+    try {
+      const staged = await prepareSavedResumeRoleSearchReview(version as unknown as Record<string, any>);
+      if (!sourceParseMountedRef.current || revision !== sourceHandoffRevisionRef.current
+        || !isCurrentSourceParse(request, sourceParseRequestRef.current, ownerId, useStore.getState().user?.uid || null, sourceParseMountedRef.current)) return;
+      if (staged.status === 'blocked') {
+        setRoleSearchError(staged.reason);
+        setRoleSearchStatus('');
+        return;
+      }
+      setIntakeResume(staged.content as ResumeData);
+      setIntakeRoleSearchOrigin(staged.origin);
+      const warnings = staged.warning ? [staged.warning] : [];
+      setIntakeWarnings(warnings);
+      setIntakeAcknowledged(false);
+      setRawSourceText('');
+      setSourceResumeMeta({ fileName: version.version_name, sourceType: 'library' });
+      setRoleSearchError('');
+      setRoleSearchStatus('Review this saved résumé before confirming any facts for role search.');
+      setShowSourceConfirmation(true);
+      setShowImport(true);
+      setWorkspaceDestination('resumes');
+      setMode('choose');
+      setStep('upload');
+      setActiveStart('upload');
+    } catch {
+      if (sourceParseMountedRef.current && revision === sourceHandoffRevisionRef.current
+        && useStore.getState().user?.uid === ownerId) {
+        setRoleSearchError('This saved résumé could not be checked. Return to Source and open the original résumé.');
+        setRoleSearchStatus('');
+      }
+    }
+  };
+  const currentRoleSearchSource = currentRoleSearchFacts();
+  const currentRoleSearchAction = currentRoleSearchSource ? <div className="experience-actions" data-guide="resume-find-roles">
+    <button type="button" className="is-primary" disabled={roleSearchPending} onClick={findRolesFromCurrentResume}>{roleSearchPending ? 'Saving and verifying…' : documentOrigin === 'tailored' ? 'Use original confirmed résumé to find roles' : 'Confirm current résumé facts for role search'}</button>
+    {roleSearchError && <div className="experience-notice" role="alert"><p>{roleSearchError}</p><button type="button" onClick={() => navigateSection('source')}>Return to Source</button></div>}
+    {roleSearchStatus && <p className="experience-status" role="status">{roleSearchStatus}</p>}
+  </div> : null;
 
   const confirmImportedSource = async (nextStep: 'content' | 'design' | 'job' = 'content') => {
     if (!intakeResume || (intakeWarnings.length > 0 && !intakeAcknowledged)) return;
@@ -2987,13 +3166,13 @@ function ResumeWorkspace() {
       if (!isCurrentSourceParse(request, sourceParseRequestRef.current, owner, useStore.getState().user?.uid || null, sourceParseMountedRef.current)) return;
       if (originalResume && hasResumeData(originalResume)) {
         invalidateTailoredResult(); setOriginalResume(value as ResumeData); setBuildResume(value as ResumeData);
-        setWorkspaceSource({ sourceVersionId: null, content: value, contentHash, confirmedAt: new Date().toISOString(), rawText: rawSourceText });
+        setWorkspaceSource({ sourceVersionId: null, content: value, contentHash, confirmedAt: new Date().toISOString(), rawText: rawSourceText, origin: 'user_upload' });
         setShowSourceConfirmation(false); setShowImport(false);
         if (nextStep === 'design') { setPreviousGenerations(history => retainPreviousGeneration(history, currentGenerationSnapshot())); setActiveGeneration(null); setMorphedResume(value as ResumeData); setDocumentOrigin('user_upload'); setDocumentManualEdits(false); setMatchScore(null); setProofData(null); setGuardrailReport(null); setResumeReview({ ...DEFAULT_RESUME_REVIEW_STATE, decisions: {} }); navigateSection('design'); }
         else navigateSection(nextStep === 'job' ? 'target' : 'source');
         return;
       }
-      startDocument(value, { sourceVersionId: null, content: value, contentHash, confirmedAt: new Date().toISOString(), rawText: rawSourceText });
+      startDocument(value, { sourceVersionId: null, content: value, contentHash, confirmedAt: new Date().toISOString(), rawText: rawSourceText, origin: 'user_upload' });
       setDocumentOrigin('user_upload');
       if (nextStep === 'design') { setMorphedResume(value as ResumeData); setMode('morph'); setStep('template'); }
       if (nextStep === 'job') beginJobTailoring(value as ResumeData, value.name ? `${value.name} — general resume` : 'My resume');
@@ -3023,7 +3202,8 @@ function ResumeWorkspace() {
     if (documentManualEdits || documentOrigin !== 'tailored') {
       // Manual content becomes the next tailoring source. Keep its immutable
       // imported snapshot in workspaceSource rather than reverting these edits.
-      setOriginalResume(candidate); setDocumentOrigin('user_authored');
+      setOriginalResume(candidate);
+      if (documentOrigin !== 'tailored') setDocumentOrigin('user_authored');
       setResumeReview({ ...DEFAULT_RESUME_REVIEW_STATE, decisions: {} });
       setMatchScore(null); setProofData(null); setGuardrailReport(null);
     }
@@ -3111,7 +3291,10 @@ function ResumeWorkspace() {
     reviewing: mode === 'morph' && step === 'enhance',
     hasSource: hasResumeData(originalResume) && !showSourceConfirmation,
     hasJob: Boolean(jobDescription.trim()),
-    pending: isLoading || Boolean(processingStage) || experienceSaving,
+    pending: isLoading || Boolean(processingStage) || experienceSaving || roleSearchPending,
+    hasImportedSource: showSourceConfirmation && Boolean(intakeResume),
+    canFindRoles: showSourceConfirmation && Boolean(intakeResume) && (intakeWarnings.length === 0 || intakeAcknowledged),
+    roleSearchPending,
     sourceError: Boolean(intakeError),
     hasCandidate: hasResumeData(morphedResume),
     stale: candidateOutdated,
@@ -3150,17 +3333,21 @@ function ResumeWorkspace() {
   const generationHistory = previousGenerations.length ? <details className="resume-workflow-library"><summary>Previous AI versions ({previousGenerations.length})</summary><div className="experience-actions">{previousGenerations.map(item => <button type="button" key={item.id} onClick={() => restoreGeneration(item)}>{item.inputs.role || 'Resume'} · {item.effectivePercentage}% · {new Date(item.createdAt).toLocaleString()}</button>)}</div></details> : null;
   const workspaceNavigation = <details className="resume-workflow-library"><summary>My workspace</summary><YourExperienceNavigation current={mode === 'choose' ? workspaceDestination : 'resumes'} onNavigate={navigateWorkspace} onTemplates={browseTemplates} templatesActive={mode === 'choose' && templateBrowsing} /></details>;
   const importEditor = intakeResume ? <ResumeContentEditor key={`intake-${editorEpoch}`} value={intakeResume as CanonicalResume} context={workspaceDestination === 'experience' ? 'experience' : 'resume'} title="Edit your imported resume" sourceText={rawSourceText} warnings={intakeWarnings} disabled={experienceSaving}
-    onChange={next => { setIntakeResume(next as ResumeData); setIntakeAcknowledged(false); }} /> : null;
+    onChange={next => { invalidateRoleSearchSource(); setIntakeResume(next as ResumeData); setIntakeAcknowledged(false); }} /> : null;
   const sourceReview = showSourceConfirmation && intakeResume ? <section aria-label="Review imported resume" data-guide="resume-source-review">
     <ResumeSourceDiagnosis resume={intakeResume} rawText={rawSourceText || undefined} warnings={intakeWarnings} fileName={sourceResumeMeta.fileName} />
     <div className="resume-import-toolbar">
-      <p className="experience-eyebrow">Your import is ready to edit</p><h2>Check your imported resume</h2>
-      <p className="experience-status">Correct the content below and compare it with your original text. Then continue to Job Description with your confirmed resume.</p>
-      {intakeWarnings.length > 0 && <label className="experience-notice"><input type="checkbox" checked={intakeAcknowledged} onChange={event => setIntakeAcknowledged(event.target.checked)} /> I compared these differences with my source and corrected or confirmed the facts.</label>}
-      {workspaceDestination === 'resumes' && <label className="experience-status"><input type="checkbox" checked={alsoSaveExperience} onChange={event => setAlsoSaveExperience(event.target.checked)} /> Also save these details to my reusable career details</label>}
-      <div className="experience-actions"><button type="button" data-guide="resume-source-confirm" className="is-primary" disabled={experienceSaving || (intakeWarnings.length > 0 && !intakeAcknowledged)} onClick={() => void confirmImportedSource(workspaceDestination === 'experience' ? 'content' : 'job')}>{experienceSaving ? 'Confirming…' : workspaceDestination === 'experience' ? 'Confirm career details' : 'Continue to Job Description'}</button>
+      <p className="experience-eyebrow">{sourceResumeMeta.sourceType === 'library' ? 'Saved résumé review' : 'Your import is ready to edit'}</p><h2>{sourceResumeMeta.sourceType === 'library' ? 'Review saved résumé facts' : 'Check your imported resume'}</h2>
+      <p className="experience-status">{sourceResumeMeta.sourceType === 'library' ? 'Review the factual source selected from your saved résumé. Generated versions use only a verified retained original; older versions need explicit fact review.' : 'Correct the content below and compare it with your original text. You can confirm it for role search, or paste a job description to tailor it.'}</p>
+      {intakeWarnings.length > 0 && <label className="experience-notice"><input type="checkbox" checked={intakeAcknowledged} onChange={event => { invalidateRoleSearchSource(); setIntakeAcknowledged(event.target.checked); }} /> I compared these differences with my source and corrected or confirmed the facts.</label>}
+      {workspaceDestination === 'resumes' && <label className="experience-status"><input type="checkbox" checked={alsoSaveExperience} onChange={event => setAlsoSaveExperience(event.target.checked)} /> Also save these details to reusable career details when continuing in Resume Studio</label>}
+      <div className="experience-actions">
+        {workspaceDestination === 'resumes' && <button type="button" data-guide="resume-find-roles" className="is-primary" disabled={roleSearchPending || (intakeWarnings.length > 0 && !intakeAcknowledged)} onClick={() => void findRolesFromImportedResume()}>{roleSearchPending ? 'Saving and verifying…' : 'Use this résumé to find roles'}</button>}
+        <button type="button" data-guide="resume-source-confirm" className={workspaceDestination === 'experience' ? 'is-primary' : undefined} disabled={experienceSaving || (intakeWarnings.length > 0 && !intakeAcknowledged)} onClick={() => void confirmImportedSource(workspaceDestination === 'experience' ? 'content' : 'job')}>{experienceSaving ? 'Confirming…' : workspaceDestination === 'experience' ? 'Confirm career details' : 'Continue to Job Description'}</button>
         {workspaceDestination === 'resumes' && <button type="button" disabled={experienceSaving || (intakeWarnings.length > 0 && !intakeAcknowledged)} onClick={() => void confirmImportedSource('design')}>Use without AI tailoring</button>}
         <button type="button" disabled={experienceSaving} onClick={() => { beginSourceUpload(); setIntakeResume(null); setRawSourceText(''); setIntakeWarnings([]); setActiveStart('upload'); }}>Replace this import</button></div>
+      {roleSearchError && <div className="experience-notice" role="alert"><p>{roleSearchError}</p><button type="button" onClick={() => navigateSection('source')}>Return to Source</button></div>}
+      {roleSearchStatus && <p className="experience-status" role="status">{roleSearchStatus}</p>}
       {experienceStatus && <p className="experience-status" role="status">{experienceStatus}</p>}
     </div>
     {workspaceDestination === 'experience' ? importEditor : <ResumeDocumentWorkspace templateName={selectedTemplate.name} preview={<ResponsiveResumePreview resume={intakeResume} template={selectedTemplateWithPalette} design={currentDesign} />}>{importEditor}</ResumeDocumentWorkspace>}
@@ -3192,7 +3379,7 @@ function ResumeWorkspace() {
   // ===== RENDER: Experience and Resume destinations =====
   if (mode === 'choose') {
     const sourceVersions = versions.filter(version => version.metadata?.workspace?.kind === 'experience' && !version.metadata?.archived);
-    const documentVersions = versions.filter(version => version.metadata?.workspace?.kind !== 'experience');
+    const documentVersions = versions.filter(version => version.metadata?.workspace?.kind === 'resume');
     const latestDocument = documentVersions.filter(version => !version.metadata?.archived).sort((a, b) => (Date.parse(b.updated_at || b.created_at) || 0) - (Date.parse(a.updated_at || a.created_at) || 0))[0];
     const returnContent = resumeDraft || (latestDocument ? normalizeResume(latestDocument.content) as ResumeData : null);
     return <SuiteToolShell variant="editor" className="experience-workspace resume-studio-system-shell resume-guided-workflow">
@@ -3215,7 +3402,7 @@ function ResumeWorkspace() {
           {sourceVersions.length > 0 && <details className="experience-profile-history"><summary>Experience history · {sourceVersions.length} {sourceVersions.length === 1 ? 'revision' : 'revisions'}</summary>{sourceVersions.map(version => <button type="button" key={version.id} onClick={() => { setExperienceDraft(normalizeResume(version.content)); setExperienceVersionId(version.id); setExperienceDirty(false); setExperienceStatus('Viewing a confirmed experience revision. New edits will save as another revision.'); }}>{version.version_name} · {new Date(version.updated_at || version.created_at).toLocaleDateString()}</button>)}</details>}
         </section> : templateBrowsing ? <ResumeTemplateBrowser selectedTemplateId={selectedTemplate.id} hasProAccess={isPro} loadingAccess={tierLoading} onSelect={applyBrowsingTemplate} resume={resumeDraft ? normalizeResume(resumeDraft) : undefined} /> : <section className="resume-home-stack">
           {returnContent && <details className="resume-workflow-library"><summary>Continue a previous resume</summary><article className="resume-return-card" aria-label="Continue your resume">
-            <div><p className="experience-eyebrow">{resumeDraft ? 'Your current draft' : 'Your most recent resume'}</p><h2>{resumeDraft ? documentName : latestDocument?.version_name}</h2><p>{resumeDraft ? 'Your work is retained in this tab. Pick up where you left off.' : 'Saved to your account. Open it to edit, change the design or export.'}</p><div className="experience-actions"><button type="button" className="is-primary" onClick={() => { if (resumeDraft) { setMode(resumeReturn.mode); setStep(resumeReturn.step); } else if (latestDocument) loadVersionToMorph(latestDocument); }}>Continue editing</button><button type="button" onClick={() => { if (resumeDraft) tailorDocument(resumeDraft); else if (latestDocument) loadVersionToMorph(latestDocument, 'tailor'); }}>Tailor to a job</button><button type="button" onClick={browseTemplates}>Explore templates</button></div><p className="experience-status">Paste a job description, morph a separate copy, then review the changes.</p></div>
+            <div><p className="experience-eyebrow">{resumeDraft ? 'Your current draft' : 'Your most recent resume'}</p><h2>{resumeDraft ? documentName : latestDocument?.version_name}</h2><p>{resumeDraft ? 'Your work is retained in this tab. Pick up where you left off.' : 'Saved to your account. Open it to edit, change the design or export.'}</p><div className="experience-actions"><button type="button" className="is-primary" onClick={() => { if (resumeDraft) { setMode(resumeReturn.mode); setStep(resumeReturn.step); } else if (latestDocument) loadVersionToMorph(latestDocument); }}>Continue editing</button><button type="button" onClick={() => { if (resumeDraft) tailorDocument(resumeDraft); else if (latestDocument) loadVersionToMorph(latestDocument, 'tailor'); }}>Tailor to a job</button>{latestDocument && !resumeDraft && <button type="button" data-guide="resume-find-roles" onClick={() => void findRolesFromSavedResume(latestDocument)}>Review facts for Find roles</button>}<button type="button" onClick={browseTemplates}>Explore templates</button></div><p className="experience-status">Paste a job description, morph a separate copy, then review the changes.</p>{roleSearchError && <div className="experience-notice" role="alert"><p>{roleSearchError}</p><button type="button" onClick={() => navigateSection('source')}>Return to Source</button></div>}{roleSearchStatus && <p className="experience-status" role="status">{roleSearchStatus}</p>}</div>
             <div className="resume-return-card__thumbnail" aria-hidden="true"><div><ResumeTemplate resume={returnContent} template={resumeDraft ? selectedTemplateWithPalette : getTemplateWithPalette(resolveReplacementTemplate(getPersistedResumeTemplateId(latestDocument)), getPersistedResumePaletteId(latestDocument))} design={resumeDraft ? currentDesign : getPersistedResumeDesign(latestDocument, normalizeResume(latestDocument.content)) || undefined} /></div></div>
           </article></details>}
           <ResumeStartPanel onUpload={() => { beginSourceUpload(); setIsLoading(false); setShowImport(true); setActiveStart('upload'); }} onPaste={() => { beginSourceUpload(); setIsLoading(false); setShowImport(true); setActiveStart('paste'); }} onBlank={() => { setRawSourceText(''); setIntakeResume(null); setSourceResumeMeta({}); startDocument(); }} hasExperience={Boolean(sourceVersions.length || hasResumeData(experienceDraft))} onFromExperience={() => void createResumeFromCareerDetails()}>
@@ -3248,7 +3435,7 @@ function ResumeWorkspace() {
         backAction={<button type="button" className="resume-studio-header__secondary" onClick={() => navigateWorkspace('resumes')}>Back</button>}
         primaryAction={<button type="button" className="resume-studio-header__primary" disabled={!buildResume.additionalSections?.some(section => section.items.length) && !hasResumeData(buildResume)} onClick={continueSourceToTailor}>Continue to Job Description</button>}
         secondaryAction={<button type="button" className="resume-studio-header__secondary" onClick={step === 'upload' ? skipTailoring : designDocument}>Use without AI tailoring</button>} />
-      {generationNotice}{generationHistory}
+      {generationNotice}{generationHistory}{currentRoleSearchAction}
       <ResumeSourceDiagnosis resume={content} rawText={rawSourceText || undefined} fileName={sourceResumeMeta.fileName} warnings={intakeWarnings} />
       <ResumeDocumentWorkspace templateName={selectedTemplate.name} mobileView={documentViewSession.epoch === editorEpoch ? documentViewSession.value : 'edit'} onMobileViewChange={value => setDocumentViewSession({ epoch: editorEpoch, value })} preview={<ResponsiveResumePreview resume={content} template={selectedTemplateWithPalette} design={currentDesign} />}>
       {showDocumentChecks ? <section className="experience-checks"><h2>Review this document</h2><p className="experience-document-meta">These checks describe your content. They don’t verify credentials or predict hiring outcomes.</p><ul>
@@ -3257,7 +3444,7 @@ function ResumeWorkspace() {
         <li>{content.education.some(item => (item.degree || item.year) && !item.institution) ? 'An education entry is missing its institution. Add the name or remove the incomplete entry.' : 'No missing institution names in the education entries.'}</li>
         <li>{workspaceSource?.sourceVersionId ? 'Linked to your saved experience. Document edits do not change that record.' : workspaceSource ? 'Your reviewed import is retained with this resume.' : 'Original source is not linked. You can still edit this document; source comparison is unavailable.'}</li>
         <li>Check actual PDF pages in Export. Requested page length is a preference, not a guarantee.</li>
-      </ul><div className="experience-actions"><button type="button" onClick={() => setShowDocumentChecks(false)}>Back to content</button><button type="button" onClick={designDocument}>Design and export</button></div></section> : <ResumeContentEditor key={`document-${editorEpoch}`} value={content} session={documentEditorSession.epoch === editorEpoch ? documentEditorSession.value : emptyEditorSession} onSessionChange={action => setDocumentEditorSession(previous => ({ epoch: editorEpoch, value: typeof action === 'function' ? action(previous.epoch === editorEpoch ? previous.value : createResumeEditorSession()) : action }))} sourceText={rawSourceText || (workspaceSource ? resumeSnapshotToText(workspaceSource.content) : undefined)} onChange={next => { if (step !== 'upload' && documentOrigin === 'tailored' && !documentManualEdits && !getPreparedOutboundResume('editing')) return; setBuildResume(next as ResumeData); if (step === 'upload') { setOriginalResume(next as ResumeData); invalidateTailoredResult(); } else { if (activeGeneration) setPreviousGenerations(history => retainPreviousGeneration(history, currentGenerationSnapshot())); setActiveGeneration(null); setOriginalResume(next as ResumeData); setMorphedResume(next as ResumeData); setDocumentOrigin('user_authored'); setDocumentManualEdits(true); setResumeReview({ ...DEFAULT_RESUME_REVIEW_STATE, decisions: {} }); setMatchScore(null); setProofData(null); setGuardrailReport(null); } setSaveInlineStatus(null); setResumeCheckResult(null); }} />}
+      </ul><div className="experience-actions"><button type="button" onClick={() => setShowDocumentChecks(false)}>Back to content</button><button type="button" onClick={designDocument}>Design and export</button></div></section> : <ResumeContentEditor key={`document-${editorEpoch}`} value={content} session={documentEditorSession.epoch === editorEpoch ? documentEditorSession.value : emptyEditorSession} onSessionChange={action => setDocumentEditorSession(previous => ({ epoch: editorEpoch, value: typeof action === 'function' ? action(previous.epoch === editorEpoch ? previous.value : createResumeEditorSession()) : action }))} sourceText={rawSourceText || (workspaceSource ? resumeSnapshotToText(workspaceSource.content) : undefined)} onChange={next => { if (step !== 'upload' && documentOrigin === 'tailored' && !documentManualEdits && !getPreparedOutboundResume('editing')) return; invalidateRoleSearchSource(); setBuildResume(next as ResumeData); if (step === 'upload') { setOriginalResume(next as ResumeData); invalidateTailoredResult(); } else { if (activeGeneration) setPreviousGenerations(history => retainPreviousGeneration(history, currentGenerationSnapshot())); setActiveGeneration(null); setOriginalResume(next as ResumeData); setMorphedResume(next as ResumeData); if (documentOrigin !== 'tailored') setDocumentOrigin('user_authored'); setDocumentManualEdits(true); setResumeReview({ ...DEFAULT_RESUME_REVIEW_STATE, decisions: {} }); setMatchScore(null); setProofData(null); setGuardrailReport(null); } setSaveInlineStatus(null); setResumeCheckResult(null); }} />}
       </ResumeDocumentWorkspace>
       {showDownloadAuth && <AuthModal mode={showDownloadAuth} postAuthRedirect={null} onAuthSuccess={retainGuestDraftAfterSignIn} onClose={() => setShowDownloadAuth(null)} onSwitchMode={() => setShowDownloadAuth(showDownloadAuth === 'login' ? 'signup' : 'login')} />}
     </SuiteToolShell>;
@@ -3316,7 +3503,7 @@ function ResumeWorkspace() {
 
     if (ENABLE_RESUME_REVIEW_WORKBENCH && step === 'enhance') {
       return (
-        <div className="experience-workspace resume-guided-workflow" data-guide="resume-review">{workspaceNavigation}{generationNotice}{generationHistory}<div className="experience-actions"><button type="button" onClick={() => setStep('morph')}>AI strength and regenerate</button></div><ResumeReviewWorkbench
+        <div className="experience-workspace resume-guided-workflow" data-guide="resume-review">{workspaceNavigation}{generationNotice}{generationHistory}{currentRoleSearchAction}<div className="experience-actions"><button type="button" onClick={() => setStep('morph')}>AI strength and regenerate</button></div><ResumeReviewWorkbench
           sourceResume={appliedSource as ResumeReviewResume | null}
           candidateResume={morphedResume as ResumeReviewResume | null}
           reviewState={resumeReview}
@@ -3368,7 +3555,7 @@ function ResumeWorkspace() {
             ) : undefined}
           />
 
-          {generationNotice}{generationHistory}
+          {generationNotice}{generationHistory}{currentRoleSearchAction}
           {showSourceConfirmation && <aside className="experience-notice"><p>Your new import needs confirmation. You can browse any section while it is retained.</p><button type="button" onClick={() => navigateSection('source')}>Confirm imported source</button></aside>}
           {step === 'preview' && documentToolbar}
           {experienceUpdateNotice}

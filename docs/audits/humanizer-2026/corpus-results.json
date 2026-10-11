@@ -1,0 +1,1099 @@
+[
+  {
+    "id": "negation",
+    "originalText": "I did not lead the migration because my role focused on testing and documenting defects.",
+    "rewrittenText": "I led the migration because my role focused on testing and documenting defects.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 72,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 80,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I did not lead the migration because my role focused on testing and documenting defects.",
+          "score": 72,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I led the migration because my role focused on testing and documenting defects.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "13/15 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "72 → 74 (+2)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "percentage",
+    "originalText": "I reduced deployment failures by 12% through careful testing and clearer release instructions.",
+    "rewrittenText": "I reduced deployment failures by 92% through careful testing and clearer release instructions.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I reduced deployment failures by 12% through careful testing and clearer release instructions.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I reduced deployment failures by 92% through careful testing and clearer release instructions.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "13/13 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "technical-units",
+    "originalText": "I reduced request latency from 120 ms to 80 ms after fixing a database query.",
+    "rewrittenText": "I reduced request latency from 920 ms to 10 ms after fixing a database query.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I reduced request latency from 120 ms to 80 ms after fixing a database query.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I reduced request latency from 920 ms to 10 ms after fixing a database query.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "15/15 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "citation-quote",
+    "originalText": "The report states \"no causal effect was demonstrated\" after reviewing the trial data [1].",
+    "rewrittenText": "The report states \"a strong causal effect was demonstrated\" after reviewing the trial data [1].",
+    "protectedTerms": [
+      "[1]"
+    ],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "The report states \"no causal effect was demonstrated\" after reviewing the trial data [1].",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "The report states \"a strong causal effect was demonstrated\" after reviewing the trial data [1].",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "1 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "15/14 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "entity-role-swap",
+    "originalText": "I mentored Jane Smith while Alex Jones managed the release and reviewed every production change.",
+    "rewrittenText": "I mentored Alex Jones while Jane Smith managed the release and reviewed every production change.",
+    "protectedTerms": [
+      "Jane Smith",
+      "Alex Jones"
+    ],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I mentored Jane Smith while Alex Jones managed the release and reviewed every production change.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I mentored Alex Jones while Jane Smith managed the release and reviewed every production change.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "2 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "15/15 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "single-name",
+    "originalText": "I used Python at Microsoft to write tests and maintain internal tools for colleagues.",
+    "rewrittenText": "I used Java at Google to write tests and maintain internal tools for colleagues.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I used Python at Microsoft to write tests and maintain internal tools for colleagues.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I used Java at Google to write tests and maintain internal tools for colleagues.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "14/14 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "protected-substring",
+    "originalText": "I saved $10 by reviewing monthly charges and cancelling a service our team never used.",
+    "rewrittenText": "I saved $100 by reviewing monthly charges and cancelling a service our team never used.",
+    "protectedTerms": [
+      "$10"
+    ],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I saved $10 by reviewing monthly charges and cancelling a service our team never used.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "I saved $100 by reviewing monthly charges and cancelling a service our team never used.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "1 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "15/15 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "short-valid",
+    "originalText": "Built tests that caught release regressions.",
+    "rewrittenText": "Built tests that caught release regressions.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 67,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 70,
+        "burstiness": 60,
+        "vocabulary": 80,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "Built tests that caught release regressions.",
+          "score": 67,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 67,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 70,
+        "burstiness": 60,
+        "vocabulary": 80,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "Built tests that caught release regressions.",
+          "score": 67,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": false,
+      "decision": "escalate",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "fail",
+          "detail": "Detected empty, repeated, or malformed text artifact"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "6/6 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "67 → 67 (+0)"
+        }
+      ],
+      "warnings": [
+        "Mechanical cleanup: Detected empty, repeated, or malformed text artifact"
+      ]
+    }
+  },
+  {
+    "id": "preserve-quoted-terms",
+    "originalText": "The client requested \"robust, seamless, innovative\" language, but I kept the proposal plain and factual.",
+    "rewrittenText": "The client requested \"robust, seamless, innovative\" language, but I kept the proposal plain and factual.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 60,
+      "verdict": "mixed",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 5,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [
+        {
+          "type": "high",
+          "category": "vocabulary",
+          "message": "AI-typical word: \"innovative\" (1x)"
+        },
+        {
+          "type": "high",
+          "category": "vocabulary",
+          "message": "AI-typical word: \"robust\" (1x)"
+        },
+        {
+          "type": "high",
+          "category": "vocabulary",
+          "message": "AI-typical word: \"seamless\" (1x)"
+        }
+      ],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "The client requested \"robust, seamless, innovative\" language, but I kept the proposal plain and factual.",
+          "score": 60,
+          "flags": [
+            "AI-typical word: \"innovative\" (1x)",
+            "AI-typical word: \"robust\" (1x)",
+            "AI-typical word: \"seamless\" (1x)"
+          ]
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 60,
+      "verdict": "mixed",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 5,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [
+        {
+          "type": "high",
+          "category": "vocabulary",
+          "message": "AI-typical word: \"innovative\" (1x)"
+        },
+        {
+          "type": "high",
+          "category": "vocabulary",
+          "message": "AI-typical word: \"robust\" (1x)"
+        },
+        {
+          "type": "high",
+          "category": "vocabulary",
+          "message": "AI-typical word: \"seamless\" (1x)"
+        }
+      ],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "The client requested \"robust, seamless, innovative\" language, but I kept the proposal plain and factual.",
+          "score": 60,
+          "flags": [
+            "AI-typical word: \"innovative\" (1x)",
+            "AI-typical word: \"robust\" (1x)",
+            "AI-typical word: \"seamless\" (1x)"
+          ]
+        }
+      ]
+    },
+    "quality": {
+      "passed": false,
+      "decision": "escalate",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "15/15 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "fail",
+          "detail": "Found: innovative, robust, seamless"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "60 → 60 (+0)"
+        }
+      ],
+      "warnings": [
+        "AI artifacts: Found: innovative, robust, seamless"
+      ]
+    }
+  },
+  {
+    "id": "chinese",
+    "originalText": "我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。",
+    "rewrittenText": "我负责测试与缺陷记录，协助团队完成数据库迁移，并为新同事编写操作说明。",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 67,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 70,
+        "burstiness": 60,
+        "vocabulary": 80,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。",
+          "score": 67,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 67,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 70,
+        "burstiness": 60,
+        "vocabulary": 80,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "我负责测试与缺陷记录,协助团队完成数据库迁移,并为新同事编写操作说明。",
+          "score": 67,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": false,
+      "decision": "escalate",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "fail",
+          "detail": "Detected empty, repeated, or malformed text artifact"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "1/1 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "67 → 67 (+0)"
+        }
+      ],
+      "warnings": [
+        "Mechanical cleanup: Detected empty, repeated, or malformed text artifact"
+      ]
+    }
+  },
+  {
+    "id": "spanish",
+    "originalText": "Organicé las pruebas del sistema y documenté los errores para ayudar al equipo durante la migración.",
+    "rewrittenText": "Organicé las pruebas del sistema y documenté los errores para ayudar al equipo durante la migración.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "Organicé las pruebas del sistema y documenté los errores para ayudar al equipo durante la migración.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "Organicé las pruebas del sistema y documenté los errores para ayudar al equipo durante la migración.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "16/16 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "french",
+    "originalText": "Je rédige les tests du logiciel et je documente les erreurs pour aider les collègues pendant la migration.",
+    "rewrittenText": "Je rédige les tests du logiciel et je documente les erreurs pour aider les collègues pendant la migration.",
+    "protectedTerms": [],
+    "originalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "Je rédige les tests du logiciel et je documente les erreurs pour aider les collègues pendant la migration.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "finalDetection": {
+      "humanScore": 74,
+      "verdict": "likely_human",
+      "breakdown": {
+        "perplexity": 88,
+        "burstiness": 60,
+        "vocabulary": 100,
+        "structure": 70,
+        "zipf": 65,
+        "ngramRepetition": 65,
+        "contractionEntropy": 60
+      },
+      "flags": [],
+      "paragraphScores": [
+        {
+          "index": 0,
+          "text": "Je rédige les tests du logiciel et je documente les erreurs pour aider les collègues pendant la migration.",
+          "score": 74,
+          "flags": []
+        }
+      ]
+    },
+    "quality": {
+      "passed": true,
+      "decision": "accepted",
+      "gates": [
+        {
+          "id": "mechanics",
+          "label": "Mechanical cleanup",
+          "status": "pass",
+          "detail": "No obvious mechanical artifacts"
+        },
+        {
+          "id": "protected_terms",
+          "label": "Protected terms",
+          "status": "pass",
+          "detail": "0 preserved"
+        },
+        {
+          "id": "length",
+          "label": "Length target",
+          "status": "pass",
+          "detail": "18/18 words"
+        },
+        {
+          "id": "ai_artifacts",
+          "label": "AI artifacts",
+          "status": "pass",
+          "detail": "No major banned phrase residue"
+        },
+        {
+          "id": "trust_score",
+          "label": "Trust movement",
+          "status": "pass",
+          "detail": "74 → 74 (+0)"
+        }
+      ],
+      "warnings": []
+    }
+  }
+]

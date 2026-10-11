@@ -1,8 +1,8 @@
 # Taco SEO upgrade: research and implementation plan
 
-**Date:** 9 October 2026
-**Status:** Research and S0 audit implementation complete; S1–S8 remain proposed. No deployment.
-**Canonical project:** /home/xwingace/Documents/Projects/Taco-upgrade
+**Date:** 9 October 2026  
+**Status:** Research and S0 audit implementation complete; S1–S8 remain proposed. No deployment.  
+**Canonical project:** /home/xwingace/Documents/Projects/Taco-upgrade  
 **Public site:** https://talentconsulting.io
 
 Taco should first make its public promises, indexing controls, and measurement trustworthy, then improve the pages that bring a visitor into the real resume workflow. The strongest initial acquisition task is **tailoring an existing resume to a job description while keeping every claim supported by the candidate's experience**. This is a product positioning recommendation, not a proven high-volume keyword or a promise of rankings.

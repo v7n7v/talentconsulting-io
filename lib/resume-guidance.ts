@@ -1,5 +1,37 @@
 import type { ToolGuidanceConfig, ToolGuidanceStep } from './tool-guidance';
 import type { ResumeSection } from './resume-workflow';
+import type { WorkspaceOrigin, WorkspaceSourceSnapshot } from './resume-workspace';
+
+export function chooseCurrentResumeRoleFacts(input: {
+  documentOrigin: WorkspaceOrigin;
+  documentManualEdits: boolean;
+  buildResume: unknown;
+  workspaceSource: WorkspaceSourceSnapshot | null;
+  originalResume: unknown;
+}): { content: unknown; origin: 'user_upload' | 'user_authored'; expectedHash?: string } | null {
+  const isTailored = input.documentOrigin === 'tailored';
+  const isCurrentEditedContent = !isTailored && (input.documentManualEdits || input.documentOrigin === 'user_authored');
+  if (isTailored) {
+    // Manual editor changes on a tailored document do not turn its generated
+    // candidate into a source. Only the retained, hash-sealed original counts.
+    const snapshot = input.workspaceSource;
+    if (!snapshot?.content || typeof snapshot.contentHash !== 'string') return null;
+    return {
+      content: snapshot.content,
+      origin: snapshot.origin === 'user_upload' ? 'user_upload' : 'user_authored',
+      expectedHash: snapshot.contentHash,
+    };
+  }
+
+  const source = isCurrentEditedContent
+    ? input.buildResume
+    : input.workspaceSource?.content || input.originalResume || input.buildResume;
+  if (!source) return null;
+  const recordedOrigin = input.workspaceSource?.origin;
+  const origin = !isCurrentEditedContent && (recordedOrigin === 'user_upload' || (recordedOrigin !== 'user_authored' && input.documentOrigin === 'user_upload'))
+    ? 'user_upload' : 'user_authored';
+  return { content: source, origin };
+}
 
 export function resumeGuidanceContext(documentId: string | null, sourceId: string | null | undefined,
   sourceContentHash: string | null | undefined, editorEpoch: number): string {
@@ -16,6 +48,9 @@ export interface ResumeGuidanceState {
   hasSource: boolean;
   hasJob: boolean;
   pending: boolean;
+  hasImportedSource?: boolean;
+  canFindRoles?: boolean;
+  roleSearchPending?: boolean;
   sourceError: boolean;
   hasCandidate: boolean;
   stale: boolean;
@@ -53,7 +88,9 @@ export function createResumeGuidance(state: ResumeGuidanceState): ToolGuidanceCo
       ] },
       { id: 'confirm', title: 'Confirm the facts', availability: state.confirming ? 'available' : 'waiting', unavailableReason: sourceReason, steps: [
         step('source-review', 'Compare the import with your source', 'Check names, roles, dates and achievements. Correct extraction mistakes before confirming the resume.', 'resume-source-review'),
-        step('source-confirm', 'Confirm when you are ready', 'Use the actual confirmation action after reviewing the facts. You can continue to a job description or use the resume without AI tailoring.', 'resume-source-confirm', state.pending ? 'waiting' : 'available', sourceReason),
+        step('find-roles', 'Use this résumé to find roles', 'This saves and verifies the résumé facts you confirmed as a role-search source. It does not use generated editor content or your reusable career-details save.', 'resume-find-roles', state.roleSearchPending ? 'waiting' : state.canFindRoles ? 'available' : 'blocked', state.roleSearchPending ? 'Wait while the confirmed source is saved and verified.' : state.canFindRoles ? undefined : 'Review an imported résumé and acknowledge any extraction warnings before choosing this path.'),
+        step('job-description', 'Tailor to a pasted job description', 'Paste the actual posting when you want a job-specific rewrite. This path does not require saving a role-search source.', 'resume-source-confirm', state.hasImportedSource ? 'available' : 'waiting', 'Review the imported résumé first; the Job Description action stays available there.'),
+        step('source-confirm', 'Use your résumé without AI tailoring', 'Continue into the design workflow after reviewing the facts. Guidance will not save, tailor or navigate for you.', 'resume-source-confirm', state.pending ? 'waiting' : 'available', sourceReason),
       ] },
       { id: 'edit', title: 'Edit your resume', availability: state.editing ? 'available' : 'waiting', unavailableReason: 'Open the content editor yourself. Guidance never switches stages or replaces edits.', steps: [
         step('content', 'Keep the facts yours', 'Edit your real experience directly. Changes stay in this working document until you use its save controls.', 'resume-editor'),

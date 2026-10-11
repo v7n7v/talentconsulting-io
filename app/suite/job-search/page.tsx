@@ -3,6 +3,7 @@
 import { TacoName } from '@/components/BrandLogo';
 import { readPreparedPacketResponse } from '@/lib/job-packet-recovery';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Ref, type MutableRefObject } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -32,7 +33,8 @@ import {
 import { useAuthGate } from '@/hooks/useAuthGate';
 import JobPreferencesPanel from './JobPreferencesPanel';
 import { normalizeAlertTargetRole, SONA_ALERT_TARGET_ROLE_KEY } from '@/lib/assistant/alert-consent-handoff';
-import { chooseJobSearchResumeSource, isEligibleJobSearchResume } from '@/lib/job-search-resume-source';
+import { chooseJobSearchResumeSource, isEligibleJobSearchResume, resolveExplicitJobSearchResumeSource } from '@/lib/job-search-resume-source';
+import { listDemoSearchSources, readResumeSearchSource } from '@/lib/resume-search-source-client';
 import ApplicationsContext from '@/components/workspace/ApplicationsContext';
 import { jobSearchContentKey, jobSearchSourceKey, jobSearchInputsChanged, type JobSearchResultContext } from '@/lib/job-search-context';
 import { useToolGuidance } from '@/components/guidance/ToolGuidanceProvider';
@@ -130,6 +132,22 @@ const RESUME_STORAGE_KEY = 'talent-job-search-skills';
 const PACKET_STORAGE_KEY = 'talent-job-packets-v3';
 const RESUME_ID_STORAGE_KEY = 'talent-job-search-resume-id';
 
+function searchSourceToResumeVersion(source: Record<string, any>): ResumeVersion {
+  const confirmedAt = String(source.metadata?.workspace?.sourceConfirmedAt || source.created_at || '');
+  return {
+    id: String(source.id),
+    user_id: String(source.user_id),
+    version_name: String(source.version_name || source.content?.name || 'Confirmed résumé'),
+    content: source.content,
+    skill_graph: null,
+    mode: 'technical',
+    is_active: true,
+    metadata: source.metadata,
+    created_at: confirmedAt,
+    updated_at: String(source.updated_at || confirmedAt),
+  } as ResumeVersion;
+}
+
 const FIND_ROLES_GUIDE_ANCHORS = Object.freeze({
   target: 'find-roles-target',
   location: 'find-roles-location',
@@ -138,6 +156,9 @@ const FIND_ROLES_GUIDE_ANCHORS = Object.freeze({
   role: 'find-roles-role',
   evidence: 'find-roles-evidence',
   decisions: 'find-roles-decisions',
+  readResults: 'find-roles-read-results',
+  prepare: 'find-roles-prepare',
+  review: 'find-roles-review',
 });
 
 interface FindRolesGuidanceFacts {
@@ -153,6 +174,8 @@ interface FindRolesGuidanceFacts {
   visibleResults: number;
   recovery: JobDiscoveryRecovery | null;
   selectedJob: OpportunityJob | null;
+  sourceHandoffRequested: boolean;
+  sourceRecovery: string | null;
   packet?: ApplicationPacket;
 }
 
@@ -218,7 +241,7 @@ function findRolesGuidance(facts: FindRolesGuidanceFacts): Parameters<typeof use
         steps: [
           { id: 'target', title: 'Choose a target role', description: 'What role are you looking for? This defines the search.', anchor: FIND_ROLES_GUIDE_ANCHORS.target },
           { id: 'location', title: 'Choose where you would work', description: 'Set the location or work preference. Keep the constraints that matter to you.', anchor: FIND_ROLES_GUIDE_ANCHORS.location },
-          { id: 'source', title: 'Choose your resume source', description: facts.hasSource ? 'Your confirmed source is selected. It supplies the resume evidence used to compare fit and prepare a draft.' : 'Use a confirmed resume to compare your experience and prepare a draft. You can still browse without one; resume fit stays unmeasured.', anchor: FIND_ROLES_GUIDE_ANCHORS.source, availability: facts.resumeLoading ? 'waiting' : 'available', unavailableReason: 'Resume sources are loading. Your search inputs are retained.' },
+          { id: 'source', title: 'Choose your resume source', description: facts.sourceRecovery ? `${facts.sourceRecovery} The requested URL remains in place; retry that exact source or explicitly choose another source.` : facts.hasSource ? 'Your confirmed source is selected. It supplies the resume evidence used to compare fit and prepare a draft.' : facts.sourceHandoffRequested ? 'This page was opened with an exact source request. It will not silently substitute another saved résumé.' : 'Use a confirmed resume to compare your experience and prepare a draft. You can still browse without one; resume fit stays unmeasured.', anchor: FIND_ROLES_GUIDE_ANCHORS.source, availability: facts.sourceRecovery ? 'blocked' : facts.resumeLoading ? 'waiting' : 'available', unavailableReason: facts.sourceRecovery || 'Resume sources are loading. Your search inputs are retained.' },
           { id: 'search', title: 'Run Search when you are ready', description: 'Use Search yourself. It keeps your inputs available for retry and returns roles to review. Help will not run it for you.', anchor: FIND_ROLES_GUIDE_ANCHORS.search, availability: facts.loading || facts.resumeLoading ? 'waiting' : !facts.query.trim() ? 'blocked' : 'available', unavailableReason: facts.loading ? 'Your current search is running.' : facts.resumeLoading ? 'Resume sources are loading.' : 'Add a target role to make Search available.' },
         ],
       },
@@ -229,9 +252,12 @@ function findRolesGuidance(facts: FindRolesGuidanceFacts): Parameters<typeof use
         availability: resultAvailability,
         unavailableReason: resultReason,
         steps: [
+          { id: 'read-results', title: 'Read the ranked results', description: 'Review the first three roles and expand the list only when you want more.', anchor: FIND_ROLES_GUIDE_ANCHORS.readResults, availability: resultAvailability, unavailableReason: resultReason },
           { id: 'role', title: 'Inspect an actual role', description: 'Select a role to inspect the posting and why it appeared. Selecting a role is your choice; Next does not select one.', anchor: FIND_ROLES_GUIDE_ANCHORS.role, availability: resultAvailability, unavailableReason: resultReason },
           { id: 'evidence', title: 'Review the basis and uncertainty', description: 'The Fit tab shows what the returned evidence supports and what is not measured. Missing evidence does not establish a lack of ability.', anchor: FIND_ROLES_GUIDE_ANCHORS.evidence, availability: hasCurrentResults && !facts.selectedJob ? 'waiting' : resultAvailability, unavailableReason: hasCurrentResults && !facts.selectedJob ? 'Select a role yourself to inspect its evidence.' : resultReason, targetUnavailableReason: 'Open the selected role’s Fit tab yourself to see the evidence. Help does not switch tabs.' },
           { id: 'decisions', title: 'Choose your next action', description: `The Packet tab shows this role’s available actions. ${decisionCopy}${savedOutcome}${preparedOutcome}`, anchor: FIND_ROLES_GUIDE_ANCHORS.decisions, availability: hasCurrentResults && !facts.selectedJob ? 'waiting' : decisionState, unavailableReason: facts.packet?.status === 'preparing' ? 'Your packet is being prepared. Wait for its actual result; reading Help does not finish it.' : hasCurrentResults && !facts.selectedJob ? 'Select a role yourself to see its available decisions.' : resultReason, targetUnavailableReason: 'Open the selected role’s Packet tab yourself to see its available decisions. Help does not switch tabs or start work.' },
+          { id: 'prepare', title: 'Prepare a draft when you choose', description: 'Preparation starts only when you activate the role’s Prepare action. Wait for the result before taking another step.', anchor: FIND_ROLES_GUIDE_ANCHORS.prepare, availability: hasCurrentResults && facts.selectedJob && facts.selectedJob.preparationEligible && facts.packet?.status !== 'preparing' ? 'available' : 'waiting', unavailableReason: facts.packet?.status === 'preparing' ? 'Draft preparation is running.' : 'Select an eligible role and review its details first.' },
+          { id: 'review', title: 'Review completed drafts', description: 'When drafts are ready, open Applications and review the actual saved application. Nothing is submitted from Find roles.', anchor: FIND_ROLES_GUIDE_ANCHORS.review, availability: facts.packet?.status === 'ready' && facts.packet.applicationId ? 'available' : 'waiting', unavailableReason: 'Applications review becomes available after a saved draft is ready.' },
         ],
       },
     ],
@@ -1199,9 +1225,9 @@ function OpportunityFeed({
       )}
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-[var(--text-primary)]">{jobs.length} ranked roles</h2>
+          <h2 data-guide={FIND_ROLES_GUIDE_ANCHORS.readResults} className="text-base font-semibold text-[var(--text-primary)]">{jobs.length} ranked roles</h2>
           {jobs.length > 3 && (
-            <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)] lg:hidden">Reviewing the strongest three first.</p>
+            <p className="mt-1 text-[11px] leading-4 text-[var(--text-muted)]">Reviewing the strongest three first.</p>
           )}
         </div>
         <span className="rounded-full border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-1 text-xs text-[var(--text-secondary)]">Review first</span>
@@ -1220,14 +1246,14 @@ function OpportunityFeed({
               setMobileReviewExpanded(nextExpanded);
               if (!nextExpanded && !topThreeJobs.some(job => getJobResultIdentity(job) === selectedId)) onSelect(topThreeJobs[0]);
             }}
-            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] lg:hidden"
+            className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-2 text-xs font-semibold text-[var(--text-primary)] transition hover:border-[var(--border)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
             <span className="material-symbols-rounded text-[17px]" aria-hidden="true">{mobileReviewExpanded ? 'collapse_all' : 'expand_all'}</span>
             {mobileReviewExpanded ? 'Show top 3 only' : `Show all ${jobs.length} roles`}
           </button>
           <div
             id="remaining-ranked-roles"
-            className={`${mobileReviewExpanded ? 'mt-3 grid' : 'hidden'} gap-3 lg:mt-3 lg:grid`}
+            className={`${mobileReviewExpanded ? 'mt-3 grid' : 'hidden'} gap-3`}
           >
             {remainingJobs.map((job, index) => renderOpportunity(job, index + 3))}
           </div>
@@ -1767,11 +1793,11 @@ function ApplicationPacketBuilder({
           <div className="flex items-center gap-3">
             <span className="material-symbols-rounded text-[var(--success)]">verified</span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[var(--text-primary)]">{markedApplied ? 'Application marked applied' : 'Packet ready for manual submit'}</p>
+              <p className="text-sm font-semibold text-[var(--text-primary)]">{markedApplied ? 'Application marked applied' : 'Drafts ready for review'}</p>
               <p className="text-xs text-[var(--text-secondary)]">
                 {markedApplied
                   ? 'The tracker now shows that you submitted this on the job site.'
-                  : 'Resume, cover letter, ATS check, and tracker draft are ready. Open the posting and submit manually.'}
+                  : 'Your saved application drafts are ready. Review them in Applications before deciding what to do next.'}
               </p>
             </div>
           </div>
@@ -1805,24 +1831,25 @@ function ApplicationPacketBuilder({
           </div>
         )}
         <div className="grid gap-2">
+          {current.applicationId && (
+            <a
+              data-guide={FIND_ROLES_GUIDE_ANCHORS.review}
+              href={`/suite/applications?application=${encodeURIComponent(current.applicationId)}&action=review`}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 py-3 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
+            >
+              <span className="material-symbols-rounded text-base" aria-hidden="true">fact_check</span>
+              Review drafts in Applications
+            </a>
+          )}
           {job.outboundLinkVerified && job.url && (
             <a
               href={job.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 py-3 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--text-primary)] hover:text-[var(--text-primary)]"
             >
               <span className="material-symbols-rounded text-base">open_in_new</span>
               Open posting
-            </a>
-          )}
-          {current.applicationId && (
-            <a
-              href={`/suite/applications?application=${encodeURIComponent(current.applicationId)}`}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-4 py-3 text-sm font-semibold text-[var(--text-primary)] transition hover:border-[var(--text-primary)]"
-            >
-              <span className="material-symbols-rounded text-base" aria-hidden="true">fact_check</span>
-              Continue to review
             </a>
           )}
           <div className="grid grid-cols-3 gap-2">
@@ -1912,6 +1939,7 @@ function ApplicationPacketBuilder({
     <div className="space-y-4">
       <SetupNudge icon="auto_fix_high" title="Prepare without leaving Job Search" body="Taco prepares a resume draft, cover letter, ATS check and tracker draft. It does not submit the application." />
       <button
+        data-guide={FIND_ROLES_GUIDE_ANCHORS.prepare}
         onClick={onPrepare}
         className="inline-flex w-full items-center justify-center gap-2 rounded-[12px] bg-[var(--text-primary)] px-4 py-3 text-sm font-semibold text-[var(--bg-deep)] transition hover:opacity-90"
       >
@@ -1926,6 +1954,8 @@ type PendingJobSearchIntent = { query: string; location: string; salaryMin: numb
 
 function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRefObject<PendingJobSearchIntent | null> } = {}) {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const user = useStore(state => state.user);
   const jobCountUserId = String((user as any)?.uid || '');
   const jobSearchAccessToken = String((user as any)?.accessToken || (user as any)?.stsTokenManager?.accessToken || '');
@@ -1934,7 +1964,23 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
   const { setAuthModal, renderAuthModal } = useAuthGate();
   const [jobs, setJobs] = useState<OpportunityJob[]>([]);
   const [selectedJobKey, setSelectedJobKey] = useState<string | null>(null);
-  const [packets, setPackets] = useState<Record<string, ApplicationPacket>>({});
+  const [packets, setPacketState] = useState<Record<string, ApplicationPacket>>({});
+  const packetsRef = useRef<Record<string, ApplicationPacket>>({});
+  // Search responses must see packet completions that happened while they waited.
+  const setPackets = useCallback((update: Record<string, ApplicationPacket> | ((previous: Record<string, ApplicationPacket>) => Record<string, ApplicationPacket>)) => {
+    const next = typeof update === 'function' ? update(packetsRef.current) : update;
+    packetsRef.current = next;
+    setPacketState(next);
+  }, []);
+  const interruptPacketPreparations = useCallback(() => {
+    setPackets(previous => Object.fromEntries(Object.entries(previous).map(([key, packet]) => [key,
+      packet.status === 'preparing' ? {
+        ...packet, status: 'failed' as const, stageIndex: 0,
+        error: 'The resume source changed or could not be loaded during preparation. Open Applications for any saved work, or prepare again.',
+        recovery: classifyJobPacketFailure('network interrupted'),
+      } : packet,
+    ])));
+  }, [setPackets]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [searchRecovery, setSearchRecovery] = useState<JobDiscoveryRecovery | null>(null);
@@ -1960,6 +2006,8 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
   const [resumeSourceRecovery, setResumeSourceRecovery] = useState<string | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
   const [storageHydratedUserId, setStorageHydratedUserId] = useState('');
+  const sourceHandoffRequested = searchParams.has('source');
+  const explicitSourceId = searchParams.get('source') || '';
   const alertControlsRequested = searchParams.get('controls') === 'alerts' || searchParams.get('view') === 'preferences';
   const [alertSuggestedTargetRole] = useState(() => {
     if (typeof window === 'undefined') return '';
@@ -2054,19 +2102,21 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
     } finally {
       if (jobCountUserId) setStorageHydratedUserId(jobCountUserId);
     }
-  }, [jobCountUserId]);
+  }, [jobCountUserId, setPackets]);
 
   useEffect(() => {
     const requestId = ++sourceLoadRequestRef.current;
     const requestedUserId = jobCountUserId;
     const isCurrent = () => sourceLoadRequestRef.current === requestId && activeJobUserIdRef.current === requestedUserId;
+    const controller = new AbortController();
     resumeReadyOwnerRef.current = "";
     setResumeLoading(Boolean(user));
-    if (!user) return;
-    const failed = () => {
+    if (!user) return () => controller.abort();
+    const failed = (error?: unknown) => {
       if (!isCurrent()) return;
       activeSourceKeyRef.current = null;
       packetRequestGenerationRef.current += 1;
+      interruptPacketPreparations();
       searchRequestIdRef.current += 1;
       setLoading(false);
       setJobs([]);
@@ -2078,48 +2128,97 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
       setSelectedResumeName('');
       setUserSkills([]);
       resumeReadyOwnerRef.current = requestedUserId;
-      setResumeSourceRecovery('Your resumes could not be loaded. Retry to restore source selection and fit evidence. You can still browse roles without a resume.');
+      setResumeSourceRecovery(sourceHandoffRequested
+        ? `The requested confirmed résumé source could not be verified. ${error instanceof Error ? error.message : 'Retry the exact source read, or choose another source yourself.'}`
+        : 'Your resumes could not be loaded. Retry to restore source selection and fit evidence. You can still browse roles without a resume.');
       setResumeLoading(false);
     };
-    getResumeVersions().then(result => {
-      if (!isCurrent()) return;
-      if (!result.success || !result.data) { failed(); return; }
-      const savedId = localStorage.getItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId));
-      const choice = chooseJobSearchResumeSource(result.data, savedId);
-      const selected = choice.resume;
-      const sourceKey = jobSearchSourceKey(selected);
-      if (activeSourceKeyRef.current !== sourceKey) {
-        packetRequestGenerationRef.current += 1;
-        searchRequestIdRef.current += 1;
-        setLoading(false);
-        setJobs([]);
-        setResultContext(null);
-        setSelectedJobKey(null);
-        setHasSearched(false);
-      }
-      activeSourceKeyRef.current = sourceKey;
-      setResumes(result.data);
-      setSelectedResumeId(selected?.id || null);
-      setSelectedResumeName(selected?.version_name || '');
-      const skills = selected ? extractResumeSkills(selected.content) : [];
-      setUserSkills(skills);
-      localStorage.setItem(scopedJobStorageKey(RESUME_STORAGE_KEY, requestedUserId), JSON.stringify(skills));
-      if (selected) {
-        localStorage.setItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId), selected.id);
-        mergeApplicationKitContext(resumeVersionToApplicationKitContext(selected));
-      } else localStorage.removeItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId));
-      resumeReadyOwnerRef.current = requestedUserId;
-      setResumeSourceRecovery(choice.recoveredFromId
-        ? selected ? `Your saved source is unavailable. Using ${selected.version_name}.` : 'Add or confirm a resume to measure fit and prepare a packet.'
-        : null);
-      setResumeLoading(false);
-    }).catch(failed);
-    return () => { if (sourceLoadRequestRef.current === requestId) sourceLoadRequestRef.current += 1; };
-  }, [jobCountUserId, user, resumeLoadAttempt]);
+    void (async () => {
+      try {
+        const result = await getResumeVersions();
+        if (!isCurrent()) return;
+        if ((!result.success || !result.data) && !sourceHandoffRequested) { failed(); return; }
+        const localResumes = result.success && result.data ? result.data : [];
+        let demoSources: ResumeVersion[] = [];
+        try {
+          demoSources = (await listDemoSearchSources(requestedUserId)).map(searchSourceToResumeVersion);
+        } catch { /* A failed demo-list read cannot replace an explicit exact-source read. */ }
+        let sourceError: unknown = null;
+        let exactSource: ResumeVersion | null = null;
+        if (sourceHandoffRequested) {
+          try {
+            const response = await readResumeSearchSource({ ownerId: requestedUserId, id: explicitSourceId, signal: controller.signal });
+            if (!isCurrent() || controller.signal.aborted) return;
+            exactSource = searchSourceToResumeVersion(response.source);
+            if (exactSource.id !== explicitSourceId || response.receipt.sourceId !== explicitSourceId) {
+              throw new Error('The returned source did not match the requested source ID.');
+            }
+          } catch (error) {
+            if (controller.signal.aborted || !isCurrent()) return;
+            sourceError = error;
+          }
+        }
+        if (!isCurrent()) return;
+        const merged = new Map<string, ResumeVersion>();
+        for (const resume of localResumes) merged.set(resume.id, resume);
+        for (const resume of demoSources) merged.set(resume.id, resume);
+        if (exactSource) merged.set(exactSource.id, exactSource);
+        const available = Array.from(merged.values());
+        // These values only improve the non-handoff selection experience. A
+        // denied or full browser storage must never invalidate an exact,
+        // owner-checked source read.
+        let savedId: string | null = null;
+        try { savedId = localStorage.getItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId)); } catch { /* Optional selection cache. */ }
+        const choice = sourceHandoffRequested
+          ? { resume: exactSource && exactSource.id === explicitSourceId
+            ? resolveExplicitJobSearchResumeSource([exactSource], explicitSourceId)
+            : null, recoveredFromId: false }
+          : chooseJobSearchResumeSource(available, savedId);
+        const selected = choice.resume;
+        const sourceKey = jobSearchSourceKey(selected);
+        if (activeSourceKeyRef.current !== sourceKey) {
+          packetRequestGenerationRef.current += 1;
+          interruptPacketPreparations();
+          searchRequestIdRef.current += 1;
+          setLoading(false);
+          setJobs([]);
+          setResultContext(null);
+          setSelectedJobKey(null);
+          setHasSearched(false);
+        }
+        activeSourceKeyRef.current = sourceKey;
+        setResumes(available);
+        setSelectedResumeId(selected?.id || null);
+        setSelectedResumeName(selected?.version_name || '');
+        const skills = selected ? extractResumeSkills(selected.content) : [];
+        setUserSkills(skills);
+        try { localStorage.setItem(scopedJobStorageKey(RESUME_STORAGE_KEY, requestedUserId), JSON.stringify(skills)); } catch { /* Optional skills cache. */ }
+        if (selected) {
+          try { localStorage.setItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId), selected.id); } catch { /* Optional selection cache. */ }
+          mergeApplicationKitContext(resumeVersionToApplicationKitContext(selected));
+        } else if (!sourceHandoffRequested) {
+          try { localStorage.removeItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, requestedUserId)); } catch { /* Optional selection cache. */ }
+        }
+        resumeReadyOwnerRef.current = requestedUserId;
+        setResumeSourceRecovery(sourceError
+          ? `The requested résumé source could not be verified. ${sourceError instanceof Error ? sourceError.message : 'Retry the exact source read, or choose another source yourself.'}`
+          : choice.recoveredFromId
+            ? selected ? `Your saved source is unavailable. Using ${selected.version_name}.` : 'Add or confirm a resume to measure fit and prepare a packet.'
+            : null);
+        setResumeLoading(false);
+      } catch (error) { failed(error); }
+    })();
+    return () => {
+      controller.abort();
+      if (sourceLoadRequestRef.current === requestId) sourceLoadRequestRef.current += 1;
+    };
+  }, [jobCountUserId, user, resumeLoadAttempt, interruptPacketPreparations, explicitSourceId]);
 
   useEffect(() => {
     if (!jobCountUserId || storageHydratedUserId !== jobCountUserId) return;
-    localStorage.setItem(scopedJobStorageKey(SEARCH_PREFS_KEY, jobCountUserId), JSON.stringify({ query, location, threshold: matchThreshold, salaryMin }));
+    try {
+      localStorage.setItem(scopedJobStorageKey(SEARCH_PREFS_KEY, jobCountUserId), JSON.stringify({ query, location, threshold: matchThreshold, salaryMin }));
+    } catch { /* Search preferences are optional; keep the live query usable. */ }
   }, [jobCountUserId, query, location, matchThreshold, salaryMin, storageHydratedUserId]);
 
   useEffect(() => {
@@ -2208,15 +2307,25 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
   activeRoleContextRef.current = { key: selectedJob ? getJobResultIdentity(selectedJob) : null, descriptionKey: selectedJob ? jobSearchContentKey(selectedJob.description) : null };
 
   const selectJob = useCallback((job: OpportunityJob, options: { scrollToDetails?: boolean } = {}) => {
-    activeRoleContextRef.current = { key: getJobResultIdentity(job), descriptionKey: jobSearchContentKey(job.description) };
-    setSelectedJobKey(getJobResultIdentity(job));
+    const key = getJobResultIdentity(job);
+    const descriptionKey = jobSearchContentKey(job.description);
+    const packet = packetsRef.current[key];
+    const matchingPacket = selectedSourceKey && packet?.sourceKey === selectedSourceKey && packet.jobDescriptionKey === descriptionKey ? packet : null;
+    const roleChanged = activeRoleContextRef.current.key !== key || activeRoleContextRef.current.descriptionKey !== descriptionKey;
+    activeRoleContextRef.current = { key, descriptionKey };
+    setSelectedJobKey(key);
     mergeApplicationKitContext({
-      ...(selectedResume ? resumeVersionToApplicationKitContext(selectedResume) : {}),
+      ...(selectedResume ? resumeVersionToApplicationKitContext(selectedResume) : {
+        resumeVersionId: null, resumeVersionName: '', resumeSnapshot: null, resumeText: '', resumeSource: 'manual' as const,
+      }),
+      // A selected posting owns only its own source-scoped packet and analysis.
+      applicationId: matchingPacket?.applicationId || null,
+      ...(roleChanged ? { oracleDraft: undefined } : {}),
       jobDescription: job.description,
       company: job.company,
       jobTitle: job.title,
       targetRole: job.title,
-      applicationUrl: job.outboundLinkVerified ? job.url : undefined,
+      applicationUrl: job.outboundLinkVerified ? job.url : null,
     });
     if (options.scrollToDetails) {
       window.requestAnimationFrame(() => {
@@ -2227,7 +2336,7 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
         });
       });
     }
-  }, [selectedResume]);
+  }, [selectedResume, selectedSourceKey]);
 
   const selectResume = useCallback((id: string) => {
     const resume = resumes.find(item => item.id === id);
@@ -2235,12 +2344,19 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
       setResumeSourceRecovery('Generated packet versions cannot be used as a source resume. Choose a confirmed source instead.');
       return;
     }
+    // A deliberate picker choice ends the exact-source URL handoff.
+    if (sourceHandoffRequested) {
+      const params = new URLSearchParams(window.location.search);
+      params.delete('source');
+      const queryString = params.toString();
+      router.replace(`${pathname}${queryString ? `?${queryString}` : ''}`, { scroll: false });
+    }
     setResumeSourceRecovery(null);
     setSelectedResumeId(id || null);
     if (id !== selectedResumeId) {
       activeSourceKeyRef.current = jobSearchSourceKey(resume || null);
       packetRequestGenerationRef.current += 1;
-      setPackets(previous => Object.fromEntries(Object.entries(previous).map(([key, packet]) => [key, packet.status === 'preparing' ? { ...packet, status: 'failed' as const, stageIndex: 0, error: 'The resume source changed during preparation. Open Applications for any saved work, or prepare again.', recovery: classifyJobPacketFailure('network interrupted') } : packet])));
+      interruptPacketPreparations();
       setResultContext(null);
       searchRequestIdRef.current += 1;
       setLoading(false);
@@ -2252,17 +2368,17 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
     if (!resume) {
       setSelectedResumeName('');
       setUserSkills([]);
-      if (jobCountUserId) localStorage.removeItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, jobCountUserId));
+      if (jobCountUserId) try { localStorage.removeItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, jobCountUserId)); } catch { /* Optional selection cache. */ }
       return;
     }
     setSelectedResumeName(resume.version_name);
-    if (jobCountUserId) localStorage.setItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, jobCountUserId), resume.id);
+    if (jobCountUserId) try { localStorage.setItem(scopedJobStorageKey(RESUME_ID_STORAGE_KEY, jobCountUserId), resume.id); } catch { /* Optional selection cache. */ }
     const skills = extractResumeSkills(resume.content);
     setUserSkills(skills);
-    if (jobCountUserId) localStorage.setItem(scopedJobStorageKey(RESUME_STORAGE_KEY, jobCountUserId), JSON.stringify(skills));
+    if (jobCountUserId) try { localStorage.setItem(scopedJobStorageKey(RESUME_STORAGE_KEY, jobCountUserId), JSON.stringify(skills)); } catch { /* Optional skills cache. */ }
     mergeApplicationKitContext(resumeVersionToApplicationKitContext(resume));
     showToast(`Using ${resume.version_name}`, 'description');
-  }, [jobCountUserId, resumes, selectedResumeId]);
+  }, [jobCountUserId, resumes, selectedResumeId, interruptPacketPreparations, sourceHandoffRequested, router, pathname]);
 
   const recordLedgerStatus = useCallback(async (job: OpportunityJob, status: string, feedbackTags: string[] = []) => {
     try {
@@ -2357,7 +2473,7 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
       setSearchImpressionId(typeof data.impressionId === 'string' ? data.impressionId : null);
       setSelectedJobKey(normalized[0] ? getJobResultIdentity(normalized[0]) : null);
       if (jobCountUserId) {
-        localStorage.setItem(jobCountKey(jobCountUserId), normalized.filter((job: OpportunityJob) => (job.fitScore?.overall || 0) >= matchThreshold).length.toString());
+        try { localStorage.setItem(jobCountKey(jobCountUserId), normalized.filter((job: OpportunityJob) => (job.fitScore?.overall || 0) >= matchThreshold).length.toString()); } catch { /* Search count is an optional cache. */ }
       }
       window.dispatchEvent(new Event('job-count-updated'));
       if (normalized[0]) selectJob(normalized[0]);
@@ -2428,7 +2544,7 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
         updatedAt: new Date().toISOString(),
       },
     }));
-  }, []);
+  }, [setPackets]);
 
   const prepareApplication = useCallback(async (job: OpportunityJob) => {
     const requestUserId = jobCountUserId;
@@ -2544,16 +2660,16 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
       if (!requestIsCurrent()) return;
       if (activeRoleContextRef.current.key === packetKey && activeRoleContextRef.current.descriptionKey === requestDescriptionKey) {
         mergeApplicationKitContext({
+          // Keep the factual input selected; generated documents belong to the packet.
+          ...resumeVersionToApplicationKitContext(selectedResume),
           applicationId: data.applicationId,
-          applicationUrl: job.outboundLinkVerified ? job.url : undefined,
+          applicationUrl: job.outboundLinkVerified ? job.url : null,
           jobDescription: job.description,
           company: job.company,
           jobTitle: job.title,
           targetRole: job.title,
-          resumeVersionId: data.morphedVersionId || null,
-          resumeSnapshot: data.morphedResume || undefined,
-          resumeSource: 'job_search',
-          atsResult: data.atsResult ? { status: 'success', data: data.atsResult, updatedAt: new Date().toISOString() } : undefined,
+          // This score measures the generated packet, not the selected factual source.
+          atsResult: undefined,
           coverLetterResult: data.coverLetter ? { status: 'success', data: { coverLetter: data.coverLetter }, updatedAt: new Date().toISOString() } : undefined,
         });
       }
@@ -2680,7 +2796,7 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
   return (
     <>
       <SuiteToolShell variant="workbench">
-        <FindRolesGuidance config={findRolesGuidance({ owner: jobCountUserId || 'guest', sourceKey: selectedSourceKey, hasSource: Boolean(selectedResume), query, loading, resumeLoading, hasSearched, inputsChanged, totalResults: jobs.length, visibleResults: filteredJobs.length, recovery: searchRecovery, selectedJob, packet: selectedJob ? currentPackets[getJobResultIdentity(selectedJob)] : undefined })} />
+        <FindRolesGuidance config={findRolesGuidance({ owner: jobCountUserId || 'guest', sourceKey: selectedSourceKey, hasSource: Boolean(selectedResume), query, loading, resumeLoading, hasSearched, inputsChanged, totalResults: jobs.length, visibleResults: filteredJobs.length, recovery: searchRecovery, selectedJob, sourceHandoffRequested, sourceRecovery: resumeSourceRecovery, packet: selectedJob ? currentPackets[getJobResultIdentity(selectedJob)] : undefined })} />
         <ApplicationsContext active="search" context="Find roles and prepare review-ready work" />
         <JobSearchHeader />
 
@@ -2706,7 +2822,7 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
               <div className="mb-4 flex items-start gap-2 rounded-[12px] border border-[color-mix(in_srgb,var(--warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--warning)_8%,transparent)] px-3 py-2.5 text-xs leading-5 text-[var(--text-secondary)]" role="status">
                 <span className="material-symbols-rounded mt-0.5 text-[16px] text-[var(--warning)]" aria-hidden="true">info</span>
                 <div className="min-w-0 flex-1"><p>{resumeSourceRecovery}</p>
-                  <button type="button" disabled={resumeLoading} onClick={() => setResumeLoadAttempt(value => value + 1)} className="btn-secondary mt-2 min-h-11">{resumeLoading ? 'Loading resumes…' : 'Retry resume load'}</button>
+                  <button type="button" disabled={resumeLoading} onClick={() => setResumeLoadAttempt(value => value + 1)} className="btn-secondary mt-2 min-h-11">{resumeLoading ? 'Loading resumes…' : sourceHandoffRequested ? 'Retry requested source' : 'Retry resume load'}</button>
                 </div>
               </div>
             )}

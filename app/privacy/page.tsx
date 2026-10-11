@@ -1,12 +1,13 @@
-import type { Metadata } from 'next';
+import { buildMetadata } from '@/lib/seo';
 import Link from 'next/link';
 import { TacoWordmark } from '@/components/BrandLogo';
 import '@/components/taco-public-palette.css';
 
-export const metadata: Metadata = {
+export const metadata = buildMetadata({
   title: 'Privacy Policy',
   description: 'How Talent Studio handles account, billing, resume, and AI writing data.',
-};
+  path: '/privacy',
+});
 
 const sections = [
   {

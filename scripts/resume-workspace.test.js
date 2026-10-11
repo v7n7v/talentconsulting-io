@@ -154,3 +154,22 @@ test('actual cloud save aborts when owner changes before transaction commit', as
   assert.equal(result.success, false);
   assert.equal(db.__testState.mockState.writes, 0);
 });
+
+
+test('confirmed career save replays the original receipt despite a fresh provenance timestamp', async () => {
+  const db = await loadDatabase();
+  const key = 'f'.repeat(40);
+  const content = { name: 'Amina', skills: ['TypeScript'] };
+  const metadata = { resumeProvenance: { verified: true, origin: 'user_upload' } };
+  const options = { idempotencyKey: key, workspace: { kind: 'experience', origin: 'user_upload', sourceVersionId: `handoff_${key}`, sourceHash: 'a'.repeat(64), sourceConfirmedAt: '2026-10-10T12:00:00.000Z', sourceSnapshot: { content, contentHash: 'a'.repeat(64), confirmedAt: '2026-10-10T12:00:00.000Z' } } };
+  const first = await db.saveResumeVersion('Career facts', content, {}, 'technical', metadata, options);
+  await new Promise(resolve => setTimeout(resolve, 8));
+  const retry = await db.saveResumeVersion('Career facts', content, {}, 'technical', metadata, options);
+  assert.equal(first.success, true);
+  assert.equal(retry.success, true, retry.error);
+  assert.equal(retry.data.provenance.recordedAt, first.data.provenance.recordedAt);
+  assert.equal(retry.data.created_at, first.data.created_at);
+  assert.equal(global.__tcWrites, 1);
+  const conflict = await db.saveResumeVersion('Career facts', content, {}, 'technical', { resumeProvenance: { verified: true, origin: 'user_authored' } }, options);
+  assert.equal(conflict.success, false);
+});

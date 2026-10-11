@@ -7,8 +7,9 @@
  */
 
 import { readResumeDesign, type ResumeDesignConfig } from './resume-design';
+import { isSearchSourceRecord, isSearchSourceWorkspace, type SearchSourceWorkspace } from './resume-search-source';
 
-export type WorkspaceKind = 'experience' | 'resume';
+export type WorkspaceKind = 'experience' | 'resume' | 'source';
 export type WorkspaceOrigin = 'user_upload' | 'user_authored' | 'tailored' | 'legacy';
 
 export interface WorkspaceSourceSnapshot {
@@ -43,7 +44,7 @@ export interface WorkspacePresentationSnapshot {
 
 export interface WorkspaceMetadata {
   schemaVersion: 1;
-  kind: WorkspaceKind;
+  kind: 'experience' | 'resume';
   origin: WorkspaceOrigin;
   parentVersionId: string | null;
   sourceVersionId: string | null;
@@ -56,7 +57,7 @@ export interface WorkspaceMetadata {
 }
 
 export interface CreateWorkspaceMetadataInput {
-  kind: WorkspaceKind;
+  kind: 'experience' | 'resume';
   origin: WorkspaceOrigin;
   parentVersionId?: string | null;
   sourceVersionId?: string | null;
@@ -87,6 +88,7 @@ export interface ReadWorkspaceVersionResult {
   config: { target: WorkspaceTargetSnapshot; presentation: WorkspacePresentationSnapshot };
   metadata: Record<string, unknown>;
   legacy: boolean;
+  unavailable: boolean;
 }
 
 const EMPTY_TARGET: WorkspaceTargetSnapshot = {
@@ -140,6 +142,9 @@ function safePresentation(value: unknown): WorkspacePresentationSnapshot {
 
 /** Build a versioned envelope only from explicit snapshots supplied by the save command. */
 export function createWorkspaceMetadata(input: CreateWorkspaceMetadataInput): WorkspaceMetadata {
+  if (!input || (input.kind !== 'experience' && input.kind !== 'resume')) {
+    throw new TypeError('Workspace metadata writer only supports experience and resume records.');
+  }
   const sourceSnapshot = input.sourceSnapshot && typeof input.sourceSnapshot === 'object'
     ? cloneSnapshot(input.sourceSnapshot)
     : null;
@@ -191,6 +196,40 @@ export function isValidWorkspaceMetadata(raw: unknown): raw is WorkspaceMetadata
 export function readWorkspaceVersion(version: any): ReadWorkspaceVersionResult {
   const metadata = version?.metadata && typeof version.metadata === 'object' ? version.metadata as Record<string, unknown> : {};
   const raw = metadata.workspace && typeof metadata.workspace === 'object' ? metadata.workspace as Record<string, unknown> : null;
+  const hasSourceEnvelope = Boolean(raw && (raw.schemaVersion === 2 || raw.kind === 'source')) || version?.source_confirmation_receipt != null || metadata.source_confirmation_receipt != null;
+  if (hasSourceEnvelope) {
+    const sourceRecord = { ...version };
+    const valid = isSearchSourceWorkspace(raw) && isSearchSourceRecord(sourceRecord);
+    const sourceWorkspace = valid ? raw as SearchSourceWorkspace : null;
+    const content = valid ? version.content : null;
+    const sourceSnapshot: WorkspaceSourceSnapshot | null = valid ? {
+      sourceVersionId: sourceWorkspace!.sourceVersionId,
+      content,
+      contentHash: sourceWorkspace!.contentHash,
+      confirmedAt: sourceWorkspace!.sourceConfirmedAt,
+    } : null;
+    const emptyTarget = safeTarget(null);
+    const emptyPresentation = safePresentation(null);
+    const origin: WorkspaceOrigin = sourceWorkspace?.origin || 'legacy';
+    return {
+      id: typeof version?.id === 'string' ? version.id : null,
+      name: text(version?.version_name || version?.name) || 'Confirmed source',
+      kind: 'source', origin,
+      source: sourceSnapshot, sourceSnapshot,
+      sourceVersionId: sourceWorkspace?.sourceVersionId || null,
+      sourceHash: sourceWorkspace?.sourceHash || null,
+      contentHash: sourceWorkspace?.contentHash || null,
+      parentVersionId: null,
+      sourceConfirmedAt: sourceWorkspace?.sourceConfirmedAt || null,
+      candidate: content,
+      target: emptyTarget,
+      presentation: emptyPresentation,
+      config: { target: emptyTarget, presentation: emptyPresentation },
+      metadata,
+      legacy: false,
+      unavailable: !valid,
+    };
+  }
   const hasEnvelope = Boolean(raw && isValidWorkspaceMetadata(raw));
   const workspace = hasEnvelope ? createWorkspaceMetadata(raw as unknown as CreateWorkspaceMetadataInput) : createWorkspaceMetadata({
     kind: 'resume', origin: 'legacy', target: {
@@ -219,6 +258,7 @@ export function readWorkspaceVersion(version: any): ReadWorkspaceVersionResult {
     config: { target: workspace.target, presentation: workspace.presentation },
     metadata,
     legacy: !hasEnvelope || workspace.origin === 'legacy',
+    unavailable: false,
   };
 }
 

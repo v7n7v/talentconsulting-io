@@ -40,11 +40,12 @@ function setter(state, key) { const target = key.startsWith('set') ? key.slice(3
 
 test('opening saved A then B and reopening A restores each applied generation independently', () => {
   const handler = extract("  const loadVersionToMorph = (version: ResumeVersion, goal: 'edit' | 'tailor' = 'edit') => {", '\n  const generateAchievements');
+  const roleSearchInvalidations = [];
   const state = {
     tierLoading: false, isPro: true, canUseTemplatePalettes: true, searchParams: { get: () => null },
     sourceAbortRef: { current: null }, sourceUploadOperationRef: { current: null }, sourceParseRequestRef: { current: 0 }, morphRequestRef: { current: 0 }, morphAbortRef: { current: null }, activeGeneration: null, selectedAppliedVersionId: null, previousGenerations: [],
     readWorkspaceVersion: version => version.id === 'A' ? { candidate: { name: 'A', title: 'A role' }, name: 'A document', origin: 'tailored', target: { role: 'A role', company: 'A Co', jobDescription: 'A JD', url: 'a.url' }, sourceSnapshot: { content: { name: 'A' } }, presentation: {} } : { candidate: { name: 'B', title: 'B role' }, name: 'B document', origin: 'user_authored', target: { role: 'B role', company: 'B Co', jobDescription: '', url: '' }, sourceSnapshot: { content: { name: 'B' } }, presentation: {} },
-    recoverAppliedGeneration: metadata => metadata?.activeGeneration || null, maxMorphPercentage: 100, setDesignConfig: setter(this, 'designConfig'), getPersistedResumeDesign: () => ({ spacing: 'compact' }),
+    recoverAppliedGeneration: metadata => metadata?.activeGeneration || null, invalidateRoleSearchSource: () => roleSearchInvalidations.push('invalidated'), maxMorphPercentage: 100, setDesignConfig: setter(this, 'designConfig'), getPersistedResumeDesign: () => ({ spacing: 'compact' }),
     normalizeResume: value => value, maxMorphPercentage: 100, showToast() {}, setPdfExportMode: setter(this, 'pdfExportMode'), setMorphPercentage: setter(this, 'morphPercentage'), setActiveGeneration: setter(this, 'activeGeneration'), setSelectedAppliedVersionId: setter(this, 'selectedAppliedVersionId'), setPreviousGenerations: setter(this, 'previousGenerations'), setBuildResume: setter(this, 'buildResume'), setMorphedResume: setter(this, 'morphedResume'), setOriginalResume: setter(this, 'originalResume'), setWorkspaceSource: setter(this, 'workspaceSource'), setDocumentVersionId: setter(this, 'documentVersionId'), setDocumentName: setter(this, 'documentName'), setDocumentOrigin: setter(this, 'documentOrigin'), setDocumentManualEdits: setter(this, 'documentManualEdits'), setJobDescription: setter(this, 'jobDescription'), setPostingUrl: setter(this, 'postingUrl'), setApplicationData: setter(this, 'applicationData'), setSaveCompanyName: setter(this, 'saveCompanyName'), setSaveVersionName: setter(this, 'saveVersionName'), setTargetPageCount: setter(this, 'targetPageCount'), sanitizeResumeReviewState: value => value, setResumeReview: setter(this, 'resumeReview'), setMatchScore: setter(this, 'matchScore'), setProofData: setter(this, 'proofData'), setGuardrailReport: setter(this, 'guardrailReport'), setResumeCheckResult: setter(this, 'resumeCheckResult'), setBlueprintContent: setter(this, 'blueprintContent'), setShowBlueprintModal: setter(this, 'showBlueprintModal'), setIsBlueprintLoading: setter(this, 'isBlueprintLoading'), setIsLoading: setter(this, 'isLoading'), setProcessingStage: setter(this, 'processingStage'), setShowSourceConfirmation: setter(this, 'showSourceConfirmation'), setIntakeError: setter(this, 'intakeError'), setShowApplicationModal: setter(this, 'showApplicationModal'), setShowSaveModal: setter(this, 'showSaveModal'), setSaveInlineStatus: setter(this, 'saveInlineStatus'), setTrackingError: setter(this, 'trackingError'), setRawSourceText: setter(this, 'rawSourceText'), setIntakeWarnings: setter(this, 'intakeWarnings'), setSourceResumeMeta: setter(this, 'sourceResumeMeta'), setWorkspaceDestination: setter(this, 'workspaceDestination'), setMode: setter(this, 'mode'), setStep: setter(this, 'step'), setResumeReturn: setter(this, 'resumeReturn'), setEditorEpoch: fn => { state.editorEpoch = (state.editorEpoch || 0) + 1; }, getPersistedResumeTemplateId: () => 'plain', resolveReplacementTemplate: id => ({ id }), resolveEntitledReplacementTemplate: id => ({ id }), setRequestedLockedTemplateId: setter(this, 'requestedLockedTemplateId'), setTemplateFilter: setter(this, 'templateFilter'), getTemplatePalette: () => ({ id: 'ink' }), getPersistedResumePaletteId: () => 'ink', getDefaultPaletteId: () => 'ink', setSelectedTemplate: setter(this, 'selectedTemplate'), setSelectedPaletteId: setter(this, 'selectedPaletteId'), setTemplatePaletteSelections: setter(this, 'templatePaletteSelections'),
   };
   state.setPageSize = setter(state, 'setPageSize');
@@ -56,12 +57,14 @@ test('opening saved A then B and reopening A restores each applied generation in
   assert.equal(typeof fn, 'function');
   const generationA = appliedGeneration('Agen', 'A', 'A JD');
   fn({ id: 'A', metadata: { resumeReview: generationA.review, activeGeneration: generationA } });
+  assert.equal(roleSearchInvalidations.length, 1, 'opening a saved document invalidates any pending role-source handoff');
   assert.equal(state.activeGeneration.id, 'Agen');
   assert.equal(state.selectedAppliedVersionId, 'Agen');
   assert.equal(state.morphedResume.summary, 'A candidate');
   assert.equal(state.jobDescription, 'A JD');
   assert.equal(state.morphPercentage, 62);
   fn({ id: 'B', metadata: { resumeReview: { decisions: {} } } });
+  assert.equal(roleSearchInvalidations.length, 2, 'switching to another document invalidates the previous handoff');
   assert.equal(state.documentVersionId, 'B');
   assert.equal(state.selectedAppliedVersionId, null, 'opening B clears A’s explicit selection');
   assert.equal(state.documentName, 'B document');
@@ -74,6 +77,7 @@ test('opening saved A then B and reopening A restores each applied generation in
   assert.equal(state.mode, 'create');
   assert.equal(state.step, 'content');
   fn({ id: 'A', metadata: { resumeReview: generationA.review, activeGeneration: generationA } });
+  assert.equal(roleSearchInvalidations.length, 3, 'reopening a prior document invalidates the current handoff');
   assert.equal(state.activeGeneration.id, 'Agen', 'reopening A restores A’s applied generation snapshot');
   assert.equal(state.selectedAppliedVersionId, 'Agen');
   assert.equal(state.morphedResume.summary, 'A candidate');
@@ -100,7 +104,7 @@ test('handleFileExtracted stages a parsed source without replacing the active do
     useStore: { getState: () => ({ user: { uid: 'alice' } }) },
     isCurrentSourceParse: () => true,
     parseResumeWithAI: async (text, signal) => { calls.push(['parse', text, signal.aborted]); return { resume: { name: 'Imported' }, warnings: ['review'] }; },
-    setIsLoading: value => calls.push(['loading', value]), setInvalidDocumentError: value => calls.push(['invalid', value]), setIntakeError: value => { state.intakeError = value; }, setRawSourceText: value => calls.push(['raw', value]), setIntakeWarnings: value => calls.push(['warnings', value]), setIntakeAcknowledged: value => calls.push(['ack', value]), setProcessingStage: value => calls.push(['stage', value]), setIntakeResume: value => calls.push(['intake', value]), setShowSourceConfirmation: value => calls.push(['confirm', value]), setStep: value => calls.push(['step', value]), setShowImport: value => calls.push(['import', value]), showToast: () => {},
+    setIsLoading: value => calls.push(['loading', value]), setInvalidDocumentError: value => calls.push(['invalid', value]), setIntakeError: value => { state.intakeError = value; }, setRawSourceText: value => calls.push(['raw', value]), setIntakeWarnings: value => calls.push(['warnings', value]), setIntakeAcknowledged: value => calls.push(['ack', value]), setProcessingStage: value => calls.push(['stage', value]), setIntakeResume: value => calls.push(['intake', value]), setIntakeRoleSearchOrigin: value => calls.push(['origin', value]), setShowSourceConfirmation: value => calls.push(['confirm', value]), setStep: value => calls.push(['step', value]), setShowImport: value => calls.push(['import', value]), showToast: () => {},
   };
   const body = transformSync(`const {${Object.keys(state).join(',')}}=state; const extracted = ${handler.replace(/^\s*return\s+/, '')}; return extracted;`, { loader: 'ts', target: 'es2022' }).code;
   const fn = new Function('state', body)(state);
@@ -109,6 +113,7 @@ test('handleFileExtracted stages a parsed source without replacing the active do
   assert.ok(calls.length > 0, `no handler calls: ${JSON.stringify(calls)}`);
   assert.equal(state.intakeError, '');
   assert.deepEqual(calls.find(call => call[0] === 'intake'), ['intake', { name: 'Imported' }]);
+  assert.deepEqual(calls.find(call => call[0] === 'origin'), ['origin', 'user_upload']);
   assert.equal(calls.some(call => call[0] === 'confirm' && call[1] === true), true);
   assert.deepEqual(state.originalResume, { name: 'Existing' });
   assert.deepEqual(state.morphedResume, { name: 'Tailored' });

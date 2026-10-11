@@ -2,8 +2,6 @@
 
 TalentConsulting.io is a mobile-first AI career workspace. Taco uses a job seeker's real resume, goals and saved career evidence to find stronger-fit roles, explain the match, prepare truthful application packets and keep every external action under the user's control.
 
-The **v1.2** source release preserves the upgraded Taco workspace and the reviewed staging foundation. The agentic runtime is still in development; see the [release notes](docs/releases/v1.2.md) for shipped behavior, verification and remaining work.
-
 The product is not a blind auto-apply service. It helps users choose better roles, prepare stronger work and review each next step.
 
 ## Company direction

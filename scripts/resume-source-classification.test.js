@@ -24,3 +24,14 @@ test('malformed workspace lineage cannot fall through to legacy or explicit prov
  assert.equal(result.verified,false);
  assert.match(result.reason,/malformed|unavailable|generated/i);
 });
+test('sealed role-search sources require the top-level receipt and resume_versions namespace',async()=>{
+ const {classifyResumeVerification}=await compiled;
+ const id='source_'+ 'a'.repeat(64), hash='b'.repeat(64), confirmedAt='2026-10-10T12:00:00.000Z';
+ const workspace={schemaVersion:2,kind:'source',purpose:'role_search',origin:'user_upload',sourceVersionId:id,sourceHash:hash,contentHash:hash,sourceConfirmedAt:confirmedAt};
+ const receipt={schemaVersion:1,ownerId:'alice',sourceId:id,requestId:'8a0c59b0-72f4-457b-b77b-12892d1ea83c',contentHash:hash,packetHash:'c'.repeat(64),payloadHash:'d'.repeat(64),confirmedAt,contentHashEncoding:'sha256-stable-json-v1',hashEncoding:'sha256-json-stringify-v1'};
+ const valid={id,user_id:'alice',content:{name:'Amina'},metadata:{workspace},source_confirmation_receipt:receipt};
+ assert.equal(classifyResumeVerification(valid,'resume_versions').verified,true);
+ assert.equal(classifyResumeVerification({...valid,source_confirmation_receipt:undefined,metadata:{workspace,source_confirmation_receipt:receipt}},'resume_versions').verified,false);
+ assert.equal(classifyResumeVerification(valid,'vault').verified,false);
+ assert.equal(classifyResumeVerification({...valid,metadata:{workspace:{...workspace,schemaVersion:1}}},'resume_versions').verified,false);
+});

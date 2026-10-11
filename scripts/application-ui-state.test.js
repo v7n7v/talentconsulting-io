@@ -41,6 +41,40 @@ test('offer save and generation cannot overlap; editing invalidates delayed comp
 async function workspace(){const rows=[{...app,status:'applied',offer_details:null},{...app,id:'b',company_name:'Other',status:'applied',offer_details:null}];globalThis.getJobApplications=async()=>({success:true,data:rows});globalThis.getAllStudyProgress=async()=>({success:true,data:[]});globalThis.getResumeVersions=async()=>({success:true,data:[]});const ui=runtime((await apps).ApplicationsWorkspace);ui.flush();await ui.settle();return{ui,rows}}
 const drawer=ui=>ui.find(n=>n.type?.name==='ApplicationDrawer');
 const open= (ui,app)=>ui.find(n=>n.props.onOpen).props.onOpen(app);
+test('a failed tracker load preserves a packet-review deep link until a successful retry opens the actual record',async()=>{
+ const rows=[{...app,status:'not_applied',offer_details:null}];let calls=0;
+ globalThis.getJobApplications=async()=>++calls===1?{success:false,error:'Temporary tracker failure'}:{success:true,data:rows};
+ globalThis.getAllStudyProgress=async()=>({success:true,data:[]});globalThis.getResumeVersions=async()=>({success:true,data:[]});
+ const ui=runtime((await apps).ApplicationsWorkspace);
+ const replacements=[];window.location.search='?application=a&action=application';
+ window.history.replaceState=(_state,_title,url)=>replacements.push(url);
+ try{
+  ui.flush();await ui.settle();
+  assert.equal(replacements.length,0,'failed reads cannot conclude that the linked record is missing');
+  assert.equal(ui.toasts.some(([message])=>message==='That application is no longer available'),false);
+  const recovery=ui.find(node=>node.type?.name==='ApplicationsErrorState');
+  await recovery.props.onRetry();await ui.settle();
+  assert.equal(drawer(ui).props.app.id,'a');
+  assert.equal(drawer(ui).props.initialAction,'application');
+  assert.equal(replacements.length,0);
+ }finally{ui.unmount()}
+});
+test('a failed tracker load preserves an outcome confirmation link without claiming the application is missing',async()=>{
+ let calls=0;const rows=[{...app,status:'applied',offer_details:null}];
+ globalThis.getJobApplications=async()=>++calls===1?{success:false,error:'Temporary tracker failure'}:{success:true,data:rows};
+ globalThis.getAllStudyProgress=async()=>({success:true,data:[]});globalThis.getResumeVersions=async()=>({success:true,data:[]});
+ const ui=runtime((await apps).ApplicationsWorkspace);const replacements=[];
+ window.location.search='?outcome=a&result=interview';window.history.replaceState=(_state,_title,url)=>replacements.push(url);
+ globalThis.isApplicationDraft=record=>record.status==='not_applied';globalThis.availableOutcomeUpdates=()=>['interview'];
+ try{
+  ui.flush();await ui.settle();assert.equal(replacements.length,0);
+  assert.equal(ui.toasts.some(([message])=>message==='Application not found'),false);
+  const recovery=ui.find(node=>node.type?.name==='ApplicationsErrorState');
+  await recovery.props.onRetry();await ui.settle();
+  assert.equal(drawer(ui).props.app.id,'a');assert.equal(drawer(ui).props.initialOutcomeConfirmation,'interview');
+  assert.equal(replacements.length,1,'only successful reads may consume the confirmation link');
+ }finally{ui.unmount()}
+});
 test('Applications A→B→A prevents old followup from populating reopened drawer',async()=>{
  const {ui,rows}=await workspace();await open(ui,rows[0]);ui.flush();const pending=deferred();ui.fetch=()=>pending.promise;const work=drawer(ui).props.onFollowUp('a');await open(ui,rows[1]);ui.flush();await open(ui,rows[0]);ui.flush();pending.resolve(response({success:true,subject:'STALE SUBJECT',body:'old'}));await work;ui.flush();assert.equal(ui.text().includes('STALE SUBJECT'),false);assert.equal(drawer(ui).props.followUpLoading,false);
 });

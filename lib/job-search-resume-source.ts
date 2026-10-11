@@ -1,5 +1,5 @@
 import type { ResumeVersion } from '@/lib/database-suite';
-import { normalizeVerifiedResumeProvenance } from '@/lib/resume-provenance';
+import { classifyResumeVerification } from '@/lib/resume-source-classifier';
 
 type ResumeRecord = ResumeVersion & {
   provenance?: unknown;
@@ -36,20 +36,9 @@ function isGeneratedResumeSource(resume: ResumeRecord): boolean {
 export function isEligibleJobSearchResume(resume: ResumeVersion): boolean {
   const record = resume as ResumeRecord;
   if (isGeneratedResumeSource(record)) return false;
-  const metadata = resumeMetadata(record);
-  const rawProvenance = record.provenance
-    || record.resume_provenance
-    || record.resumeProvenance
-    || metadata.provenance
-    || metadata.resume_provenance
-    || metadata.resumeProvenance;
-  const recordedAt = String(
-    (rawProvenance as { recordedAt?: unknown } | null)?.recordedAt
-      || resume.updated_at
-      || resume.created_at
-      || '',
-  );
-  return Boolean(normalizeVerifiedResumeProvenance(rawProvenance, recordedAt) || resume.is_active === true);
+  // The classifier is pure: use the same lineage boundary as search/preparation.
+  // Active document versions and malformed envelopes cannot become source records.
+  return classifyResumeVerification(record, 'resume_versions').verified;
 }
 
 export function chooseJobSearchResumeSource(
@@ -60,4 +49,14 @@ export function chooseJobSearchResumeSource(
   const saved = savedResumeId ? resumes.find(resume => resume.id === savedResumeId) : null;
   if (saved && isEligibleJobSearchResume(saved)) return { resume: saved, recoveredFromId: false };
   return { resume: eligible[0] || null, recoveredFromId: Boolean(savedResumeId && savedResumeId !== eligible[0]?.id) };
+}
+
+/** An explicit source handoff may select only the exact verified source ID. */
+export function resolveExplicitJobSearchResumeSource(
+  resumes: ResumeVersion[],
+  requestedId: string | null | undefined,
+): ResumeVersion | null {
+  if (!requestedId) return null;
+  const exact = resumes.find(resume => resume.id === requestedId);
+  return exact && isEligibleJobSearchResume(exact) ? exact : null;
 }

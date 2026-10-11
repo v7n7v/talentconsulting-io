@@ -27,6 +27,15 @@ const nextConfig = {
   },
   turbopack: {},
   async headers() {
+    const privatePaths = ['/suite', '/settings', '/auth', '/account', '/api', '/admin'];
+    const privateRobotsHeaders = privatePaths.flatMap((base) => [base, `${base}/:path*`].map((source) => ({
+      source,
+      headers: [{
+        key: 'X-Robots-Tag',
+        value: 'noindex, nofollow, noarchive',
+      }],
+    })));
+
     return [
       {
         source: '/:path*',
@@ -82,7 +91,8 @@ const nextConfig = {
             value: 'noindex, nofollow, noarchive'
           }] : [])
         ]
-      }
+      },
+      ...privateRobotsHeaders,
     ]
   },
 }

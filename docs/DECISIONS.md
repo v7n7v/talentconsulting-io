@@ -18,6 +18,14 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 
 ---
 
+## 2026-10-09 - Keep factual sources separate from prepared packet artifacts
+
+**Decision:** Find roles keeps its selected confirmed résumé in the shared analysis context after packet preparation. Generated résumé versions and their scores stay attached to the application packet. Source reload interruptions expose retryable failures, while completed work remains available.
+
+**Constraint:** Role analysis verifies source IDs server-side and rejects generated document IDs. Applications independently loads its generated documents through the application record. Mixing those inputs either rejects a valid analysis journey or labels a packet score as a check of the original résumé.
+
+**Rejected:** Weakening source verification or silently promoting a document-only save into a confirmed source. The existing explicit confirmation and optional career-saving boundaries remain in force; their fresh-user handoff still needs browser acceptance.
+
 ## 2026-07-25 - Visual direction: Studio product, Editorial landing
 
 **Decision:** Two registers, one system. The product surface is a craft tool - dark-first, focused, everything on screen serving the work (Figma/Ableton lineage). The landing is editorial - type at real scale, generous space, one striking idea. Both draw from the same tokens; they differ in scale and rhythm, never in palette.
@@ -149,3 +157,49 @@ Append-only. Newest at the top. One entry per decision that would otherwise get 
 **Rejected:** In-place `git fetch` repair - viable and less disruptive, but leaves the repository inside a OneDrive-synced folder, which is the root cause.
 
 **Accepted loss:** `codex/audit-automation-recovery`, `codex/release-safe-cleanup`, and both stashes. Their trees live in the missing pack; bundle, format-patch and archive were all attempted and all failed.
+
+
+## 2026-10-09 — Agentic baseline isolation and compatibility
+
+- Use fixed synthetic test commands inside Linux network/PID namespaces, masked runtime configuration and demo Auth/Firestore emulators; copied clone credentials are not an isolated environment. Public advisory/SEO reads are separate, credential-free evidence. No gate or acceptance threshold was weakened.
+- Preserve and tag Oracle's raw-text JD digest and packet review's normalized/JSON JD digest. Identical posting text currently produces different hashes; future adapters must keep both provenance encodings explicit and add the missing analysis relationship.
+- Treat the original's start-of-turn manifest as the preservation reference; older clone-baseline hashes no longer describe unrelated work performed since then.
+
+
+## 2026-10-09 — Preparation authority contract checkpoint
+
+- Keep the first P1 implementation pure and disconnected while issuance, storage and staging are unresolved; a model-provided confirmation must never become server authority. No claim that the existing queue path is repaired follows from schema tests.
+- Return the original stored command on an idempotent replay, preserving deadline, identity and budget. Check aggregate reservations before new provider calls; reconciled internal saves are not new provider reservations.
+- Leave Tasks versus Workflows provisional until the same recovery flow can be tested in isolated staging. The local contract suite is not cloud recovery evidence, and a copied production configuration is not permission to run that experiment.
+
+
+## 2026-10-09 — SEO S0 audit policy
+
+- Audit exact named legal and anonymous app routes independently of sitemap sampling. Require public self-canonicals and excluded app shells with noindex, omitted canonicals and no sitemap membership; preserve current robots blocks through an explicit crawl-either policy. Anonymous responses do not prove account ownership or actual search indexation.
+- Fail CI for deterministic route-policy incidents while keeping editorial length/link heuristics advisory. Run local fixtures on pull requests and bounded public crawls separately; require explicit CLI policy configuration so a missing file or array cannot silently weaken coverage.
+- Keep transport anonymous, origin-bound and bounded across redirects/body reads. Reject ambiguous/private paths and redact unsafe URL data; omit private response content and unavailable measurements from reports. Preserve optional empty policies only for existing direct API callers.
+- Build this package in an isolated worktree and integrate only reviewed changes into the concurrent checkout. Existing assistant/CVE gate failures remain release blockers; metadata/copy correction and deployment are later work.
+
+## 2026-10-09 — Planned four-part core journey contracts
+
+**State:** decisions for the next build, not implemented behavior. Canonical detail and acceptance: [Core journey implementation plan](tool-upgrade-plan.md#core-journey-implementation-plan--9-october-2026); execution resumes from [the existing checkpoint](../.codex/long-horizon/tool-upgrade.md).
+
+- **Separate durable search source from career saving.** Add an explicit user action and schema-v2 `workspace.kind:'source', purpose:'role_search'` in owner-scoped `resume_versions`, through an authenticated server service with a protected create-only receipt. The unchecked career option cannot invoke `saveExperienceRevision` or populate profile/history. Rejected: weakening document-source classification or silently saving an `experience` record, which would blur generated documents and optional career storage.
+- **Seal legacy facts before reuse in this handoff.** Direct identity reuse requires a matching sealed receipt. Mutable schema-v1 career/document lineage is read, confirmed and snapshotted; it does not inherit immutability from structural metadata. Arbitrary authored claims remain self-attested, not independently verified or universally detected AI text.
+- **Share v2 integrity across every consumer.** Source reads, search, apply reservation/finalization, packet review/approval and linked export use one owner/reference/receipt/hash normalization contract. New v2 integrity failure never falls back to legacy provenance. Preserve stable-canonical versus JSON packet hash encodings and existing legacy proof bytes explicitly. Retry returns original IDs/timestamps, including the current career-save provenance normalization path.
+- **Gate creation on actual lifecycle coverage.** Current account confirmation records deletion intent, not erasure. Approved erasure/retention and a transactional create-versus-deletion fence covering sealed sources/receipts/local caches are prerequisites to activation. If unavailable, keep new source creation off rather than claiming account cleanup works.
+- **Review real drafts before use.** Preserve prominent Find roles and pasted-JD paths. Route application and queue artifacts to their separate authoritative reviews. Prepared, revision-approved, exported, employer-posting-opened and user-reported submitted remain distinct. Help explains without performing actions.
+- **Keep repair/release scope bounded.** Three CSS files repair measured audit drift with unchanged baseline; existing SEO S1 repairs root/legal/twelve child metadata plus both header layers. Preserve landing safety, templates and parallel work. Release requires a clean reviewed candidate, current native/staging evidence, serving identity and separate rules recovery: automatic deploy rollback does not restore Firestore rules.
+
+An independent fresh-context skeptic confirmed three contract gaps; all were incorporated and reread as resolved at plan level. Product implementation, native UI acceptance and release remain pending. Build later with the primary coordinator owning consequential contracts/final decisions, bounded Luna workers and independent skeptical review under long-horizon-build.
+
+## 2026-10-10 — Core journey implementation and activation boundary
+
+- The four-part build is authorized. Use sealed schema-v2 role-search sources in `users/{uid}/resume_versions`; no generic client proof write. Stable canonical and legacy packet JSON hash encodings remain distinct. Recover the original matching receipt after response loss or rollout disable, but never after account deactivation/deletion fencing. Preserve legacy proof bytes; malformed v2 or misplaced receipt envelopes cannot become legacy sources.
+- New creation defaults off. Require an active, policy-versioned **top-level `account_source_fences/{uid}`**, retained after `users/{uid}` erasure. An approved future eraser must fence transactionally before enumerating/deleting source data. The current deletion-intent endpoint is insufficient; no erasure/provisioner or approved retention policy is implied by the tested fence protocol.
+- Saved generated artifacts can offer only a retained original whose hash matches, followed by explicit factual review. Editing generated wording does not promote it to source facts. Optional preference/selection caches are best effort; only authoritative owner-scoped reads determine explicit source selection. Command-identity session storage remains required for safe source retries.
+- Prepared exports read fresh actual packet authority and require the exact displayed revision, linked content hash and unchanged truth-guard output. Default Word export must retain every supported canonical fact, verified by inspecting its generated XML; download remains separate from user-reported submission.
+- Built-response evidence justified a bounded suite-layout metadata correction beyond the twelve named child layouts: preserve the existing client WorkspaceFrame/Help providers, use server metadata to prevent base/other suite HTML from inheriting public `index`. Matching response headers remain authoritative. No broad dashboard/layout redesign.
+- Synchronize installed dependencies to the existing lockfile before final checks. Preserve manifest bytes and distinguish anonymous built HTTP policy checks, actual local emulator proof and blocked native UI acceptance. Never describe one accepted development advisory as zero vulnerabilities, or local SEO repairs as passing live production CI.
+
+Independent implementation review findings are repaired and narrowly reread as resolved. Native/staging acceptance, activation and clean candidate/publication remain open; detailed receipts are in the [implementation report](tool-upgrade-implementation.md) and [checkpoint](../.codex/long-horizon/tool-upgrade.md).

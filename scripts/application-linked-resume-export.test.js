@@ -4,6 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 const ts = require('typescript');
 const { buildSync, transformSync } = require('esbuild');
+const JSZip = require('jszip');
+const actualDocx = require('docx');
 
 // The override lets the proposed test run against a reviewed checkout before
 // copying it. After copying into scripts/, its default is that checkout.
@@ -84,31 +86,42 @@ function carrier({ templateId = 'executive-ledger', designed = true } = {}) {
   return { id: 'resume-a', content, template: templateId, metadata };
 }
 
-function harness({ linkedResume = carrier(), selectedApp = { id: 'application-a', resume_version_id: 'resume-a' }, tierLoading = false, isPro = true, failure } = {}) {
-  const calls = { pdf: [], designWord: [], curatedWord: [], pack: [], saves: [], imports: [], downloading: [], toasts: [], documents: [] };
+function harness({ linkedResume = carrier(), selectedApp = { id: 'application-a', resume_version_id: 'resume-a' }, tierLoading = false, isPro = true, failure, exportFailure, actualDocument = false } = {}) {
+  const calls = { verify: [], pdf: [], designWord: [], curatedWord: [], pack: [], saves: [], imports: [], downloading: [], toasts: [], documents: [] };
   const blobs = { design: { kind: 'design-word-blob' }, curated: { kind: 'curated-word-blob' }, legacy: { kind: 'legacy-word-blob' } };
   function failAt(boundary) {
     if (failure?.boundary === boundary) throw failure.reason;
   }
-  class Document {
+  class TestDocument {
     constructor(options) { this.options = options; calls.documents.push(this); }
   }
-  class Paragraph { constructor(options) { this.options = options; } }
-  class TextRun { constructor(options) { this.options = options; } }
+  class TestParagraph { constructor(options) { this.options = options; } }
+  class TestTextRun { constructor(options) { this.options = options; } }
+  const Document = actualDocument ? actualDocx.Document : TestDocument;
+  const Paragraph = actualDocument ? actualDocx.Paragraph : TestParagraph;
+  const TextRun = actualDocument ? actualDocx.TextRun : TestTextRun;
   const state = {
-    linkedResume, selectedApp, tierLoading, isPro,
+    linkedResume, selectedApp, user: { uid: 'owner-a' }, tierLoading, isPro,
+    mountedRef: { current: true }, selectedActionRef: { current: selectedApp?.id },
+    selectedResumeLinkRef: { current: selectedApp?.resume_version_id }, linkedResumeIdRef: { current: linkedResume?.id },
+    useStore: { getState: () => ({ user: { uid: 'owner-a' } }) },
     getPersistedResumeTemplateId: helpers.getPersistedResumeTemplateId,
     getPersistedResumePaletteColors: helpers.getPersistedResumePaletteColors,
     getPersistedResumeDesign: helpers.getPersistedResumeDesign,
     isResumeTemplateSelectionEntitled: helpers.isResumeTemplateSelectionEntitled,
     normalizeResume: helpers.normalizeResume,
+    getResumeForExport: async () => {
+      calls.verify.push({ applicationId: selectedApp?.id, source: selectedApp?.source });
+      if (exportFailure) throw exportFailure;
+      return { resume: linkedResume.content, isCurrent: () => true };
+    },
     NEW_SIGNATURE_TEMPLATE_IDS: helpers.NEW_SIGNATURE_TEMPLATE_IDS,
     setDownloading: value => calls.downloading.push(value),
     showToast: (...args) => calls.toasts.push(args),
     downloadResumePDF: async (...args) => { calls.pdf.push(args); failAt('pdf'); },
     saveAs: (...args) => { failAt('save'); calls.saves.push(args); },
-    Document, Paragraph, TextRun, HeadingLevel: { HEADING_2: 'heading-2' },
-    Packer: { toBlob: async document => { calls.pack.push(document); failAt('pack'); return blobs.legacy; } },
+    Document, Paragraph, TextRun, HeadingLevel: actualDocument ? actualDocx.HeadingLevel : { HEADING_2: 'heading-2' },
+    Packer: actualDocument ? actualDocx.Packer : { toBlob: async document => { calls.pack.push(document); failAt('pack'); return blobs.legacy; } },
   };
   const loadExportAdapter = async name => {
     calls.imports.push(name);
@@ -139,8 +152,9 @@ test('linked PDF passes saved custom LETTER design and sanitized palette without
   assert.equal(run.calls.pdf.length, 1);
   assert.deepEqual(run.calls.pdf[0], [
     run.linkedResume.content, helpers.getPersistedResumePaletteColors(run.linkedResume), undefined,
-    'executive-ledger', undefined, 'LETTER', helpers.getPersistedResumeDesign(run.linkedResume, helpers.normalizeResume(run.linkedResume.content)),
+    'executive-ledger', run.calls.pdf[0][4], 'LETTER', helpers.getPersistedResumeDesign(run.linkedResume, helpers.normalizeResume(run.linkedResume.content)),
   ]);
+  assert.equal(run.calls.pdf[0][4](), true, 'the export boundary retains the captured selection guard');
   assert.strictEqual(run.calls.pdf[0][0], run.linkedResume.content, 'PDF receives the saved raw content');
   assert.deepEqual(run.calls.downloading, [true, false]);
   assert.deepEqual(run.calls.toasts, [['PDF downloaded', 'check_circle']]);
@@ -193,6 +207,40 @@ test('legacy free Word constructs and packs the original linear document', async
   assert.deepEqual(run.calls.saves, [[run.blobs.legacy, 'Ada_Lovelace.docx']]);
   assert.deepEqual(run.calls.downloading, [true, false]);
 });
+
+test('default application Word fallback retains every supported extended canonical field in the generated DOCX XML', async () => {
+  const content = {
+    ...structuredClone(resume),
+    linkedin: 'https://linkedin.example.test/ada',
+    website: 'https://ada.example.test',
+    links: ['https://portfolio.example.test/work'],
+    education: [{ id: 'education-a', institution: 'Example University', degree: 'BSc Computer Science', year: '2020', details: 'Capstone: ethical AI governance.' }],
+    certifications: ['Security+ Credential'],
+    additionalSections: [{ id: 'volunteer', title: 'Volunteer Leadership', items: ['Organized 12 community events.'] }],
+  };
+  const run = harness({ linkedResume: { ...carrier({ templateId: 'editorial-authority', designed: false }), content }, actualDocument: true });
+  await run.handleDownloadWord();
+  assert.equal(run.calls.saves.length, 1);
+  const zip = await JSZip.loadAsync(await run.calls.saves[0][0].arrayBuffer());
+  const xml = await zip.file('word/document.xml').async('string');
+  const text = xml.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&');
+  for (const field of [
+    content.linkedin, content.website, ...content.links,
+    content.certifications[0], content.additionalSections[0].title,
+    content.additionalSections[0].items[0], content.education[0].details,
+  ]) assert.ok(text.includes(field), `generated DOCX should retain ${field}`);
+});
+
+for (const handler of ['handleDownloadPDF', 'handleDownloadWord']) {
+  test(handler + ' keeps the actual handler behind packet approval verification', async () => {
+    const run = harness({ selectedApp: { id: 'application-a', source: 'apply_pipeline', resume_version_id: 'resume-a' }, exportFailure: new Error('Review the current packet before exporting.') });
+    await run[handler]();
+    assert.deepEqual(run.calls.verify, [{ applicationId: 'application-a', source: 'apply_pipeline' }]);
+    for (const key of ['pdf', 'designWord', 'curatedWord', 'pack', 'saves', 'imports', 'documents']) assert.deepEqual(run.calls[key], [], key + ' must remain untouched when approval verification fails');
+    assert.deepEqual(run.calls.downloading, [true, false]);
+    assert.match(run.calls.toasts[0][0], /Review the current packet/);
+  });
+}
 
 for (const handler of ['handleDownloadPDF', 'handleDownloadWord']) {
   test(handler + ' refuses missing content or missing/mismatched application links', async () => {
@@ -250,7 +298,7 @@ for (const boundary of ['design', 'curated', 'pack', 'save', 'import']) {
     await run.handleDownloadWord();
     assert.deepEqual(run.calls.downloading, [true, false]);
     assert.deepEqual(run.calls.saves, []);
-    assert.deepEqual(run.calls.toasts, [['Download failed', 'cancel']]);
+    assert.deepEqual(run.calls.toasts, [[boundary + ' failed', 'cancel']]);
     if (boundary !== 'pack') assert.deepEqual(run.calls.pack, [], 'a failed adapter must not fall back to the legacy packer');
     if (boundary !== 'curated') assert.deepEqual(run.calls.curatedWord, []);
   });

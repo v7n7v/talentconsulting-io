@@ -1,0 +1,717 @@
+{
+  "salary": {
+    "Serve 100-200k customers each year.": {
+      "min": 100000,
+      "max": 200000
+    },
+    "Salary: $80,500-$95,500 per year.": null,
+    "Salary: $50-$70 per hour.": null,
+    "Salary: £80k-£100k annually.": null
+  },
+  "skills": [
+    "Python",
+    "AI",
+    "REST"
+  ],
+  "companies": {
+    "Qualifications: detail oriented.": "",
+    "We operate at global scale.": "e at global scale.",
+    "Located in Boston.": "ed in Boston.",
+    "Company: Acme Labs\nPython engineer": "Acme Labs"
+  },
+  "requirements": {
+    "session": {
+      "role": "Engineer",
+      "company": "",
+      "resumeCharacterCount": 30,
+      "jdCharacterCount": 16
+    },
+    "decision": {
+      "verdict": "apply",
+      "confidence": "low",
+      "fitScore": 90,
+      "readinessScore": 90,
+      "riskScore": 4,
+      "salaryConfidence": "unknown",
+      "recommendedNextAction": "Prepare the application packet and review it before applying.",
+      "applyStrategy": "direct_apply",
+      "interviewYield": {
+        "score": 91,
+        "label": "high_yield",
+        "rationale": "Planning heuristic: 55% requirement fit, 30% readiness and 15% inverse risk. This is not a hiring probability or external market measure."
+      },
+      "summary": "This role is worth a focused application. The resume already shows enough alignment; prepare the packet and apply with proof."
+    },
+    "breakdown": {
+      "factorScores": {
+        "qualifications": 95,
+        "responsibilities": 90,
+        "keywords": 95,
+        "titleSeniority": 86,
+        "domain": 88,
+        "location": 68,
+        "salary": 40,
+        "risk": 96
+      },
+      "coveredRequirements": [
+        "Python required"
+      ],
+      "missingRequirements": [
+        "Python required"
+      ],
+      "proofGaps": [],
+      "keywordMap": {
+        "found": [
+          "Python"
+        ],
+        "missing": [],
+        "overused": []
+      },
+      "hiddenScreenSignals": [],
+      "risks": [
+        {
+          "category": "posting",
+          "severity": "low",
+          "title": "No explicit salary range",
+          "explanation": "Compensation is not clearly listed, so salary confidence should stay conservative."
+        }
+      ]
+    },
+    "packetPlan": {
+      "resumeFixes": [],
+      "coverLetterThemes": [
+        "Lead with the strongest role-relevant proof from the resume.",
+        "Connect the candidate's background to Engineer.",
+        "Address the top gap without overclaiming."
+      ],
+      "linkedinKeywords": [
+        "Python"
+      ],
+      "interviewPrepPrompts": [
+        "Tell me about a project that proves you can succeed as Engineer.",
+        "How would you handle the highest-risk gap in this JD?",
+        "Walk through a measurable result that maps to this role."
+      ],
+      "trackerDraft": {
+        "company": "",
+        "role": "Engineer",
+        "status": "not_applied",
+        "notes": "This role is worth a focused application. The resume already shows enough alignment; prepare the packet and apply with proof."
+      },
+      "readinessMoves": [
+        {
+          "action": "resume_edit",
+          "title": "Tighten resume proof",
+          "reason": "Close the highest-impact coverage gaps before applying.",
+          "effort": "medium"
+        },
+        {
+          "action": "prepare_packet",
+          "title": "Generate packet",
+          "reason": "Create the resume, cover letter, and ATS review from the same context.",
+          "effort": "low"
+        }
+      ]
+    },
+    "sourceQuality": {
+      "jd": "role_only",
+      "salary": "unknown",
+      "marketData": "analysis_only"
+    },
+    "createdAt": "2026-09-28T23:06:41.734Z"
+  },
+  "experience": {
+    "session": {
+      "role": "Office equipment warranty lasts 5 years. Python required.",
+      "company": "",
+      "resumeCharacterCount": 63,
+      "jdCharacterCount": 57
+    },
+    "decision": {
+      "verdict": "apply",
+      "confidence": "low",
+      "fitScore": 80,
+      "readinessScore": 76,
+      "riskScore": 22,
+      "salaryConfidence": "unknown",
+      "recommendedNextAction": "Prepare the application packet and review it before applying.",
+      "applyStrategy": "direct_apply",
+      "interviewYield": {
+        "score": 79,
+        "label": "high_yield",
+        "rationale": "Planning heuristic: 55% requirement fit, 30% readiness and 15% inverse risk. This is not a hiring probability or external market measure."
+      },
+      "summary": "This role is worth a focused application. The resume already shows enough alignment; prepare the packet and apply with proof."
+    },
+    "breakdown": {
+      "factorScores": {
+        "qualifications": 35,
+        "responsibilities": 80,
+        "keywords": 35,
+        "titleSeniority": 76,
+        "domain": 78,
+        "location": 68,
+        "salary": 40,
+        "risk": 78
+      },
+      "coveredRequirements": [],
+      "missingRequirements": [
+        "Python"
+      ],
+      "proofGaps": [
+        "Show evidence for Python or decide whether to avoid claiming it."
+      ],
+      "keywordMap": {
+        "found": [],
+        "missing": [
+          "Python"
+        ],
+        "overused": []
+      },
+      "hiddenScreenSignals": [],
+      "risks": [
+        {
+          "category": "posting",
+          "severity": "low",
+          "title": "No explicit salary range",
+          "explanation": "Compensation is not clearly listed, so salary confidence should stay conservative."
+        },
+        {
+          "category": "candidate",
+          "severity": "medium",
+          "title": "Experience proof may be thin",
+          "explanation": "The role references 5+ years, but the current resume text may not show enough depth."
+        }
+      ]
+    },
+    "packetPlan": {
+      "resumeFixes": [
+        "Show evidence for Python or decide whether to avoid claiming it."
+      ],
+      "coverLetterThemes": [
+        "Lead with the strongest role-relevant proof from the resume.",
+        "Connect the candidate's background to Office equipment warranty lasts 5 years. Python required..",
+        "Address the top gap without overclaiming."
+      ],
+      "linkedinKeywords": [
+        "Python"
+      ],
+      "interviewPrepPrompts": [
+        "Tell me about a project that proves you can succeed as Office equipment warranty lasts 5 years. Python required..",
+        "How would you handle the highest-risk gap in this JD?",
+        "Walk through a measurable result that maps to this role."
+      ],
+      "trackerDraft": {
+        "company": "",
+        "role": "Office equipment warranty lasts 5 years. Python required.",
+        "status": "not_applied",
+        "notes": "This role is worth a focused application. The resume already shows enough alignment; prepare the packet and apply with proof."
+      },
+      "readinessMoves": [
+        {
+          "action": "resume_edit",
+          "title": "Tighten resume proof",
+          "reason": "Close the highest-impact coverage gaps before applying.",
+          "effort": "medium"
+        },
+        {
+          "action": "prepare_packet",
+          "title": "Generate packet",
+          "reason": "Create the resume, cover letter, and ATS review from the same context.",
+          "effort": "low"
+        }
+      ]
+    },
+    "sourceQuality": {
+      "jd": "role_only",
+      "salary": "unknown",
+      "marketData": "analysis_only"
+    },
+    "createdAt": "2026-09-28T23:06:41.735Z"
+  },
+  "contradictoryProvider": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "sourceBinding": null,
+      "analysis": {
+        "fitScore": 0,
+        "fitVerdict": "excellent",
+        "overallAssessment": "This role scores 0% based on resume/JD alignment. Review proof gaps before applying.",
+        "competitiveEdge": "Use the strongest matching accomplishments as the lead story.",
+        "resumeSkills": [
+          "Python"
+        ],
+        "jdRequirements": [
+          "Python required"
+        ],
+        "matchedSkills": [
+          "Python"
+        ],
+        "gapSkills": [],
+        "keywordsToAdd": [],
+        "salaryIntel": {
+          "min": 0,
+          "max": 0,
+          "userPosition": 0,
+          "withBridgeSkills": 0,
+          "currency": "USD"
+        },
+        "redFlags": [],
+        "hiddenRequirements": [],
+        "roleLevel": "Senior",
+        "bridgeSkills": [],
+        "industryInsights": []
+      },
+      "oracleV2": {
+        "session": {
+          "role": "Python required. No degree requirement.",
+          "company": "",
+          "source": "manual",
+          "resumeCharacterCount": 56,
+          "jdCharacterCount": 39
+        },
+        "decision": {
+          "verdict": "apply",
+          "confidence": "high",
+          "fitScore": 0,
+          "readinessScore": 0,
+          "riskScore": 100,
+          "salaryConfidence": "unknown",
+          "recommendedNextAction": "Prepare the application packet and review it before applying.",
+          "applyStrategy": "referral_first",
+          "interviewYield": {
+            "score": 0,
+            "label": "low_yield",
+            "rationale": "Planning heuristic: 55% requirement fit, 30% readiness and 15% inverse risk. This is not a hiring probability or external market measure."
+          },
+          "summary": "This role is worth a focused application. The resume already shows enough alignment; prepare the packet and apply with proof."
+        },
+        "breakdown": {
+          "factorScores": {
+            "qualifications": 0,
+            "responsibilities": 0,
+            "keywords": 95,
+            "titleSeniority": 0,
+            "domain": 0,
+            "location": 68,
+            "salary": 40,
+            "risk": 0
+          },
+          "coveredRequirements": [
+            "Current active security clearance"
+          ],
+          "missingRequirements": [
+            "Python required"
+          ],
+          "proofGaps": [
+            "Add one measurable achievement that maps directly to the highest-priority requirement."
+          ],
+          "keywordMap": {
+            "found": [
+              "Python"
+            ],
+            "missing": [],
+            "overused": []
+          },
+          "hiddenScreenSignals": [
+            {
+              "signal": "Company requires an elite university degree",
+              "confidence": "high",
+              "evidence": "No citation is supplied"
+            }
+          ],
+          "risks": [
+            {
+              "category": "posting",
+              "severity": "low",
+              "title": "No explicit salary range",
+              "explanation": "Compensation is not clearly listed, so salary confidence should stay conservative."
+            }
+          ]
+        },
+        "packetPlan": {
+          "resumeFixes": [
+            "Add one measurable achievement that maps directly to the highest-priority requirement."
+          ],
+          "coverLetterThemes": [
+            "Use the strongest matching accomplishments as the lead story.",
+            "Connect the candidate's background to Python required. No degree requirement..",
+            "Address the top gap without overclaiming."
+          ],
+          "linkedinKeywords": [
+            "Python"
+          ],
+          "interviewPrepPrompts": [
+            "Tell me about a project that proves you can succeed as Python required. No degree requirement..",
+            "How would you handle the highest-risk gap in this JD?",
+            "Walk through a measurable result that maps to this role."
+          ],
+          "trackerDraft": {
+            "company": "",
+            "role": "Python required. No degree requirement.",
+            "status": "not_applied",
+            "notes": "This role is worth a focused application. The resume already shows enough alignment; prepare the packet and apply with proof."
+          },
+          "readinessMoves": [
+            {
+              "action": "resume_edit",
+              "title": "Tighten resume proof",
+              "reason": "Close the highest-impact coverage gaps before applying.",
+              "effort": "medium"
+            },
+            {
+              "action": "prepare_packet",
+              "title": "Generate packet",
+              "reason": "Create the resume, cover letter, and ATS review from the same context.",
+              "effort": "low"
+            },
+            {
+              "action": "networking_angle",
+              "title": "Find a warmer path",
+              "reason": "Risk signals suggest a referral or recruiter note could improve odds.",
+              "effort": "medium"
+            }
+          ]
+        },
+        "sourceQuality": {
+          "jd": "role_only",
+          "salary": "unknown",
+          "marketData": "analysis_only"
+        },
+        "createdAt": "2026-09-28T23:06:41.803Z"
+      },
+      "pipeline": {
+        "stage1": "Taco fast structuring",
+        "stage2": "Taco decision synthesis"
+      }
+    }
+  },
+  "truncation": {
+    "status": 200,
+    "resumeLength": 6031,
+    "jdLength": 4190,
+    "body": {
+      "success": true,
+      "sourceBinding": null,
+      "analysis": {
+        "fitScore": 0,
+        "fitVerdict": "weak",
+        "overallAssessment": "This role scores 0% based on resume/JD alignment. Review proof gaps before applying.",
+        "competitiveEdge": "Use the strongest matching accomplishments as the lead story.",
+        "resumeSkills": [
+          "Python"
+        ],
+        "jdRequirements": [
+          "Python required"
+        ],
+        "matchedSkills": [
+          "Python"
+        ],
+        "gapSkills": [],
+        "keywordsToAdd": [],
+        "salaryIntel": {
+          "min": 0,
+          "max": 0,
+          "userPosition": 0,
+          "withBridgeSkills": 0,
+          "currency": "USD"
+        },
+        "redFlags": [],
+        "hiddenRequirements": [],
+        "roleLevel": "Senior",
+        "bridgeSkills": [],
+        "industryInsights": []
+      },
+      "oracleV2": {
+        "session": {
+          "role": "Engineer",
+          "company": "",
+          "source": "manual",
+          "resumeCharacterCount": 6031,
+          "jdCharacterCount": 4190
+        },
+        "decision": {
+          "verdict": "skip",
+          "confidence": "high",
+          "fitScore": 0,
+          "readinessScore": 0,
+          "riskScore": 4,
+          "salaryConfidence": "unknown",
+          "recommendedNextAction": "Skip for now unless a referral changes the odds.",
+          "applyStrategy": "portfolio_proof",
+          "interviewYield": {
+            "score": 14,
+            "label": "low_yield",
+            "rationale": "Planning heuristic: 55% requirement fit, 30% readiness and 15% inverse risk. This is not a hiring probability or external market measure."
+          },
+          "summary": "This role is likely low yield right now. Save energy unless there is a referral, strategic company interest, or missing context."
+        },
+        "breakdown": {
+          "factorScores": {
+            "qualifications": 35,
+            "responsibilities": 0,
+            "keywords": 35,
+            "titleSeniority": 0,
+            "domain": 0,
+            "location": 68,
+            "salary": 40,
+            "risk": 96
+          },
+          "coveredRequirements": [
+            "Python required"
+          ],
+          "missingRequirements": [
+            "Python required"
+          ],
+          "proofGaps": [
+            "Show evidence for AI or decide whether to avoid claiming it.",
+            "Add one measurable achievement that maps directly to the highest-priority requirement."
+          ],
+          "keywordMap": {
+            "found": [
+              "Python"
+            ],
+            "missing": [
+              "AI"
+            ],
+            "overused": []
+          },
+          "hiddenScreenSignals": [],
+          "risks": [
+            {
+              "category": "posting",
+              "severity": "low",
+              "title": "No explicit salary range",
+              "explanation": "Compensation is not clearly listed, so salary confidence should stay conservative."
+            }
+          ]
+        },
+        "packetPlan": {
+          "resumeFixes": [
+            "Show evidence for AI or decide whether to avoid claiming it.",
+            "Add one measurable achievement that maps directly to the highest-priority requirement."
+          ],
+          "coverLetterThemes": [
+            "Use the strongest matching accomplishments as the lead story.",
+            "Connect the candidate's background to Engineer.",
+            "Address the top gap without overclaiming."
+          ],
+          "linkedinKeywords": [
+            "Python",
+            "AI"
+          ],
+          "interviewPrepPrompts": [
+            "Tell me about a project that proves you can succeed as Engineer.",
+            "How would you handle the highest-risk gap in this JD?",
+            "Walk through a measurable result that maps to this role."
+          ],
+          "trackerDraft": {
+            "company": "",
+            "role": "Engineer",
+            "status": "not_applied",
+            "notes": "This role is likely low yield right now. Save energy unless there is a referral, strategic company interest, or missing context."
+          },
+          "readinessMoves": [
+            {
+              "action": "resume_edit",
+              "title": "Tighten resume proof",
+              "reason": "Close the highest-impact coverage gaps before applying.",
+              "effort": "medium"
+            },
+            {
+              "action": "prepare_packet",
+              "title": "Generate packet",
+              "reason": "Create the resume, cover letter, and ATS review from the same context.",
+              "effort": "low"
+            }
+          ]
+        },
+        "sourceQuality": {
+          "jd": "full_jd",
+          "salary": "unknown",
+          "marketData": "analysis_only"
+        },
+        "createdAt": "2026-09-28T23:06:41.806Z"
+      },
+      "pipeline": {
+        "stage1": "Taco fast structuring",
+        "stage2": "Taco deterministic fallback"
+      }
+    },
+    "prompts": [
+      {
+        "stage": 1,
+        "prompt": "RESUME:\nRoutine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. \n\nJOB DESCRIPTION:\nGeneral role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General ro\n\nLOCATION: United States\n\nAnalyze this resume against this specific job description and return the full JSON analysis. Be specific and actionable."
+      },
+      {
+        "stage": 2,
+        "prompt": "GPT's analysis of this candidate:\n{\n  \"resumeSkills\": [\n    \"Python\"\n  ],\n  \"jdRequirements\": [\n    \"Python required\"\n  ],\n  \"matchedSkills\": [\n    \"Python\"\n  ],\n  \"gapSkills\": [],\n  \"fitScoreEstimate\": 0,\n  \"salaryRange\": {\n    \"currency\": \"USD\"\n  },\n  \"redFlags\": [],\n  \"hiddenRequirements\": [],\n  \"keywordsToAdd\": [],\n  \"roleLevel\": \"Senior\",\n  \"bridgeSkills\": []\n}\n\nORIGINAL RESUME (first 2000 chars):\nRoutine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. Routine background. \n\nORIGINAL JD (first 1500 chars):\nGeneral role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role description. General role descr\n\nCross-check only the supplied resume and posting. Do not infer salary ranges, skill earnings or hiring probabilities. Add red flags, hidden screen signals, proof gaps, and a concrete apply strategy."
+      }
+    ]
+  },
+  "sourceBinding": {
+    "status": 200,
+    "body": {
+      "success": true,
+      "sourceBinding": {
+        "resumeVersionId": "source1",
+        "sourceHash": "5f1f996f79dafaba4585e0ed7c12304e1647dfdc00dce7c183444c262969d174"
+      },
+      "analysis": {
+        "fitScore": 0,
+        "fitVerdict": "weak",
+        "overallAssessment": "This role scores 0% based on resume/JD alignment. Review proof gaps before applying.",
+        "competitiveEdge": "Use the strongest matching accomplishments as the lead story.",
+        "resumeSkills": [
+          "Python"
+        ],
+        "jdRequirements": [
+          "Python required"
+        ],
+        "matchedSkills": [
+          "Python"
+        ],
+        "gapSkills": [],
+        "keywordsToAdd": [],
+        "salaryIntel": {
+          "min": 0,
+          "max": 0,
+          "userPosition": 0,
+          "withBridgeSkills": 0,
+          "currency": "USD"
+        },
+        "redFlags": [],
+        "hiddenRequirements": [],
+        "roleLevel": "Senior",
+        "bridgeSkills": [],
+        "industryInsights": []
+      },
+      "oracleV2": {
+        "session": {
+          "resumeVersionId": "source1",
+          "role": "Python required.",
+          "company": "",
+          "source": "manual",
+          "resumeCharacterCount": 42,
+          "jdCharacterCount": 16
+        },
+        "decision": {
+          "verdict": "skip",
+          "confidence": "low",
+          "fitScore": 0,
+          "readinessScore": 0,
+          "riskScore": 4,
+          "salaryConfidence": "unknown",
+          "recommendedNextAction": "Skip for now unless a referral changes the odds.",
+          "applyStrategy": "portfolio_proof",
+          "interviewYield": {
+            "score": 14,
+            "label": "low_yield",
+            "rationale": "Planning heuristic: 55% requirement fit, 30% readiness and 15% inverse risk. This is not a hiring probability or external market measure."
+          },
+          "summary": "This role is likely low yield right now. Save energy unless there is a referral, strategic company interest, or missing context."
+        },
+        "breakdown": {
+          "factorScores": {
+            "qualifications": 95,
+            "responsibilities": 0,
+            "keywords": 95,
+            "titleSeniority": 0,
+            "domain": 0,
+            "location": 68,
+            "salary": 40,
+            "risk": 96
+          },
+          "coveredRequirements": [
+            "Python required"
+          ],
+          "missingRequirements": [
+            "Python required"
+          ],
+          "proofGaps": [
+            "Add one measurable achievement that maps directly to the highest-priority requirement."
+          ],
+          "keywordMap": {
+            "found": [
+              "Python"
+            ],
+            "missing": [],
+            "overused": []
+          },
+          "hiddenScreenSignals": [],
+          "risks": [
+            {
+              "category": "posting",
+              "severity": "low",
+              "title": "No explicit salary range",
+              "explanation": "Compensation is not clearly listed, so salary confidence should stay conservative."
+            }
+          ]
+        },
+        "packetPlan": {
+          "resumeFixes": [
+            "Add one measurable achievement that maps directly to the highest-priority requirement."
+          ],
+          "coverLetterThemes": [
+            "Use the strongest matching accomplishments as the lead story.",
+            "Connect the candidate's background to Python required..",
+            "Address the top gap without overclaiming."
+          ],
+          "linkedinKeywords": [
+            "Python"
+          ],
+          "interviewPrepPrompts": [
+            "Tell me about a project that proves you can succeed as Python required..",
+            "How would you handle the highest-risk gap in this JD?",
+            "Walk through a measurable result that maps to this role."
+          ],
+          "trackerDraft": {
+            "company": "",
+            "role": "Python required.",
+            "status": "not_applied",
+            "notes": "This role is likely low yield right now. Save energy unless there is a referral, strategic company interest, or missing context."
+          },
+          "readinessMoves": [
+            {
+              "action": "resume_edit",
+              "title": "Tighten resume proof",
+              "reason": "Close the highest-impact coverage gaps before applying.",
+              "effort": "medium"
+            },
+            {
+              "action": "prepare_packet",
+              "title": "Generate packet",
+              "reason": "Create the resume, cover letter, and ATS review from the same context.",
+              "effort": "low"
+            }
+          ]
+        },
+        "sourceQuality": {
+          "jd": "role_only",
+          "salary": "unknown",
+          "marketData": "analysis_only"
+        },
+        "createdAt": "2026-09-28T23:06:41.808Z"
+      },
+      "pipeline": {
+        "stage1": "Taco fast structuring",
+        "stage2": "Taco deterministic fallback"
+      }
+    },
+    "lookup": {
+      "uid": "alice",
+      "id": "source1"
+    },
+    "prompts": [
+      {
+        "stage": 1,
+        "prompt": "RESUME:\nStored Person\nOnly stored resume evidence.\n\nJOB DESCRIPTION:\nPython required.\n\nLOCATION: United States\n\nAnalyze this resume against this specific job description and return the full JSON analysis. Be specific and actionable."
+      },
+      {
+        "stage": 2,
+        "prompt": "GPT's analysis of this candidate:\n{\n  \"resumeSkills\": [\n    \"Python\"\n  ],\n  \"jdRequirements\": [\n    \"Python required\"\n  ],\n  \"matchedSkills\": [\n    \"Python\"\n  ],\n  \"gapSkills\": [],\n  \"fitScoreEstimate\": 0,\n  \"salaryRange\": {\n    \"currency\": \"USD\"\n  },\n  \"redFlags\": [],\n  \"hiddenRequirements\": [],\n  \"keywordsToAdd\": [],\n  \"roleLevel\": \"Senior\",\n  \"bridgeSkills\": []\n}\n\nORIGINAL RESUME (first 2000 chars):\nStored Person\nOnly stored resume evidence.\n\nORIGINAL JD (first 1500 chars):\nPython required.\n\nCross-check only the supplied resume and posting. Do not infer salary ranges, skill earnings or hiring probabilities. Add red flags, hidden screen signals, proof gaps, and a concrete apply strategy."
+      }
+    ]
+  }
+}

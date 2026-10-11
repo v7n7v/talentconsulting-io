@@ -298,7 +298,7 @@ export async function POST(req: NextRequest) {
         ? linkedResumeSnapshot.data() || null
         : null;
       const sourceSnapshot = await transaction.get(sourceReference);
-      const currentSource = sourceSnapshot.exists ? getPacketSourceContent(sourceSnapshot.data() || {}, baseResumeSource || 'resume_versions') : null;
+      const currentSource = sourceSnapshot.exists ? getPacketSourceContent(sourceSnapshot.data() || {}, baseResumeSource || 'resume_versions', { uid: userId, id: baseResumeId }) : null;
       if (!currentSource || crypto.createHash('sha256').update(JSON.stringify(currentSource)).digest('hex') !== baseResumeHash) {
         return { state: 'source_changed' as const, data: currentData };
       }
@@ -570,7 +570,7 @@ export async function POST(req: NextRequest) {
         ? linkedResumeSnapshot.data() || null
         : null;
       const sourceSnapshot = await transaction.get(sourceReference);
-      const currentSource = sourceSnapshot.exists ? getPacketSourceContent(sourceSnapshot.data() || {}, baseResumeSource || 'resume_versions') : null;
+      const currentSource = sourceSnapshot.exists ? getPacketSourceContent(sourceSnapshot.data() || {}, baseResumeSource || 'resume_versions', { uid: userId, id: baseResumeId }) : null;
       const sourceStillMatches = Boolean(currentSource)
         && crypto.createHash('sha256').update(JSON.stringify(currentSource)).digest('hex') === baseResumeHash;
       const persistedReady = sourceStillMatches && isPersistedJobPacketReady({

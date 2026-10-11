@@ -38,3 +38,17 @@
   --taco-border-strong: var(--taco-ink);
   --taco-accent-text: var(--taco-coral-ink);
 }
+
+/* The flagship lab presents resume layouts on paper in either app theme.
+   Keep its surfaces inside this boundary while sourcing color from Taco roles. */
+.flagship-lab {
+  color-scheme: light;
+  --bg-surface: var(--taco-paper);
+  --bg-card: var(--taco-soft);
+  --bg-input: var(--taco-paper);
+  --text-primary: var(--taco-ink);
+  --text-secondary: var(--taco-muted);
+  --border-subtle: var(--taco-line);
+  --accent: var(--taco-coral);
+  --accent-dim: var(--taco-soft);
+}

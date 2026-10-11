@@ -64,7 +64,14 @@ test('mixed failure fixture remains an explicit failure rather than an empty suc
   enable();
   const failed = workspacePreviewResponse(request('/api/agent/intelligence','partial'));
   assert.equal(failed.status,503);
-  const healthy = workspacePreviewResponse(request('/api/jobs/search','partial'));
+  const unavailable = workspacePreviewResponse(request('/api/jobs/search','partial'));
+  assert.equal(unavailable.status,503);
+  const failure = await unavailable.json();
+  assert.equal(failure.success,false);
+  assert.equal(failure.retryable,true);
+  assert.equal(failure.code,'search_supply_unavailable');
+  assert.equal(Object.hasOwn(failure,'jobs'),false);
+  const healthy = workspacePreviewResponse(request('/api/jobs/search','active'));
   assert.equal(healthy.status,200);
   const body = await healthy.json();
   assert.ok(body.jobs.length);

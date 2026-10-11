@@ -6,7 +6,7 @@ import { useStore } from '@/lib/store';
 import { getResumeVersions, type ResumeVersion } from '@/lib/database-suite';
 import { showToast } from '@/components/Toast';
 import { getPersistedResumeTemplateId } from '@/lib/resume-templates';
-import { classifyResumeVerification } from '@/lib/server-resume';
+import { classifyResumeVerification } from '@/lib/resume-source-classifier';
 
 interface ResumeLibraryPickerProps {
   onSelect: (resume: ResumeVersion) => void;

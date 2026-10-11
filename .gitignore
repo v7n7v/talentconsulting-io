@@ -93,9 +93,3 @@ YOUR_CREDENTIALS.txt
 /.claude
 
 /.project-map/
-
-# Local verification and publication receipts
-/.codex/releases/
-/tmp/
-__pycache__/
-*.py[cod]

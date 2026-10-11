@@ -1,11 +1,12 @@
-import type { Metadata } from 'next';
+import { buildMetadata } from '@/lib/seo';
 import Link from 'next/link';
 import { TacoMark } from '@/components/BrandLogo';
 
-export const metadata: Metadata = {
+export const metadata = buildMetadata({
   title: 'Terms of Service',
   description: 'Terms for using Talent Studio career tools, AI writing tools, subscriptions, and billing.',
-};
+  path: '/terms',
+});
 
 const sections = [
   {

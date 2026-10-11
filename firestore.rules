@@ -216,11 +216,20 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
     }
 
+    function hasSealedSourceEnvelope(data) {
+      let metadata = data.get('metadata', {});
+      let workspace = metadata is map ? metadata.get('workspace', {}) : {};
+      return data.keys().hasAny(['source_confirmation_receipt'])
+        || (metadata is map && metadata.keys().hasAny(['source_confirmation_receipt']))
+        || (workspace is map && (workspace.get('kind', '') == 'source' || workspace.get('schemaVersion', 0) == 2));
+    }
+
     // User-authored resume versions remain editable. Once a server guardrail
     // report is attached, the guarded artifact becomes immutable to clients.
     match /users/{userId}/resume_versions/{document=**} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
+        && !hasSealedSourceEnvelope(request.resource.data)
         && !request.resource.data.keys().hasAny([
           'guardrail_report',
           'morph_guardrail_report',
@@ -232,6 +241,8 @@ service cloud.firestore {
           'morph_effective_percentage'
         ]);
       allow update: if isOwner(userId)
+        && !hasSealedSourceEnvelope(resource.data)
+        && !hasSealedSourceEnvelope(request.resource.data)
         && !resource.data.keys().hasAny([
           'guardrail_report',
           'morph_guardrail_report',
@@ -253,6 +264,7 @@ service cloud.firestore {
           'morph_effective_percentage'
         ]);
       allow delete: if isOwner(userId)
+        && !hasSealedSourceEnvelope(resource.data)
         && !resource.data.keys().hasAny([
           'guardrail_report',
           'morph_guardrail_report',
