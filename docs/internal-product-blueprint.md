@@ -137,7 +137,7 @@ Desktop and mobile use the same destinations and active-route ownership. On mobi
 
 Inventory check: 43 suite page routes exist, including 11 admin/preview routes; the shared registry describes only 14 destinations. The migration manifest must cover redirects and contextual pages as well as primary tools. Keep the gallery's grammar, word count, citations, summaries, tone, paraphrasing, email composition and thesis tools accessible under More. Preserve existing ATS aliases and development-only proof fixtures without putting them in customer navigation.
 
-Extend the current registry with canonical destination, navigation parent, aliases, contextual placements and guest behavior. Keep quick actions separate from full destinations: CommandPalette currently chooses `mobileHref` even on desktop, so a tool command can unexpectedly open a filtered/mobile subview. A shortcut labeled “Follow-ups” may open that view; “Applications” should reliably open the full destination.
+Extend the current registry with canonical destination, navigation parent, aliases, contextual placements and guest behavior. Keep quick actions separate from full destinations (the workspace command palette that mixed them was removed on 11 October 2026). A shortcut labeled “Follow-ups” may open that view; “Applications” should reliably open the full destination.
 
 ## 5. Core flow and screen contracts
 
@@ -317,7 +317,7 @@ Progress by complete, testable slices. Relative size is planning guidance, not a
 
 | Work area | Existing integration points |
 |---|---|
-| Shell/navigation | `components/workspace/WorkspaceFrame.tsx`, `components/SuiteSidebar.tsx`, `components/mobile/MobileWorkbench.tsx`, `components/CommandPalette.tsx`, `lib/suite-tool-registry.ts`, `lib/sidebar-navigation.ts` |
+| Shell/navigation | `components/workspace/WorkspaceFrame.tsx`, `components/SuiteSidebar.tsx`, `components/mobile/MobileWorkbench.tsx`, `lib/suite-tool-registry.ts`, `lib/sidebar-navigation.ts` |
 | Shared visual primitives | `components/suite/SuiteToolChrome.tsx`, `components/suite/ReviewFirstWorkflow.tsx`, scoped workspace stylesheet/tokens to be introduced |
 | Home priorities | `app/suite/page.tsx`, `components/dashboard/DashboardActionInbox.tsx`, `components/dashboard/PhaseOneCommandCenter.tsx`, `lib/dashboard-action-inbox.ts` |
 | Intake | `app/suite/agent/page.tsx`, `app/suite/resume/page.tsx`, `components/modals/OnboardingModal.tsx`, `lib/resume-upload.ts`, existing upload/provenance/recovery modules |

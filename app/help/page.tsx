@@ -30,7 +30,7 @@ const docs: DocSection[] = [
     ]},
     { id: 'general', title: 'Settings & navigation', icon: 'settings', description: 'Profile, display, notifications, and account requests.', content: [
         { title: 'Profile & display', steps: ['Open Settings to edit your display name, phone, and bio.', 'Unsaved profile edits are retained on this device when storage is available. Save to update your account.', 'Choose Light, Dark, or System under Display.'] },
-        { title: 'Navigation', steps: ['Use the sidebar to open a workspace.', 'Press Cmd+K on macOS or Ctrl+K elsewhere to open the workspace command palette.'] },
+        { title: 'Navigation', steps: ['Use the sidebar to open a workspace.', 'On smaller screens, use the menu button and the destination bar at the top of the page.'] },
         { title: 'Account requests', steps: ['Data & Privacy offers a confirmed optional-email pause and a deletion request.', 'Pausing optional email does not disable sign-in.', 'A confirmed deletion request is queued for processing; confirmation is not completion.'] },
     ]},
 ];

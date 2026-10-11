@@ -910,7 +910,7 @@ function OpportunityIntelligenceBar({
   const profileScore = [hasPrefs, userSkills.length > 0, matchThreshold >= 60, !hideGhosts].filter(Boolean).length;
   const directCount = jobs.filter(job => job.sourceMeta.sourceType === 'direct_ats').length;
   return (
-    <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 elevation-card">
+    <section className="taco-suite-panel rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 elevation-card">
       <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
 
 
@@ -973,7 +973,7 @@ function OpportunityIntelligenceBar({
               onClose={onPrefsClose}
             />
             <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-1">
-              <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+              <section className="rounded-[2px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Search profile</p>
@@ -989,7 +989,7 @@ function OpportunityIntelligenceBar({
                 </div>
               </section>
 
-              <section className="rounded-[16px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+              <section className="rounded-[2px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">Role suggestions</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {SAVED_SEARCHES.map(search => (
@@ -1106,7 +1106,7 @@ function OpportunityFeed({
 
   if (loading) {
     return (
-      <section className="flex min-h-[360px] flex-col items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center">
+      <section className="taco-suite-panel flex min-h-[360px] flex-col items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center">
         <AssistantThinkingTile
           variant="jobs"
           icon="radar"
@@ -1122,9 +1122,9 @@ function OpportunityFeed({
 
   if (!hasSearched) {
     return (
-      <section className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
+      <section className="taco-suite-panel rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
         <div className="mx-auto max-w-2xl py-6 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[16px] border border-[var(--accent)] bg-[var(--accent-dim)]">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[2px] border border-[var(--accent)] bg-[var(--accent-dim)]">
             <span className="material-symbols-rounded text-2xl text-[var(--accent)]">radar</span>
           </div>
           <h2 className="mt-5 text-xl font-semibold tracking-tight text-[var(--text-primary)]">Start with a role, then let <TacoName /> rank the market.</h2>
@@ -1149,7 +1149,7 @@ function OpportunityFeed({
 
   if (recovery && jobs.length === 0) {
     return (
-      <section className="flex min-h-[420px] items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 sm:p-6">
+      <section className="taco-suite-panel flex min-h-[420px] items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 sm:p-6">
         <div className="w-full max-w-xl">
           <JobDiscoveryRecoveryPanel recovery={recovery} onAction={onRecoveryAction} />
         </div>
@@ -1159,7 +1159,7 @@ function OpportunityFeed({
 
   if (jobs.length === 0) {
     return (
-      <section className="flex min-h-[420px] flex-col items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center">
+      <section className="taco-suite-panel flex min-h-[420px] flex-col items-center justify-center rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 text-center">
         <span className="material-symbols-rounded text-4xl text-[var(--text-muted)]">search_off</span>
         <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">{totalJobs > 0 ? 'No roles matched these filters.' : 'No roles found for this search.'}</p>
         <p className="mt-1 text-xs text-[var(--text-secondary)]">{totalJobs > 0 ? 'Your search returned roles. Clear the filters to see them.' : 'Try a broader role title or another location.'}</p>
@@ -1272,7 +1272,7 @@ function OpportunityCard({
           : 'fact_check';
   return (
     <article
-      className={`rounded-[16px] border bg-[var(--bg-surface)] p-4 transition ${
+      className={`rounded-[2px] border bg-[var(--bg-surface)] p-4 transition ${
         selected ? 'border-[var(--accent)] elevation-raised' : 'border-[var(--border-subtle)] elevation-card hover:border-[var(--accent)]'
       }`}
     >
@@ -1442,7 +1442,7 @@ function OpportunityIntelligencePanel({
 
   if (!job) {
     return (
-      <aside id="opportunity-intelligence-panel" ref={panelRef} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
+      <aside id="opportunity-intelligence-panel" ref={panelRef} className="taco-suite-panel rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6">
         <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
           <span className="material-symbols-rounded text-4xl text-[var(--text-muted)]">ads_click</span>
           <p className="mt-3 text-sm font-semibold text-[var(--text-primary)]">Select a role to open the intelligence panel.</p>
@@ -1457,7 +1457,7 @@ function OpportunityIntelligencePanel({
   ).slice(0, 10);
 
   return (
-    <aside id="opportunity-intelligence-panel" ref={panelRef} className="rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
+    <aside id="opportunity-intelligence-panel" ref={panelRef} className="taco-suite-panel rounded-[18px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] elevation-card xl:sticky xl:top-4 xl:max-h-[calc(100dvh-2rem)] xl:overflow-hidden">
       <div className="border-b border-[var(--border-subtle)] p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">

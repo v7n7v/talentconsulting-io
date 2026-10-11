@@ -131,9 +131,11 @@ const toolGroups = [
 function getSmartGreeting(firstName: string, twinData: DashboardTwinData | null): { greeting: string; subtitle: string } {
   const hour = new Date().getHours();
   const timeGreet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  // No stand-in name: a guest is greeted plainly rather than as "there".
+  const salute = firstName ? `${timeGreet}, ${firstName}` : timeGreet;
 
   if (!twinData) {
-    return { greeting: `${timeGreet}, ${firstName}`, subtitle: 'Your career intelligence hub. Every tool, one place.' };
+    return { greeting: salute, subtitle: 'Your career intelligence hub. Every tool, one place.' };
   }
 
   const { completeness, behavioralBank, background } = twinData;
@@ -143,10 +145,10 @@ function getSmartGreeting(firstName: string, twinData: DashboardTwinData | null)
 
   if (completeness?.score < 40) {
     const next = completeness.missing?.[0] || 'Resume uploaded';
-    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `Profile ${completeness.score}% complete. Next: ${next}.` };
+    return { greeting: salute, subtitle: `Profile ${completeness.score}% complete. Next: ${next}.` };
   }
   if (behavioralBank?.coverageScore < 25 && behavioralBank?.totalStories < 3) {
-    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `Add STAR stories to cover ${behavioralBank.uncoveredCategories?.slice(0, 2).join(' & ') || 'key areas'}.` };
+    return { greeting: salute, subtitle: `Add STAR stories to cover ${behavioralBank.uncoveredCategories?.slice(0, 2).join(' & ') || 'key areas'}.` };
   }
   /*
    * Before any score-derived line, two facts that outrank it.
@@ -162,18 +164,18 @@ function getSmartGreeting(firstName: string, twinData: DashboardTwinData | null)
    * an opinion.
    */
   if (sentApplications === 0) {
-    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `No applications sent yet. That is the next step.` };
+    return { greeting: salute, subtitle: `No applications sent yet. That is the next step.` };
   }
   if (!basis.ratingIsSupported) {
-    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `Tracking ${sentApplications} sent application${sentApplications === 1 ? '' : 's'}. More signal, sharper guidance.` };
+    return { greeting: salute, subtitle: `Tracking ${sentApplications} sent application${sentApplications === 1 ? '' : 's'}. More signal, sharper guidance.` };
   }
   if (score >= 70) {
-    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `You're in strong shape. Keep the momentum going.` };
+    return { greeting: salute, subtitle: `You're in strong shape. Keep the momentum going.` };
   }
   if (score >= 45) {
-    return { greeting: `${timeGreet}, ${firstName}`, subtitle: `${background?.targetRoles?.[0] ? `Progressing toward ${background.targetRoles[0]}.` : 'Room to grow. Keep pushing.'}` };
+    return { greeting: salute, subtitle: `${background?.targetRoles?.[0] ? `Progressing toward ${background.targetRoles[0]}.` : 'Room to grow. Keep pushing.'}` };
   }
-  return { greeting: `${timeGreet}, ${firstName}`, subtitle: `Let's build your pipeline. Start with a resume upload.` };
+  return { greeting: salute, subtitle: `Let's build your pipeline. Start with a resume upload.` };
 }
 
 function getInitials(name: string): string {
@@ -194,6 +196,17 @@ export default function DashboardPage() {
   const [contextOwner, setContextOwner] = useState<string | null>(null);
   const [contextState, setContextState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [contextRetry, setContextRetry] = useState(0);
+  // A guest has no next-action context or activity to show, so the real tool
+  // list opens by default instead of leaving Home a single card on a blank page.
+  // WorkspaceFrame resolves auth before rendering, so `user` is settled here.
+  const [toolsOpen, setToolsOpen] = useState(() => !user);
+  // Signing in from the sidebar does not remount Home; collapse the guest
+  // default once there is an account context to show instead.
+  const [toolsUser, setToolsUser] = useState(userId);
+  if (toolsUser !== userId) {
+    setToolsUser(userId);
+    if (userId && !toolsUser) setToolsOpen(false);
+  }
   const twinData = userId && contextOwner === userId ? loadedTwin : null;
   const visibleContextState = !userId ? 'ready' : contextOwner === userId ? contextState : 'loading';
   const [activityRows, setRecentActivity] = useState<{ owner: string | undefined; icon: string; text: string; time: string; path: string }[]>([]);
@@ -285,7 +298,7 @@ export default function DashboardPage() {
     return () => { active = false; };
   }, [user?.uid]);
 
-  const firstName = user?.displayName || user?.email?.split('@')[0] || 'there';
+  const firstName = user?.displayName?.trim().split(/\s+/)[0] || user?.email?.split('@')[0] || '';
   const fullName = user?.displayName || user?.email?.split('@')[0] || 'User';
   const initials = getInitials(fullName);
   const { greeting, subtitle } = getSmartGreeting(firstName, twinData);
@@ -300,7 +313,7 @@ export default function DashboardPage() {
     toolId: 'dashboard', title: 'Home', contextKey: 'home',
     purpose: 'Orient to the current account snapshot and choose real work to continue.',
     pending: visibleContextState === 'loading', failed: visibleContextState === 'error',
-    work: [storyStep('next', 'Read the next useful action', 'The current context explains a suggested priority or the missing prerequisite. Opening a task is your choice.', 'home-next-action'), storyStep('tools', 'Find the tool you need', 'Open More tools yourself to browse the existing destinations. Guidance does not rearrange navigation or start work.', 'home-tools'), storyStep('history', 'Return to actual activity', 'Recent activity reopens recorded work when available. An empty history is not a career-progress score.', 'home-history', 'Recent activity appears when this account has loaded recorded activity.')],
+    work: [storyStep('next', 'Read the next useful action', 'The current context explains a suggested priority or the missing prerequisite. Opening a task is your choice.', 'home-next-action'), storyStep('tools', 'Find the tool you need', 'Open or close More tools yourself to browse the existing destinations. Guidance does not rearrange navigation or start work.', 'home-tools'), storyStep('history', 'Return to actual activity', 'Recent activity reopens recorded work when available. An empty history is not a career-progress score.', 'home-history', 'Recent activity appears when this account has loaded recorded activity.')],
     recovery: [storyStep('retry', 'Refresh account context', 'The next-action area retains its named retry. Choose it yourself; no new priority is implied until the read succeeds.', 'home-next-action')],
   }));
 
@@ -311,11 +324,14 @@ export default function DashboardPage() {
 
   return (
     <SuiteToolShell variant="standard" contentClassName="gap-0 taco-home-shell">
-      <header className="relative taco-home-greeting mb-4 flex min-w-0 items-start gap-3" aria-labelledby="suite-command-center-title">
+      <header className="taco-home-greeting mb-4 min-w-0" aria-labelledby="suite-command-center-title">
+        <div className="flex min-w-0 items-start gap-3">
         <div className="grid h-11 w-11 shrink-0 place-items-center border border-[var(--workspace-ink)] bg-[var(--bg-surface)] text-sm font-bold text-[var(--text-primary)] elevation-card">
-          {initials}
+          {user
+            ? initials
+            : <span className="material-symbols-rounded text-[20px]" aria-hidden="true">person</span>}
         </div>
-        <div className="min-w-0 flex-1 pr-12">
+        <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h1 id="suite-command-center-title" className="text-2xl font-bold leading-tight text-[var(--text-primary)]">{greeting}</h1>
             {tierLoading ? (
@@ -327,9 +343,12 @@ export default function DashboardPage() {
             ) : <PlanBadge tier={tier} active={plan.id !== 'free'} />}
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-5 text-[var(--text-secondary)]">{trajectoryText}</p>
-          <ToolGuidanceInvitation toolId="dashboard" />
         </div>
-        <div className="absolute right-0 top-0"><PageHelp toolId="dashboard" /></div>
+        <div className="shrink-0"><PageHelp toolId="dashboard" /></div>
+        </div>
+        {/* Below the greeting row, not inside its text column: squeezed between
+            the avatar and the help button, "Show me how" wrapped at 320px. */}
+        <div className="sm:pl-14"><ToolGuidanceInvitation toolId="dashboard" /></div>
       </header>
       <div data-guide="home-next-action">{nextActionBlock}</div>
       {todayBlock}
@@ -338,10 +357,15 @@ export default function DashboardPage() {
       {user && <div className="taco-home-opportunities"><JobFeedWidget /></div>}
 
       {/* ── Grouped Tool Grid ── */}
-      <details className="taco-home-tools mb-5 rounded-[4px] border border-[var(--workspace-ink)] bg-[var(--bg-surface)] elevation-card">
+      <details
+        className="taco-home-tools mb-5 rounded-[4px] border border-[var(--workspace-ink)] bg-[var(--bg-surface)] elevation-card"
+        open={toolsOpen}
+        /* Mirror only user toggles; React's own attribute write fires `toggle` too. */
+        onToggle={event => { if (event.currentTarget.open !== toolsOpen) setToolsOpen(event.currentTarget.open); }}
+      >
         <summary data-guide="home-tools" className="flex min-h-11 cursor-pointer items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--text-primary)]">
           More tools
-          <span className="material-symbols-rounded text-[18px]" aria-hidden="true">expand_more</span>
+          <span className="material-symbols-rounded text-[18px]" aria-hidden="true">{toolsOpen ? 'expand_less' : 'expand_more'}</span>
         </summary>
         <div className="border-t border-[var(--border-subtle)] p-4">
         {toolGroups.map((group) => (

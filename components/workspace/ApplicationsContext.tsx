@@ -27,7 +27,7 @@ export default function ApplicationsContext({ active, context }: ApplicationsCon
           key={tab.id}
           href={workspaceCompatibilityHref(tab.href, query)}
           aria-current={active === tab.id ? 'page' : undefined}
-          className={`inline-flex min-h-10 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors ${active === tab.id
+          className={`inline-flex min-h-11 items-center gap-1.5 border px-3 text-xs font-semibold transition-colors ${active === tab.id
             ? 'border-[var(--text-primary)] bg-[var(--text-primary)] text-[var(--bg-deep)]'
             : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:border-[var(--border)] hover:text-[var(--text-primary)]'}`}
         >

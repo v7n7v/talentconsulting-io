@@ -115,14 +115,14 @@ export default function ToolsIndexPage() {
         <section className="mt-12 max-w-2xl">
           <h2 className="text-lg font-semibold tracking-tight">The rest of the suite</h2>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-            Job tracking, packet preparation, story banks and <TacoName /> itself live inside the Studio,
-            because they work from your saved resume rather than a single paste. Nothing is submitted
-            anywhere without you approving it first.
+            Job tracking, packet preparation, story banks and <TacoName /> itself live inside your
+            workspace, because they work from your saved resume rather than a single paste. Nothing is
+            submitted anywhere without you approving it first.
           </p>
           {/* min-h-[44px] on top of .btn-secondary: the shared class is
               padding 8px/24px at 14px, which renders 39px tall. */}
           <Link href="/suite" className="btn-secondary mt-5 inline-flex min-h-[44px] items-center">
-            Open the Studio
+            Open your workspace
           </Link>
         </section>
       </div>

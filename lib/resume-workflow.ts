@@ -109,12 +109,16 @@ export function resumeSectionStatuses(input: {
   hasSource: boolean; sourcePending: boolean; sourceError: boolean; sourceWarnings: boolean;
   hasJob: boolean; generating: boolean; hasCandidate: boolean; outdated: boolean;
   needsReview: boolean; hasTemplateAccess: boolean; saved: boolean;
+  /** A loaded document (e.g. a saved tailored version without a source snapshot). */
+  hasDocument?: boolean;
 }): Record<ResumeSection, ResumeSectionStatus> {
   return {
     source: input.sourcePending ? 'in-progress' : input.sourceError || input.sourceWarnings ? 'attention' : input.hasSource ? 'ready' : 'not-started',
     target: input.hasJob ? 'ready' : 'not-started',
     shape: input.generating ? 'in-progress' : input.outdated ? 'outdated' : input.needsReview ? 'attention' : input.hasCandidate ? 'ready' : 'not-started',
-    design: input.hasTemplateAccess ? 'ready' : 'attention',
+    // A default template is always selected, but nothing is ready to design
+    // until there is a source: "Ready" beside four "Not started" steps misled.
+    design: !input.hasSource && !input.hasDocument ? 'not-started' : input.hasTemplateAccess ? 'ready' : 'attention',
     ship: input.outdated || input.needsReview ? 'attention' : input.saved ? 'ready' : input.hasCandidate ? 'in-progress' : 'not-started',
   };
 }

@@ -130,7 +130,8 @@ test('admin, guest, billing, plan, and Taco contracts survive the visual rewrite
   assert.match(sidebar, /UPGRADE_COPY\.sidebarPlanChoice/);
   assert.match(sidebar, /label="Explore Max"/);
   assert.match(sidebar, /label="Free usage"/);
-  assert.match(sidebar, /\{usageUsed\}\/\{usageCap\}/);
+  assert.match(sidebar, /\$\{remainingUsage\} of \$\{usageCap\} credits left/);
+  assert.doesNotMatch(sidebar, /\{usageUsed\}\/\{usageCap\}/);
   assert.match(sidebar, /usageExhausted \? \(\) => onUpgrade\(\)/);
   assert.match(sidebar, /<AssistantMark/);
   assert.match(sidebar, /jobCountKey\(uid\)/);

@@ -1,9 +1,17 @@
+/* The shared .btn-secondary pads 24px a side; here that pushed the ✕ onto its
+   own line at 320px. Compact padding keeps the pair on one row in most
+   columns, and wrapping stays allowed so a narrow column never overflows. */
+.tool-guidance-invitation .btn-secondary:not(.btn-icon) {
+  padding-inline: 16px;
+}
+
 .tool-guidance-invitation {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
 }
 
 .tool-guidance-panel {

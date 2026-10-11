@@ -138,7 +138,10 @@ export function SuiteToolHeader({
         className,
       )}
     >
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      {/* PageHelp sits in the flow, not absolutely positioned: as an overlay it
+          covered long titles at 390px and the trailing actions at 1440px. */}
+      <div className="flex min-w-0 items-start gap-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <SuiteToolIcon
             icon={resolvedIcon}
@@ -146,7 +149,7 @@ export function SuiteToolHeader({
             className={cx('max-md:h-10 max-md:w-10 max-md:rounded-[14px]', iconClassName)}
             iconClassName="max-md:text-[21px]"
           />
-          <div className={cx('min-w-0 flex-1', resolvedHelp && 'pr-12')}>
+          <div className="min-w-0 flex-1">
             {resolvedEyebrow && (
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)] md:tracking-[0.14em]">
                 <TacoText text={resolvedEyebrow} />
@@ -167,17 +170,18 @@ export function SuiteToolHeader({
         </div>
         {actions && (
           <div
-            className={cx('flex min-w-0 flex-wrap items-center gap-2 max-lg:pl-[52px] lg:flex-1 lg:justify-end', resolvedHelp && 'lg:pr-12', actionsClassName)}
+            className={cx('flex min-w-0 flex-wrap items-center gap-2 max-lg:pl-[52px] lg:flex-1 lg:justify-end', actionsClassName)}
           >
             {actions}
           </div>
         )}
       </div>
       {resolvedHelp && (
-        <div className="absolute right-4 top-4 flex shrink-0 items-center gap-2 md:right-6 md:top-6">
+        <div className="flex shrink-0 items-center">
           <PageHelp toolId={resolvedHelp} />
         </div>
       )}
+      </div>
       {children && <div className="mt-3 min-w-0 md:mt-4">{children}</div>}
       {resolvedHelp && <ToolGuidanceInvitation toolId={resolvedHelp} />}
     </motion.header>

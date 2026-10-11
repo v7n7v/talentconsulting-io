@@ -614,6 +614,20 @@ body {
   border-color: var(--accent);
 }
 
+/* Icon-only variant. The 24px side padding above otherwise stretches a single
+   glyph into a ~90px pill, which is how the help button came to sit on top of
+   page headings. A fixed 44px square keeps the touch target and the footprint. */
+.btn-secondary.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
 .glass-button {
   background: var(--accent-dim);
   border: 1px solid var(--border-subtle);
@@ -1657,6 +1671,19 @@ canvas {
   .desktop-hide { display: none !important; }
 }
 
+/* Pre-measurement state for the suite drawer (see SuiteSidebar). Below the
+   desktop breakpoint it starts off-canvas, so the first paint never shows it
+   open; once measured, the inline transform takes over at the same position. */
+.workspace-sidebar--unmeasured {
+  transition: none !important;
+}
+
+@media (max-width: 1023.98px) {
+  .workspace-sidebar--unmeasured {
+    transform: translateX(calc(-100% - 16px));
+  }
+}
+
 .mobile-quick-tools {
   position: sticky;
   top: 0;
@@ -1670,11 +1697,14 @@ canvas {
 .mobile-quick-tools__rail {
   display: flex;
   gap: 8px;
-  width: calc(100% - 88px);
-  max-width: calc(100% - 88px);
+  /* Full width: the partly visible last item is the scroll affordance. The
+     old floating "Swipe" pill needed an 88px reserve and still crowded the
+     third destination. */
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
-  padding-inline: calc(env(safe-area-inset-left, 0px) + 64px) max(var(--mobile-shell-gutter), 96px);
-  scroll-padding-inline: calc(env(safe-area-inset-left, 0px) + 64px) max(var(--mobile-shell-gutter), 96px);
+  padding-inline: calc(env(safe-area-inset-left, 0px) + 64px) max(var(--mobile-shell-gutter), env(safe-area-inset-right, 0px));
+  scroll-padding-inline: calc(env(safe-area-inset-left, 0px) + 64px) max(var(--mobile-shell-gutter), env(safe-area-inset-right, 0px));
   scroll-snap-type: x proximity;
   scrollbar-width: none;
 }
@@ -1717,38 +1747,6 @@ canvas {
 .mobile-quick-tools__item--more {
   background: color-mix(in srgb, var(--accent) 12%, var(--card-bg));
   color: var(--text-primary);
-}
-
-.mobile-quick-tools__swipe-hint {
-  pointer-events: none;
-  position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 15px);
-  right: max(10px, env(safe-area-inset-right, 0px));
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  gap: 3px;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border-subtle));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-deep) 94%, transparent);
-  box-shadow: var(--elevation-card);
-  color: var(--text-primary);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  padding: 0 8px;
-  animation: mobile-swipe-hint-nudge 1.8s ease-in-out infinite;
-}
-
-@keyframes mobile-swipe-hint-nudge {
-  0%, 100% { transform: translateX(0); }
-  50% { transform: translateX(4px); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-quick-tools__swipe-hint {
-    animation: none;
-  }
 }
 
 .mobile-quick-tools-sheet {

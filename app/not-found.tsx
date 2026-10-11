@@ -155,16 +155,6 @@ export default function NotFound() {
                 </motion.div>
             </div>
 
-            {/* Footer hint */}
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1 }}
-                className="absolute bottom-8 left-1/2 -translate-x-1/2 text-[var(--text-muted)] text-sm flex items-center gap-2"
-            >
-                <kbd className="px-2 py-1 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)]">⌘K</kbd>
-                <span>to search anywhere</span>
-            </motion.div>
         </div>
     );
 }

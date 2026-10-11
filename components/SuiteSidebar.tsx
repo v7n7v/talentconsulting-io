@@ -138,7 +138,7 @@ function SidebarUtilityRows({
   const usageExhausted = usageCap > 0 && usageUsed >= usageCap;
   const planKnown = !loading && !error;
   const billingLabel = loading ? 'Checking plan' : error ? 'Plan unavailable' : isPro ? plan.displayName : 'Upgrade';
-  const billingDescription = error ? 'Retry plan lookup' : loading || isPro ? undefined : 'Plans, billing & limits';
+  const billingDescription = error ? 'Retry plan lookup' : loading || isPro ? undefined : 'Compare plans';
   const billingTitle = loading ? 'Checking your plan' : error ? 'Plan unavailable. Retry plan lookup.' : isPro ? `${plan.displayName} active - manage billing` : UPGRADE_COPY.sidebarPlanChoice;
   const utilityRows = [
     <NavigationRailRow
@@ -186,10 +186,9 @@ function SidebarUtilityRows({
               ? 'Loading free credits'
               : usageExhausted
                 ? UPGRADE_COPY.freeLimitTitle
-                : `${remainingUsage} of ${usageCap} credits remaining`}
-            trailing={!isCollapsed && !loading
-              ? <span className="text-xs font-semibold tabular-nums text-[var(--text-secondary)]">{usageUsed}/{usageCap}</span>
-              : undefined}
+                : `${remainingUsage} of ${usageCap} credits left`}
+            /* No trailing count: a used/cap figure ("0/11") beside a remaining
+               figure ("11 of 11") read as a contradiction. One number, one meaning. */
             compact={isCollapsed}
             interactive={usageExhausted}
             onClick={usageExhausted ? () => onUpgrade() : undefined}
@@ -297,6 +296,10 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  // Until the viewport is measured, CSS keeps the drawer off-canvas below 1024px.
+  // Without this the server's desktop default rendered the drawer open on
+  // phones, then animated it shut on every page load.
+  const [viewportMeasured, setViewportMeasured] = useState(false);
   const { tier, isPro, usage, caps, loading: tierLoading, error: tierError, refetch: retryTier } = useUserTier();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState<'login' | 'signup' | null>(null);
@@ -339,6 +342,9 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
   useEffect(() => {
     const check = () => setIsMobile(isMobileViewport());
     check();
+    // The viewport is an external system; this records that it has been read.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setViewportMeasured(true);
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
   }, []);
@@ -579,9 +585,11 @@ export default function SuiteSidebar({ onNavigate, suppressDynamicBadges = false
           top: shellVerticalOffset,
           bottom: shellVerticalOffset,
           height: `calc(100dvh - ${shellVerticalOffset * 2}px)`,
-          transform: isMobile ? (isMobileOpen ? 'translateX(0)' : 'translateX(calc(-100% - 16px))') : 'translateX(0)',
+          transform: !viewportMeasured
+            ? undefined
+            : isMobile ? (isMobileOpen ? 'translateX(0)' : 'translateX(calc(-100% - 16px))') : 'translateX(0)',
         }}
-        className="workspace-sidebar elevation-raised fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] transition-all duration-200 ease-out"
+        className={`workspace-sidebar ${viewportMeasured ? '' : 'workspace-sidebar--unmeasured '}elevation-raised fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-bg-card)] transition-all duration-200 ease-out`}
       >
         {/* Header */}
         <div className={`workspace-sidebar__header flex shrink-0 p-2 ${isCompactRail ? 'flex-col items-center gap-1.5' : 'items-center justify-between'}`}>

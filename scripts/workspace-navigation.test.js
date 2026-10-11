@@ -77,7 +77,7 @@ test('guest entry preserves supported tools and query modes without claiming acc
 });
 
 test('all navigation surfaces consume the contract and mobile tools retain modal focus behavior', () => {
-  for (const file of ['components/SuiteSidebar.tsx', 'components/mobile/MobileWorkbench.tsx', 'components/CommandPalette.tsx']) {
+  for (const file of ['components/SuiteSidebar.tsx', 'components/mobile/MobileWorkbench.tsx']) {
     const source = read(file);
     assert.match(source, /from '@\/lib\/workspace-navigation'/, file);
     assert.match(source, /getGuestWorkspaceHref/, file);

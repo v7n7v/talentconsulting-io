@@ -10,7 +10,7 @@ export default function PageHelp({ toolId }: { toolId: string }) {
     <button
       type="button"
       data-tool-help={toolId}
-      className="btn-secondary inline-flex min-h-11 min-w-11 items-center justify-center px-2"
+      className="btn-secondary btn-icon"
       aria-label={`How to use ${help.title || 'this tool'}`}
       aria-expanded={Boolean(help.isOpen)}
       aria-controls={help.isOpen ? help.panelId : undefined}

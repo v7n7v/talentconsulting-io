@@ -69,28 +69,13 @@ function useMobileWorkspaceNavigation() {
 
 export function MobileQuickToolsRail({ className = '' }: { className?: string }) {
   const [open, setOpen] = useState(false);
-  const [showSwipeHint, setShowSwipeHint] = useState(false);
-  const railRef = useRef<HTMLElement | null>(null);
   const pathname = usePathname();
   const { hrefFor, navigate, authModal } = useMobileWorkspaceNavigation();
-
-  useEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
-    const updateHint = () => setShowSwipeHint(rail.scrollWidth - rail.clientWidth - rail.scrollLeft > 28);
-    updateHint();
-    rail.addEventListener('scroll', updateHint, { passive: true });
-    window.addEventListener('resize', updateHint);
-    return () => {
-      rail.removeEventListener('scroll', updateHint);
-      window.removeEventListener('resize', updateHint);
-    };
-  }, []);
 
   return (
     <>
       <section className={`mobile-quick-tools lg:hidden ${className}`} aria-label="Your workspace">
-        <nav ref={railRef} className="mobile-quick-tools__rail" aria-label="Workspace destinations">
+        <nav className="mobile-quick-tools__rail" aria-label="Workspace destinations">
           {MOBILE_DESTINATIONS.map(item => (
             <Link
               key={item.id}
@@ -112,7 +97,6 @@ export function MobileQuickToolsRail({ className = '' }: { className?: string })
             <span>More tools</span>
           </button>
         </nav>
-        {showSwipeHint && <div className="mobile-quick-tools__swipe-hint" aria-hidden="true"><span>Swipe</span><MobileIcon name="arrow_forward" className="text-[15px]" /></div>}
       </section>
       <MobileQuickToolsSheet open={open} onClose={() => setOpen(false)} />
       {authModal}

@@ -137,6 +137,9 @@ test('section status follows source, generation, review and save data rather tha
   assert.equal(workflow.resumeSectionStatuses({ ...base, outdated: true }).shape, 'outdated');
   assert.equal(workflow.resumeSectionStatuses({ ...base, needsReview: true }).ship, 'attention');
   assert.equal(workflow.resumeSectionStatuses({ ...base, hasCandidate: false, saved: false }).ship, 'not-started');
+  assert.equal(workflow.resumeSectionStatuses({ ...base, hasSource: false }).design, 'not-started');
+  assert.equal(workflow.resumeSectionStatuses({ ...base, hasSource: false, hasDocument: true }).design, 'ready');
+  assert.equal(workflow.resumeSectionStatuses({ ...base, hasTemplateAccess: false }).design, 'attention');
 });
 
 test('reverted review decisions restore facts from the generation source snapshot', () => {

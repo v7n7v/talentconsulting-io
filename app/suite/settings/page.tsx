@@ -2293,8 +2293,7 @@ const faqs = [
 // ===== KEYBOARD SHORTCUTS =====
 const shortcuts = [
     { category: 'Workspace navigation', items: [
-        { keys: ['Ctrl / ⌘', 'K'], desc: 'Open the command palette in the workspace' },
-        { keys: ['Esc'], desc: 'Close the command palette or an active dismissible dialog' },
+        { keys: ['Esc'], desc: 'Close an active dismissible dialog' },
         { keys: ['Tab'], desc: 'Move to the next control' },
         { keys: ['Shift', 'Tab'], desc: 'Move to the previous control' },
     ]},

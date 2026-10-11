@@ -200,10 +200,10 @@ export function ToolGuidanceInvitation({ toolId }: { toolId: string }) {
   if (!controller || !config || controller.session || dismissedInvitations.has(guidanceInvitationKey(controller.owner, config))) return null;
   return (
     <div className="tool-guidance-invitation" data-guidance-controls>
-      <button type="button" className="btn-secondary min-h-11 px-4 py-2 text-sm" onClick={event => controller.start(toolId, event.currentTarget)}>
+      <button type="button" className="btn-secondary min-h-11 whitespace-nowrap px-4 py-2 text-sm" onClick={event => controller.start(toolId, event.currentTarget)}>
         Show me how
       </button>
-      <button type="button" className="btn-secondary min-h-11 min-w-11 px-2" aria-label="Dismiss guidance invitation" onClick={() => controller.dismissInvitation(config)}>
+      <button type="button" className="btn-secondary btn-icon" aria-label="Dismiss guidance invitation" onClick={() => controller.dismissInvitation(config)}>
         <span className="material-symbols-rounded" aria-hidden="true">close</span>
       </button>
     </div>

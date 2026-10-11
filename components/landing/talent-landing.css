@@ -80,6 +80,7 @@
 .taco-landing .menu-toggle,
 .taco-landing .nav-signin {
   min-height: 44px;
+  min-width: 44px;
 }
 .taco-landing .career-path {
   stroke-dasharray: 1;
@@ -747,7 +748,9 @@
 .taco-landing .landing-footer > div a {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 44px;
+  min-width: 44px;
 }
 .taco-landing :is(.text-link, .outcomes-grid a, .plans a, .landing-footer > div a):hover {
   color: var(--landing-coral-ink);

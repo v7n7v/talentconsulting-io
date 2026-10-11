@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const TIPS = [
     // core features
-    { icon: 'keyboard_command_key', text: 'Use Cmd+K to quickly jump anywhere' },
     { icon: 'bar_chart', text: 'Track your market value in real-time with Market Oracle' },
     { icon: 'description', text: 'Create targeted resumes with Liquid Resume' },
     { icon: 'view_carousel', text: 'Master concepts with AI-generated Study Cards' },

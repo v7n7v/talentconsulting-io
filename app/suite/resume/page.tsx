@@ -3101,7 +3101,8 @@ function ResumeWorkspace() {
     sourcePending: Boolean(processingStage), sourceError: Boolean(intakeError), sourceWarnings: showSourceConfirmation,
     hasJob: Boolean(jobDescription.trim()), generating: isLoading && !processingStage,
     hasCandidate: hasResumeData(morphedResume), outdated: candidateOutdated,
-    needsReview, hasTemplateAccess: !tierLoading && isResumeTemplateSelectionEntitled(selectedTemplate.id, isPro), saved: saveInlineStatus?.type === 'success' });
+    needsReview, hasTemplateAccess: !tierLoading && isResumeTemplateSelectionEntitled(selectedTemplate.id, isPro), saved: saveInlineStatus?.type === 'success',
+    hasDocument: hasResumeData(buildResume) || hasResumeData(morphedResume) });
   useToolGuidance(createResumeGuidance({
     contextKey: resumeGuidanceContext(documentVersionId, workspaceSource?.sourceVersionId, workspaceSource?.contentHash, editorEpoch),
     section: templateBrowsing ? 'design' : workflowSection,

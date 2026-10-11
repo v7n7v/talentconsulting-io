@@ -18,7 +18,6 @@ const AdminWorkspaceRail = dynamic(
 );
 const AssistantFloatingOrb = dynamic(() => import('@/components/assistant/AssistantFloatingOrb'));
 const AssistantContextPanel = dynamic(() => import('@/components/assistant/AssistantContextPanel'));
-const CommandPalette = dynamic(() => import('@/components/CommandPalette'));
 const OnboardingModal = dynamic(() => import('@/components/modals/OnboardingModal'));
 const MobileQuickToolsRail = dynamic(
   () => import('@/components/mobile/MobileWorkbench').then(module => module.MobileQuickToolsRail),
@@ -171,7 +170,6 @@ function WorkspaceFrameContent({
         {showWorkspaceChrome && !isAssistantReview && !isAdminWorkspace && <MobileQuickToolsRail />}
         {children}
       </main>
-      {showWorkspaceChrome && !isAdminWorkspace && <CommandPalette />}
       {showAssistantContextPanel && <AssistantContextPanel />}
       {showWorkspaceChrome && !isAssistantReview && !isAdminWorkspace && <AssistantFloatingOrb />}
 

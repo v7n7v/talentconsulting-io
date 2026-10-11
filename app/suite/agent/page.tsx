@@ -2365,7 +2365,7 @@ function SonaAgentWorkspace() {
                 className="py-4 sm:py-6 lg:py-12"
               >
                 <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-                  <section className="elevation-card rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 sm:rounded-[28px] sm:p-8">
+                  <section className="taco-suite-panel elevation-card rounded-[24px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4 sm:rounded-[28px] sm:p-8">
                     <div className="flex items-start gap-4">
                       <AssistantMark
                         size="sm"
@@ -2467,7 +2467,7 @@ function SonaAgentWorkspace() {
 
                         <form
                           id="sona-target-brief"
-                          className={`${showResumeUploadIntent ? "mt-3 sm:mt-4" : resumeSourcePromptMode === "mobile" ? "mt-3 sm:mt-4 lg:mt-6" : "mt-4 sm:mt-6"} scroll-mt-24 rounded-[20px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 sm:p-4`}
+                          className={`${showResumeUploadIntent ? "mt-3 sm:mt-4" : resumeSourcePromptMode === "mobile" ? "mt-3 sm:mt-4 lg:mt-6" : "mt-4 sm:mt-6"} scroll-mt-24 rounded-[2px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 sm:p-4`}
                           onSubmit={(event) => {
                             event.preventDefault();
                             submitTargetBrief();
@@ -2622,7 +2622,7 @@ function SonaAgentWorkspace() {
                                 p.action === "resumeUpload" &&
                                 (loading || isResumeUploadBusy)
                               }
-                              className={`group elevation-interactive min-h-[112px] flex-col justify-between rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 ${p.action === "resumeUpload" && resumeSourcePromptMode === "mobile" ? "hidden lg:flex" : "flex"}`}
+                              className={`group elevation-interactive min-h-[112px] flex-col justify-between rounded-[2px] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 text-left transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 ${p.action === "resumeUpload" && resumeSourcePromptMode === "mobile" ? "hidden lg:flex" : "flex"}`}
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <span className="icon-shell-neutral flex h-9 w-9 items-center justify-center rounded-xl border">
@@ -2658,7 +2658,7 @@ function SonaAgentWorkspace() {
                   </section>
 
                   <aside className="space-y-4">
-                    <div className="elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                    <div className="taco-suite-panel elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">
@@ -2695,7 +2695,7 @@ function SonaAgentWorkspace() {
                       )}
                     </div>
 
-                    <div className="elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                    <div className="taco-suite-panel elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                       <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">
                         Operating Mode
                       </p>
@@ -2720,7 +2720,7 @@ function SonaAgentWorkspace() {
                       </button>
                     </div>
 
-                    <div className="elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
+                    <div className="taco-suite-panel elevation-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--card-bg)] p-4">
                       <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--text-muted)]">
                         Career Stack
                       </p>
