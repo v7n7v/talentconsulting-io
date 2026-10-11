@@ -1,4 +1,4 @@
-import { extractSkillsFromDescription } from './job-search-api';
+import { extractSkillsFromDescription, skillAliasesFor } from './job-search-api';
 
 export type OracleVerdict = 'apply' | 'prepare_first' | 'watch' | 'skip';
 export type OracleConfidence = 'high' | 'medium' | 'low';
@@ -233,17 +233,29 @@ function skillSpan(text: string, skill: string, source: OracleSourceSpan['source
   }
   return undefined;
 }
+// Canonical labels (Go, PostgreSQL) may be written as an alias (Golang, Postgres).
+// The returned span quotes what the text actually says.
+function skillEvidenceSpan(text: string, skill: string, source: OracleSourceSpan['source']): OracleSourceSpan | undefined {
+  const direct = skillSpan(text, skill, source);
+  if (direct) return direct;
+  for (const alias of skillAliasesFor(skill)) {
+    const span = skillSpan(text, alias, source);
+    if (span) return span;
+  }
+  return undefined;
+}
 export function extractOracleSkills(text = '', candidates: string[] = []) {
   const choices = [...SKILL_BANK, ...extractSkillsFromDescription(text), ...candidates.filter(value => value.length <= 60 && value.split(/\s+/).length <= 5 && !/\d|\b(required|must|experience|no|not)\b/i.test(value))];
   const found = new Map<string, string>();
-  for (const skill of choices) if (skill.trim() && skillSpan(text, skill, 'resume')) found.set(skill.toLowerCase(), found.get(skill.toLowerCase()) || skill);
+  for (const skill of choices) if (skill.trim() && skillEvidenceSpan(text, skill, 'resume')) found.set(skill.toLowerCase(), found.get(skill.toLowerCase()) || skill);
   return [...found.values()].slice(0, 50);
 }
 
 function simpleSkillRequirement(requirement: string, skills: string[]) {
   return skills.find(skill => {
-    const remainder = requirement.replace(new RegExp(escapePattern(skill), 'gi'), '').replace(/\b(required|requirement|skills?|experience|with|in|knowledge|of|must|have)\b/gi, '').replace(/[\s:.,;!()*-]/g, '');
-    return !remainder && !!skillSpan(requirement, skill, 'posting');
+    const surfaces = [...skillAliasesFor(skill), skill].sort((x, y) => y.length - x.length).map(escapePattern).join('|');
+    const remainder = requirement.replace(new RegExp(surfaces, 'gi'), '').replace(/\b(required|requirement|skills?|experience|with|in|knowledge|of|must|have)\b/gi, '').replace(/[\s:.,;!()*-]/g, '');
+    return !remainder && !!skillEvidenceSpan(requirement, skill, 'posting');
   });
 }
 
@@ -293,10 +305,10 @@ export function buildOracleV2Report(params: {
     const proposedResumeSpan = proposal?.resumeQuote ? exactSpan(resumeText, proposal.resumeQuote, 'resume') : undefined;
     const validResumeSpan = proposedResumeSpan && positiveContext(resumeText, proposedResumeSpan.start, proposedResumeSpan.end) ? proposedResumeSpan : undefined;
     const simpleSkill = sourceSpan && simpleSkillRequirement(requirement, jdSkills);
-    const simpleSupport = simpleSkill ? skillSpan(resumeText, simpleSkill, 'resume') : undefined;
+    const simpleSupport = simpleSkill ? skillEvidenceSpan(resumeText, simpleSkill, 'resume') : undefined;
     // Exact quotes prove that text exists, not semantic entailment. Complex requirements remain review tasks.
-    const relatedSkill = sourceSpan && matchedSkills.find(skill => skillSpan(requirement, skill, 'posting'));
-    const relatedSpan = relatedSkill ? skillSpan(resumeText, relatedSkill, 'resume') : undefined;
+    const relatedSkill = sourceSpan && matchedSkills.find(skill => skillEvidenceSpan(requirement, skill, 'posting'));
+    const relatedSpan = relatedSkill ? skillEvidenceSpan(resumeText, relatedSkill, 'resume') : undefined;
     const contentWords = (value: string) => value.toLowerCase().match(/[a-z0-9+#]+/g)?.filter(word => word.length > 2 && !['the', 'and', 'with', 'for', 'our', 'you', 'your', 'this', 'that', 'required', 'requirement', 'experience', 'have', 'must'].includes(word)) || [];
     const shared = validResumeSpan ? contentWords(requirement).filter(word => contentWords(validResumeSpan.text).includes(word)) : [];
     const relevantQuote = validResumeSpan && (relatedSkill || new Set(shared).size >= 2) ? validResumeSpan : undefined;

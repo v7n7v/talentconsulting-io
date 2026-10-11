@@ -78,3 +78,25 @@ test('no posting evidence means unknown scores; exact quotes cannot imply whole 
  const report=oracle.buildOracleV2Report({session:{resumeText:'I build Python applications.',role:'Engineer'},legacy:{fitScore:99,jdRequirements:['AWS required'],matchedSkills:['AWS']},modelDecision:{readinessScore:99,riskScore:0,confidence:'high',verdict:'apply'}});
  assert.equal(report.decision.fitScore,null);assert.equal(report.decision.riskScore,null);assert.equal(report.decision.interviewYield.score,null);assert.equal(report.decision.confidence,'low');assert.deepEqual(report.breakdown.coveredRequirements,[]);
 });
+
+test('canonical skill labels are proven by the alias the resume actually uses', () => {
+  assert.deepEqual(
+    oracle.extractOracleSkills('Built backend services in Golang and Postgres on k8s.').sort(),
+    ['Go', 'Kubernetes', 'PostgreSQL'],
+  );
+  assert.deepEqual(
+    oracle.extractOracleSkills('Shipped Go services on Kubernetes with PostgreSQL.').sort(),
+    ['Go', 'Kubernetes', 'PostgreSQL'],
+  );
+});
+
+test('a Go requirement is supported by a resume that says Golang, quoting the written text', () => {
+  const report = oracle.buildOracleV2Report({
+    session: { resumeText: 'I build backend services in Golang.', jdText: 'Go required.', role: 'Engineer' },
+    legacy: { fitScore: 80, resumeSkills: ['Go'], jdRequirements: ['Go required'], matchedSkills: ['Go'], gapSkills: [] },
+    modelDecision: { coveredRequirements: [], missingRequirements: [], proofGaps: [] },
+  });
+  assert.deepEqual(report.breakdown.missingRequirements, []);
+  assert.equal(report.breakdown.requirementEvidence[0].status, 'supported');
+  assert.match(JSON.stringify(report.breakdown.requirementEvidence[0]), /Golang/);
+});

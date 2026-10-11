@@ -30,6 +30,9 @@ const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.css', '.json'
 const ASSET_EXTENSIONS = new Set([
   '.png', '.svg', '.webp', '.ico', '.otf', '.ttf', '.woff', '.woff2',
   '.webmanifest', '.jpg', '.jpeg', '.avif', '.gif',
+  // public/ only (see the root check below): robots.txt replaces app/robots.ts,
+  // and bundled resume fonts ship with their licence texts.
+  '.txt',
 ]);
 const NON_BUILD_ROOTS = new Set([
   '.git', '.github', '.agent', '.agents', '.claude', '.project-map', '.firebase',
@@ -41,7 +44,8 @@ const NON_BUILD_ROOTS = new Set([
 const NON_BUILD_FILES = new Set([
   '.Rhistory', '.design-audit-baseline.json', '.firebaseignore', '.firebaserc',
   '.gitignore', '.npmrc', '.nvmrc', '.node-version', 'cloudbuild.yaml',
-  'firebase.json', 'firebase.observability-emulator.json', 'firestore.indexes.json',
+  'firebase.json', 'firebase.observability-emulator.json', 'firebase.workspace-emulator.json',
+  'firestore.indexes.json',
   'firestore.rules', 'storage.rules', 'next-env.d.ts', 'tsconfig.tsbuildinfo',
   'deploy-cloudrun.sh', 'deploy-fix.js', 'force_black_text.js',
   'make_small_text_bold.js', 'test-mammoth.js', 'scratch_test_apis.js',

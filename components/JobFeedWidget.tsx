@@ -45,10 +45,12 @@ interface SuggestedJob {
   outboundLinkVerified?: boolean;
 }
 
-// A fit score is shown only when it is a real, in-range measurement. A missing,
-// zero or out-of-range value renders as a labelled absence, never a number.
+// A fit score is shown only when it is a real, in-range measurement. Unknown is
+// null/undefined (never defaulted to 0) and renders as a labelled absence. A 0
+// is a measured result: the scorer pulls low-confidence scores toward 60, so it
+// can only arise from confident evidence and is shown as such.
 function hasFitScore(score: unknown): score is number {
-  return typeof score === 'number' && Number.isFinite(score) && score > 0 && score <= 100;
+  return typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 100;
 }
 
 const LEGACY_DISMISS_KEY = 'talent-job-alert-prompt-dismissed';

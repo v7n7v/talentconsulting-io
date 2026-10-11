@@ -14,12 +14,22 @@ function readWorkflow(file) {
   return yaml.load(source);
 }
 
+// The contract governs the dependency-installing audit job. Select it by name:
+// a workflow may also carry install-free jobs (e.g. SEO route-policy fixtures),
+// and job order in YAML carries no meaning for GitHub Actions.
+function auditJobName(workflow) {
+  const jobs = workflow.jobs || {};
+  if (jobs['seo-audit']) return 'seo-audit';
+  if (jobs['security-cve-audit']) return 'security-cve-audit';
+  return Object.keys(jobs)[0];
+}
+
 function namedStep(workflow, name) {
-  const steps = workflow.jobs?.[Object.keys(workflow.jobs || {})[0]]?.steps;
+  const steps = workflow.jobs?.[auditJobName(workflow)]?.steps;
   return Array.isArray(steps) ? steps.find(step => step.name === name) : undefined;
 }
 
-function stepIndex(workflow, name, jobName = Object.keys(workflow.jobs)[0]) {
+function stepIndex(workflow, name, jobName = auditJobName(workflow)) {
   const steps = workflow.jobs[jobName].steps;
   return steps.findIndex(step => step.name === name);
 }

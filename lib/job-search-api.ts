@@ -93,13 +93,25 @@ const SKILL_KEYWORDS = [
     'cybersecurity', 'penetration testing', 'soc', 'siem', 'firewall',
 ];
 
+// Surface form -> canonical label. Shared so callers that must prove a skill
+// against source text (Market Oracle) can accept the surface that was written.
+const SKILL_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+    golang: 'Go', postgres: 'PostgreSQL', postgresql: 'PostgreSQL', k8s: 'Kubernetes',
+    kubernetes: 'Kubernetes', nextjs: 'Next.js', 'next.js': 'Next.js', nodejs: 'Node.js', 'node.js': 'Node.js',
+});
+
+/** Surface forms that the extractor canonicalises to `label` (excluding the label itself). */
+export function skillAliasesFor(label: string): string[] {
+    const wanted = label.toLowerCase();
+    return Object.entries(SKILL_ALIASES)
+        .filter(([surface, canonical]) => canonical.toLowerCase() === wanted && surface !== wanted)
+        .map(([surface]) => surface);
+}
+
 function extractSkillsFromDescription(description: string): string[] {
     const text = description || '';
     const found: string[] = [];
-    const aliases: Record<string, string> = {
-        golang: 'Go', postgres: 'PostgreSQL', postgresql: 'PostgreSQL', k8s: 'Kubernetes',
-        kubernetes: 'Kubernetes', nextjs: 'Next.js', 'next.js': 'Next.js', nodejs: 'Node.js', 'node.js': 'Node.js',
-    };
+    const aliases = SKILL_ALIASES;
     const labels: Record<string, string> = { javascript: 'JavaScript', typescript: 'TypeScript', 'c++': 'C++', 'c#': 'C#', 'ci/cd': 'CI/CD', 'rest api': 'REST API',
         'google cloud': 'Google Cloud', 'power bi': 'Power BI', 'machine learning': 'Machine Learning',
         'deep learning': 'Deep Learning', 'data science': 'Data Science', 'data engineering': 'Data Engineering',
@@ -371,6 +383,9 @@ export async function searchJobs(params: JobSearchParams): Promise<JobSearchResu
     if (result.status && result.status !== 'disabled') status = result.status;
     else if (result.status === 'disabled' && fallback.status === 'disabled') status = 'disabled';
     else status = fallback.status || 'empty';
+    // An empty or disabled fallback must not relabel a real primary outcome:
+    // keep the primary's result and source, with the combined diagnostics.
+    if (fallback.jobs.length === 0 && result.status && result.status !== 'disabled') return { ...result, status, diagnostics };
     return { ...fallback, status, diagnostics };
 }
 
