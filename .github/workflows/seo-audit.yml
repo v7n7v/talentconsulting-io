@@ -89,12 +89,41 @@ jobs:
         if: steps.cadence.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: npm
+          node-version: '22.23.2'
+
+      - name: Verify selected npm before cache restore
+        if: steps.cadence.outputs.run == 'true'
+        run: |
+          mkdir -m 0700 "$RUNNER_TEMP/taco-toolcache"
+          node scripts/toolchain/npm-runtime.cjs prepare --cache-parent "$RUNNER_TEMP/taco-toolcache" > "$RUNNER_TEMP/taco-npm-identity.json"
+          node -e 'const fs=require("node:fs");const i=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/taco-npm-identity.json"));fs.appendFileSync(process.env.GITHUB_ENV,"TACO_NPM_CACHE_PARENT="+i.cacheParent+"\nTACO_NPM_CONTENT_CACHE="+i.npmContentCache+"\nTACO_NPM_RUNTIME_KEY="+i.cacheKey+"\n")'
+
+      - name: Restore private npm content cache
+        if: steps.cadence.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TACO_NPM_CONTENT_CACHE }}
+          key: ${{ runner.os }}-${{ runner.arch }}-taco-npm-v2-${{ env.TACO_NPM_RUNTIME_KEY }}
+
+      - name: Reverify selected npm and remove disposable original
+        if: steps.cadence.outputs.run == 'true'
+        run: |
+          node scripts/toolchain/npm-runtime.cjs identity --cache-parent "$TACO_NPM_CACHE_PARENT" > "$RUNNER_TEMP/taco-npm-identity.json"
+          taco_node_bin="$(node -p 'require("node:path").dirname(require("node:fs").realpathSync(process.execPath))')"
+          test -d "$taco_node_bin/../lib/node_modules/npm"
+          sudo rm -rf "$taco_node_bin/../lib/node_modules/npm" "$taco_node_bin/npm" "$taco_node_bin/npx"
+          node -e 'const fs=require("node:fs");const path=require("node:path");const i=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/taco-npm-identity.json"));const bin=path.dirname(i.nodeRealpath);fs.symlinkSync(i.npmShimRealpath,path.join(bin,"npm"));fs.symlinkSync(i.npxShimRealpath,path.join(bin,"npx"))'
+          test ! -e "$taco_node_bin/../lib/node_modules/npm"
+          test "$(npm --version)" = "12.1.0"
+          test "$(npx --version)" = "12.1.0"
+          npm cache verify
 
       - name: Install dependencies
         if: steps.cadence.outputs.run == 'true'
-        run: npm ci
+        run: |
+          sha256sum package.json package-lock.json .npmrc > "$RUNNER_TEMP/taco-install-inputs.sha256"
+          npm ci --no-audit --no-fund --foreground-scripts
+          sha256sum --check "$RUNNER_TEMP/taco-install-inputs.sha256"
 
       - name: Run SEO/GEO audit
         if: steps.cadence.outputs.run == 'true'

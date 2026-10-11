@@ -143,7 +143,8 @@ test('an unsupported Ever Jobs success payload cannot become a healthy empty sea
       sortBy: 'relevance',
     });
     assert.equal(result.providerStatus.everJobs, 'error');
-    assert.equal(result.providerStatus.fallbackStatus, 'error');
+    assert.equal(result.providerStatus.fallbackStatus, 'disabled');
+    assert.equal(result.providerStatus.portals, 'error');
     assert.equal(isJobSupplyOperational(result.providerStatus), false);
     assert.deepEqual(everJobsRequest.siteType, ['greenhouse']);
     assert.equal(everJobsRequest.isRemote, true);

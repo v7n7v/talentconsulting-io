@@ -1077,7 +1077,7 @@ function createCuratedPDFPage(templateId: CuratedSignatureTemplateId): React.FC<
   const metadata = getRegisteredTemplate(templateId);
   if (!metadata) throw new Error(`Missing curated PDF metadata for "${templateId}".`);
 
-  return function CuratedPDFPage({ resume, colors, pageSize }: PDFTemplateProps) {
+  return function CuratedPDFPage({ resume, colors, pageSize = 'A4' }: PDFTemplateProps) {
     return (
       <CuratedPage
         resume={resume}

@@ -10,6 +10,9 @@ import OracleContent from '@/app/suite/market-oracle/OracleContent';
 import { workspaceCompatibilityHref } from '@/lib/workspace-compatibility';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/Toast';
+import { formatJobSalary } from '@/lib/job-display';
+import type { JobSalary, JobWorkplaceType } from '@/lib/job-ingestion';
+import { sortJobSearchCandidates } from '@/lib/job-search-selection';
 import { SuiteToolHeader, SuiteToolShell, SuiteUnmeasured } from '@/components/suite/SuiteToolChrome';
 import { useStore } from '@/lib/store';
 import { getResumeVersions, getUserProfile, updateApplicationStatus, type ResumeVersion } from '@/lib/database-suite';
@@ -83,7 +86,9 @@ interface OpportunityJob {
   title: string;
   company: string;
   location: string;
-  salary: { min: number | null; max: number | null; currency: string; isPredicted?: boolean };
+  salary: JobSalary;
+  remoteMode?: JobWorkplaceType;
+  locations?: string[];
   description: string;
   skills: string[];
   url: string;
@@ -295,16 +300,6 @@ function clampScore(value: number) {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
-function formatSalary(min: number | null, max: number | null, currency = "USD"): string {
-  if (!min && !max) return 'Not listed';
-  const code = /^[A-Z]{3}$/.test(currency) ? currency : "";
-  const fmt = (n: number) => code ? `${code} ${n >= 1000 ? `${Math.round(n / 1000)}k` : n}` : `${n.toLocaleString()} (currency unknown)`;
-  if (min && max && min !== max) return `${fmt(min)} - ${fmt(max)}`;
-  if (min) return `${fmt(min)}+`;
-  if (max) return `Up to ${fmt(max)}`;
-  return 'Not listed';
-}
-
 function timeAgo(dateString: string): string {
   const time = new Date(dateString).getTime();
   if (Number.isNaN(time)) return 'Unknown';
@@ -391,7 +386,9 @@ function normalizeJob(job: any): OpportunityJob {
     title: job.title || 'Untitled role',
     company: job.company || 'Unknown company',
     location: job.location || 'Not listed',
-    salary: job.salary || { min: null, max: null, currency: 'USD' },
+    salary: job.salary || { min: null, max: null, currency: 'UNKNOWN', interval: 'unknown' },
+    remoteMode: job.remoteMode,
+    locations: job.locations,
     description: job.description || '',
     skills: Array.isArray(job.skills) ? Array.from(new Set(job.skills.map(String))) : [],
     url: job.url || '',
@@ -1306,7 +1303,7 @@ function OpportunityCard({
             </div>
           </div>
         </div>
-        <p className="mt-3 min-w-0 break-words text-[11px] leading-5 text-[var(--text-secondary)]">{job.location} · {formatSalary(job.salary.min, job.salary.max, job.salary.currency)} · Posted {timeAgo(job.postedDate)}</p>
+        <p className="mt-3 min-w-0 break-words text-[11px] leading-5 text-[var(--text-secondary)]">{job.location} · {formatJobSalary(job.salary)} · Posted {timeAgo(job.postedDate)}</p>
         <p className="mt-3 line-clamp-2 text-xs leading-5 text-[var(--text-secondary)]">{job.recommendationReason}</p>
         {(job.fitReasons || []).length > 0 && (
           <div className="mt-3 flex min-w-0 items-start gap-2 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
@@ -1359,11 +1356,11 @@ function OpportunityCard({
   );
 }
 
-function MetaChip({ icon, text }: { icon: string; text: string }) {
+function MetaChip({ icon, text, wrap = false }: { icon: string; text: string; wrap?: boolean }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 rounded-[10px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-2.5 py-1.5 text-[11px] text-[var(--text-secondary)]">
-      <span className="material-symbols-rounded text-[13px] text-[var(--text-muted)]">{icon}</span>
-      <span className="truncate">{text}</span>
+      <span className="material-symbols-rounded shrink-0 text-[13px] text-[var(--text-muted)]">{icon}</span>
+      <span className={wrap ? 'min-w-0 whitespace-normal' : 'truncate'}>{text}</span>
     </span>
   );
 }
@@ -1475,7 +1472,9 @@ function OpportunityIntelligencePanel({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <PanelMetric label="Fit" value={job.fitScore ? `${job.fitScore.overall}%` : '--'} />
           <PanelMetric label="Posted" value={timeAgo(job.postedDate)} />
-          <div className="col-span-2 min-w-0"><PanelMetric label="Salary" value={formatSalary(job.salary.min, job.salary.max, job.salary.currency)} /></div>
+          <div className="col-span-2 min-w-0">
+            <PanelMetric label="Salary" value={formatJobSalary(job.salary)} wrap />
+          </div>
         </div>
         <div className="mt-4 grid grid-cols-4 gap-1 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] p-1">
           {(['fit', 'jd', 'packet', 'company'] as const).map(item => (
@@ -1649,11 +1648,11 @@ function OpportunityIntelligencePanel({
   );
 }
 
-function PanelMetric({ label, value }: { label: string; value: string }) {
+function PanelMetric({ label, value, wrap = false }: { label: string; value: string; wrap?: boolean }) {
   return (
     <div className="min-w-0 rounded-[12px] border border-[var(--border-subtle)] bg-[var(--card-bg)] px-3 py-2">
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
-      <p className="mt-1 tabular-nums whitespace-nowrap text-xs font-semibold text-[var(--text-primary)]">{value}</p>
+      <p className={`mt-1 text-xs font-semibold text-[var(--text-primary)] ${wrap ? 'whitespace-normal break-words' : 'tabular-nums whitespace-nowrap'}`}>{value}</p>
     </div>
   );
 }
@@ -2185,15 +2184,15 @@ function JobSearchWorkspace({ pendingSearchRef }: { pendingSearchRef?: MutableRe
       if (activeFilter === 'strong' && (!job.fitScore || job.fitScore.overall < 75)) return false;
       if (activeFilter === 'fresh' && !job.freshness.isFresh) return false;
       if (activeFilter === 'direct' && job.sourceMeta.sourceType !== 'direct_ats') return false;
-      if (activeFilter === 'remote' && !job.location.toLowerCase().includes('remote')) return false;
+      if (activeFilter === 'remote' && (job.remoteMode ? job.remoteMode !== 'remote' : !job.location.toLowerCase().includes('remote'))) return false;
       const packet = currentPackets[getJobResultIdentity(job)];
       if (activeFilter === 'ready' && packet?.status !== 'ready' && packet?.status !== 'applied') return false;
       return true;
     });
     if (sortBy === 'salary') {
-      next = [...next].sort((a, b) => (b.salary.max || b.salary.min || 0) - (a.salary.max || a.salary.min || 0));
+      next = sortJobSearchCandidates(next, 'salary');
     } else if (sortBy === 'date') {
-      next = [...next].sort((a, b) => new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime());
+      next = sortJobSearchCandidates(next, 'date');
     } else {
       next = [...next].sort((a, b) => (b.fitScore?.overall || b.matchScore || 0) - (a.fitScore?.overall || a.matchScore || 0));
     }

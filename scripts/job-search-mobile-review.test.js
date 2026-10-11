@@ -52,7 +52,6 @@ test('packet preparation fails closed when recommendation evidence is not ready'
     'eligibility must be checked before queue learning or packet work',
   );
   assert.match(widget, /if \(job\.preparationEligible !== true\) \{/);
-  assert.match(widget, /job\.sourceMeta\?\.sourceConfidence \|\| 'low'/);
   assert.match(widget, /job\.riskNotes\?\.\[0\]/);
   assert.match(widget, /job\.preparationEligible === true \? 'Morph' : job\.nextAction \|\| 'Review evidence'/);
   assert.match(widget, /Open posting/);

@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
+import { formatJobSalary } from '@/lib/job-display';
+import type { JobSalary } from '@/lib/job-ingestion';
 import { useAuthGate } from '@/hooks/useAuthGate';
 import JobDiscoveryRecoveryPanel from '@/components/jobs/JobDiscoveryRecoveryPanel';
 import {
@@ -23,12 +25,12 @@ interface SuggestedJob {
   title: string;
   company: string;
   location: string;
-  salary: { min: number | null; max: number | null; currency: string };
+  salary: JobSalary;
   description: string;
   skills: string[];
   url: string;
   postedDate: string;
-  acceptanceChance: number;
+  acceptanceChance?: number | null;
   acceptanceReason: string;
   sourceMeta?: {
     sourceName?: string;
@@ -43,13 +45,10 @@ interface SuggestedJob {
   outboundLinkVerified?: boolean;
 }
 
-function formatSalary(min: number | null, max: number | null): string {
-  if (!min && !max) return '';
-  const fmt = (n: number) => n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`;
-  if (min && max && min !== max) return `${fmt(min)} – ${fmt(max)}`;
-  if (min) return `${fmt(min)}+`;
-  if (max) return `Up to ${fmt(max)}`;
-  return '';
+// A fit score is shown only when it is a real, in-range measurement. A missing,
+// zero or out-of-range value renders as a labelled absence, never a number.
+function hasFitScore(score: unknown): score is number {
+  return typeof score === 'number' && Number.isFinite(score) && score > 0 && score <= 100;
 }
 
 const LEGACY_DISMISS_KEY = 'talent-job-alert-prompt-dismissed';
@@ -409,7 +408,9 @@ export default function JobFeedWidget() {
       {/* Job Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <AnimatePresence>
-          {topJobs.map((job, i) => (
+          {topJobs.map((job, i) => {
+            const fitAvailable = hasFitScore(job.acceptanceChance);
+            return (
             <motion.div
               key={getJobResultIdentity(job)}
               initial={{ opacity: 0, y: 10 }}
@@ -419,8 +420,8 @@ export default function JobFeedWidget() {
             >
               {/* Match strength — a model estimate; guarded so a missing/zero score renders as a labelled absence, never a fabricated 0% */}
               <div className="flex items-center justify-between mb-2.5 relative">
-                {Number.isFinite(job.acceptanceChance) && job.acceptanceChance > 0 ? (
-                  <span className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-bold text-[var(--text-secondary)]">
+                {fitAvailable ? (
+                  <span className="shrink-0 whitespace-nowrap rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-bold tabular-nums text-[var(--text-secondary)]">
                     {job.acceptanceChance}% match · est.
                   </span>
                 ) : (
@@ -430,7 +431,7 @@ export default function JobFeedWidget() {
                 )}
                 {(job.salary?.min || job.salary?.max) && (
                   <span className="text-[11px] text-[var(--text-secondary)] font-medium">
-                    {formatSalary(job.salary.min, job.salary.max)}
+                    {formatJobSalary(job.salary)}
                   </span>
                 )}
               </div>
@@ -486,7 +487,8 @@ export default function JobFeedWidget() {
                 )}
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </AnimatePresence>
       </div>
       </motion.div>

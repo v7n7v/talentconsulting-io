@@ -99,3 +99,6 @@ YOUR_CREDENTIALS.txt
 /tmp/
 __pycache__/
 *.py[cod]
+
+# Worktree-scoped verified npm distribution and private state
+/.taco-toolcache/

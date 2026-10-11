@@ -20,10 +20,10 @@ function loadGa4PrivacyModule() {
       esModuleInterop: true,
     },
   }).outputText;
-  const module = { exports: {} };
+  const loadedModule = { exports: {} };
   const context = {
-    module,
-    exports: module.exports,
+    module: loadedModule,
+    exports: loadedModule.exports,
     window: {
       localStorage: {
         getItem: () => 'granted',
@@ -40,7 +40,7 @@ function loadGa4PrivacyModule() {
     },
   };
   vm.runInNewContext(output, context, { filename: 'ga4-privacy.js' });
-  return module.exports;
+  return loadedModule.exports;
 }
 
 test('optional product analytics defaults to denied and ignores browser-persisted grants', () => {

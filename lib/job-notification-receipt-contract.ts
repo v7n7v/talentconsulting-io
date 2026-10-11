@@ -23,20 +23,31 @@ function safeEventTime(value: unknown) {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
 }
 
-function receiptError(type: string, data: Record<string, any>) {
+type UnknownRecord = { [key: string]: unknown };
+
+function isObjectRecord(value: unknown): value is UnknownRecord {
+  // Preserve the provider parser's existing object check, including arrays.
+  return value !== null && typeof value === 'object';
+}
+
+function propertyOf(value: unknown, key: string): unknown {
+  return isObjectRecord(value) ? value[key] : undefined;
+}
+
+function receiptError(type: string, data: UnknownRecord) {
   if (type === 'email.delivery_delayed') return 'The recipient email server temporarily delayed delivery.';
-  if (type === 'email.bounced') return boundedString(data.bounce?.message) || 'The recipient email server rejected the message.';
-  if (type === 'email.failed') return boundedString(data.failed?.reason) || 'The email provider could not send the message.';
-  if (type === 'email.suppressed') return boundedString(data.suppressed?.message) || 'The email provider suppressed the message.';
+  if (type === 'email.bounced') return boundedString(propertyOf(data.bounce, 'message')) || 'The recipient email server rejected the message.';
+  if (type === 'email.failed') return boundedString(propertyOf(data.failed, 'reason')) || 'The email provider could not send the message.';
+  if (type === 'email.suppressed') return boundedString(propertyOf(data.suppressed, 'message')) || 'The email provider suppressed the message.';
   if (type === 'email.complained') return 'The recipient reported this email as spam. Email delivery has been paused.';
   return null;
 }
 
 export function normalizeResendJobEmailReceipt(payload: unknown): NormalizedJobEmailReceipt | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const event = payload as Record<string, any>;
+  if (!isObjectRecord(payload)) return null;
+  const event = payload;
   const type = boundedString(event.type, 80);
-  const data = event.data && typeof event.data === 'object' ? event.data as Record<string, any> : null;
+  const data = isObjectRecord(event.data) ? event.data : null;
   if (!type || !data) return null;
 
   const status = type === 'email.sent'
@@ -50,12 +61,12 @@ export function normalizeResendJobEmailReceipt(payload: unknown): NormalizedJobE
           : null;
   if (!status) return null;
 
-  const tags = data.tags && typeof data.tags === 'object' ? data.tags as Record<string, unknown> : {};
+  const tags = isObjectRecord(data.tags) ? data.tags : {};
   const attemptId = boundedString(tags.tc_attempt, 100);
   const providerMessageId = boundedString(data.email_id, 120);
   const occurredAt = safeEventTime(event.created_at);
   const recipients = Array.isArray(data.to)
-    ? [...new Set(data.to.map((value: unknown) => boundedString(value, 320)?.toLowerCase()).filter(Boolean))] as string[]
+    ? [...new Set(data.to.map((value: unknown) => boundedString(value, 320)?.toLowerCase()).filter((value): value is string => Boolean(value)))]
     : [];
   if (!attemptId || !/^[A-Za-z0-9_-]+$/.test(attemptId) || !providerMessageId || !occurredAt || recipients.length === 0) return null;
 

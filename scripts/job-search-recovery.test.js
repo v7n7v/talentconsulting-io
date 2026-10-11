@@ -135,7 +135,7 @@ test('job APIs distinguish supply failure from a successful empty result', () =>
   assert.match(suggestionsRoute, /if \(!partialRecovery\)/);
   assert.match(suggestionsRoute, /success: true,[\s\S]*jobs: \[\],[\s\S]*No jobs found matching your preferences/);
   assert.match(supplyAdapter, /fallbackStatus\?: 'not_used' \| 'success' \| 'empty' \| 'error'/);
-  assert.match(supplyAdapter, /providerStatus\.fallbackStatus = legacy\.source\.toLowerCase\(\)\.includes\('\(error\)'\)/);
+  assert.match(supplyAdapter, /providerStatus\.fallbackStatus = legacy\.status === 'disabled'/);
   assert.match(supplyAdapter, /Ever Jobs search returned an unsupported response/);
   assert.match(supplyAdapter, /rows\.length > 0 && approvedJobs\.length === 0/);
   assert.match(routeRecovery, /classifyJobDiscoveryResponse\(body, surface, response\.status\)/);

@@ -23,6 +23,7 @@ import {
   type TalentJob,
 } from '@/lib/job-recommendation-platform';
 import { monitor } from '@/lib/monitor';
+import { filterJobSearchCandidates } from '@/lib/job-search-selection';
 import { extractResumeSkills, getLatestVerifiedResumeForUser as getLatestResumeForUser } from '@/lib/server-resume';
 import { withJobDiscoveryRecovery } from '@/lib/job-discovery-route-recovery';
 import {
@@ -192,12 +193,14 @@ export async function GET(req: NextRequest) {
           failedSearches += 1;
           continue;
         }
-        for (const job of suppressLedgerMatches(result.jobs, ledger)) {
-          const locLower = job.location.toLowerCase();
-          if (remotePref === 'remote' && !locLower.includes('remote')) continue;
-          if (remotePref === 'onsite' && locLower.includes('remote')) continue;
-          const salaryTop = job.salary.max || job.salary.min;
-          if (salaryMin > 0 && salaryTop && salaryTop < salaryMin) continue;
+        for (const job of filterJobSearchCandidates(suppressLedgerMatches(result.jobs, ledger), {
+          query: role,
+          salaryMin: salaryMin || undefined,
+          remote: remotePref === 'remote',
+        })) {
+          const remote = job.remoteMode === 'remote'
+            || ((!job.remoteMode || job.remoteMode === 'unknown') && job.location.toLowerCase().includes('remote'));
+          if (remotePref === 'onsite' && remote) continue;
           allJobs.push(job);
         }
       } catch (e) {

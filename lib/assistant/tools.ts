@@ -11,6 +11,7 @@
 import { getAdminDb } from '@/lib/firebase-admin';
 import { calculateFitScore, extractSkillsFromDescription } from '@/lib/job-search-api';
 import { searchTalentJobSupply } from '@/lib/job-recommendation-platform';
+import { comparableAnnualSalary } from '@/lib/job-ingestion';
 import { searchCompanyJobs } from '@/lib/portal-scanner';
 import { createStoryBankStory, listStoryBankStories } from '@/lib/story-bank';
 import { invalidateTwin } from '@/lib/career-twin';
@@ -563,9 +564,9 @@ async function fetchSalaryIntelligence(jobTitle: string, location?: string): Pro
 
     if (result.jobs.length === 0) return null;
 
-    // Aggregate salary data from top results
+    // Compare only supplied annual USD values; other pay cannot form this estimate.
     const salaries = result.jobs
-      .filter(j => j.salary.min || j.salary.max)
+      .filter(j => comparableAnnualSalary(j.salary) !== null)
       .map(j => ({
         min: j.salary.min || j.salary.max || 0,
         max: j.salary.max || j.salary.min || 0,

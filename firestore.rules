@@ -337,6 +337,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Shared public-job evidence and ingestion controls are Admin SDK only.
+    match /job_catalog/{document=**} {
+      allow read, write: if false;
+    }
+    match /job_catalog_state/{document=**} {
+      allow read, write: if false;
+    }
+    match /job_catalog_runs/{document=**} {
+      allow read, write: if false;
+    }
+
     // Deny everything else by default
     match /{document=**} {
       allow read, write: if false;

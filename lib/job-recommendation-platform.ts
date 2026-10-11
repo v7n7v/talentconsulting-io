@@ -9,6 +9,14 @@ import {
   type RecommendationCalibrationEvidence,
 } from '@/lib/recommendation-calibration';
 import { getJobSupplyServiceUrl } from '@/lib/job-supply-health';
+import { DEFAULT_JOB_SOURCES, enabledJobSources, catalogOriginIds } from './job-source-policy';
+import { readJobCatalogSupply } from './job-catalog';
+import { originFromUrl, type ProviderJob } from './job-provider-contract';
+import {
+  classifyProviderFailure, comparableAnnualSalary, finiteSalary, normalizeEmploymentType,
+  normalizeJobDate, normalizeSalaryInterval, normalizeWorkplaceType, type ProviderDiagnostic,
+} from './job-ingestion';
+import { filterJobSearchCandidates, normalizeJobSearchParams, normalizeCountry } from './job-search-selection';
 
 export type TalentSourceType = 'direct_ats' | 'company_page' | 'remote_board' | 'api_board' | 'aggregator';
 export type SourceConfidence = 'high' | 'medium' | 'low';
@@ -101,7 +109,10 @@ export interface TalentJobSearchResult {
   providerStatus: {
     everJobs: 'disabled' | 'success' | 'empty' | 'error';
     fallbackUsed: boolean;
-    fallbackStatus?: 'not_used' | 'success' | 'empty' | 'error';
+    fallbackStatus?: 'not_used' | 'success' | 'empty' | 'error' | 'disabled';
+    portals?: 'success' | 'empty' | 'error';
+    catalog?: 'success' | 'empty' | 'disabled' | 'error';
+    diagnostics?: ProviderDiagnostic[];
     sources: string[];
   };
 }
@@ -109,6 +120,8 @@ export interface TalentJobSearchResult {
 export function isJobSupplyOperational(status: TalentJobSearchResult['providerStatus']): boolean {
   if (status.everJobs === 'success' || status.everJobs === 'empty') return true;
   if (status.fallbackStatus === 'success' || status.fallbackStatus === 'empty') return true;
+  if (status.portals === 'success' || status.portals === 'empty') return true;
+  if (status.catalog === 'success') return true;
   return status.sources.length > 0;
 }
 
@@ -164,19 +177,6 @@ const TERMINAL_SUPPRESS_STATUSES = new Set<RecommendationLedgerStatus>(['dismiss
 const POSITIVE_RECOMMENDATION_STATUSES = new Set<RecommendationLedgerStatus>(['saved', 'applied', 'interview', 'offer']);
 const PREFERENCE_FEEDBACK_TAGS = new Set(['more_like_this', 'wrong_role', 'wrong_location', 'wrong_seniority', 'salary_too_low', 'not_interested', 'bad_source']);
 const ROLE_TOKEN_STOPWORDS = new Set(['and', 'the', 'for', 'with', 'senior', 'junior', 'lead', 'manager', 'specialist', 'associate', 'level', 'remote', 'hybrid']);
-const DEFAULT_SAFE_SOURCES = [
-  'greenhouse',
-  'lever',
-  'ashby',
-  'workday',
-  'remoteok',
-  'remotive',
-  'jobicy',
-  'himalayas',
-  'weworkremotely',
-  'usajobs',
-  'adzuna',
-];
 const SOURCE_TRUST_PROFILES: Record<string, {
   aliases: string[];
   sourceType: TalentSourceType;
@@ -194,6 +194,9 @@ const SOURCE_TRUST_PROFILES: Record<string, {
   weworkremotely: { aliases: ['weworkremotely', 'we work remotely'], sourceType: 'remote_board', sourceConfidence: 'medium', hosts: ['weworkremotely.com'] },
   usajobs: { aliases: ['usajobs', 'usa jobs'], sourceType: 'api_board', sourceConfidence: 'medium', hosts: ['usajobs.gov'] },
   adzuna: { aliases: ['adzuna'], sourceType: 'api_board', sourceConfidence: 'medium', hosts: ['adzuna.com'] },
+  linkedin: { aliases: ['linkedin'], sourceType: 'aggregator', sourceConfidence: 'medium', hosts: ['linkedin.com'] },
+  indeed: { aliases: ['indeed'], sourceType: 'aggregator', sourceConfidence: 'medium', hosts: ['indeed.com'] },
+  glassdoor: { aliases: ['glassdoor'], sourceType: 'aggregator', sourceConfidence: 'medium', hosts: ['glassdoor.com'] },
 };
 const US_STATE_ALIASES: Record<string, string> = {
   alabama: 'al', alaska: 'ak', arizona: 'az', arkansas: 'ar', california: 'ca', colorado: 'co', connecticut: 'ct', delaware: 'de',
@@ -242,8 +245,8 @@ function clampScore(value: number) {
 }
 
 function parseSafeSources() {
-  const raw = process.env.EVER_JOBS_SAFE_SOURCES || DEFAULT_SAFE_SOURCES.join(',');
-  return raw.split(',').map(source => source.trim().toLowerCase()).filter(Boolean);
+  const raw = process.env.EVER_JOBS_SAFE_SOURCES ?? DEFAULT_JOB_SOURCES.join(',');
+  return enabledJobSources(raw.split(','));
 }
 
 function sourceProfileId(sourceName: string) {
@@ -259,14 +262,14 @@ function hostMatches(hostname: string, allowedHost: string) {
   return normalizedHost === normalizedAllowed || normalizedHost.endsWith(`.${normalizedAllowed}`);
 }
 
-export function resolveTalentSourceTrust(sourceName: string, url: string, safeSources = parseSafeSources()) {
+export function resolveTalentSourceTrust(sourceName: string, url: string, safeSources = [...parseSafeSources(), ...catalogOriginIds()]) {
   const profileId = sourceProfileId(sourceName);
   const approvedSourceIds = new Set(safeSources.map(source => sourceProfileId(source) || normalizeSourceIdentifier(source)));
   const profile = profileId ? SOURCE_TRUST_PROFILES[profileId] : null;
   let hostname = '';
   try {
     const parsed = new URL(url);
-    if (parsed.protocol === 'https:') hostname = parsed.hostname;
+    if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) hostname = parsed.hostname;
   } catch {
     // Invalid or non-HTTPS URLs never earn source trust.
   }
@@ -284,12 +287,13 @@ export function resolveTalentSourceTrust(sourceName: string, url: string, safeSo
   };
 }
 
-export function getTrustedTalentJobApplyUrl(job: Pick<TalentJob, 'url' | 'sourceMeta'>): string | null {
+export function getTrustedTalentJobApplyUrl(job: Pick<TalentJob, 'url' | 'sourceMeta' | 'ingestion'>): string | null {
   const sourceMeta = job.sourceMeta;
   const canonicalUrl = sourceMeta?.canonicalUrl || job.url || '';
   const applyUrl = sourceMeta?.directApplyUrl || job.url || '';
   const canonicalTrust = resolveTalentSourceTrust(sourceMeta?.sourceName || '', canonicalUrl);
-  const applyTrust = resolveTalentSourceTrust(sourceMeta?.sourceName || '', applyUrl);
+  const crossOrigin = job.ingestion?.provider ? originFromUrl(applyUrl) : '';
+  const applyTrust = resolveTalentSourceTrust(crossOrigin || sourceMeta?.sourceName || '', applyUrl);
   if (!canonicalTrust.approved
     || !applyTrust.approved
     || canonicalTrust.sourceType !== sourceMeta?.sourceType
@@ -301,7 +305,8 @@ export function getTrustedTalentJobApplyUrl(job: Pick<TalentJob, 'url' | 'source
 }
 
 function everJobsEnabled() {
-  return process.env.EVER_JOBS_ENABLED === 'true' && Boolean(getJobSupplyServiceUrl());
+  return process.env.EVER_JOBS_ENABLED === 'true' && Boolean(getJobSupplyServiceUrl())
+    && Boolean(process.env.EVER_JOBS_API_KEY?.trim()) && parseSafeSources().length > 0;
 }
 
 export function normalizeJobKey(job: { title?: string; company?: string; location?: string; url?: string }) {
@@ -459,9 +464,9 @@ function verifiedSourceTrust(job: TalentJob) {
   const canonicalUrl = job.sourceMeta.canonicalUrl || job.url;
   const directApplyUrl = job.sourceMeta.directApplyUrl || job.url;
   const canonical = resolveTalentSourceTrust(job.sourceMeta.sourceName, canonicalUrl);
-  const apply = resolveTalentSourceTrust(job.sourceMeta.sourceName, directApplyUrl);
+  const apply = getTrustedTalentJobApplyUrl(job);
   const approved = canonical.approved
-    && apply.approved
+    && Boolean(apply)
     && canonical.sourceType === job.sourceMeta.sourceType
     && canonical.sourceConfidence === job.sourceMeta.sourceConfidence;
   return approved
@@ -546,36 +551,24 @@ function inferRemoteMode(location = '', description = ''): TalentJob['remoteMode
   if (haystack.includes('hybrid')) return 'hybrid';
   const explicitlyNotRemote = /\b(?:not|no|non[- ]?|isn['’]?t|is not)\s*remote\b/.test(haystack);
   if (!explicitlyNotRemote && /\bremote\b/.test(haystack)) return 'remote';
-  if (location) return 'onsite';
+  if (/\bon[- ]?site\b|\bin[- ]office\b|\boffice[- ]based\b/.test(haystack)) return 'onsite';
   return 'unknown';
 }
 
 function normalizeSalary(input: any): RealJob['salary'] {
   const compensation = input?.compensation || {};
   return {
-    min: typeof input?.min === 'number'
-      ? input.min
-      : typeof input?.salary_min === 'number'
-        ? input.salary_min
-        : typeof compensation.minAmount === 'number'
-          ? compensation.minAmount
-          : null,
-    max: typeof input?.max === 'number'
-      ? input.max
-      : typeof input?.salary_max === 'number'
-        ? input.salary_max
-        : typeof compensation.maxAmount === 'number'
-          ? compensation.maxAmount
-          : null,
-    currency: input?.currency || input?.salary_currency || compensation.currency || 'USD',
+    min: finiteSalary(input?.min) ?? finiteSalary(input?.salary_min) ?? finiteSalary(compensation.minAmount),
+    max: finiteSalary(input?.max) ?? finiteSalary(input?.salary_max) ?? finiteSalary(compensation.maxAmount),
+    currency: typeof (input?.currency || input?.salary_currency || compensation.currency) === 'string'
+      ? String(input?.currency || input?.salary_currency || compensation.currency).toUpperCase() : 'UNKNOWN',
+    interval: normalizeSalaryInterval(input?.interval || compensation.interval),
     isPredicted: Boolean(input?.isPredicted || input?.is_predicted),
   };
 }
 
 function normalizePostedDate(value: unknown) {
-  if (typeof value === 'string' && value.trim()) return value;
-  if (typeof value === 'number') return new Date(value).toISOString();
-  return '';
+  return normalizeJobDate(value);
 }
 
 function normalizeLocation(value: unknown) {
@@ -587,28 +580,39 @@ function normalizeLocation(value: unknown) {
   return 'Not listed';
 }
 
-function toTalentJob(raw: Partial<RealJob> & Record<string, any>, sourceName: string): TalentJob {
-  const title = raw.title || raw.jobTitle || raw.position || 'Untitled role';
-  const company = raw.company || raw.companyName || raw.organization || 'Unknown company';
+function firstJobText(...values: unknown[]): string {
+  return values.find(value => typeof value === 'string' && value.trim()) as string || '';
+}
+
+export function toTalentJob(raw: Partial<Omit<RealJob, 'source' | 'location'>> & Record<string, any>, sourceName: string): TalentJob {
+  const title = firstJobText(raw.title, raw.jobTitle, raw.position) || 'Untitled role';
+  const company = firstJobText(raw.company, raw.companyName, raw.organization) || 'Unknown company';
   const location = normalizeLocation(raw.location || raw.locationName || raw.candidate_required_location);
-  const description = raw.description || raw.descriptionText || raw.body || '';
-  const url = raw.url || raw.applyUrl || raw.jobUrl || raw.redirect_url || '#';
-  const postedDate = normalizePostedDate(raw.postedDate || raw.datePosted || raw.createdAt || raw.updatedAt || raw.publication_date);
-  const canonicalUrl = raw.sourceMeta?.canonicalUrl || url;
-  const directApplyUrl = raw.sourceMeta?.directApplyUrl || url;
+  const fullDescription = firstJobText(raw.description, raw.descriptionText, raw.body);
+  const description = fullDescription.slice(0, 100_000);
+  const url = firstJobText(raw.url, raw.jobUrl, raw.job_url, raw.applyUrl, raw.redirect_url);
+  const postedDate = normalizePostedDate(raw.publishedAt || raw.postedDate || raw.datePosted || raw.createdAt || raw.publication_date);
+  const canonicalUrl = firstJobText(raw.sourceMeta?.canonicalUrl, url);
+  const directApplyUrl = firstJobText(raw.sourceMeta?.directApplyUrl, raw.applyUrl, url);
   const sourceTrust = resolveTalentSourceTrust(sourceName, canonicalUrl);
-  const sourceJobId = String(raw.requisitionId || raw.externalId || raw.id || raw.jobId || '').trim() || undefined;
+  const sourceJobId = String(raw.sourceJobId || raw.requisitionId || raw.externalId || raw.id || raw.jobId || '').trim() || undefined;
   const skills = Array.isArray(raw.skills) && raw.skills.length > 0
-    ? raw.skills.map(String).slice(0, 24)
+    ? raw.skills.filter((skill: unknown): skill is string => typeof skill === 'string' && Boolean(skill.trim())).slice(0, 24)
     : extractSkillsFromDescription(description);
-  const observedAt = new Date().toISOString();
+  const observedAt = normalizeJobDate(raw.observedAt) || new Date().toISOString();
+  const structuredWorkMode = normalizeWorkplaceType(raw.remoteMode || raw.workplaceType);
+  const remoteMode: TalentJob['remoteMode'] = structuredWorkMode !== 'unknown'
+    ? structuredWorkMode
+    : raw.ingestion?.provider ? 'unknown'
+    : raw.isRemote === true ? 'remote'
+      : raw.isRemote === false ? 'onsite' : inferRemoteMode(location, description);
   const sourceMeta: TalentSourceMeta = {
     sourceType: sourceTrust.sourceType,
     sourceName,
     sourceConfidence: sourceTrust.sourceConfidence,
     directApplyUrl,
     canonicalUrl,
-    firstSeenAt: raw.sourceMeta?.firstSeenAt || observedAt,
+    firstSeenAt: normalizeJobDate(raw.sourceMeta?.firstSeenAt) || observedAt,
     lastSeenAt: observedAt,
   };
   return {
@@ -618,13 +622,34 @@ function toTalentJob(raw: Partial<RealJob> & Record<string, any>, sourceName: st
     location,
     salary: normalizeSalary(raw.salary || raw),
     description,
+    descriptionPreview: description.slice(0, 500),
+    locations: Array.from(new Set([location, ...(Array.isArray(raw.locations) ? raw.locations.map(normalizeLocation) : [])])),
+    country: normalizeCountry(raw.country || raw.location?.country) || undefined,
     skills,
     url,
     postedDate,
-    employmentType: Array.isArray(raw.jobType) ? raw.jobType.join(', ') : raw.employmentType || raw.jobType || raw.contractType || 'Full-time',
-    category: raw.category || raw.department || raw.industry,
+    publishedAt: postedDate,
+    updatedAt: normalizeJobDate(raw.updatedAt || raw.updated_at) || undefined,
+    observedAt,
+    discoveredAt: normalizeJobDate(raw.discoveredAt) || undefined,
+    applyUrl: directApplyUrl,
+    ingestion: {
+      parserVersion: firstJobText(raw.ingestion?.parserVersion).slice(0, 100) || 'ever-jobs-v2',
+      method: raw.ingestion?.method === 'public_api' ? 'public_api' : 'service_api',
+      descriptionTruncated: fullDescription.length > description.length || raw.ingestion?.descriptionTruncated === true,
+      ...(['fantastic', 'brightdata', 'apify'].includes(raw.ingestion?.provider || '') ? {
+        provider: raw.ingestion?.provider,
+        providerJobId: firstJobText(raw.ingestion?.providerJobId).slice(0, 300),
+        runId: firstJobText(raw.ingestion?.runId).slice(0, 100),
+        inferredFields: Array.isArray(raw.ingestion?.inferredFields) ? raw.ingestion.inferredFields.filter((value: unknown) => typeof value === 'string').slice(0, 50) : [],
+      } : {}),
+    },
+    ...(Array.isArray(raw.providerEvidence) ? { providerEvidence: raw.providerEvidence.filter((value: any) =>
+      value && ['fantastic', 'brightdata', 'apify'].includes(value.provider) && typeof value.providerJobId === 'string').slice(0, 20) } : {}),
+    employmentType: normalizeEmploymentType(raw.employmentType || raw.jobType || raw.contractType),
+    category: firstJobText(raw.category, raw.department, raw.industry) || undefined,
     source: sourceName,
-    remoteMode: inferRemoteMode(location, description),
+    remoteMode,
     sourceMeta,
     dedupeKey: normalizeJobKey({ title, company, location, url }),
     sourceJobId,
@@ -632,7 +657,7 @@ function toTalentJob(raw: Partial<RealJob> & Record<string, any>, sourceName: st
       title,
       company,
       location,
-      category: raw.category || raw.department || raw.industry,
+      category: firstJobText(raw.category, raw.department, raw.industry),
       sourceJobId,
       sourceMeta,
     }),
@@ -641,6 +666,7 @@ function toTalentJob(raw: Partial<RealJob> & Record<string, any>, sourceName: st
 
 function portalJobToTalent(job: PortalJob): TalentJob {
   return toTalentJob({
+    ...job,
     id: job.id,
     title: job.title,
     company: job.company,
@@ -648,9 +674,25 @@ function portalJobToTalent(job: PortalJob): TalentJob {
     description: job.description || '',
     url: job.url,
     postedDate: job.postedDate,
-    employmentType: 'Full-time',
+    employmentType: job.employmentType,
     category: job.department,
   }, job.source);
+}
+
+export function providerJobToTalent(job: ProviderJob): TalentJob {
+  const applyOrigin = originFromUrl(job.applyUrl);
+  const approvedApply = applyOrigin && resolveTalentSourceTrust(applyOrigin, job.applyUrl || '').approved;
+  return toTalentJob({
+    ...job, id: `${job.provider}:${job.providerJobId}`,
+    location: job.locations[0] || 'Not listed',
+    applyUrl: approvedApply ? job.applyUrl : job.url,
+    sourceMeta: { canonicalUrl: job.url, directApplyUrl: approvedApply ? job.applyUrl : job.url, firstSeenAt: job.firstSeenAt },
+    ingestion: {
+      parserVersion: `${job.provider}-v1`, method: 'service_api', descriptionTruncated: job.descriptionTruncated === true,
+      provider: job.provider, providerJobId: job.providerJobId, runId: job.runId, inferredFields: job.inferredFields,
+    },
+    providerEvidence: [{ provider: job.provider, providerJobId: job.providerJobId, ...(job.runId ? { runId: job.runId } : {}) }],
+  }, job.origin);
 }
 
 function rawEverJobsSource(row: Record<string, any>) {
@@ -658,7 +700,7 @@ function rawEverJobsSource(row: Record<string, any>) {
 }
 
 function rawEverJobsUrl(row: Record<string, any>) {
-  return String(row.url || row.applyUrl || row.jobUrl || row.job_url || '');
+  return firstJobText(row.url, row.jobUrl, row.job_url, row.applyUrl);
 }
 
 export function selectEverJobsRowsForNormalization(
@@ -687,6 +729,11 @@ export function selectEverJobsRowsForNormalization(
   const seen = new Set<string>();
 
   for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const title = row.title || row.jobTitle || row.position;
+    if (typeof title !== 'string' || !title.trim()) continue;
+    if (['company', 'companyName', 'organization', 'description', 'descriptionText', 'body']
+      .some(field => row[field] != null && typeof row[field] !== 'string')) continue;
     const source = rawEverJobsSource(row);
     const url = rawEverJobsUrl(row);
     const trust = resolveTalentSourceTrust(source, url, safeSources);
@@ -736,8 +783,12 @@ export function dedupeTalentJobs(jobs: TalentJob[]) {
     });
     if (duplicateIndex < 0) {
       family.push(job);
-    } else if (jobSourceQualityRank(job) > jobSourceQualityRank(family[duplicateIndex])) {
-      family[duplicateIndex] = job;
+    } else {
+      const previous = family[duplicateIndex];
+      const winner = jobSourceQualityRank(job) > jobSourceQualityRank(previous) ? job : previous;
+      const contributors = [...(previous.providerEvidence || []), ...(job.providerEvidence || [])];
+      family[duplicateIndex] = contributors.length ? { ...winner, providerEvidence: contributors.filter((entry, index) =>
+        contributors.findIndex(other => other.provider === entry.provider && other.providerJobId === entry.providerJobId) === index).slice(0, 20) } : winner;
     }
     byFamily.set(familyKey, family);
   }
@@ -760,9 +811,8 @@ async function searchEverJobs(params: JobSearchParams): Promise<TalentJob[]> {
     isRemote: params.remote || params.location?.toLowerCase() === 'remote' || undefined,
     remote: params.remote || params.location?.toLowerCase() === 'remote' || undefined,
     remote_only: params.remote || params.location?.toLowerCase() === 'remote' || undefined,
-    resultsWanted: Math.min(50, Math.max(1, params.resultsPerPage || 20)),
-    limit: Math.min(50, Math.max(1, params.resultsPerPage || 20)),
-    page: params.page || 1,
+    // Request a stable candidate batch; merged pagination happens after Taco ranking.
+    resultsWanted: 50,
     sortBy: params.sortBy || 'relevance',
     descriptionFormat: 'markdown',
   };
@@ -778,7 +828,7 @@ async function searchEverJobs(params: JobSearchParams): Promise<TalentJob[]> {
     signal: AbortSignal.timeout(12_000),
   });
 
-  if (!response.ok) throw new Error(`Ever Jobs search failed: ${response.status}`);
+  if (!response.ok) throw Object.assign(new Error('Ever Jobs search failed'), { status: response.status });
   const data = await response.json();
   const rows = Array.isArray(data)
     ? data
@@ -793,12 +843,12 @@ async function searchEverJobs(params: JobSearchParams): Promise<TalentJob[]> {
             : data && typeof data === 'object' && data.data && typeof data.data === 'object' && Array.isArray(data.data.results)
               ? data.data.results
               : null;
-  if (!rows) throw new Error('Ever Jobs search returned an unsupported response');
-  const requestedLimit = Math.min(50, Math.max(1, params.resultsPerPage || 20));
+  if (!rows) throw Object.assign(new Error('Ever Jobs search returned an unsupported response'), { name: 'JobPayloadError' });
+  const requestedLimit = 50;
   const selectedRows = selectEverJobsRowsForNormalization(rows, sources, requestedLimit);
   const approvedJobs = selectedRows.map((job: any) => toTalentJob(job, rawEverJobsSource(job)));
   if (rows.length > 0 && approvedJobs.length === 0) {
-    throw new Error('Ever Jobs search returned no approved job sources');
+    throw Object.assign(new Error('Ever Jobs search returned no usable approved job sources'), { name: 'JobPayloadError' });
   }
   return approvedJobs;
 }
@@ -813,29 +863,32 @@ async function searchEverJobs(params: JobSearchParams): Promise<TalentJob[]> {
 // we search every board and filter by role.
 async function searchCompanyPortalMatches(params: JobSearchParams) {
   const queryLower = params.query.toLowerCase();
-  const detectedCompany = Object.keys(KNOWN_BOARDS).find(company => queryLower.includes(company));
+  const detectedCompany = Object.keys(KNOWN_BOARDS).find(company => new RegExp(`\\b${company}\\b`).test(queryLower));
 
   if (detectedCompany) {
     const roleQuery = queryLower.replace(detectedCompany, '').trim() || undefined;
-    const result = await searchCompanyJobs(detectedCompany, roleQuery);
-    return { jobs: result.jobs.map(portalJobToTalent), company: detectedCompany };
+    const result = await searchCompanyJobs(detectedCompany, roleQuery, 2000);
+    return { ...result, jobs: result.jobs.map(portalJobToTalent), company: detectedCompany };
   }
 
-  const result = await searchAllKnownBoards(params.query);
-  return { jobs: result.jobs.map(portalJobToTalent), company: null as string | null };
+  const result = await searchAllKnownBoards(params.query, Object.keys(KNOWN_BOARDS).length * 2000);
+  return { ...result, jobs: result.jobs.map(portalJobToTalent), company: null as string | null };
 }
 
 export async function searchTalentJobSupply(params: JobSearchParams): Promise<TalentJobSearchResult> {
+  params = normalizeJobSearchParams(params);
   const providerStatus: TalentJobSearchResult['providerStatus'] = {
     everJobs: everJobsEnabled() ? 'empty' : 'disabled',
     fallbackUsed: false,
     fallbackStatus: 'not_used',
+    diagnostics: [],
     sources: [],
   };
 
-  const [everJobsResult, portalResult] = await Promise.allSettled([
+  const [everJobsResult, portalResult, catalogResult] = await Promise.allSettled([
     searchEverJobs(params),
     searchCompanyPortalMatches(params),
+    readJobCatalogSupply(),
   ]);
 
   let jobs: TalentJob[] = [];
@@ -845,23 +898,49 @@ export async function searchTalentJobSupply(params: JobSearchParams): Promise<Ta
   } else if (everJobsResult.status === 'rejected') {
     providerStatus.everJobs = 'error';
   }
+  providerStatus.diagnostics!.push({
+    provider: 'ever_jobs',
+    status: everJobsResult.status === 'rejected' ? classifyProviderFailure(everJobsResult.reason)
+      : providerStatus.everJobs === 'disabled' ? 'disabled'
+        : providerStatus.everJobs === 'success' ? 'success' : 'empty',
+    ...(everJobsResult.status === 'rejected' && typeof everJobsResult.reason?.status === 'number'
+      ? { httpStatus: everJobsResult.reason.status } : {}),
+  });
 
   if (portalResult.status === 'fulfilled') {
     jobs.push(...portalResult.value.jobs);
+    const portalStatus = portalResult.value.status;
+    providerStatus.portals = portalStatus === 'success' ? 'success' : portalStatus === 'empty' ? 'empty' : 'error';
+    providerStatus.diagnostics!.push(...(portalResult.value.diagnostics || []));
+  } else {
+    providerStatus.portals = 'error';
+    providerStatus.diagnostics!.push({ provider: 'company_boards', status: classifyProviderFailure(portalResult.reason) });
+  }
+
+  if (catalogResult.status === 'fulfilled') {
+    const { diagnostic } = catalogResult.value;
+    providerStatus.catalog = diagnostic.status === 'disabled' ? 'disabled'
+      : diagnostic.status === 'success' || diagnostic.status === 'empty' ? diagnostic.status : 'error';
+    providerStatus.diagnostics!.push(diagnostic);
+    const terms = params.query.toLowerCase().split(/\s+/).filter(Boolean);
+    jobs.push(...catalogResult.value.jobs.filter(job => terms.every(term =>
+      `${job.title} ${job.company} ${job.description}`.toLowerCase().includes(term))).map(providerJobToTalent));
+  } else {
+    providerStatus.catalog = 'error';
+    providerStatus.diagnostics!.push({ provider: 'job_catalog', status: classifyProviderFailure(catalogResult.reason) });
   }
 
   if (jobs.length === 0 || providerStatus.everJobs !== 'success') {
-    const legacy = await searchLegacyJobs(params);
+    const legacy = await searchLegacyJobs({ ...params, page: 1, resultsPerPage: 50 });
     providerStatus.fallbackUsed = true;
-    providerStatus.fallbackStatus = legacy.source.toLowerCase().includes('(error)') || /disabled|no key/i.test(legacy.source)
-      ? 'error'
-      : legacy.jobs.length > 0
-        ? 'success'
-        : 'empty';
+    providerStatus.fallbackStatus = legacy.status === 'disabled' ? 'disabled'
+      : legacy.status === 'success' || legacy.status === 'empty' ? legacy.status
+        : 'error';
+    providerStatus.diagnostics!.push(...(legacy.diagnostics || []));
     jobs.push(...legacy.jobs.map(job => toTalentJob(job, job.source || legacy.source)));
   }
 
-  const deduped = dedupeTalentJobs(jobs);
+  const deduped = filterJobSearchCandidates(dedupeTalentJobs(jobs), params);
   providerStatus.sources = [...new Set(deduped.map(job => job.source))].sort();
 
   return {
@@ -924,8 +1003,8 @@ function preferenceLocationScore(job: TalentJob, ctx: RecommendationContext) {
 }
 
 function salaryFit(job: TalentJob, salaryMin = 0) {
-  if (!job.salary?.min && !job.salary?.max) return salaryMin > 0 ? 48 : 60;
-  const top = job.salary.max || job.salary.min || 0;
+  const top = comparableAnnualSalary(job.salary);
+  if (top === null) return salaryMin > 0 ? 48 : 60;
   if (!salaryMin) return 82;
   if (top >= salaryMin) return 90;
   return clampScore(55 - ((salaryMin - top) / Math.max(salaryMin, 1)) * 35);
@@ -972,7 +1051,7 @@ function evidenceCoverage(job: TalentJob, ctx: RecommendationContext, hasSkillEv
   if (hasSkillEvidence) coverage += 30;
   if ((ctx.targetRoles?.length || 0) > 0) coverage += 15;
   if (!ctx.remotePref || ctx.remotePref === 'any' || job.remoteMode !== 'unknown') coverage += 10;
-  if (!ctx.salaryMin || Boolean(job.salary?.min || job.salary?.max)) coverage += 10;
+  if (!ctx.salaryMin || comparableAnnualSalary(job.salary) !== null) coverage += 10;
   if (Number.isFinite(new Date(job.postedDate || '').getTime())) coverage += 10;
   if (verifiedSourceTrust(job).sourceConfidence !== 'low') coverage += 15;
   if (preferenceEvidenceCount > 0) coverage += 10;
@@ -1032,7 +1111,7 @@ function buildRiskNotes(job: TalentJob, fit: TalentFitBreakdown, ctx: Recommenda
     notes.push(`Medium posting-risk signal: ${job.ghostRisk.reasons[0] || 'review freshness and source quality.'}`);
   }
   if (!job.url || job.url === '#') notes.push('No direct application URL was available.');
-  if (ctx.salaryMin && !job.salary?.min && !job.salary?.max) notes.push(`Salary was not listed; verify against your ${formatSalaryTarget(ctx.salaryMin)} target.`);
+  if (ctx.salaryMin && comparableAnnualSalary(job.salary) === null) notes.push(`Annual USD salary was not verified; review the currency and pay interval against your ${formatSalaryTarget(ctx.salaryMin)} target.`);
   if (ctx.remotePref && ctx.remotePref !== 'any' && job.remoteMode === 'unknown') notes.push(`Remote mode was not explicit; verify ${ctx.remotePref} before preparing materials.`);
   if (fit.skills < 65) notes.push('Resume evidence may be thin for the listed skills.');
   return Array.from(new Set(notes)).slice(0, 5);

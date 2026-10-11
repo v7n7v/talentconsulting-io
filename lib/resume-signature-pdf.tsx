@@ -1039,6 +1039,7 @@ export function CuratedSignaturePDF({
   resume,
   templateId,
   colors: colorOverrides,
+  pageSize = 'A4',
 }: CuratedSignaturePDFProps) {
   if (!Object.prototype.hasOwnProperty.call(CURATED_SIGNATURE_PDF_MAP, templateId)) {
     throw new Error(`No curated signature PDF renderer registered for "${String(templateId)}".`);
@@ -1058,7 +1059,7 @@ export function CuratedSignaturePDF({
       keywords="resume, experience, skills, education, certifications"
       language="en-US"
     >
-      <Renderer resume={resume} colors={colors} metadata={metadata} />
+      <Renderer resume={resume} colors={colors} metadata={metadata} pageSize={pageSize} />
     </Document>
   );
 }

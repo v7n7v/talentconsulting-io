@@ -190,11 +190,12 @@ const job = {
   url: 'https://boards.greenhouse.io/lockheedmartin/jobs/security-engineer',
   description: 'Hybrid security engineering role using NIST, incident response, wireless systems, Python, and audit controls.',
   skills: ['NIST', 'incident response', 'wireless systems', 'Python'],
-  salary: { min: 121000, max: 132000 },
+  salary: { min: 121000, max: 132000, currency: 'USD', interval: 'year' },
   source: 'Greenhouse',
   remoteMode: 'hybrid',
   employmentType: 'Full-time',
-  postedDate: '2026-07-08T00:00:00.000Z',
+  // This fixture exercises a fresh, preparation-eligible posting on any run date.
+  postedDate: new Date(Date.now() - 2 * 86400000).toISOString(),
   sourceMeta: {
     sourceType: 'direct_ats',
     sourceName: 'Greenhouse',

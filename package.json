@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "node scripts/lint-verify.cjs",
     "type-check": "tsc --noEmit",
     "email:dev": "email dev --dir emails/previews",
     "email:export": "email export --dir emails/previews --outDir email-previews",
@@ -23,9 +23,11 @@
     "security:cve:test": "node --test scripts/security-cve-audit.test.js",
     "test:career-twin": "node --test scripts/career-twin-client.test.js",
     "test:resume-guardrails": "node --test scripts/resume-morph-guardrails.test.js scripts/resume-export-truth.test.js scripts/resume-morph-consent.test.js",
-    "test:resume": "node --test scripts/resume-morph-guardrails.test.js scripts/resume-export-truth.test.js scripts/resume-morph-consent.test.js scripts/resume-review-ledger.test.js scripts/tfidf-proof-flatten.test.js scripts/resume-rewrite-guardrails.test.js scripts/resume-template-catalog.test.js scripts/resume-template-palettes.test.js scripts/resume-template-integration.test.js scripts/resume-signature-docx.test.js scripts/resume-signature-pdf.test.js scripts/resume-signature-html.test.js scripts/editorial-authority-template.test.js scripts/sona-resume-upload-context.test.js scripts/file-upload-state.test.js",
+    "test:resume": "node --test scripts/resume-morph-guardrails.test.js scripts/resume-export-truth.test.js scripts/resume-morph-consent.test.js scripts/resume-review-ledger.test.js scripts/tfidf-proof-flatten.test.js scripts/resume-rewrite-guardrails.test.js scripts/resume-template-catalog.test.js scripts/resume-template-palettes.test.js scripts/resume-template-integration.test.js scripts/resume-signature-docx.test.js scripts/resume-signature-pdf.test.js scripts/resume-pdf-page-size.test.js scripts/resume-signature-html.test.js scripts/editorial-authority-template.test.js scripts/sona-resume-upload-context.test.js scripts/file-upload-state.test.js",
+    "test:resume-pdf": "node --test scripts/resume-pdf-page-size.test.js scripts/resume-signature-pdf.test.js scripts/editorial-authority-template.test.js",
     "test:recommendations": "node --test scripts/job-recommendation-learning.test.js scripts/job-recommendation-score.test.js scripts/ever-jobs-staging-canary.test.js",
     "test:job-supply": "node --test scripts/job-supply-health.test.js scripts/ever-jobs-staging-canary.test.js",
+    "test:job-parsing": "node --test scripts/job-ingestion.test.js scripts/job-search-api.test.js scripts/portal-scanner.test.js scripts/job-search-selection.test.js scripts/job-supply-ingestion.test.js scripts/job-display.test.js scripts/job-search-route.test.js",
     "test:recommendation-calibration": "node --test scripts/recommendation-calibration.test.js",
     "test:job-recovery": "node --test scripts/job-packet-recovery.test.js scripts/job-search-recovery.test.js scripts/sona-recovery.test.js",
     "test:mobile-review": "node --test scripts/sona-top-picks.test.js scripts/job-search-mobile-review.test.js",
@@ -89,7 +91,12 @@
     "test:tool-hardening": "node --test scripts/humanizer-integrity.test.js scripts/writing-policy.test.js scripts/writing-review-export.test.js scripts/oracle-regression.test.js scripts/oracle-insights-ui.test.js scripts/career-intelligence-integrity.test.js scripts/career-insights-ui.test.js",
     "test:experience": "node --test scripts/resume-workspace.test.js scripts/resume-source-classification.test.js scripts/resume-parse-contract.test.js scripts/resume-parse-route.test.js scripts/resume-workspace-export.test.js scripts/resume-dropzone-lifecycle.test.js scripts/experience-workspace-state.test.js scripts/resume-save-track-state.test.js",
     "test:resume-design": "node --test scripts/resume-design.test.js scripts/resume-design-styles.test.js scripts/resume-design-integration.test.js scripts/resume-design-export.test.js",
-    "test:resume-flagship": "node --test scripts/resume-design-glyphs.test.js scripts/resume-entry-breaks.test.js scripts/resume-design-workbench.test.js scripts/resume-export-preview-state.test.js scripts/resume-flagship-integration.test.js scripts/resume-flagship-export.test.js"
+    "test:resume-flagship": "node --test scripts/resume-design-glyphs.test.js scripts/resume-entry-breaks.test.js scripts/resume-design-workbench.test.js scripts/resume-export-preview-state.test.js scripts/resume-flagship-integration.test.js scripts/resume-flagship-export.test.js",
+    "test:job-providers": "node --test scripts/job-provider-fantastic.test.js scripts/job-provider-scrapers.test.js scripts/job-catalog-route.test.js scripts/job-catalog-ingestion.test.js scripts/job-catalog-search.test.js scripts/job-catalog-staging-preflight.test.js",
+    "jobs:catalog:trigger": "node scripts/job-catalog-trigger.js",
+    "jobs:catalog:preflight": "node scripts/job-catalog-staging-preflight.js",
+    "test:dependency-compatibility": "node --test scripts/dependency-compatibility.test.js",
+    "test:install-boundaries": "node --test scripts/dependency-compatibility.test.js scripts/docker-build-context.test.js scripts/cloudrun-build-context.test.js scripts/security-cve-audit.test.js scripts/security-cve-zero.test.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.83",
@@ -172,17 +179,23 @@
     "protobufjs": "7.6.5",
     "sharp": "0.35.5",
     "uuid": "^11.1.1",
-    "minimatch@^3.0.0": {
-      "brace-expansion": "1.1.21"
-    },
-    "@fastify/busboy": "3.2.1",
-    "@xmldom/xmldom": "0.8.15",
-    "brace-expansion@^5": "5.0.11",
-    "browserslist": "4.28.7",
-    "engine.io": "6.6.10",
-    "fast-uri": "3.1.7",
+    "brace-expansion@^1": "1.1.21",
+    "brace-expansion@^5": "5.0.12",
+    "@fastify/busboy@^3": "3.2.2",
+    "@xmldom/xmldom@^0.8": "0.8.15",
+    "browserslist@^4": "4.28.7",
+    "engine.io@^6": "6.6.10",
+    "fast-uri@^3": "3.1.8",
     "nanoid@^3": "3.3.18",
     "nanoid@^5": "5.1.16",
-    "source-map-js": "1.2.2"
+    "source-map-js@^1": "1.2.2"
+  },
+  "packageManager": "npm@12.1.0",
+  "allowScripts": {
+    "esbuild@0.28.1": true,
+    "unrs-resolver@1.11.1": true,
+    "protobufjs@7.6.5": true,
+    "@firebase/util": false,
+    "fsevents": false
   }
 }

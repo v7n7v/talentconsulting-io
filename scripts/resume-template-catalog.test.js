@@ -14,9 +14,9 @@ function loadCatalog() {
   const output = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
-  const module = { exports: {} };
-  vm.runInNewContext(output, { module, exports: module.exports, require, console, Map, Set, Object });
-  return module.exports;
+  const loadedModule = { exports: {} };
+  vm.runInNewContext(output, { module: loadedModule, exports: loadedModule.exports, require, console, Map, Set, Object });
+  return loadedModule.exports;
 }
 
 const catalog = loadCatalog();
